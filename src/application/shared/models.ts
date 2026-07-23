@@ -1,0 +1,68 @@
+import type { SalesChannel } from '../../domain/common/types'
+
+export type UiStatus = 'idle' | 'loading' | 'error' | 'success'
+export type QuoteWorkflowStatus = 'draft' | 'sent' | 'negotiating' | 'approved' | 'rejected' | 'expired' | 'converted'
+export type OrderWorkflowStatus = 'draft' | 'confirmed' | 'awaiting_stock' | 'reserved' | 'preparing' | 'ready' | 'dispatched' | 'delivered' | 'cancelled'
+
+export interface WorkflowLine {
+  id: string
+  productId: string
+  name: string
+  sku: string
+  quantity: number
+  unitPriceCents: number
+  discountBasisPoints: number
+}
+
+export interface QuoteDraft {
+  id: string
+  number: string
+  customerId: string
+  customerName: string
+  channel: Extract<SalesChannel, 'mayoreo' | 'institucional'>
+  status: QuoteWorkflowStatus
+  validUntil: string
+  terms: string
+  notes: string
+  generalDiscountCents: number
+  createdAt: string
+  lines: WorkflowLine[]
+}
+
+export interface OrderView {
+  id: string
+  number: string
+  customerName: string
+  channel: Extract<SalesChannel, 'mayoreo' | 'institucional'>
+  status: OrderWorkflowStatus
+  createdAt: string
+  sourceQuoteId?: string
+  lines: Array<WorkflowLine & { prepared: number; allocations: { location: 'Tienda' | 'Almacén'; quantity: number }[] }>
+  events: { at: string; label: string; detail: string }[]
+}
+
+export interface CustomerRecord {
+  id: string
+  name: string
+  type: 'retail' | 'wholesale' | 'institutional'
+  document: string
+  phone: string
+  email: string
+  address: string
+  usualChannel: SalesChannel
+  paymentTerms: string
+  creditLimitCents: number
+  pendingBalanceCents: number
+}
+
+export interface CashSessionRecord {
+  id: string
+  register: string
+  openedAt: string
+  openingCents: number
+  status: 'open' | 'closed'
+  movements: { id: string; type: 'income' | 'expense'; method: 'cash' | 'qr' | 'transfer'; amountCents: number; note: string; at: string }[]
+  countedCents?: number
+  closedAt?: string
+}
+

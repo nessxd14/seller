@@ -1,0 +1,13 @@
+import { useState } from 'react'
+import { getPrice } from '../data/products'
+import { usePos } from '../context/PosContext'
+import type { CartItem } from '../types'
+import { Modal } from './Modal'
+
+export function EditCartItemModal({ item, onClose }: { item: CartItem; onClose: () => void }) {
+  const { channel, updateItem } = usePos()
+  const [form, setForm] = useState({ cantidad: item.cantidad, precioAplicado: item.precioAplicado, descuento: item.descuento, ubicacion: item.ubicacion, observacion: item.observacion, motivoPrecio: item.motivoPrecio })
+  const configured = getPrice(item, channel)
+  const save = () => { updateItem(item.id, { ...form, cantidad: Math.max(1, Number(form.cantidad)), precioAplicado: Math.max(0, Number(form.precioAplicado)), descuento: Math.min(100, Math.max(0, Number(form.descuento))) }); onClose() }
+  return <Modal title="Editar línea" subtitle={item.nombre} onClose={onClose}><div className="modal-body form-grid"><label>Cantidad<input type="number" min="1" value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: Number(e.target.value) })} /></label><label>Precio configurado<input value={`Bs ${configured.toFixed(2)}`} disabled /></label><label>Precio aplicado<input type="number" min="0" step="0.5" value={form.precioAplicado} onChange={(e) => setForm({ ...form, precioAplicado: Number(e.target.value) })} /></label><label>Descuento (%)<input type="number" min="0" max="100" value={form.descuento} onChange={(e) => setForm({ ...form, descuento: Number(e.target.value) })} /></label><label className="full">Ubicación de origen<select value={form.ubicacion} onChange={(e) => setForm({ ...form, ubicacion: e.target.value })}><option>Tienda principal</option><option>Almacén central</option></select></label><label className="full">Motivo del cambio de precio<select value={form.motivoPrecio} onChange={(e) => setForm({ ...form, motivoPrecio: e.target.value })}><option value="">Sin cambio de precio</option><option>Promoción autorizada</option><option>Precio acordado</option><option>Producto con detalle</option></select></label><label className="full">Observación<textarea rows={3} placeholder="Añadir una nota a esta línea..." value={form.observacion} onChange={(e) => setForm({ ...form, observacion: e.target.value })} /></label></div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" onClick={save}>Guardar cambios</button></footer></Modal>
+}
