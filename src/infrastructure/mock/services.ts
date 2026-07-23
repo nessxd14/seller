@@ -5,9 +5,11 @@ import { CashService } from '../../application/cash/CashService'
 import type { CashSessionRecord, CustomerRecord, OrderView, QuoteDraft } from '../../application/shared/models'
 import { LocalStorageRepository } from './localStore'
 import { cashSeeds, customerSeeds, orderSeeds, quoteSeeds } from './seeds'
+import { LocalIdempotencyService } from '../../application/idempotency/IdempotencyService'
+import { SensitiveOperationExecutor } from '../../application/idempotency/SensitiveOperationExecutor'
 
 export const quoteService = new QuoteService(new LocalStorageRepository<QuoteDraft>('roari-quotes-v1', quoteSeeds))
 export const orderService = new OrderService(new LocalStorageRepository<OrderView>('roari-orders-v1', orderSeeds))
 export const customerService = new CustomerService(new LocalStorageRepository<CustomerRecord>('roari-customers-v1', customerSeeds))
 export const cashService = new CashService(new LocalStorageRepository<CashSessionRecord>('roari-cash-v1', cashSeeds))
-
+export const sensitiveOperations = new SensitiveOperationExecutor(new LocalIdempotencyService())

@@ -1,7 +1,7 @@
 import { Copy, Eye, FileDown, Plus, Printer, ShoppingCart } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { QuoteDraft, QuoteWorkflowStatus } from '../../application/shared/models'
-import { orderService, quoteService } from '../../infrastructure/mock/services'
+import { orderService, quoteService, sensitiveOperations } from '../../infrastructure/mock/services'
 import { products, getPrice } from '../../data/products'
 import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState, FeatureToolbar, statusLabel } from '../shared/FeatureShell'
@@ -9,7 +9,7 @@ import { Modal } from '../../components/Modal'
 
 const total = (quote: QuoteDraft) => quote.lines.reduce((sum, line) => sum + Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000), 0) - quote.generalDiscountCents
 
-export function QuotationsPage({ notify, onOrderCreated }: { notify: (message: string) => void; onOrderCreated: () => void }) {
+export function QuotationsPage({ notify, onOrderCreated, readOnly = false }: { notify: (message: string) => void; onOrderCreated: () => void; readOnly?: boolean }) {
   const [quotes, setQuotes] = useState<QuoteDraft[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [query, setQuery] = useState('')
@@ -19,12 +19,13 @@ export function QuotationsPage({ notify, onOrderCreated }: { notify: (message: s
   const load = () => quoteService.list().then((items) => { setQuotes(items); setStatus('ready') }).catch(() => setStatus('error'))
   useEffect(() => { void load() }, [])
   const filtered = useMemo(() => quotes.filter((quote) => (filter === 'all' || quote.status === filter) && `${quote.number} ${quote.customerName} ${quote.status}`.toLowerCase().includes(query.toLowerCase())), [quotes, query, filter])
-  const create = () => setEditing({ id: crypto.randomUUID(), number: `COT-MOCK-${Date.now().toString().slice(-5)}`, customerId: 'c1', customerName: 'Librería San Marcos', channel: 'mayoreo', status: 'draft', validUntil: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10), terms: 'Contado', notes: '', generalDiscountCents: 0, createdAt: new Date().toISOString(), lines: [] })
-  const save = async (quote: QuoteDraft) => { await quoteService.save(quote); setEditing(null); await load(); notify('Cotización guardada localmente') }
-  const duplicate = async (id: string) => { await quoteService.duplicate(id); await load(); notify('Cotización duplicada') }
+  const create = () => { if(readOnly){notify('Modo solo lectura');return} setEditing({ id: crypto.randomUUID(), number: `COT-MOCK-${Date.now().toString().slice(-5)}`, customerId: 'c1', customerName: 'Librería San Marcos', channel: 'mayoreo', status: 'draft', validUntil: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10), terms: 'Contado', notes: '', generalDiscountCents: 0, createdAt: new Date().toISOString(), lines: [] }) }
+  const save = async (quote: QuoteDraft) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.save(quote); setEditing(null); await load(); notify('Cotización guardada localmente') }
+  const duplicate = async (id: string) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.duplicate(id); await load(); notify('Cotización duplicada') }
   const convert = async (quote: QuoteDraft) => {
+    if(readOnly){notify('Modo solo lectura');return}
     if (!confirm(`¿Convertir ${quote.number} en pedido mock?`)) return
-    const snapshot = await quoteService.markConverted(quote.id, crypto.randomUUID())
+    const snapshot = await sensitiveOperations.execute('convert_quote',quote.id,()=>quoteService.markConverted(quote.id, crypto.randomUUID()))
     await orderService.save({ id: snapshot.id, number: snapshot.number, customerName: snapshot.customer.name, channel: quote.channel, status: 'draft', createdAt: snapshot.createdAt, sourceQuoteId: quote.id, lines: snapshot.items.map((line) => ({ id: line.id, productId: line.product.productId, name: line.product.name, sku: line.product.sku, quantity: line.quantity, unitPriceCents: line.appliedPrice.cents, discountBasisPoints: line.discountBasisPoints, prepared: 0, allocations: [] })), events: [{ at: new Date().toLocaleString('es-BO'), label: 'Pedido creado desde cotización', detail: `Snapshots conservados desde ${quote.number}` }] })
     await load()
     onOrderCreated()

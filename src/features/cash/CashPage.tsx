@@ -1,7 +1,7 @@
 import { ArrowDownLeft, ArrowUpRight, Calculator, LockKeyhole, WalletCards } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { CashSessionRecord } from '../../application/shared/models'
-import { cashService } from '../../infrastructure/mock/services'
+import { cashService, sensitiveOperations } from '../../infrastructure/mock/services'
 import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
@@ -15,8 +15,8 @@ export function CashPage({ notify }: { notify: (message: string) => void }) {
   const active = sessions.find((session) => session.status === 'open')
   const expected = active ? cashService.expected(active) : 0
   const byMethod = active?.movements.reduce((result, movement) => ({ ...result, [movement.method]: (result[movement.method] || 0) + (movement.type === 'income' ? movement.amountCents : -movement.amountCents) }), {} as Record<string,number>) ?? {}
-  const open = async (amount: number) => { await cashService.open('Caja 01 · Sucursal Central', amount); setOpening(false); await load(); notify('Sesión de caja abierta en modo mock') }
-  const close = async (counted: number) => { if (!closing) return; await cashService.close(closing, counted); setClosing(null); await load(); notify('Cierre guardado en historial local') }
+  const open = async (amount: number) => { await sensitiveOperations.execute('open_cash','Caja 01',()=>cashService.open('Caja 01 · Sucursal Central', amount)); setOpening(false); await load(); notify('Sesión de caja abierta en modo mock') }
+  const close = async (counted: number) => { if (!closing) return; await sensitiveOperations.execute('close_cash',closing.id,()=>cashService.close(closing, counted)); setClosing(null); await load(); notify('Cierre guardado en historial local') }
   const movement = async (type: 'income' | 'expense') => {
     if (!active) return
     const amount=Number(prompt(`Monto del ${type==='income'?'ingreso':'egreso'} simulado en Bs`, '0'))
