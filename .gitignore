@@ -1,4 +1,13 @@
-node_modules
-dist
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+.env
+.env.*
+!.env.example
 *.local
+*.zip
+*.tmp
+*.temp
 .DS_Store
