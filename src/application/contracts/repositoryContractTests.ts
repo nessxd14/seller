@@ -18,8 +18,8 @@ const runCrudContract=<T extends{id:string}>(label:string,factory:()=>ContractFi
   it('reutiliza resultado para la misma clave idempotente',async()=>{const{repository,create}=factory();const value=create();const first=await repository.save(value,{idempotencyKey:'same-key'});const second=await repository.save(value,{idempotencyKey:'same-key'});expect(second).toEqual(first)})
 })
 export const runQuoteRepositoryContractTests=<T extends{id:string}>(factory:()=>ContractFixture<T>)=>runCrudContract('Quote',factory)
+export const runProductRepositoryContractTests=<T extends{id:string}>(factory:()=>ContractFixture<T>)=>runCrudContract('Product',factory)
 export const runOrderRepositoryContractTests=<T extends{id:string}>(factory:()=>ContractFixture<T>)=>runCrudContract('Order',factory)
 export const runSaleRepositoryContractTests=<T extends{id:string}>(factory:()=>ContractFixture<T>)=>runCrudContract('Sale',factory)
 export const runCashRepositoryContractTests=<T extends{id:string}>(factory:()=>ContractFixture<T>)=>runCrudContract('Cash',factory)
 export const runCustomerRepositoryContractTests=<T extends{id:string}>(factory:()=>ContractFixture<T>)=>runCrudContract('Customer',factory)
-

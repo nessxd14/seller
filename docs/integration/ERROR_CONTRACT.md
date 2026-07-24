@@ -4,6 +4,7 @@
 |---|---|---|
 | `unauthenticated` | `UnauthenticatedError` | No existe sesión |
 | `unauthorized` | `UnauthorizedError` | Falta permiso |
+| `inactive_user` | `InactiveUserError` | Usuario inactivo |
 | `validation` | `ValidationError` | Entrada inválida |
 | `not_found` | `NotFoundError` | Recurso inexistente |
 | `conflict` | `ConflictError` | Versión desactualizada |
@@ -13,7 +14,7 @@
 | `session_expired` | `SessionExpiredError` | Sesión vencida |
 | `cash_session_required` | `CashSessionRequiredError` | Operación sin caja abierta |
 | `network` | `NetworkError` | Sin conectividad |
+| `timeout` | `TimeoutError` | Tiempo de espera agotado; admite reintento seguro |
 | `backend_unavailable` | `BackendUnavailableError` | Servicio temporalmente caído |
 
 `userMessageForError` centraliza mensajes seguros. Un conflicto ofrece recargar, conservar una copia local o cancelar.
-

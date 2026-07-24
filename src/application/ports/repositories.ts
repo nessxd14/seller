@@ -6,6 +6,19 @@ export interface Page<T> { items:T[]; page:number; pageSize:number; total:number
 export interface Versioned { version:number; updatedAt:string }
 export interface MutationContext { expectedVersion?:number; idempotencyKey?:string; actorId?:string }
 export interface DateRange { from?:string; to?:string }
+export interface SalePortRecord extends Versioned {
+  id:string
+  status:'pending_payment'|'confirmed'|'cancelled'
+  totalCents:number
+  paidCents:number
+}
+export interface PaymentPortRecord extends Versioned {
+  id:string
+  saleId:string
+  status:'pending'|'confirmed'|'rejected'
+  method:string
+  amountCents:number
+}
 
 export interface ProductRepository {
   search(input:{query?:string;category?:string;active?:boolean;page:PageRequest}):Promise<Page<Product>>
@@ -32,12 +45,12 @@ export interface OrderRepository {
   save(value:OrderView & Partial<Versioned>,context:MutationContext):Promise<OrderView & Versioned>
 }
 export interface SaleRepository {
-  getById(id:string):Promise<(Record<string,unknown>&Versioned)|null>
-  confirm(id:string,context:MutationContext&{idempotencyKey:string}):Promise<Record<string,unknown>&Versioned>
-  cancel(id:string,reason:string,context:MutationContext&{idempotencyKey:string}):Promise<Record<string,unknown>&Versioned>
+  getById(id:string):Promise<SalePortRecord|null>
+  confirm(id:string,context:MutationContext&{idempotencyKey:string}):Promise<SalePortRecord>
+  cancel(id:string,reason:string,context:MutationContext&{idempotencyKey:string}):Promise<SalePortRecord>
 }
 export interface PaymentRepository {
-  register(input:{saleId:string;method:string;amountCents:number;components?:Array<{method:string;amountCents:number}>},context:MutationContext&{idempotencyKey:string}):Promise<Record<string,unknown>&Versioned>
+  register(input:{saleId:string;method:string;amountCents:number;components?:Array<{method:string;amountCents:number}>},context:MutationContext&{idempotencyKey:string}):Promise<PaymentPortRecord>
 }
 export interface CashRepository {
   list(input:{register?:string;status?:CashSessionRecord['status'];page:PageRequest}):Promise<Page<CashSessionRecord & Versioned>>
@@ -51,4 +64,3 @@ export interface SuspendedSaleRepository<T extends {id:string}> {
   getById(id:string):Promise<(T & Versioned)|null>
   remove(id:string,context:MutationContext):Promise<void>
 }
-

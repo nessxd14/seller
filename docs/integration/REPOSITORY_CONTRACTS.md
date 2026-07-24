@@ -14,7 +14,7 @@ Supabase será el backend central futuro. Si un tipo generado o histórico conti
 - Entidades editables exponen `version` y `updatedAt`.
 - Escrituras reciben `expectedVersion` para control optimista.
 - Operaciones sensibles reciben `idempotencyKey`.
-- Identificadores son opacos.
+- Identificadores son opacos y los resultados de ventas y pagos usan DTO tipados, no registros genéricos.
 - Los errores se expresan mediante `AppError`, nunca mediante textos técnicos.
 
 ## Puertos
@@ -30,4 +30,4 @@ Supabase será el backend central futuro. Si un tipo generado o histórico conti
 - `SuspendedSaleRepository`: listado, guardado, restauración y eliminación versionados.
 - `AuthSessionProvider`: sesión, selector mock y suscripción a cambios.
 
-Las suites de contrato reutilizables para Quote, Order, Sale, Cash y Customer exigen creación, lectura, paginación, incremento de versión, conflicto optimista e idempotencia. Un futuro adaptador debe pasar las mismas suites.
+Las suites de contrato reutilizables para Product, Quote, Order, Sale, Cash y Customer exigen creación, lectura, paginación, incremento de versión, conflicto optimista e idempotencia. Un futuro adaptador debe pasar las mismas suites.

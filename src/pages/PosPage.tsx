@@ -56,9 +56,16 @@ function PosContent() {
   }
   const readOnly=session?.user.role==='auditor'||session?.user.role==='operario'
   const page = activeModule === 'Cotizaciones' ? <QuotationsPage notify={notify} readOnly={readOnly} onOrderCreated={() => setActiveModule('Pedidos')} /> : activeModule === 'Pedidos' ? <OrdersPage notify={notify} readOnly={readOnly} canDispatch={hasPermission(session,'orders_dispatch')} /> : activeModule === 'Clientes' ? <CustomersPage notify={notify} /> : activeModule === 'Caja' ? <CashPage notify={notify} /> : activeModule === 'Suspendidas' ? <SuspendedSalesPage hasCurrentCart={Boolean(cart.length)} onRestore={restoreSale} notify={notify} /> : <main className="catalog"><div className="catalog-title"><div><span className="eyebrow">PUNTO DE VENTA</span><h1>¿Qué vamos a vender hoy?</h1></div><p>Miércoles, 23 de julio</p></div><SalesChannelTabs /><ProductCatalog search={search} category={category} setCategory={setCategory} /></main>
-  const blocked=!session||!session.user.active||new Date(session.expiresAt).getTime()<=0||conflictDemo
+  const blockKind = !session || session.user.hasProfile === false
+    ? 'unauthorized'
+    : !session.user.active
+      ? 'inactive_user'
+      : new Date(session.expiresAt).getTime() <= 0
+        ? 'session_expired'
+        : null
+  const blocked=Boolean(blockKind)||conflictDemo
   if(conflictDemo)return <div className="integration-demo-page"><IntegrationState kind="conflict" onReload={()=>setConflictDemo(false)} onKeepCopy={()=>{setConflictDemo(false);notify('Copia local conservada')}} onCancel={()=>setConflictDemo(false)}/></div>
-  return <div className={`app-shell ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} />{blocked?<IntegrationState kind={session&&!session.user.active?'unauthorized':'session_expired'}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} />}<AuthDevSelector onChange={setSession}/>{toast && <div className="toast">✓ <span>{toast}</span></div>}</div>
+  return <div className={`app-shell ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} />}<AuthDevSelector onChange={setSession}/>{toast && <div className="toast">✓ <span>{toast}</span></div>}</div>
 }
 
 export function PosPage() { return <PosProvider><PosContent /></PosProvider> }

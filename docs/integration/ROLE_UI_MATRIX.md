@@ -14,5 +14,4 @@
 | Cambiar precios | ✓ | ✓ | — | — | — | — | — |
 | Anular/devolver | ✓ | ✓ | — | — | — | lectura | — |
 
-Usuario inactivo queda bloqueado. Sin sesión o sesión expirada muestra una pantalla dedicada. El selector existe solo para desarrollo y pruebas.
-
+Usuario inactivo queda bloqueado con un estado dedicado. Un usuario sin perfil queda sin permisos y ve acceso restringido. Sin sesión o sesión expirada muestra una pantalla dedicada. El selector existe solo para desarrollo y pruebas.

@@ -55,6 +55,8 @@ test('sesión expirada e inactiva quedan bloqueadas', async ({ page }) => {
   await selector.selectOption('expired')
   await expect(page.getByRole('heading',{name:'Sesión expirada'})).toBeVisible()
   await selector.selectOption('inactive')
+  await expect(page.getByRole('heading',{name:'Usuario inactivo'})).toBeVisible()
+  await selector.selectOption('no-profile')
   await expect(page.getByRole('heading',{name:'Acceso restringido'})).toBeVisible()
 })
 

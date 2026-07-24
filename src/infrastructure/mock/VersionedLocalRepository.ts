@@ -28,6 +28,10 @@ export class VersionedLocalRepository<T extends {id:string}> {
     if(!item)throw new NotFoundError('Registro no encontrado')
     item.version+=1;item.updatedAt=new Date().toISOString()
   }
+  simulateConcurrentMutation(id:string,mutate:(value:T&Versioned)=>T&Versioned){
+    const index=this.values.findIndex((candidate)=>candidate.id===id)
+    if(index<0)throw new NotFoundError('Registro no encontrado')
+    this.values[index]={...mutate(structuredClone(this.values[index])),version:this.values[index].version+1,updatedAt:new Date().toISOString()}
+  }
   assertNewIdempotencyKey(key:string){if(this.processed.has(key))throw new DuplicateOperationError('Operación duplicada')}
 }
-
