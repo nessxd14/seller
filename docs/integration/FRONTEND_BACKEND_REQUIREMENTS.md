@@ -2,6 +2,8 @@
 
 > Complementos normativos: `REPOSITORY_CONTRACTS.md`, `ERROR_CONTRACT.md`, `ROLE_UI_MATRIX.md`, `IDEMPOTENCY_AND_RETRY.md` y `SUPABASE_ADAPTER_CHECKLIST.md`. Ninguno impone nombres SQL ni RPC.
 
+Supabase es el backend central objetivo para POS y WMS. Estos requisitos son independientes de plataformas ecommerce y no contemplan sincronización, webhooks ni flujos Shopify.
+
 Este documento describe capacidades que el frontend necesitará. No prescribe nombres SQL, tablas, RPC, enums generados ni implementación Supabase. Los adaptadores futuros deberán traducir estos contratos a las firmas definitivas acordadas con el responsable del backend.
 
 ## Convenciones esperadas

@@ -1,5 +1,7 @@
 # Checklist para adaptadores Supabase — Fase 2D
 
+Supabase será el backend central del POS y del WMS. Los adaptadores implementarán exclusivamente los puertos neutrales de la aplicación.
+
 No iniciar adaptadores reales hasta recibir:
 
 - [ ] Firmas definitivas y documentación funcional de RPC.
@@ -18,3 +20,4 @@ Después se crearán adaptadores detrás de los puertos, se mapearán errores y 
 
 No conectar componentes directamente al cliente Supabase ni escribir tablas desde la UI.
 
+Quedan fuera del alcance: adaptadores o repositorios Shopify, sincronización de productos/inventario, webhooks, pedidos ecommerce y estados específicos de Shopify. Los IDs históricos, si existen en tipos entregados por backend, se tratarán únicamente como metadatos pasivos.

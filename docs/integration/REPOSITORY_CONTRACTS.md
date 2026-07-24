@@ -2,6 +2,12 @@
 
 Los puertos están en `src/application/ports/repositories.ts`. No contienen detalles de Supabase, tablas o RPC.
 
+## Neutralidad de plataforma
+
+Los contratos describen capacidades propias del POS y del WMS. No incluyen repositorios, estados, eventos, webhooks ni identificadores funcionales de plataformas de ecommerce.
+
+Supabase será el backend central futuro. Si un tipo generado o histórico contiene un identificador Shopify, el adaptador podrá conservarlo como metadato opaco para trazabilidad, pero el dominio no lo usará para precios, inventario, pedidos, ventas ni decisiones de estado.
+
 ## Convenciones
 
 - Listados reciben filtros y `{page, pageSize}` y devuelven `{items, page, pageSize, total}`.
@@ -25,4 +31,3 @@ Los puertos están en `src/application/ports/repositories.ts`. No contienen deta
 - `AuthSessionProvider`: sesión, selector mock y suscripción a cambios.
 
 Las suites de contrato reutilizables para Quote, Order, Sale, Cash y Customer exigen creación, lectura, paginación, incremento de versión, conflicto optimista e idempotencia. Un futuro adaptador debe pasar las mismas suites.
-
