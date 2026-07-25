@@ -1,0 +1,87 @@
+import { supabase } from './supabaseClient'
+import type { CustomerRepository, MutationContext, Page, PageRequest, Versioned } from '../../application/ports/repositories'
+import type { CustomerRecord } from '../../application/shared/models'
+import { customerTypeToTipoPrecio, tipoPrecioToCustomerType, type TipoPrecioCliente } from './mappers'
+
+interface ClienteRow {
+  id: number
+  nombre: string
+  tipo_precio: TipoPrecioCliente
+  documento: string | null
+  telefono: string | null
+  email: string | null
+  direccion: string | null
+  activo: boolean
+  creado_en: string
+  actualizado_en: string | null
+}
+
+const rowToCustomer = (row: ClienteRow): CustomerRecord & Versioned => ({
+  id: String(row.id),
+  name: row.nombre,
+  type: tipoPrecioToCustomerType(row.tipo_precio),
+  document: row.documento ?? '',
+  phone: row.telefono ?? '',
+  email: row.email ?? '',
+  address: row.direccion ?? '',
+  // cliente has no notion of "usual channel" / credit terms in this schema; these
+  // fields are UI-only conveniences preserved for compatibility with mock consumers.
+  usualChannel: row.tipo_precio === 'mayorista' ? 'mayoreo' : row.tipo_precio === 'institucion' ? 'institucional' : row.tipo_precio,
+  paymentTerms: 'Contado',
+  creditLimitCents: 0,
+  pendingBalanceCents: 0,
+  // cliente has no version column: not optimistically locked at the DB level.
+  version: 1,
+  updatedAt: row.actualizado_en ?? row.creado_en,
+})
+
+export class SupabaseCustomerRepository implements CustomerRepository {
+  async list(input: { query?: string; type?: CustomerRecord['type']; page: PageRequest }): Promise<Page<CustomerRecord & Versioned>> {
+    const { query, type, page } = input
+    const from = (page.page - 1) * page.pageSize
+    const to = from + page.pageSize - 1
+    let builder = supabase.from('cliente').select('*', { count: 'exact' })
+    if (query && query.trim()) {
+      const escaped = query.trim().replace(/[%,]/g, '')
+      builder = builder.or(`nombre.ilike.%${escaped}%,documento.ilike.%${escaped}%,email.ilike.%${escaped}%`)
+    }
+    if (type) builder = builder.eq('tipo_precio', customerTypeToTipoPrecio(type))
+    const { data, error, count } = await builder.order('id', { ascending: false }).range(from, to)
+    if (error) throw error
+    return { items: (data ?? []).map((row) => rowToCustomer(row as ClienteRow)), page: page.page, pageSize: page.pageSize, total: count ?? 0 }
+  }
+
+  async getById(id: string): Promise<(CustomerRecord & Versioned) | null> {
+    const numericId = Number(id)
+    if (!Number.isFinite(numericId)) return null
+    const { data, error } = await supabase.from('cliente').select('*').eq('id', numericId).maybeSingle()
+    if (error) throw error
+    return data ? rowToCustomer(data as ClienteRow) : null
+  }
+
+  /** cliente has no version column, so writes are always allowed (no fake optimistic locking). */
+  async save(value: CustomerRecord & Partial<Versioned>, context: MutationContext): Promise<CustomerRecord & Versioned> {
+    void context // cliente has no version column: writes are always allowed, context is unused
+    const payload = {
+      nombre: value.name,
+      tipo_precio: customerTypeToTipoPrecio(value.type),
+      documento: value.document || null,
+      telefono: value.phone || null,
+      email: value.email || null,
+      direccion: value.address || null,
+      activo: true,
+      actualizado_en: new Date().toISOString(),
+    }
+    const numericId = Number(value.id)
+    if (value.id && Number.isFinite(numericId)) {
+      const { data, error } = await supabase.from('cliente').update(payload).eq('id', numericId).select('*').single()
+      if (error) throw error
+      return rowToCustomer(data as ClienteRow)
+    }
+    const { data, error } = await supabase.from('cliente').insert({ ...payload, creado_en: new Date().toISOString() }).select('*').single()
+    if (error) throw error
+    return rowToCustomer(data as ClienteRow)
+  }
+}
+
+export const customerRepository = new SupabaseCustomerRepository()

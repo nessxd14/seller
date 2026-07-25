@@ -1,7 +1,7 @@
 import { CheckCircle2, PackageCheck, Truck, XCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { OrderView, OrderWorkflowStatus } from '../../application/shared/models'
-import { orderService, sensitiveOperations } from '../../infrastructure/mock/services'
+import { orderService, sensitiveOperations } from '../../infrastructure/services'
 import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState, FeatureToolbar, statusLabel } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'

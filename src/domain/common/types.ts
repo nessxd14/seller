@@ -2,7 +2,7 @@ import type { Money } from './money'
 
 export type EntityId = string
 export type ISODateTime = string
-export type SalesChannel = 'retail' | 'mayoreo' | 'institucional'
+export type SalesChannel = 'retail' | 'mayoreo' | 'institucional' | 'municipal'
 export type InventoryLocationCode = 'tienda' | 'almacen'
 export type TaxSnapshot = { name: string; rateBasisPoints: number; includedInPrice: boolean; amount: Money }
 export type CustomerSnapshot = { customerId?: EntityId; name: string; taxId?: string; type?: string }
