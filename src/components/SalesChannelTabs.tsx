@@ -1,4 +1,4 @@
-import { Building2, Store, Warehouse } from 'lucide-react'
+import { Building2, Landmark, Store, Warehouse } from 'lucide-react'
 import { usePos } from '../context/PosContext'
 import type { SalesChannel } from '../types'
 
@@ -6,6 +6,7 @@ const tabs: { id: SalesChannel; label: string; note: string; icon: typeof Store 
   { id: 'retail', label: 'Retail', note: 'Venta directa', icon: Store },
   { id: 'mayoreo', label: 'Mayoreo', note: 'Precio mayorista', icon: Warehouse },
   { id: 'institucional', label: 'Institucional', note: 'Convenios', icon: Building2 },
+  { id: 'municipal', label: 'Municipal', note: 'Municipios', icon: Landmark },
 ]
 
 export function SalesChannelTabs() {

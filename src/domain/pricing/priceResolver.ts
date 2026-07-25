@@ -17,4 +17,5 @@ export const resolvePrice = (request: PriceResolutionRequest, lists: PriceList[]
   return { priceListId: list.id, basePrice: base.price, specialPrice: special?.price, discountBasisPoints: 0, suggestedPrice: special?.price ?? base.price, source: special ? 'customer_special' : 'price_list' }
 }
 
-export const resolveMockChannelPrice = (channel: SalesChannel, prices: { retailCents: number; wholesaleCents: number; institutionalCents: number }): Money => money(channel === 'retail' ? prices.retailCents : channel === 'mayoreo' ? prices.wholesaleCents : prices.institutionalCents)
+export const resolveMockChannelPrice = (channel: SalesChannel, prices: { retailCents: number; wholesaleCents: number; institutionalCents: number; municipalCents: number }): Money =>
+  money(channel === 'retail' ? prices.retailCents : channel === 'mayoreo' ? prices.wholesaleCents : channel === 'institucional' ? prices.institutionalCents : prices.municipalCents)

@@ -12,6 +12,14 @@ export interface WorkflowLine {
   quantity: number
   unitPriceCents: number
   discountBasisPoints: number
+  // Optional Supabase-backed extensions (all optional so mock consumers are unaffected):
+  listPriceCents?: number
+  isCustomItem?: boolean
+  note?: string
+  sourceLocation?: 'Tienda' | 'Almacén'
+  priceOverridden?: boolean
+  modifiedBy?: string
+  modifiedAt?: string
 }
 
 export interface QuoteDraft {
@@ -19,7 +27,7 @@ export interface QuoteDraft {
   number: string
   customerId: string
   customerName: string
-  channel: Extract<SalesChannel, 'mayoreo' | 'institucional'>
+  channel: Extract<SalesChannel, 'mayoreo' | 'institucional' | 'municipal'>
   status: QuoteWorkflowStatus
   validUntil: string
   terms: string
@@ -33,7 +41,7 @@ export interface OrderView {
   id: string
   number: string
   customerName: string
-  channel: Extract<SalesChannel, 'mayoreo' | 'institucional'>
+  channel: Extract<SalesChannel, 'mayoreo' | 'institucional' | 'municipal'>
   status: OrderWorkflowStatus
   createdAt: string
   sourceQuoteId?: string
@@ -44,7 +52,7 @@ export interface OrderView {
 export interface CustomerRecord {
   id: string
   name: string
-  type: 'retail' | 'wholesale' | 'institutional'
+  type: 'retail' | 'wholesale' | 'institutional' | 'municipal'
   document: string
   phone: string
   email: string

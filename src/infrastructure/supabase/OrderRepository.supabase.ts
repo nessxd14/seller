@@ -1,0 +1,188 @@
+import { supabase } from './supabaseClient'
+import type { DateRange, MutationContext, OrderRepository, Page, PageRequest, Versioned } from '../../application/ports/repositories'
+import type { OrderView, OrderWorkflowStatus, WorkflowLine } from '../../application/shared/models'
+import { NotFoundError } from '../../application/errors/AppError'
+import {
+  bpToPct, categoriaToChannel, centsToNumeric, channelToCategoria, defaultSucursalForChannel,
+  locationToSucursalId, numericToCents, sucursalIdToLocation,
+} from './mappers'
+
+type EstadoPedido = 'ABIERTO' | 'COMPLETADO' | 'CANCELADO'
+type EstadoLinea = 'POR_DESPACHAR' | 'DESPACHADA' | 'PENDIENTE' | 'COMPRADO_DIRECTO' | 'ESPECIAL'
+
+const estadoPedidoToStatus = (estado: EstadoPedido): OrderWorkflowStatus => {
+  switch (estado) {
+    case 'ABIERTO': return 'confirmed'
+    case 'COMPLETADO': return 'delivered'
+    case 'CANCELADO': return 'cancelled'
+  }
+}
+
+interface PedidoRow {
+  id: number
+  categoria: 'TIENDA' | 'MAYOR' | 'INSTITUCIONAL' | 'MUNICIPAL'
+  referencia: string | null
+  estado: EstadoPedido
+  creado_por: string | null
+  creado_en: string
+  cliente_id: number | null
+  subtotal: number | string
+  descuento_general: number | string
+  total: number | string
+  cliente?: { nombre: string } | null
+}
+
+interface PedidoLineaRow {
+  id: number
+  pedido_id: number
+  producto_id: number | null
+  cantidad_base: number | string
+  estado: EstadoLinea
+  cantidad_despachada: number | string | null
+  sucursal_origen_id: number | null
+  es_personalizado: boolean
+  descripcion: string | null
+  nota: string | null
+  precio_lista: number | string | null
+  precio_unitario: number | string
+  descuento_pct: number | string
+  precio_modificado: boolean
+  modificado_por: string | null
+  modificado_en: string | null
+  subtotal: number | string
+  producto?: { nombre: string; sku_interno: string | null } | null
+}
+
+const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
+
+type OrderLine = WorkflowLine & { prepared: number; allocations: { location: 'Tienda' | 'Almacén'; quantity: number }[] }
+
+const lineaRowToOrderLine = (row: PedidoLineaRow): OrderLine => {
+  const quantity = num(row.cantidad_base)
+  const prepared = row.estado === 'DESPACHADA' || row.estado === 'COMPRADO_DIRECTO' ? quantity : 0
+  return {
+    id: String(row.id),
+    productId: row.producto_id != null ? String(row.producto_id) : '',
+    name: row.es_personalizado ? (row.descripcion ?? 'Ítem especial') : (row.producto?.nombre ?? row.descripcion ?? ''),
+    sku: row.producto?.sku_interno ?? '',
+    quantity,
+    unitPriceCents: numericToCents(num(row.precio_unitario)),
+    discountBasisPoints: bpToPctSafe(num(row.descuento_pct)),
+    listPriceCents: row.precio_lista != null ? numericToCents(num(row.precio_lista)) : undefined,
+    isCustomItem: row.es_personalizado || row.estado === 'ESPECIAL',
+    note: row.nota ?? undefined,
+    sourceLocation: row.sucursal_origen_id != null ? sucursalIdToLocation(row.sucursal_origen_id) : undefined,
+    priceOverridden: row.precio_modificado,
+    modifiedBy: row.modificado_por ?? undefined,
+    modifiedAt: row.modificado_en ?? undefined,
+    prepared,
+    allocations: row.sucursal_origen_id != null ? [{ location: sucursalIdToLocation(row.sucursal_origen_id), quantity }] : [],
+  }
+}
+// local alias to avoid importing pctToBp under a name collision with bpToPct import above
+const bpToPctSafe = (pct: number) => Math.round(pct * 100)
+
+const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[]): OrderView & Versioned => ({
+  id: String(header.id),
+  number: header.referencia ?? `PED-${header.id}`,
+  customerName: header.cliente?.nombre ?? '',
+  channel: categoriaToChannel(header.categoria) as OrderView['channel'],
+  status: estadoPedidoToStatus(header.estado),
+  createdAt: header.creado_en,
+  lines: lines.map(lineaRowToOrderLine),
+  events: [],
+  // pedido has no version column: orders are created/converted/dispatched, not
+  // optimistically edited, so we synthesize a constant version.
+  version: 1,
+  updatedAt: header.creado_en,
+})
+
+const fetchOrderById = async (id: number): Promise<(OrderView & Versioned) | null> => {
+  const { data: header, error: headerError } = await supabase.from('pedido').select('*, cliente(nombre)').eq('id', id).maybeSingle()
+  if (headerError) throw headerError
+  if (!header) return null
+  const { data: lines, error: linesError } = await supabase.from('pedido_linea').select('*, producto(nombre,sku_interno)').eq('pedido_id', id)
+  if (linesError) throw linesError
+  return rowToOrderView(header as PedidoRow, (lines ?? []) as PedidoLineaRow[])
+}
+
+const buildLineasJsonb = (lines: WorkflowLine[], channel: OrderView['channel']) =>
+  lines.map((line) => {
+    if (line.isCustomItem) {
+      return {
+        es_personalizado: true,
+        descripcion: line.name,
+        cantidad_base: line.quantity,
+        precio_unitario: centsToNumeric(line.unitPriceCents),
+        descuento_pct: bpToPct(line.discountBasisPoints),
+        nota: line.note ?? null,
+      }
+    }
+    return {
+      producto_id: Number(line.productId),
+      cantidad_base: line.quantity,
+      sucursal_origen_id: line.sourceLocation ? locationToSucursalId(line.sourceLocation) : defaultSucursalForChannel(channel),
+      precio_lista: line.listPriceCents != null ? centsToNumeric(line.listPriceCents) : centsToNumeric(line.unitPriceCents),
+      precio_unitario: centsToNumeric(line.unitPriceCents),
+      descuento_pct: bpToPct(line.discountBasisPoints),
+    }
+  })
+
+export class SupabaseOrderRepository implements OrderRepository {
+  async list(input: { query?: string; status?: OrderView['status']; channel?: OrderView['channel']; dates?: DateRange; page: PageRequest }): Promise<Page<OrderView & Versioned>> {
+    const { status, channel, dates, page } = input
+    const from = (page.page - 1) * page.pageSize
+    const to = from + page.pageSize - 1
+    let builder = supabase.from('pedido').select('*, cliente(nombre)', { count: 'exact' })
+    if (status === 'confirmed') builder = builder.eq('estado', 'ABIERTO')
+    else if (status === 'delivered') builder = builder.eq('estado', 'COMPLETADO')
+    else if (status === 'cancelled') builder = builder.eq('estado', 'CANCELADO')
+    if (channel) builder = builder.eq('categoria', channelToCategoria(channel))
+    if (dates?.from) builder = builder.gte('creado_en', dates.from)
+    if (dates?.to) builder = builder.lte('creado_en', dates.to)
+    const { data, error, count } = await builder.order('id', { ascending: false }).range(from, to)
+    if (error) throw error
+    const headers = (data ?? []) as PedidoRow[]
+    const ids = headers.map((h) => h.id)
+    const { data: allLines, error: linesError } = ids.length
+      ? await supabase.from('pedido_linea').select('*, producto(nombre,sku_interno)').in('pedido_id', ids)
+      : { data: [] as PedidoLineaRow[], error: null }
+    if (linesError) throw linesError
+    const items = headers.map((header) => rowToOrderView(header, (allLines ?? []).filter((l) => l.pedido_id === header.id) as PedidoLineaRow[]))
+    return { items, page: page.page, pageSize: page.pageSize, total: count ?? 0 }
+  }
+
+  async getById(id: string): Promise<(OrderView & Versioned) | null> {
+    const numericId = Number(id)
+    if (!Number.isFinite(numericId)) return null
+    return fetchOrderById(numericId)
+  }
+
+  async save(value: OrderView & Partial<Versioned>, context: MutationContext): Promise<OrderView & Versioned> {
+    const actor = context.actorId ?? 'pos'
+    if (value.sourceQuoteId) {
+      const { data: newId, error } = await supabase.rpc('convertir_cotizacion_a_pedido', {
+        p_cotizacion_id: Number(value.sourceQuoteId),
+        p_usuario: actor,
+      })
+      if (error) throw error
+      const created = await fetchOrderById(newId as number)
+      if (!created) throw new NotFoundError('No se pudo releer el pedido recién convertido')
+      return created
+    }
+    const { data: newId, error } = await supabase.rpc('crear_pedido', {
+      p_categoria: channelToCategoria(value.channel),
+      p_referencia: value.number || null,
+      p_lineas: buildLineasJsonb(value.lines, value.channel),
+      p_usuario: actor,
+      p_cliente_id: null,
+      p_descuento_general: 0,
+    })
+    if (error) throw error
+    const created = await fetchOrderById(newId as number)
+    if (!created) throw new NotFoundError('No se pudo releer el pedido recién creado')
+    return created
+  }
+}
+
+export const orderRepository = new SupabaseOrderRepository()

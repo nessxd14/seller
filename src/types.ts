@@ -1,4 +1,4 @@
-export type SalesChannel = 'retail' | 'mayoreo' | 'institucional'
+export type SalesChannel = 'retail' | 'mayoreo' | 'institucional' | 'municipal'
 
 export interface Product {
   id: number
@@ -13,6 +13,7 @@ export interface Product {
   precioRetail: number
   precioMayoreo: number
   precioInstitucional: number
+  precioMunicipal: number
   stockTienda: number
   stockAlmacen: number
 }

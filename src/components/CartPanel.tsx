@@ -8,7 +8,7 @@ import { PaymentModal } from './PaymentModal'
 import { TicketPreviewModal } from './TicketPreviewModal'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional' }
+const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
 
 export function CartPanel({ notify }: { notify: (message: string) => void }) {
   const { channel, cart, subtotal, total, discount, setDiscount, operationNumber, clearCart, restoreSuspended } = usePos()

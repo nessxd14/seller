@@ -13,3 +13,4 @@ export const orderService = new OrderService(new LocalStorageRepository<OrderVie
 export const customerService = new CustomerService(new LocalStorageRepository<CustomerRecord>('roari-customers-v1', customerSeeds))
 export const cashService = new CashService(new LocalStorageRepository<CashSessionRecord>('roari-cash-v1', cashSeeds))
 export const sensitiveOperations = new SensitiveOperationExecutor(new LocalIdempotencyService())
+export { productRepository, getStockByProduct } from './ProductRepository.mock'
