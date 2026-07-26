@@ -5,12 +5,17 @@
 import { featureFlags } from '../config/featureFlags'
 import * as mockServices from './mock/services'
 import * as supabaseServices from './supabase/services'
+import { mockAuthSessionProvider } from './mock/MockAuthSessionProvider'
+import { supabaseAuthSessionProvider } from './supabase/SupabaseAuthSessionProvider'
+
+export const authSessionProvider = featureFlags.supabase ? supabaseAuthSessionProvider : mockAuthSessionProvider
 
 export const quoteService = featureFlags.supabase ? supabaseServices.quoteService : mockServices.quoteService
 export const orderService = featureFlags.supabase ? supabaseServices.orderService : mockServices.orderService
 export const customerService = featureFlags.supabase ? supabaseServices.customerService : mockServices.customerService
 export const productRepository = featureFlags.supabase ? supabaseServices.productRepository : mockServices.productRepository
 export const getStockByProduct = featureFlags.supabase ? supabaseServices.getStockByProduct : mockServices.getStockByProduct
+export const listPresentations = featureFlags.supabase ? supabaseServices.listPresentations : mockServices.listPresentations
 
 // Idempotency dedupe is a client-side concern independent of the backend.
 export const sensitiveOperations = mockServices.sensitiveOperations

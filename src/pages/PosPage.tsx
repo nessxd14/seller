@@ -18,14 +18,18 @@ import { featureFlags } from '../config/featureFlags'
 import { products } from '../data/products'
 import { productRepository } from '../infrastructure/services'
 import { AuthDevSelector } from '../features/auth/AuthDevSelector'
+import { LoginScreen } from '../features/auth/LoginScreen'
 import { IntegrationState } from '../features/integration/IntegrationState'
 import { hasPermission, type AuthSession } from '../application/auth/AuthSessionProvider'
+import { authSessionProvider } from '../infrastructure/services'
+import { supabaseAuthSessionProvider } from '../infrastructure/supabase/SupabaseAuthSessionProvider'
 import type { QuoteDraft } from '../application/shared/models'
 
 function PosContent() {
   const { newOperation, cart, loadSuspendedSale, addProduct } = usePos()
   const [activeModule, setActiveModule] = useState('Venta')
   const [session, setSession] = useState<AuthSession | null>(null)
+  const [sessionLoaded, setSessionLoaded] = useState(!featureFlags.supabase)
   const [conflictDemo, setConflictDemo] = useState(false)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('Todos')
@@ -58,6 +62,15 @@ function PosContent() {
     return () => window.removeEventListener('keydown', onKeyDown)
   })
   useEffect(() => { const show = () => setConflictDemo(true); window.addEventListener('roari:conflict-demo', show); return () => window.removeEventListener('roari:conflict-demo', show) }, [])
+  // Supabase mode: real session via authSessionProvider (AuthDevSelector only wires the
+  // mock provider). Mock mode is untouched — AuthDevSelector keeps driving `session` below.
+  useEffect(() => {
+    if (!featureFlags.supabase) return
+    let cancelled = false
+    void authSessionProvider.getSession().then((value) => { if (!cancelled) { setSession(value); setSessionLoaded(true) } })
+    const unsubscribe = authSessionProvider.subscribe((value) => setSession(value))
+    return () => { cancelled = true; unsubscribe() }
+  }, [])
   const navigate = (name: string) => {
     const enabled = name === 'Venta' || name === 'Suspendidas' || (name === 'Cotizaciones' && featureFlags.quotations) || (name === 'Pedidos' && featureFlags.orders) || name === 'Clientes' || (name === 'Caja' && featureFlags.cash) || name === 'Productos' || name === 'Inventario' || name === 'Reportes' || name === 'Configuración'
     const permission = name === 'Venta' ? (hasPermission(session,'retail_sale')||hasPermission(session,'wholesale_sale')) : name === 'Cotizaciones' ? (hasPermission(session,'quotes_write')||session?.user.role==='auditor') : name === 'Pedidos' ? hasPermission(session,'orders_view') : name === 'Caja' ? (hasPermission(session,'cash_own')||hasPermission(session,'cash_supervise')) : true
@@ -71,7 +84,7 @@ function PosContent() {
     setActiveModule('Venta')
   }
   const readOnly=session?.user.role==='auditor'||session?.user.role==='operario'
-  const page = activeModule === 'Cotizaciones' ? <QuotationsPage notify={notify} readOnly={readOnly} onOrderCreated={() => setActiveModule('Pedidos')} initialDraft={pendingDraft} onInitialDraftConsumed={() => setPendingDraft(null)} /> : activeModule === 'Pedidos' ? <OrdersPage notify={notify} readOnly={readOnly} canDispatch={hasPermission(session,'orders_dispatch')} /> : activeModule === 'Clientes' ? <CustomersPage notify={notify} /> : activeModule === 'Caja' ? <CashPage notify={notify} /> : activeModule === 'Suspendidas' ? <SuspendedSalesPage hasCurrentCart={Boolean(cart.length)} onRestore={restoreSale} notify={notify} /> : activeModule === 'Productos' ? <ProductsPage notify={notify} /> : activeModule === 'Inventario' ? <InventoryPage notify={notify} /> : activeModule === 'Reportes' ? <PlaceholderPage title="Reportes" /> : activeModule === 'Configuración' ? <PlaceholderPage title="Configuración" /> : <main className="catalog"><div className="catalog-title"><div><span className="eyebrow">PUNTO DE VENTA</span><h1>¿Qué vamos a vender hoy?</h1></div><p>Miércoles, 23 de julio</p></div><SalesChannelTabs /><ProductCatalog search={search} category={category} setCategory={setCategory} /></main>
+  const page = activeModule === 'Cotizaciones' ? <QuotationsPage notify={notify} readOnly={readOnly} onOrderCreated={() => setActiveModule('Pedidos')} initialDraft={pendingDraft} onInitialDraftConsumed={() => setPendingDraft(null)} /> : activeModule === 'Pedidos' ? <OrdersPage notify={notify} readOnly={readOnly} canDispatch={hasPermission(session,'orders_dispatch')} /> : activeModule === 'Clientes' ? <CustomersPage notify={notify} /> : activeModule === 'Caja' ? <CashPage notify={notify} canCloseCash={!featureFlags.supabase || session?.user.role === 'admin'} /> : activeModule === 'Suspendidas' ? <SuspendedSalesPage hasCurrentCart={Boolean(cart.length)} onRestore={restoreSale} notify={notify} /> : activeModule === 'Productos' ? <ProductsPage notify={notify} /> : activeModule === 'Inventario' ? <InventoryPage notify={notify} /> : activeModule === 'Reportes' ? <PlaceholderPage title="Reportes" /> : activeModule === 'Configuración' ? <PlaceholderPage title="Configuración" /> : <main className="catalog"><div className="catalog-title"><div><span className="eyebrow">PUNTO DE VENTA</span><h1>¿Qué vamos a vender hoy?</h1></div><p>Miércoles, 23 de julio</p></div><SalesChannelTabs /><ProductCatalog search={search} category={category} setCategory={setCategory} /></main>
   const blockKind = !session || session.user.hasProfile === false
     ? 'unauthorized'
     : !session.user.active
@@ -81,7 +94,9 @@ function PosContent() {
         : null
   const blocked=Boolean(blockKind)||conflictDemo
   if(conflictDemo)return <div className="integration-demo-page"><IntegrationState kind="conflict" onReload={()=>setConflictDemo(false)} onKeepCopy={()=>{setConflictDemo(false);notify('Copia local conservada')}} onCancel={()=>setConflictDemo(false)}/></div>
-  return <div className={`app-shell ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} />}<AuthDevSelector onChange={setSession}/>{toast && <div className="toast">✓ <span>{toast}</span></div>}</div>
+  if (featureFlags.supabase && !sessionLoaded) return null
+  if (featureFlags.supabase && !session) return <LoginScreen />
+  return <div className={`app-shell ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}</div>
 }
 
 export function PosPage() { return <PosProvider><CashSessionProvider><PosContent /></CashSessionProvider></PosProvider> }

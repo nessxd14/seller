@@ -35,6 +35,8 @@ const statusToEstado = (status: QuoteWorkflowStatus): EstadoCotizacion => {
   }
 }
 
+type CondicionPago = 'CONTADO' | 'PAGO_PARCIAL' | 'SIGEP' | 'TRANSFERENCIA_BANCARIA' | 'QR'
+
 interface CotizacionRow {
   id: number
   cliente_id: number | null
@@ -51,6 +53,9 @@ interface CotizacionRow {
   creado_en: string
   actualizado_en: string | null
   cliente?: { nombre: string } | null
+  asunto: string | null
+  condicion_pago: CondicionPago | null
+  fecha: string | null
 }
 
 interface CotizacionLineaRow {
@@ -70,6 +75,9 @@ interface CotizacionLineaRow {
   modificado_en: string | null
   subtotal: number | string
   producto?: { nombre: string; sku_interno: string | null } | null
+  presentacion_id: number | null
+  cantidad_presentacion: number | string | null
+  presentacion?: { nombre: string; factor_unidad_base: number | string } | null
 }
 
 const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
@@ -79,7 +87,7 @@ const lineaRowToWorkflowLine = (row: CotizacionLineaRow): WorkflowLine => ({
   productId: row.producto_id != null ? String(row.producto_id) : '',
   name: row.es_personalizado ? (row.descripcion ?? 'Ítem personalizado') : (row.producto?.nombre ?? row.descripcion ?? ''),
   sku: row.producto?.sku_interno ?? '',
-  quantity: num(row.cantidad_base),
+  quantity: row.presentacion_id != null ? num(row.cantidad_presentacion) : num(row.cantidad_base),
   unitPriceCents: numericToCents(num(row.precio_unitario)),
   discountBasisPoints: pctToBp(num(row.descuento_pct)),
   listPriceCents: row.precio_lista != null ? numericToCents(num(row.precio_lista)) : undefined,
@@ -89,6 +97,10 @@ const lineaRowToWorkflowLine = (row: CotizacionLineaRow): WorkflowLine => ({
   priceOverridden: row.precio_modificado,
   modifiedBy: row.modificado_por ?? undefined,
   modifiedAt: row.modificado_en ?? undefined,
+  presentacionId: row.presentacion_id ?? undefined,
+  presentacionNombre: row.presentacion?.nombre,
+  factorUnidadBase: row.presentacion?.factor_unidad_base != null ? num(row.presentacion.factor_unidad_base) : undefined,
+  cantidadPresentacion: row.cantidad_presentacion != null ? num(row.cantidad_presentacion) : undefined,
 })
 
 const rowToQuoteDraft = (header: CotizacionRow, lines: CotizacionLineaRow[]): QuoteDraft & Versioned => ({
@@ -106,6 +118,9 @@ const rowToQuoteDraft = (header: CotizacionRow, lines: CotizacionLineaRow[]): Qu
   lines: lines.map(lineaRowToWorkflowLine),
   version: header.version,
   updatedAt: header.actualizado_en ?? header.creado_en,
+  asunto: header.asunto ?? undefined,
+  conditionPago: header.condicion_pago ?? undefined,
+  documentDate: header.fecha ?? undefined,
 })
 
 const buildLineasJsonb = (lines: WorkflowLine[], channel: QuoteDraft['channel'], actor: string) =>
@@ -128,6 +143,7 @@ const buildLineasJsonb = (lines: WorkflowLine[], channel: QuoteDraft['channel'],
       precio_unitario: centsToNumeric(line.unitPriceCents),
       descuento_pct: bpToPct(line.discountBasisPoints),
       ...(line.priceOverridden ? { precio_modificado: true, modificado_por: line.modifiedBy ?? actor } : {}),
+      ...(line.presentacionId != null ? { presentacion_id: line.presentacionId, cantidad_presentacion: line.quantity } : {}),
     }
   })
 
@@ -138,7 +154,7 @@ const fetchQuoteById = async (id: number): Promise<(QuoteDraft & Versioned) | nu
   const { data: header, error: headerError } = await supabase.from('cotizacion').select('*, cliente(nombre)').eq('id', id).maybeSingle()
   if (headerError) throw headerError
   if (!header) return null
-  const { data: lines, error: linesError } = await supabase.from('cotizacion_linea').select('*, producto(nombre,sku_interno)').eq('cotizacion_id', id)
+  const { data: lines, error: linesError } = await supabase.from('cotizacion_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').eq('cotizacion_id', id)
   if (linesError) throw linesError
   return rowToQuoteDraft(header as CotizacionRow, (lines ?? []) as CotizacionLineaRow[])
 }
@@ -168,7 +184,7 @@ export class SupabaseQuoteRepository implements QuoteRepository {
     const headers = (data ?? []) as CotizacionRow[]
     const ids = headers.map((h) => h.id)
     const { data: allLines, error: linesError } = ids.length
-      ? await supabase.from('cotizacion_linea').select('*, producto(nombre,sku_interno)').in('cotizacion_id', ids)
+      ? await supabase.from('cotizacion_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').in('cotizacion_id', ids)
       : { data: [] as CotizacionLineaRow[], error: null }
     if (linesError) throw linesError
     const items = headers.map((header) => rowToQuoteDraft(header, (allLines ?? []).filter((l) => l.cotizacion_id === header.id) as CotizacionLineaRow[]))
@@ -201,6 +217,9 @@ export class SupabaseQuoteRepository implements QuoteRepository {
         p_descuento_general: centsToNumeric(value.generalDiscountCents),
         p_vigencia_hasta: value.validUntil || null,
         p_usuario: actor,
+        p_asunto: value.asunto || null,
+        p_condicion_pago: value.conditionPago || null,
+        p_fecha: value.documentDate || null,
       })
       if (error) throw error
       const created = await fetchQuoteById(newId as number)
@@ -222,13 +241,34 @@ export class SupabaseQuoteRepository implements QuoteRepository {
     const { error: deleteError } = await supabase.from('cotizacion_linea').delete().eq('cotizacion_id', numericId)
     if (deleteError) throw deleteError
 
-    const lineRows = buildLineasJsonb(value.lines, value.channel, actor).map((line) => {
+    // Built directly from the raw WorkflowLines (not buildLineasJsonb) because the direct-table
+    // insert needs the true cantidad_base (quantity * factorUnidadBase when a presentation is
+    // set) while the subtotal is always priced per the line's quantity in ITS OWN unit
+    // (presentation unit when set, base unit otherwise) — matching crear_cotizacion's own math.
+    const lineRows = value.lines.map((line) => {
       const base: Record<string, unknown> = { cotizacion_id: numericId, creado_en: new Date().toISOString() }
-      if ('es_personalizado' in line && line.es_personalizado) {
-        return { ...base, es_personalizado: true, descripcion: line.descripcion, cantidad_base: line.cantidad_base, precio_unitario: line.precio_unitario, descuento_pct: line.descuento_pct, nota: line.nota, subtotal: Math.round(line.precio_unitario * line.cantidad_base * (1 - line.descuento_pct / 100) * 100) / 100 }
+      const precioUnitario = centsToNumeric(line.unitPriceCents)
+      const descuentoPct = bpToPct(line.discountBasisPoints)
+      const subtotal = Math.round(precioUnitario * line.quantity * (1 - descuentoPct / 100) * 100) / 100
+      if (line.isCustomItem) {
+        return { ...base, es_personalizado: true, descripcion: line.name, cantidad_base: line.quantity, precio_unitario: precioUnitario, descuento_pct: descuentoPct, nota: line.note ?? null, subtotal }
       }
-      const l = line as { producto_id: number; cantidad_base: number; sucursal_origen_id: number; precio_lista: number; precio_unitario: number; descuento_pct: number; precio_modificado?: boolean; modificado_por?: string }
-      return { ...base, producto_id: l.producto_id, cantidad_base: l.cantidad_base, sucursal_origen_id: l.sucursal_origen_id, precio_lista: l.precio_lista, precio_unitario: l.precio_unitario, descuento_pct: l.descuento_pct, precio_modificado: l.precio_modificado ?? false, modificado_por: l.precio_modificado ? (l.modificado_por ?? actor) : null, modificado_en: l.precio_modificado ? new Date().toISOString() : null, subtotal: Math.round(l.precio_unitario * l.cantidad_base * (1 - l.descuento_pct / 100) * 100) / 100 }
+      const factor = line.presentacionId != null ? (line.factorUnidadBase ?? 1) : 1
+      const cantidadBase = line.presentacionId != null ? line.quantity * factor : line.quantity
+      return {
+        ...base,
+        producto_id: Number(line.productId),
+        cantidad_base: cantidadBase,
+        sucursal_origen_id: line.sourceLocation ? locationToSucursalId(line.sourceLocation) : defaultSucursalForChannel(value.channel),
+        precio_lista: line.listPriceCents != null ? centsToNumeric(line.listPriceCents) : precioUnitario,
+        precio_unitario: precioUnitario,
+        descuento_pct: descuentoPct,
+        precio_modificado: line.priceOverridden ?? false,
+        modificado_por: line.priceOverridden ? (line.modifiedBy ?? actor) : null,
+        modificado_en: line.priceOverridden ? new Date().toISOString() : null,
+        subtotal,
+        ...(line.presentacionId != null ? { presentacion_id: line.presentacionId, cantidad_presentacion: line.quantity } : {}),
+      }
     })
     if (lineRows.length) {
       const { error: insertError } = await supabase.from('cotizacion_linea').insert(lineRows)
@@ -245,6 +285,9 @@ export class SupabaseQuoteRepository implements QuoteRepository {
         referencia: value.number || null,
         notas: value.notes || null,
         vigencia_hasta: value.validUntil || null,
+        asunto: value.asunto || null,
+        condicion_pago: value.conditionPago || null,
+        fecha: value.documentDate || null,
         subtotal,
         descuento_general: descuentoGeneral,
         total: subtotal - descuentoGeneral,
