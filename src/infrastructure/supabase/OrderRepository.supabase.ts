@@ -51,6 +51,9 @@ interface PedidoLineaRow {
   modificado_en: string | null
   subtotal: number | string
   producto?: { nombre: string; sku_interno: string | null } | null
+  presentacion_id: number | null
+  cantidad_presentacion: number | string | null
+  presentacion?: { nombre: string; factor_unidad_base: number | string } | null
 }
 
 const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
@@ -58,8 +61,9 @@ const num = (v: number | string | null | undefined): number => (v == null ? 0 : 
 type OrderLine = WorkflowLine & { prepared: number; allocations: { location: 'Tienda' | 'Almacén'; quantity: number }[] }
 
 const lineaRowToOrderLine = (row: PedidoLineaRow): OrderLine => {
-  const quantity = num(row.cantidad_base)
-  const prepared = row.estado === 'DESPACHADA' || row.estado === 'COMPRADO_DIRECTO' ? quantity : 0
+  const baseQuantity = num(row.cantidad_base)
+  const quantity = row.presentacion_id != null ? num(row.cantidad_presentacion) : baseQuantity
+  const prepared = row.estado === 'DESPACHADA' || row.estado === 'COMPRADO_DIRECTO' ? baseQuantity : 0
   return {
     id: String(row.id),
     productId: row.producto_id != null ? String(row.producto_id) : '',
@@ -75,8 +79,12 @@ const lineaRowToOrderLine = (row: PedidoLineaRow): OrderLine => {
     priceOverridden: row.precio_modificado,
     modifiedBy: row.modificado_por ?? undefined,
     modifiedAt: row.modificado_en ?? undefined,
+    presentacionId: row.presentacion_id ?? undefined,
+    presentacionNombre: row.presentacion?.nombre,
+    factorUnidadBase: row.presentacion?.factor_unidad_base != null ? num(row.presentacion.factor_unidad_base) : undefined,
+    cantidadPresentacion: row.cantidad_presentacion != null ? num(row.cantidad_presentacion) : undefined,
     prepared,
-    allocations: row.sucursal_origen_id != null ? [{ location: sucursalIdToLocation(row.sucursal_origen_id), quantity }] : [],
+    allocations: row.sucursal_origen_id != null ? [{ location: sucursalIdToLocation(row.sucursal_origen_id), quantity: baseQuantity }] : [],
   }
 }
 // local alias to avoid importing pctToBp under a name collision with bpToPct import above
@@ -101,7 +109,7 @@ const fetchOrderById = async (id: number): Promise<(OrderView & Versioned) | nul
   const { data: header, error: headerError } = await supabase.from('pedido').select('*, cliente(nombre)').eq('id', id).maybeSingle()
   if (headerError) throw headerError
   if (!header) return null
-  const { data: lines, error: linesError } = await supabase.from('pedido_linea').select('*, producto(nombre,sku_interno)').eq('pedido_id', id)
+  const { data: lines, error: linesError } = await supabase.from('pedido_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').eq('pedido_id', id)
   if (linesError) throw linesError
   return rowToOrderView(header as PedidoRow, (lines ?? []) as PedidoLineaRow[])
 }
@@ -125,6 +133,7 @@ const buildLineasJsonb = (lines: WorkflowLine[], channel: OrderView['channel']) 
       precio_lista: line.listPriceCents != null ? centsToNumeric(line.listPriceCents) : centsToNumeric(line.unitPriceCents),
       precio_unitario: centsToNumeric(line.unitPriceCents),
       descuento_pct: bpToPct(line.discountBasisPoints),
+      ...(line.presentacionId != null ? { presentacion_id: line.presentacionId, cantidad_presentacion: line.quantity } : {}),
     }
   })
 
@@ -145,7 +154,7 @@ export class SupabaseOrderRepository implements OrderRepository {
     const headers = (data ?? []) as PedidoRow[]
     const ids = headers.map((h) => h.id)
     const { data: allLines, error: linesError } = ids.length
-      ? await supabase.from('pedido_linea').select('*, producto(nombre,sku_interno)').in('pedido_id', ids)
+      ? await supabase.from('pedido_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').in('pedido_id', ids)
       : { data: [] as PedidoLineaRow[], error: null }
     if (linesError) throw linesError
     const items = headers.map((header) => rowToOrderView(header, (allLines ?? []).filter((l) => l.pedido_id === header.id) as PedidoLineaRow[]))

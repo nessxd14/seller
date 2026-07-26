@@ -20,6 +20,13 @@ export interface WorkflowLine {
   priceOverridden?: boolean
   modifiedBy?: string
   modifiedAt?: string
+  // Presentation (item 3): quantity is always expressed in the currently selected
+  // presentation's unit; factorUnidadBase (default 1 = base unit) converts it to base
+  // units for stock validation and for cantidad_base when no presentacionId is set.
+  presentacionId?: number
+  presentacionNombre?: string
+  factorUnidadBase?: number
+  cantidadPresentacion?: number
 }
 
 export interface QuoteDraft {
@@ -35,6 +42,11 @@ export interface QuoteDraft {
   generalDiscountCents: number
   createdAt: string
   lines: WorkflowLine[]
+  // Item 3 bonus: quote-only fields backed by cotizacion.asunto/condicion_pago/fecha.
+  // Optional/additive — undefined in mock mode and for older quote rows.
+  asunto?: string
+  conditionPago?: 'CONTADO' | 'PAGO_PARCIAL' | 'SIGEP' | 'TRANSFERENCIA_BANCARIA' | 'QR'
+  documentDate?: string
 }
 
 export interface OrderView {

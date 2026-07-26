@@ -2,12 +2,15 @@ import type { CashSessionRecord, CustomerRecord, OrderView, QuoteDraft } from '.
 import { quoteRepository } from './QuoteRepository.supabase'
 import { orderRepository } from './OrderRepository.supabase'
 import { customerRepository } from './CustomerRepository.supabase'
-import { productRepository as supabaseProductRepository, getStockByProduct as supabaseGetStockByProduct } from './ProductRepository.supabase'
+import { productRepository as supabaseProductRepository, getStockByProduct as supabaseGetStockByProduct, listPresentations as supabaseListPresentations } from './ProductRepository.supabase'
 import { cashRepository, getAdvancesForOrder, getOpenSession } from './CashRepository.supabase'
 import { saleRepository } from './SaleRepository.supabase'
-import { mockAuthSessionProvider } from '../mock/MockAuthSessionProvider'
+import { supabaseAuthSessionProvider } from './SupabaseAuthSessionProvider'
 
-const currentActorId = async (): Promise<string> => (await mockAuthSessionProvider.getSession())?.user.id ?? 'pos'
+const currentActorId = async (): Promise<string> => {
+  const session = await supabaseAuthSessionProvider.getSession()
+  return session?.user.email ?? session?.user.name ?? 'pos'
+}
 
 const bigPage = { page: 1, pageSize: 200 }
 
@@ -68,6 +71,7 @@ export const customerService = {
 
 export const productRepository = supabaseProductRepository
 export const getStockByProduct = supabaseGetStockByProduct
+export const listPresentations = supabaseListPresentations
 
 const bigPageCash = { page: 1, pageSize: 200 }
 

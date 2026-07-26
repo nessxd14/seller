@@ -36,3 +36,10 @@ export const getStockByProduct = async (productId: number): Promise<{ onHand: Ar
     saldoDisponible: product.stockTienda + product.stockAlmacen,
   }
 }
+
+// Mock seeds have no presentacion concept — degrade gracefully to a single synthetic
+// base presentation so the UI's presentation selector always has at least one option.
+export const listPresentations = async (productId: number): Promise<Array<{ id: number; nombre: string; factorUnidadBase: number; esBase: boolean }>> => {
+  void productId
+  return [{ id: 0, nombre: 'Unidad', factorUnidadBase: 1, esBase: true }]
+}

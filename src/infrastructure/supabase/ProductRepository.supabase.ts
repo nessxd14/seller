@@ -28,7 +28,8 @@ const rowToProduct = (row: ProductoRow): Product => ({
   nombre: row.nombre,
   descripcion: row.marca ?? '',
   categoria: row.marca ?? 'General',
-  imagen: row.imagen_url ?? '',
+  imagen: '',
+  imagenUrl: row.imagen_url ?? undefined,
   color: '#585b63',
   precioRetail: num(row.precio_base),
   precioMayoreo: num(row.precio_mayoreo),
@@ -101,4 +102,18 @@ export const getStockByProduct = async (
   }))
   const saldoRow = (saldoRows as Array<{ producto_id: number; saldo_libre: number | string }> | null)?.[0]
   return { onHand, saldoDisponible: num(saldoRow?.saldo_libre) }
+}
+
+export interface Presentation { id: number; nombre: string; factorUnidadBase: number; esBase: boolean }
+
+/** Presentations for a product (e.g. "Caja" with factor 12, "Unidad" base with factor 1). */
+export const listPresentations = async (productId: number): Promise<Presentation[]> => {
+  const { data, error } = await supabase
+    .from('presentacion')
+    .select('id,nombre,factor_unidad_base,es_base,activo')
+    .eq('producto_id', productId)
+    .order('es_base', { ascending: false })
+  if (error) throw error
+  const rows = (data ?? []) as Array<{ id: number; nombre: string; factor_unidad_base: number | string; es_base: boolean; activo: boolean | null }>
+  return rows.filter((row) => row.activo !== false).map((row) => ({ id: row.id, nombre: row.nombre, factorUnidadBase: num(row.factor_unidad_base), esBase: row.es_base }))
 }
