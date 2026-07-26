@@ -88,13 +88,15 @@ export const getStockByProduct = async (
   productId: number,
 ): Promise<{ onHand: StockByLocation[]; saldoDisponible: number }> => {
   const [{ data: stockRows, error: stockError }, { data: saldoRows, error: saldoError }] = await Promise.all([
-    supabase.from('stock_actual').select('ubicacion_id,cantidad_base').eq('producto_id', productId),
+    supabase.from('stock_actual').select('ubicacion_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id)').eq('producto_id', productId),
     supabase.rpc('saldo_disponible_pedido', { p_producto_ids: [productId] }),
   ])
   if (stockError) throw stockError
   if (saldoError) throw saldoError
-  const onHand: StockByLocation[] = (stockRows ?? []).map((row: { ubicacion_id: number; cantidad_base: number | string }) => ({
+  const typedStockRows = (stockRows ?? []) as unknown as Array<{ ubicacion_id: number; cantidad_base: number | string; ubicacion?: { sucursal_id: number | string | null } | null }>
+  const onHand: StockByLocation[] = typedStockRows.map((row) => ({
     ubicacionId: row.ubicacion_id,
+    sucursalId: row.ubicacion?.sucursal_id != null ? num(row.ubicacion.sucursal_id) : undefined,
     cantidadBase: num(row.cantidad_base),
   }))
   const saldoRow = (saldoRows as Array<{ producto_id: number; saldo_libre: number | string }> | null)?.[0]
