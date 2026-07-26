@@ -10,10 +10,10 @@ export class CashService {
     return this.repository.save({ id: crypto.randomUUID(), register, openedAt: new Date().toISOString(), openingCents, status: 'open', movements: [] })
   }
   expected(session: CashSessionRecord) { return session.openingCents + session.movements.reduce((sum, movement) => sum + (movement.type === 'income' ? movement.amountCents : -movement.amountCents), 0) }
-  async addMovement(session: CashSessionRecord, type: 'income' | 'expense', amountCents: number, note: string) {
+  async addMovement(session: CashSessionRecord, type: 'income' | 'expense', amountCents: number, note: string, method: 'cash' | 'qr' | 'transfer' = 'cash') {
     if (session.status !== 'open') throw new Error('La sesión está cerrada')
     if (!Number.isInteger(amountCents) || amountCents <= 0) throw new Error('Monto inválido')
-    return this.repository.save({ ...session, movements: [...session.movements, { id: crypto.randomUUID(), type, method: 'cash', amountCents, note: note || (type === 'income' ? 'Ingreso manual mock' : 'Egreso manual mock'), at: new Date().toISOString() }] })
+    return this.repository.save({ ...session, movements: [...session.movements, { id: crypto.randomUUID(), type, method, amountCents, note: note || (type === 'income' ? 'Ingreso manual mock' : 'Egreso manual mock'), at: new Date().toISOString() }] })
   }
   async close(session: CashSessionRecord, countedCents: number) {
     if (session.status !== 'open') throw new Error('La sesión ya está cerrada')

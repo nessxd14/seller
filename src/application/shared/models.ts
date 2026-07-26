@@ -72,5 +72,8 @@ export interface CashSessionRecord {
   movements: { id: string; type: 'income' | 'expense'; method: 'cash' | 'qr' | 'transfer'; amountCents: number; note: string; at: string }[]
   countedCents?: number
   closedAt?: string
+  // Optional Supabase-backed extension: cerrar_caja's computed difference (contado -
+  // esperado), persisted on sesion_caja.diferencia. Undefined in mock mode.
+  differenceCents?: number
 }
 

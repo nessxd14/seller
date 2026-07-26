@@ -69,6 +69,37 @@ export const sucursalIdToLocation = (sucursalId: number | null | undefined): 'Ti
 export const defaultSucursalForChannel = (channel: SalesChannel): number =>
   channel === 'retail' ? SUCURSAL_TIENDA_ID : SUCURSAL_ALMACEN_ID
 
+export type MetodoPago = 'EFECTIVO' | 'QR' | 'TRANSFERENCIA'
+export type PosPaymentMethod = 'cash' | 'qr' | 'transfer'
+
+/** POS payment method ('cash'/'qr'/'transfer') -> backend metodo_pago enum. */
+export const methodToMetodoPago = (method: PosPaymentMethod): MetodoPago => {
+  switch (method) {
+    case 'cash': return 'EFECTIVO'
+    case 'qr': return 'QR'
+    case 'transfer': return 'TRANSFERENCIA'
+  }
+}
+
+/** backend metodo_pago enum -> POS payment method ('cash'/'qr'/'transfer'). */
+export const metodoPagoToMethod = (metodo: MetodoPago | null | undefined): PosPaymentMethod => {
+  switch (metodo) {
+    case 'QR': return 'qr'
+    case 'TRANSFERENCIA': return 'transfer'
+    default: return 'cash'
+  }
+}
+
+export type TipoMovimientoCaja = 'VENTA' | 'ANTICIPO' | 'INGRESO' | 'EGRESO' | 'ANULACION'
+
+/** movimiento_caja.tipo -> CashSessionRecord movement type ('income'/'expense'). */
+export const tipoMovimientoToType = (tipo: TipoMovimientoCaja): 'income' | 'expense' => {
+  switch (tipo) {
+    case 'VENTA': case 'ANTICIPO': case 'INGRESO': return 'income'
+    case 'EGRESO': case 'ANULACION': return 'expense'
+  }
+}
+
 /** Which producto.precio_* column to use for a channel. */
 export const channelToPriceField = (
   channel: SalesChannel
