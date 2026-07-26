@@ -14,4 +14,5 @@ export const getStockByProduct = featureFlags.supabase ? supabaseServices.getSto
 
 // Idempotency dedupe is a client-side concern independent of the backend.
 export const sensitiveOperations = mockServices.sensitiveOperations
-export const cashService = mockServices.cashService
+export const cashService = featureFlags.supabase ? supabaseServices.cashService : mockServices.cashService
+export const saleService = featureFlags.supabase ? supabaseServices.saleService : mockServices.saleService

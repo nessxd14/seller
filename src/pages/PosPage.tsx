@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { PosProvider, usePos } from '../context/PosContext'
+import { CashSessionProvider } from '../context/CashSessionContext'
 import { CartPanel } from '../components/CartPanel'
 import { PosHeader } from '../components/PosHeader'
 import { PosSidebar } from '../components/PosSidebar'
@@ -80,7 +81,7 @@ function PosContent() {
         : null
   const blocked=Boolean(blockKind)||conflictDemo
   if(conflictDemo)return <div className="integration-demo-page"><IntegrationState kind="conflict" onReload={()=>setConflictDemo(false)} onKeepCopy={()=>{setConflictDemo(false);notify('Copia local conservada')}} onCancel={()=>setConflictDemo(false)}/></div>
-  return <div className={`app-shell ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} />}<AuthDevSelector onChange={setSession}/>{toast && <div className="toast">✓ <span>{toast}</span></div>}</div>
+  return <div className={`app-shell ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} />}<AuthDevSelector onChange={setSession}/>{toast && <div className="toast">✓ <span>{toast}</span></div>}</div>
 }
 
-export function PosPage() { return <PosProvider><PosContent /></PosProvider> }
+export function PosPage() { return <PosProvider><CashSessionProvider><PosContent /></CashSessionProvider></PosProvider> }

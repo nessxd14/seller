@@ -44,11 +44,21 @@ export interface OrderRepository {
   getById(id:string):Promise<(OrderView & Versioned)|null>
   save(value:OrderView & Partial<Versioned>,context:MutationContext):Promise<OrderView & Versioned>
 }
+export interface SaleCheckoutLine { productId:string; quantity:number; unitPriceCents:number; listPriceCents?:number }
+export interface SaleCheckoutPayment { method:'cash'|'qr'|'transfer'; amountCents:number }
+export interface SaleCheckoutResult { saleId:string; subtotalCents:number; discountCents:number; totalCents:number }
 export interface SaleRepository {
   getById(id:string):Promise<SalePortRecord|null>
   confirm(id:string,context:MutationContext&{idempotencyKey:string}):Promise<SalePortRecord>
   cancel(id:string,reason:string,context:MutationContext&{idempotencyKey:string}):Promise<SalePortRecord>
+  /**
+   * Atomic checkout against the backend's `registrar_venta` RPC (lines + payments +
+   * cash session in one call). Additive alongside the legacy confirm/cancel two-step
+   * shape above, which the mock backend still uses.
+   */
+  checkout(input:{lines:SaleCheckoutLine[];payments:SaleCheckoutPayment[];cashSessionId:string;customerId?:string;discountCents?:number},context:MutationContext):Promise<SaleCheckoutResult>
 }
+// No Supabase adapter for this port — registrar_venta records payment atomically with the sale, there is no standalone payment step in the backend. Kept for the mock backend only.
 export interface PaymentRepository {
   register(input:{saleId:string;method:string;amountCents:number;components?:Array<{method:string;amountCents:number}>},context:MutationContext&{idempotencyKey:string}):Promise<PaymentPortRecord>
 }
@@ -57,6 +67,8 @@ export interface CashRepository {
   getById(id:string):Promise<(CashSessionRecord & Versioned)|null>
   open(input:{register:string;openingCents:number},context:MutationContext&{idempotencyKey:string}):Promise<CashSessionRecord & Versioned>
   close(id:string,countedCents:number,context:MutationContext&{idempotencyKey:string}):Promise<CashSessionRecord & Versioned>
+  addMovement(sessionId:string,input:{type:'income'|'expense';method:'cash'|'qr'|'transfer';amountCents:number;note:string},context:MutationContext&{idempotencyKey:string}):Promise<CashSessionRecord & Versioned>
+  registerAdvance(input:{orderId:string;amountCents:number;method:'cash'|'qr'|'transfer';sessionId:string},context:MutationContext&{idempotencyKey:string}):Promise<{movementId:string}>
 }
 export interface SuspendedSaleRepository<T extends {id:string}> {
   list(input:{query?:string;page:PageRequest}):Promise<Page<T & Versioned>>
