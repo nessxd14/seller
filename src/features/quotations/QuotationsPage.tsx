@@ -1,20 +1,33 @@
-import { Copy, Eye, Plus, ShoppingCart } from 'lucide-react'
+import { AlertTriangle, ArrowUpDown, Copy, Eye, Plus, ShoppingCart } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { QuoteDraft, QuoteWorkflowStatus } from '../../application/shared/models'
 import { orderService, quoteService, sensitiveOperations } from '../../infrastructure/services'
 import { formatMoney, money } from '../../domain/common/money'
-import { FeatureShell, FeatureState, FeatureToolbar, statusLabel } from '../shared/FeatureShell'
+import { FeatureShell, FeatureState, FeatureToolbar, statusChipClass, statusLabel } from '../shared/FeatureShell'
 import { DraftOrderEditor } from './DraftOrderEditor'
 import { DocumentoExportable } from '../../components/DocumentoExportable'
 import { featureFlags } from '../../config/featureFlags'
 
+type SortKey = 'number' | 'customerName' | 'status' | 'validUntil' | 'total' | 'createdAt'
+type SortDir = 'asc' | 'desc'
+
 const total = (quote: QuoteDraft) => quote.lines.reduce((sum, line) => sum + Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000), 0) - quote.generalDiscountCents
+
+const DAY_MS = 86_400_000
+// Days until validUntil is reached; negative once past. Used to flag near/past expiry.
+const daysUntil = (validUntil: string) => Math.ceil((new Date(validUntil).getTime() - Date.now()) / DAY_MS)
+
+function SortTh({ label, sortkey, activeKey, onToggle }: { label: string; sortkey: SortKey; activeKey: SortKey; onToggle: (key: SortKey) => void }) {
+  return <button className={`sortable-th ${activeKey === sortkey ? 'active' : ''}`} onClick={() => onToggle(sortkey)}>{label}<ArrowUpDown size={11} /></button>
+}
 
 export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initialDraft = null, onInitialDraftConsumed }: { notify: (message: string) => void; onOrderCreated: () => void; readOnly?: boolean; initialDraft?: QuoteDraft | null; onInitialDraftConsumed?: () => void }) {
   const [quotes, setQuotes] = useState<QuoteDraft[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | QuoteWorkflowStatus>('all')
+  const [sortKey, setSortKey] = useState<SortKey>('createdAt')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [editing, setEditing] = useState<QuoteDraft | null>(null)
   const [preview, setPreview] = useState<QuoteDraft | null>(null)
   const load = () => quoteService.list().then((items) => { setQuotes(items); setStatus('ready') }).catch(() => setStatus('error'))
@@ -26,7 +39,21 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
     if (initialDraft) { setEditing(initialDraft); onInitialDraftConsumed?.() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDraft])
-  const filtered = useMemo(() => quotes.filter((quote) => (filter === 'all' || quote.status === filter) && `${quote.number} ${quote.customerName} ${quote.status}`.toLowerCase().includes(query.toLowerCase())), [quotes, query, filter])
+  const toggleSort = (key: SortKey) => { if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setSortDir('asc') } }
+  const filtered = useMemo(() => {
+    const list = quotes.filter((quote) => (filter === 'all' || quote.status === filter) && `${quote.number} ${quote.customerName} ${quote.status}`.toLowerCase().includes(query.toLowerCase()))
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...list].sort((a, b) => {
+      switch (sortKey) {
+        case 'number': return a.number.localeCompare(b.number) * dir
+        case 'customerName': return a.customerName.localeCompare(b.customerName) * dir
+        case 'status': return a.status.localeCompare(b.status) * dir
+        case 'validUntil': return a.validUntil.localeCompare(b.validUntil) * dir
+        case 'total': return (total(a) - total(b)) * dir
+        case 'createdAt': return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * dir
+      }
+    })
+  }, [quotes, query, filter, sortKey, sortDir])
   // Supabase adapters use an empty id as the "not yet persisted" sentinel and mint
   // the real numeric id from crear_cotizacion's return value; the mock repository
   // still needs a client-generated id up front (it has no server round trip).
@@ -60,5 +87,28 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
     onOrderCreated()
     notify('Pedido creado desde cotización')
   }
-  return <FeatureShell eyebrow="GESTIÓN COMERCIAL" title="Cotizaciones" subtitle="Propuestas para clientes mayoristas, institucionales y municipales" action={<button className="primary-button" onClick={create}><Plus /> Nueva cotización</button>}><FeatureToolbar query={query} onQuery={setQuery} placeholder="Buscar por número, cliente o estado..."><select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}><option value="all">Todos los estados</option>{['draft','sent','negotiating','approved','rejected','expired','converted'].map((value) => <option key={value} value={value}>{statusLabel[value]}</option>)}</select><input type="date" aria-label="Filtrar por fecha" /></FeatureToolbar>{status === 'loading' ? <FeatureState type="loading" text="Cargando cotizaciones" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.length ? <FeatureState type={quotes.length ? 'no-results' : 'empty'} text="No hay cotizaciones" /> : <div className="feature-table"><div className="table-head"><span>Número / fecha</span><span>Cliente</span><span>Canal</span><span>Estado</span><span>Total</span><span>Acciones</span></div>{filtered.map((quote) => <article key={quote.id}><div><strong>{quote.number}</strong><small>{new Date(quote.createdAt).toLocaleDateString('es-BO')}</small></div><div><strong>{quote.customerName}</strong><small>Válida hasta {quote.validUntil}</small></div><span className="channel-chip">{quote.channel}</span><span className={`status-chip ${quote.status}`}>{statusLabel[quote.status]}</span><strong>{formatMoney(money(Math.max(0,total(quote))))}</strong><div className="row-actions"><button title="Vista previa" onClick={() => setPreview(quote)}><Eye /></button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => setEditing(quote)}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title="Convertir en pedido" onClick={() => convert(quote)}><ShoppingCart /></button>}</div></article>)}</div>}{editing && <DraftOrderEditor quote={editing} onClose={() => setEditing(null)} onSave={save} onCreateOrder={createOrderDirect} onConvert={editing.id ? convert : undefined} />}{preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, asunto: preview.asunto, documentDate: preview.documentDate }} onClose={() => setPreview(null)} />}</FeatureShell>
+  return <FeatureShell eyebrow="GESTIÓN COMERCIAL" title="Cotizaciones" subtitle="Propuestas para clientes mayoristas, institucionales y municipales" action={<button className="primary-button" onClick={create}><Plus /> Nueva cotización</button>}>
+    <FeatureToolbar query={query} onQuery={setQuery} placeholder="Buscar por número, cliente o estado...">
+      <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}><option value="all">Todos los estados</option>{['draft','sent','negotiating','approved','rejected','expired','converted'].map((value) => <option key={value} value={value}>{statusLabel[value]}</option>)}</select>
+      <input type="date" aria-label="Filtrar por fecha" />
+    </FeatureToolbar>
+    {status === 'loading' ? <FeatureState type="skeleton" text="Cargando cotizaciones" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.length ? <FeatureState type={quotes.length ? 'no-results' : 'empty'} text="No hay cotizaciones" /> : <div className="feature-table quotations-table sticky-head">
+      <div className="table-head"><SortTh label="Número / fecha" sortkey="number" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Cliente" sortkey="customerName" activeKey={sortKey} onToggle={toggleSort} /><span>Asunto</span><SortTh label="Estado" sortkey="status" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Vigencia" sortkey="validUntil" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Total" sortkey="total" activeKey={sortKey} onToggle={toggleSort} /><span>Acciones</span></div>
+      {filtered.map((quote) => {
+        const days = daysUntil(quote.validUntil)
+        const nearExpiry = days <= 7 && !['expired', 'rejected', 'converted'].includes(quote.status)
+        return <article key={quote.id}>
+          <div><strong>{quote.number}</strong><small>{new Date(quote.createdAt).toLocaleDateString('es-BO')}</small></div>
+          <div><strong>{quote.customerName}</strong><small className="channel-chip">{quote.channel}</small></div>
+          <span>{quote.asunto || '—'}</span>
+          <span className={`status-chip ${statusChipClass(quote.status)}`}>{statusLabel[quote.status]}</span>
+          <span>{nearExpiry ? <span className="vigencia-warning"><AlertTriangle />{days < 0 ? 'Vencida' : `${quote.validUntil} (${days} d)`}</span> : quote.validUntil}</span>
+          <strong>{formatMoney(money(Math.max(0,total(quote))))}</strong>
+          <div className="row-actions"><button title="Vista previa / exportar" onClick={() => setPreview(quote)}><Eye /></button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => setEditing(quote)}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title="Convertir en pedido" onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
+        </article>
+      })}
+    </div>}
+    {editing && <DraftOrderEditor quote={editing} onClose={() => setEditing(null)} onSave={save} onCreateOrder={createOrderDirect} onConvert={editing.id ? convert : undefined} />}
+    {preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, asunto: preview.asunto, documentDate: preview.documentDate }} onClose={() => setPreview(null)} />}
+  </FeatureShell>
 }

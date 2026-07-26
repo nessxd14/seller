@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient'
 import type { MutationContext, SalePortRecord, SaleRepository } from '../../application/ports/repositories'
 import { NotFoundError } from '../../application/errors/AppError'
-import { centsToNumeric, methodToMetodoPago, numericToCents } from './mappers'
+import { centsToNumeric, locationToSucursalId, methodToMetodoPago, numericToCents } from './mappers'
 import { getOpenSession } from './CashRepository.supabase'
 
 type EstadoVenta = 'ABIERTA' | 'COMPLETADA' | 'ANULADA'
@@ -65,7 +65,7 @@ export class SupabaseSaleRepository implements SaleRepository {
   }
 
   async checkout(
-    input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number },
+    input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén' }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number },
     context: MutationContext
   ) {
     const actor = context.actorId ?? 'pos'
@@ -74,6 +74,10 @@ export class SupabaseSaleRepository implements SaleRepository {
       cantidad: line.quantity,
       precio_unitario: centsToNumeric(line.unitPriceCents),
       ...(line.listPriceCents != null ? { precio_lista: centsToNumeric(line.listPriceCents) } : {}),
+      // Optional: forces this line's stock to be taken from the chosen sucursal — registrar_venta
+      // rejects with a clear "Stock insuficiente" error if it doesn't cover the quantity. Absent
+      // means the RPC falls back to its automatic Tienda(2)-then-Almacén(1) resolution.
+      ...(line.sourceLocation ? { sucursal_origen_id: locationToSucursalId(line.sourceLocation) } : {}),
     }))
     const pagos = input.payments.map((payment) => ({ metodo: methodToMetodoPago(payment.method), monto: centsToNumeric(payment.amountCents) }))
     const { data, error } = await supabase.rpc('registrar_venta', {

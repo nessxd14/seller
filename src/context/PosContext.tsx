@@ -44,7 +44,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     const existing = items.find((item) => item.id === product.id)
     return existing
       ? items.map((item) => item.id === product.id ? { ...item, cantidad: item.cantidad + 1 } : item)
-      : [...items, { ...product, cantidad: 1, precioAplicado: getPrice(product, channel), descuento: 0, ubicacion: 'Tienda principal', observacion: '', motivoPrecio: '' }]
+      : [...items, { ...product, cantidad: 1, precioAplicado: getPrice(product, channel), descuento: 0, ubicacion: 'Tienda' as const, observacion: '', motivoPrecio: '' }]
   })
 
   const updateQuantity = (id: number, quantity: number) => setCart((items) => items.map((item) => item.id === id ? { ...item, cantidad: Math.max(1, Math.floor(quantity)) } : item))

@@ -23,7 +23,9 @@ export interface CartItem extends Product {
   cantidad: number
   precioAplicado: number
   descuento: number
-  ubicacion: string
+  // Origin sucursal this line will be picked from at checkout — retail's channel default
+  // is Tienda (see PosContext.addProduct); mirrors DraftOrderEditor's sourceLocation vocabulary.
+  ubicacion: 'Tienda' | 'Almacén'
   observacion: string
   motivoPrecio: string
 }
