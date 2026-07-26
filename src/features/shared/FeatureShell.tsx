@@ -9,9 +9,15 @@ export function FeatureToolbar({ query, onQuery, placeholder, children }: { quer
   return <div className="feature-toolbar"><label><Search /><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder={placeholder} /></label>{children}</div>
 }
 
-export function FeatureState({ type, text }: { type: 'loading' | 'empty' | 'error' | 'no-results'; text: string }) {
+export function FeatureState({ type, text, rows = 4 }: { type: 'loading' | 'skeleton' | 'empty' | 'error' | 'no-results'; text: string; rows?: number }) {
+  if (type === 'skeleton') return <div className="feature-state-skeleton" aria-busy="true" aria-label={text}>{Array.from({ length: rows }).map((_, i) => <div key={i} className="skeleton-row"><span className="skeleton-block" /><span className="skeleton-block" /><span className="skeleton-block short" /></div>)}</div>
   return <div className={`feature-state ${type}`}>{type === 'loading' ? <LoaderCircle className="spin" /> : <AlertCircle />}<strong>{text}</strong><span>{type === 'error' ? 'Intenta nuevamente.' : type === 'no-results' ? 'Ajusta la búsqueda o los filtros.' : 'Los datos mock aparecerán aquí.'}</span></div>
 }
 
 export const statusLabel: Record<string, string> = { draft: 'Borrador', sent: 'Enviada', negotiating: 'Negociando', approved: 'Aprobada', rejected: 'Rechazada', expired: 'Vencida', converted: 'Convertida', confirmed: 'Confirmado', awaiting_stock: 'Esperando stock', reserved: 'Reservado', preparing: 'Preparando', ready: 'Listo', dispatched: 'Despachado', delivered: 'Entregado', cancelled: 'Cancelado' }
 
+// Semantic 3-bucket status color system, shared across Pedidos/Cotizaciones/Inventario.
+const statusOk = new Set(['approved', 'converted', 'confirmed', 'delivered', 'ready', 'dispatched', 'ok'])
+const statusPending = new Set(['draft', 'sent', 'negotiating', 'awaiting_stock', 'reserved', 'preparing', 'low-stock'])
+const statusProblem = new Set(['rejected', 'expired', 'cancelled', 'no-stock'])
+export const statusChipClass = (status: string): 'ok' | 'pending' | 'problem' => statusOk.has(status) ? 'ok' : statusProblem.has(status) ? 'problem' : statusPending.has(status) ? 'pending' : 'pending'

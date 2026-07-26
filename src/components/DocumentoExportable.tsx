@@ -29,14 +29,16 @@ const conditionPagoLabel: Record<string, string> = {
 const lineTotalCents = (line: WorkflowLine) => Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000)
 
 /**
- * Print/export document, parameterized for two modes:
+ * Print/export document, parameterized for three modes:
  * - 'cotizacion': full document with prices (replaces QuotationsPage's old bare preview).
+ * - 'pedido': same priced layout as 'cotizacion' (Nº·Descripción·Medida·Cant·Equiv.·P/U·Desc.·Total)
+ *   but sourced from an OrderView — a proper "Pedido A4" document, distinct from the delivery note.
  * - 'nota-entrega': same layout, also surfaces each line's origin (Tienda/Almacén) since
  *   delivery notes care about where stock comes from. Prices are kept visible in both modes
  *   (the brief left this "según se decida" — showing prices consistently was simpler than
  *   building a second price-stripped layout for a single, rarely-used document type).
  */
-export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc; mode: 'cotizacion' | 'nota-entrega'; onClose: () => void }) {
+export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc; mode: 'cotizacion' | 'nota-entrega' | 'pedido'; onClose: () => void }) {
   const [customerDoc, setCustomerDoc] = useState('')
   useEffect(() => {
     void customerService.list().then((customers) => {
@@ -48,11 +50,12 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
   const catalogLines = doc.lines.filter((line) => !line.isCustomItem)
   const customLines = doc.lines.filter((line) => line.isCustomItem)
   const subtotalCents = doc.lines.reduce((sum, line) => sum + lineTotalCents(line), 0)
-  const title = mode === 'cotizacion' ? 'COTIZACIÓN' : 'NOTA DE ENTREGA'
+  const title = mode === 'cotizacion' ? 'COTIZACIÓN' : mode === 'pedido' ? 'PEDIDO' : 'NOTA DE ENTREGA'
+  const modalTitle = mode === 'cotizacion' ? 'Vista previa de cotización' : mode === 'pedido' ? 'Vista previa de pedido' : 'Vista previa de nota de entrega'
 
   return (
-    <Modal title={mode === 'cotizacion' ? 'Vista previa de cotización' : 'Vista previa de nota de entrega'} subtitle={empresa.razonSocial} onClose={onClose} wide>
-      <div className="print-document quote-a4 documento-exportable">
+    <Modal title={modalTitle} subtitle={empresa.razonSocial} onClose={onClose} wide>
+      <div className={`print-document documento-exportable ${mode === 'pedido' ? 'order-a4' : mode === 'nota-entrega' ? 'delivery-a4' : 'quote-a4'}`}>
         <header>
           <div className="doc-brand">
             <img src={empresa.logoSrc} alt={empresa.razonSocial} onError={(e) => { e.currentTarget.style.display = 'none' }} />
