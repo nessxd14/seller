@@ -10,7 +10,7 @@ import { featureFlags } from '../../config/featureFlags'
 
 const total = (quote: QuoteDraft) => quote.lines.reduce((sum, line) => sum + Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000), 0) - quote.generalDiscountCents
 
-export function QuotationsPage({ notify, onOrderCreated, readOnly = false }: { notify: (message: string) => void; onOrderCreated: () => void; readOnly?: boolean }) {
+export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initialDraft = null, onInitialDraftConsumed }: { notify: (message: string) => void; onOrderCreated: () => void; readOnly?: boolean; initialDraft?: QuoteDraft | null; onInitialDraftConsumed?: () => void }) {
   const [quotes, setQuotes] = useState<QuoteDraft[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [query, setQuery] = useState('')
@@ -19,6 +19,13 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false }: { n
   const [preview, setPreview] = useState<QuoteDraft | null>(null)
   const load = () => quoteService.list().then((items) => { setQuotes(items); setStatus('ready') }).catch(() => setStatus('error'))
   useEffect(() => { void load() }, [])
+  // Opens a cart-panel-originated draft prefilled into the editor, then immediately
+  // clears the parent's pending state so navigating away and back doesn't reopen it.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs an external draft (from CartPanel) into local editor state, then immediately notifies the parent to clear it
+    if (initialDraft) { setEditing(initialDraft); onInitialDraftConsumed?.() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDraft])
   const filtered = useMemo(() => quotes.filter((quote) => (filter === 'all' || quote.status === filter) && `${quote.number} ${quote.customerName} ${quote.status}`.toLowerCase().includes(query.toLowerCase())), [quotes, query, filter])
   // Supabase adapters use an empty id as the "not yet persisted" sentinel and mint
   // the real numeric id from crear_cotizacion's return value; the mock repository
