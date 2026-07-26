@@ -5,6 +5,6 @@ export const featureFlags = {
   cash: true,
   credit: true,
   printing: true,
-  supabase: false,
+  supabase: true,
 } as const
 
