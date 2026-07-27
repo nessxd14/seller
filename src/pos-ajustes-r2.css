@@ -1,0 +1,131 @@
+/* ============================================================================
+ * pos-ajustes-r2.css — segunda ronda de ajustes del carrito.
+ * Importar en src/main.tsx DESPUÉS de pos-ajustes.css.
+ * ========================================================================== */
+
+/* ── 1. Selector de presentación ──────────────────────────────────────────
+ *
+ * El problema: quedó como <select> nativo, con el borde negro del navegador y
+ * la flechita del sistema. En un panel donde todo lo demás usa el borde
+ * #e3ded5 y el naranja de marca, es lo único que grita "control por defecto".
+ *
+ * La solución no es sólo pintarlo: el select estaba ocupando una fila entera
+ * él solo, cuando conceptualmente pertenece al mismo grupo que el selector
+ * Tienda/Almacén. Se lo trata como un control secundario, discreto, alineado
+ * a la izquierda igual que el precio.
+ *
+ * Se conserva <select> nativo a propósito: en la tablet del mostrador el
+ * desplegable del sistema operativo es más rápido y más grande al dedo que
+ * cualquier dropdown custom. Se le cambia la piel, no el comportamiento.
+ */
+
+.cart-presentacion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.cart-presentacion select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--line);
+  background: #fff;
+  /* Flecha propia, en el gris de la app en vez del negro del sistema. */
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2377746d' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  border-radius: 7px;
+  height: 27px;                 /* mismo alto que .qty-control */
+  padding: 0 26px 0 9px;
+  font: inherit;
+  font-size: 11px;
+  color: #4c4944;
+  cursor: pointer;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  transition: border-color .12s, background-color .12s;
+}
+
+.cart-presentacion select:hover { background-color: #faf9f6 }
+
+.cart-presentacion select:focus-visible {
+  outline: 0;
+  border-color: var(--orange);
+}
+
+/* Un solo empaque disponible = no hay nada que elegir. Se oculta desde el
+   componente, pero por las dudas queda la regla. */
+.cart-presentacion.solo-base { display: none }
+
+
+/* ── 2. Contador de cantidad ──────────────────────────────────────────────
+ *
+ * Por qué estaba descentrado: `.qty-control` mide 27px de alto (phase11.css
+ * pisa los 25px de styles.css), pero los botones sólo tienen `width:24px` sin
+ * alto propio. Un <button> sin altura explícita se dimensiona por su contenido
+ * más el padding por defecto del navegador, así que el − y el + quedaban
+ * apoyados a distinta altura que el número, y el número mismo bailaba según el
+ * ancho del dígito (1 vs 8 no ocupan lo mismo en DM Sans).
+ */
+
+.qty-control {
+  display: inline-flex;
+  align-items: stretch;   /* los botones toman el alto completo */
+  overflow: hidden;
+}
+
+.qty-control button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  width: 26px;
+  height: auto;
+  line-height: 1;
+  flex: 0 0 26px;
+}
+
+.qty-control button:disabled { opacity: .35; cursor: default }
+
+.qty-control strong {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  width: auto;
+  padding: 0 2px;
+  line-height: 1;
+  /* tabular-nums: el 1 ocupa lo mismo que el 8, así el control no cambia de
+     ancho al pasar de 9 a 10 y el número no se corre. */
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ── 3. Fila inferior: separación entre controles ─────────────────────────
+ * Con el selector de presentación arriba, el texto redundante que iba al lado
+ * del contador se saca desde el componente. Acá sólo se asegura que los tres
+ * elementos que quedan respiren.
+ */
+
+.cart-line-bottom .edit-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 27px;
+}
+
+
+/* ── 4. Tooltip nativo para nombres cortados ──────────────────────────────
+ *
+ * Para el globito amarillo de Windows alcanza con el atributo `title` en el
+ * elemento (se agrega desde el componente). No hace falta librería ni CSS: el
+ * navegador lo dibuja con el estilo del sistema operativo, que es exactamente
+ * lo que se pidió.
+ *
+ * Lo único que ayuda desde CSS es dar la pista visual de que hay más texto.
+ */
+
+.product-card h4[title],
+.cart-title h4[title] { cursor: help }

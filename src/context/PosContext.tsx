@@ -3,6 +3,14 @@ import { getPrice } from '../data/products'
 import type { CartItem, Product, SalesChannel } from '../types'
 import { calculateCartTotals } from '../domain/sales/cartCalculator'
 
+// TAREA 4: the cart's active customer. undefined/null id means "Cliente de mostrador"
+// (anonymous, cliente_id = null at checkout) — the default and always-available state.
+export interface CartCustomer {
+  id?: string
+  name: string
+  documento?: string
+}
+
 interface PosState {
   channel: SalesChannel
   setChannel: (channel: SalesChannel) => void
@@ -20,7 +28,9 @@ interface PosState {
   newOperation: () => void
   restoreSuspended: () => boolean
   hasSuspendedSale: boolean
-  loadSuspendedSale: (sale: { channel: SalesChannel; cart: CartItem[]; discount: number }) => void
+  loadSuspendedSale: (sale: { channel: SalesChannel; cart: CartItem[]; discount: number; customer?: CartCustomer | null }) => void
+  customer: CartCustomer | null
+  selectCustomer: (customer: CartCustomer | null) => void
 }
 
 const PosContext = createContext<PosState | null>(null)
@@ -31,6 +41,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const [discount, setDiscount] = useState(0)
   const [operationNumber, setOperationNumber] = useState(1048)
   const [hasSuspendedSale, setHasSuspendedSale] = useState(() => Boolean(localStorage.getItem('roari-suspended-sale')))
+  const [customer, setCustomer] = useState<CartCustomer | null>(null)
+  const selectCustomer = (next: CartCustomer | null) => setCustomer(next)
 
   const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
 
@@ -57,7 +69,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const updateItem = (id: number, values: Partial<CartItem>) => setCart((items) => items.map((item) => item.id === id ? { ...item, ...values, cantidad: Math.max(1, Math.floor(values.cantidad ?? item.cantidad)), precioAplicado: Math.max(0, roundMoney(values.precioAplicado ?? item.precioAplicado)), descuento: Math.min(100, Math.max(0, values.descuento ?? item.descuento)) } : item))
   const removeItem = (id: number) => setCart((items) => items.filter((item) => item.id !== id))
   const clearCart = () => { setCart([]); setDiscount(0) }
-  const newOperation = () => { clearCart(); setChannelState('retail'); setOperationNumber((number) => number + 1) }
+  const newOperation = () => { clearCart(); setChannelState('retail'); setCustomer(null); setOperationNumber((number) => number + 1) }
   const totals = useMemo(() => calculateCartTotals(cart.map((item) => ({ unitPrice: item.precioAplicado, quantity: item.cantidad, discountPercent: item.descuento })), discount), [cart, discount])
   const subtotal = totals.subtotalDecimal
   const total = totals.totalDecimal
@@ -69,18 +81,27 @@ export function PosProvider({ children }: { children: ReactNode }) {
       setChannelState(saved.channel)
       setCart(saved.cart.map((item) => ({ ...item, cantidad: Math.max(1, Math.floor(item.cantidad)), precioAplicado: Math.max(0, roundMoney(item.precioAplicado)), descuento: Math.min(100, Math.max(0, item.descuento)) })))
       setDiscount(Math.max(0, saved.discount || 0))
+      // Legacy single-slot suspended sale predates the customer picker (TAREA 4) and
+      // never carried a customer field — restoring one always resets to "Cliente de
+      // mostrador" rather than crashing on a field that was never there.
+      setCustomer(null)
       localStorage.removeItem('roari-suspended-sale')
       setHasSuspendedSale(false)
       return true
     } catch { return false }
   }
-  const loadSuspendedSale = (sale: { channel: SalesChannel; cart: CartItem[]; discount: number }) => {
+  // TAREA 4 backward compatibility: `sale.customer` is absent on sales suspended before
+  // this round (the v2 localStorage records didn't carry it yet). `?? null` mirrors the
+  // same optional-field tolerance already established for CartItem's presentation fields
+  // — a missing customer degrades to "Cliente de mostrador," never a crash.
+  const loadSuspendedSale = (sale: { channel: SalesChannel; cart: CartItem[]; discount: number; customer?: CartCustomer | null }) => {
     setChannelState(sale.channel)
     setCart(sale.cart)
     setDiscount(Math.max(0, sale.discount))
+    setCustomer(sale.customer ?? null)
   }
 
-  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, newOperation, restoreSuspended, hasSuspendedSale, loadSuspendedSale }}>{children}</PosContext.Provider>
+  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, newOperation, restoreSuspended, hasSuspendedSale, loadSuspendedSale, customer, selectCustomer }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {

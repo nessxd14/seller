@@ -7,6 +7,7 @@ import { calculateLineTotal } from '../domain/sales/cartCalculator'
 import { moneyToDecimal } from '../domain/common/money'
 import { getPrice } from '../data/products'
 import { listPresentations } from '../infrastructure/services'
+import { isLineUnderstocked } from '../domain/sales/stockCheck'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
@@ -61,7 +62,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
   const cancelEdit = () => setEditing(false)
 
   const tiendaAvailable = originStock?.tienda ?? 0
-  const insufficient = onSetOrigin && originStock ? (item.ubicacion === 'Tienda' ? originStock.tienda : originStock.almacen) < cantidadBase : false
+  const insufficient = onSetOrigin ? isLineUnderstocked(item, originStock) : false
   // Item 1.2: only offer "Solicitar a almacén" when the shortfall is specifically against
   // Tienda's own stock (the case a transfer from Almacén can actually fix) — an Almacén-origin
   // shortfall is a different problem (no stock anywhere) that a Tienda-bound transfer can't solve.
@@ -79,10 +80,8 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
     })
   }
 
-  const unitLabel = item.presentacionNombre ?? 'uds.'
-
   return <article className="cart-item"><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} /><div className="cart-item-main"><div className="cart-title"><div>
-      <h4>{item.nombre}</h4>
+      <h4 title={item.nombre}>{item.nombre}</h4>
       <div className="cart-price-row">
         {editing
           ? <input
@@ -108,11 +107,11 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
       </div>
     </div><button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button></div>
     {onSetOrigin && <div className="channel-tabs origin-tabs" role="group" aria-label={`Origen ${item.nombre}`}>{(['Tienda', 'Almacén'] as const).map((loc) => <button key={loc} type="button" className={item.ubicacion === loc ? 'active' : ''} onClick={() => onSetOrigin(loc)}>{loc}{originStock ? ` ${loc === 'Tienda' ? originStock.tienda : originStock.almacen}` : ''}</button>)}</div>}
-    {presentations.length > 1 && <select aria-label={`Presentación ${item.nombre}`} value={item.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id} onChange={(e) => { const chosen = presentations.find((p) => p.id === Number(e.target.value)); if (chosen) onPresentationChange(chosen) }}>
+    {presentations.length > 1 && <div className="cart-presentacion"><select aria-label={`Presentación ${item.nombre}`} value={item.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id} onChange={(e) => { const chosen = presentations.find((p) => p.id === Number(e.target.value)); if (chosen) onPresentationChange(chosen) }}>
       {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-    </select>}
+    </select></div>}
     {insufficient && <small className="line-stock-error">Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBase)} uds.{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
-    <div className="cart-line-bottom"><div className="qty-control"><button disabled={item.cantidad <= 1} onClick={() => updateQuantity(item.id, item.cantidad - 1)}><Minus /></button><strong>{item.cantidad}</strong><button onClick={() => updateQuantity(item.id, item.cantidad + 1)}><Plus /></button><small className="qty-unit-label">{unitLabel}</small></div><button className="edit-link" onClick={onEdit}><Pencil /> Editar</button><strong className="line-total">Bs {money(lineTotal)}</strong></div>
-    {factor !== 1 && <small className="line-equivalence">{fmtQty(item.cantidad)} {item.presentacionNombre} ({fmtQty(factor)} und) = {fmtQty(cantidadBase)} u</small>}
+    <div className="cart-line-bottom"><div className="qty-control"><button disabled={item.cantidad <= 1} onClick={() => updateQuantity(item.id, item.cantidad - 1)}><Minus /></button><strong>{item.cantidad}</strong><button onClick={() => updateQuantity(item.id, item.cantidad + 1)}><Plus /></button></div><button className="edit-link" onClick={onEdit}><Pencil /> Editar</button><strong className="line-total">Bs {money(lineTotal)}</strong></div>
+    {factor !== 1 && <small className="line-equivalence">{fmtQty(item.cantidad)} {item.presentacionNombre} = {fmtQty(cantidadBase)} u</small>}
     </div></article>
 }

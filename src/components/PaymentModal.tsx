@@ -18,7 +18,7 @@ const money = (value: number) => value.toLocaleString('es-BO', { minimumFraction
 const posMethod = (id: string): 'cash' | 'qr' | 'transfer' => (id === 'qr' ? 'qr' : id === 'transferencia' ? 'transfer' : 'cash')
 
 export function PaymentModal({ onClose }: { onClose: () => void }) {
-  const { cart, discount, total, newOperation } = usePos()
+  const { cart, discount, total, newOperation, customer } = usePos()
   const { sessionId } = useCashSession()
   // Crédito has no metodo_pago equivalent in the real backend; only shown in mock mode.
   const methods = allMethods.filter((m) => m.id !== 'credito' || (featureFlags.credit && !featureFlags.supabase))
@@ -54,6 +54,10 @@ export function PaymentModal({ onClose }: { onClose: () => void }) {
         payments: buildPayments(),
         cashSessionId: sessionId,
         discountCents: Math.round(discount * 100),
+        // TAREA 4: NIT/cliente is always optional — customer may be null ("Cliente de
+        // mostrador") or missing an id if selection somehow failed; either way checkout
+        // must never be blocked on it.
+        customerId: customer?.id,
       })
       setResult({ saleId: checkout.saleId, totalCents: checkout.totalCents })
       setDone(true)

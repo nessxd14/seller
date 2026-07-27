@@ -66,8 +66,12 @@ export const orderService = {
 }
 
 export const customerService = {
-  async list(): Promise<CustomerRecord[]> {
-    const { items } = await customerRepository.list({ page: bigPage })
+  // TAREA 4: optional {query, page} so the inline cart customer picker can search
+  // server-side (nombre/documento, see CustomerRepository.supabase.ts's list()) with a
+  // small page size, while existing no-arg callers (DraftOrderEditor) keep getting the
+  // full list exactly as before.
+  async list(input?: { query?: string; page?: { page: number; pageSize: number } }): Promise<CustomerRecord[]> {
+    const { items } = await customerRepository.list({ query: input?.query, page: input?.page ?? bigPage })
     return items
   },
   async save(customer: CustomerRecord): Promise<CustomerRecord> {

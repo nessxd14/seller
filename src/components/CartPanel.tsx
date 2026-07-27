@@ -1,4 +1,4 @@
-import { ChevronDown, CircleUserRound, FileText, HandCoins, Pause, ReceiptText, RotateCcw, ShoppingCart } from 'lucide-react'
+import { FileText, HandCoins, Pause, ReceiptText, RotateCcw, ShoppingCart, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { usePos } from '../context/PosContext'
 import type { CartItem as CartItemType } from '../types'
@@ -6,6 +6,8 @@ import { CartItem } from './CartItem'
 import { EditCartItemModal } from './EditCartItemModal'
 import { PaymentModal } from './PaymentModal'
 import { TicketPreviewModal } from './TicketPreviewModal'
+import { CustomerPicker } from './CustomerPicker'
+import { CartReview } from './CartReview'
 import type { QuoteDraft, WorkflowLine } from '../application/shared/models'
 import type { PendingTransferRequest } from '../features/transfers/TransfersPage'
 import { featureFlags } from '../config/featureFlags'
@@ -17,7 +19,7 @@ const money = (value: number) => value.toLocaleString('es-BO', { minimumFraction
 const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
 
 export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, onRequestTransfer }: { notify: (message: string) => void; onOpenDraftOrder: (draft: QuoteDraft) => void; onGoToCash: () => void; sellerName?: string; onRequestTransfer?: (request: PendingTransferRequest) => void }) {
-  const { channel, cart, subtotal, total, discount, setDiscount, operationNumber, clearCart, restoreSuspended, updateItem } = usePos()
+  const { channel, cart, subtotal, total, discount, setDiscount, operationNumber, clearCart, restoreSuspended, updateItem, customer } = usePos()
   const { sessionId } = useCashSession()
   const cashClosed = channel === 'retail' && featureFlags.supabase && !sessionId
   const [editing, setEditing] = useState<CartItemType | null>(null)
@@ -46,14 +48,29 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   })
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [ticketOpen, setTicketOpen] = useState(false)
-  const customer = channel === 'retail' ? 'Cliente de mostrador' : 'Seleccionar cliente'
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const customerLabel = customer ? customer.name : 'Cliente de mostrador'
   const suspend = () => {
     if (!cart.length) return
     const date = new Date().toISOString()
     const legacy = { channel, cart, discount, date }
     localStorage.setItem('roari-suspended-sale', JSON.stringify(legacy))
     const sales = JSON.parse(localStorage.getItem('roari-suspended-sales-v2') || '[]') as unknown[]
-    sales.unshift({ id: crypto.randomUUID(), date, seller: sellerName || 'Usuario POS', channel, customer: channel === 'retail' ? 'Cliente de mostrador' : 'Cliente seleccionado', cart, discount, total })
+    // TAREA 4: persist the selected customer alongside the rest of the suspended sale so
+    // restoring it later doesn't silently drop back to "Cliente de mostrador."
+    sales.unshift({
+      id: crypto.randomUUID(),
+      date,
+      seller: sellerName || 'Usuario POS',
+      channel,
+      customer: customerLabel,
+      cart,
+      discount,
+      total,
+      customerId: customer?.id,
+      customerName: customer?.name,
+      customerDocument: customer?.documento,
+    })
     localStorage.setItem('roari-suspended-sales-v2', JSON.stringify(sales))
     clearCart()
     notify('Venta suspendida y guardada localmente')
@@ -86,10 +103,11 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       lines,
     })
   }
-  return <aside className="cart-panel"><div className="cart-header"><div><span>OPERACIÓN ACTUAL</span><h2>Venta <b>#{operationNumber}</b></h2></div><span className="channel-badge">{channelNames[channel]}</span></div><div className="operation-meta"><span>{new Date().toLocaleDateString('es-BO', { day: '2-digit', month: 'short' })}</span><i /> <span>{new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</span></div><button className={`customer-select ${channel !== 'retail' ? 'required' : ''}`}><CircleUserRound /><span><small>CLIENTE</small><strong>{customer}</strong></span><ChevronDown /></button>
+  return <aside className="cart-panel"><div className="cart-header"><div><span>OPERACIÓN ACTUAL</span><h2>Venta <b>#{operationNumber}</b></h2></div><span className="channel-badge">{channelNames[channel]}</span></div><div className="operation-meta"><span>{new Date().toLocaleDateString('es-BO', { day: '2-digit', month: 'short' })}</span><i /> <span>{new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</span></div><CustomerPicker channel={channel} />
     <div className="cart-list-heading"><span>Detalle de venta</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b></div><div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={() => setEditing(item)} originStock={channel === 'retail' ? originStock[item.id] : undefined} onSetOrigin={channel === 'retail' ? (loc) => updateItem(item.id, { ubicacion: loc }) : undefined} onRequestTransfer={channel === 'retail' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} />) : <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar una venta.</p></div>}</div>
     <div className="cart-summary"><div><span>Subtotal</span><strong>Bs {money(subtotal)}</strong></div><div className="discount-line"><label>Descuento</label><span>Bs <input aria-label="Descuento general" type="number" min="0" max={subtotal} value={discount || ''} placeholder="0.00" onChange={(e) => setDiscount(Math.min(subtotal, Math.max(0, Number(e.target.value))))} /></span></div><div className="grand-total"><span>Total</span><strong>Bs {money(total)}</strong></div><small>Precios con impuestos incluidos según configuración</small></div>
-    <div className="cart-actions">{!cart.length && Boolean(localStorage.getItem('roari-suspended-sale')) && <button className="restore-button" onClick={restore}><RotateCcw /> Restaurar venta suspendida</button>}{channel === 'retail' ? <><div className="secondary-actions"><button data-pos-action="suspend" onClick={suspend} disabled={!cart.length}><Pause /> Suspender</button><button onClick={() => setTicketOpen(true)} disabled={!cart.length}><ReceiptText /> Ticket</button></div>{cashClosed && <button className="cash-closed-notice" onClick={onGoToCash}>Caja cerrada — abrí la caja para poder cobrar</button>}{insufficientOrigin && <p className="cash-closed-notice">Hay líneas sin stock suficiente en la ubicación elegida — corrígelas para poder cobrar.</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || cashClosed || insufficientOrigin} onClick={() => setPaymentOpen(true)}><HandCoins /> Cobrar <span>Bs {money(total)}</span></button></> : <><button className="draft-button" disabled={!cart.length} onClick={openDraft}><FileText /> Guardar borrador</button><div className="secondary-actions"><button disabled={!cart.length} onClick={openDraft}>Cotización</button><button disabled={!cart.length} onClick={openDraft}>Crear pedido</button></div><button data-pos-action="pay" className="pay-button" disabled={!cart.length} onClick={() => channel === 'mayoreo' ? setPaymentOpen(true) : notify('Anticipo creado en modo demostración')}><HandCoins /> {channel === 'mayoreo' ? 'Cobrar' : 'Registrar anticipo'} <span>Bs {money(total)}</span></button></>}</div>
+    <div className="cart-actions">{!cart.length && Boolean(localStorage.getItem('roari-suspended-sale')) && <button className="restore-button" onClick={restore}><RotateCcw /> Restaurar venta suspendida</button>}{channel === 'retail' ? <><div className="secondary-actions secondary-actions-3"><button data-pos-action="suspend" onClick={suspend} disabled={!cart.length}><Pause /> Suspender</button><button onClick={() => setTicketOpen(true)} disabled={!cart.length}><ReceiptText /> Ticket</button><button onClick={() => setReviewOpen(true)} disabled={!cart.length}><Sparkles /> Revisar</button></div>{cashClosed && <button className="cash-closed-notice" onClick={onGoToCash}>Caja cerrada — abrí la caja para poder cobrar</button>}{insufficientOrigin && <p className="cash-closed-notice">Hay líneas sin stock suficiente en la ubicación elegida — corrígelas para poder cobrar.</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || cashClosed || insufficientOrigin} onClick={() => setPaymentOpen(true)}><HandCoins /> Cobrar <span>Bs {money(total)}</span></button></> : <><button className="draft-button" disabled={!cart.length} onClick={openDraft}><FileText /> Guardar borrador</button><div className="secondary-actions"><button disabled={!cart.length} onClick={openDraft}>Cotización</button><button disabled={!cart.length} onClick={openDraft}>Crear pedido</button></div><button data-pos-action="pay" className="pay-button" disabled={!cart.length} onClick={() => channel === 'mayoreo' ? setPaymentOpen(true) : notify('Anticipo creado en modo demostración')}><HandCoins /> {channel === 'mayoreo' ? 'Cobrar' : 'Registrar anticipo'} <span>Bs {money(total)}</span></button></>}</div>
     {editing && <EditCartItemModal item={editing} onClose={() => setEditing(null)} />}{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} />}{ticketOpen && <TicketPreviewModal onClose={() => setTicketOpen(false)} />}
+    {reviewOpen && <CartReview items={cart} channel={channel} originStock={originStock} customer={customer} subtotal={subtotal} discount={discount} total={total} onClose={() => setReviewOpen(false)} onCheckout={() => { setReviewOpen(false); setPaymentOpen(true) }} />}
   </aside>
 }
