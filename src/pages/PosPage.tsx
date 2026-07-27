@@ -91,7 +91,12 @@ function PosContent() {
     else notify(`${name} estará disponible en una siguiente fase`)
   }
   const restoreSale = (sale: SuspendedSale) => {
-    loadSuspendedSale({ channel: sale.channel as 'retail' | 'mayoreo' | 'institucional', cart: sale.cart, discount: sale.discount })
+    loadSuspendedSale({
+      channel: sale.channel as 'retail' | 'mayoreo' | 'institucional',
+      cart: sale.cart,
+      discount: sale.discount,
+      customer: sale.customerId || sale.customerName ? { id: sale.customerId, name: sale.customerName ?? 'Cliente de mostrador', documento: sale.customerDocument } : null,
+    })
     localStorage.setItem('roari-suspended-sales-v2', JSON.stringify((JSON.parse(localStorage.getItem('roari-suspended-sales-v2') || '[]') as SuspendedSale[]).filter((item) => item.id !== sale.id)))
     setActiveModule('Venta')
   }

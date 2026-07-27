@@ -3,7 +3,10 @@ import { useMemo, useState } from 'react'
 import { FeatureShell, FeatureState, FeatureToolbar } from '../shared/FeatureShell'
 import type { CartItem } from '../../types'
 
-export interface SuspendedSale { id: string; date: string; seller: string; channel: string; customer: string; cart: CartItem[]; discount: number; total: number }
+// TAREA 4: customerId/customerName/customerDocument are optional — sales suspended
+// before this round never wrote them, and older records must still load without
+// crashing (see PosPage.restoreSale / PosContext.loadSuspendedSale's `?? null`).
+export interface SuspendedSale { id: string; date: string; seller: string; channel: string; customer: string; cart: CartItem[]; discount: number; total: number; customerId?: string; customerName?: string; customerDocument?: string }
 const readSuspended = (): SuspendedSale[] => { try { return JSON.parse(localStorage.getItem('roari-suspended-sales-v2') || '[]') as SuspendedSale[] } catch { return [] } }
 
 export function SuspendedSalesPage({ hasCurrentCart, onRestore, notify }:{hasCurrentCart:boolean;onRestore:(sale:SuspendedSale)=>void;notify:(message:string)=>void}) {

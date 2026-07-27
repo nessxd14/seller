@@ -13,3 +13,58 @@
 .documento-exportable .doc-brand b{text-transform:uppercase;letter-spacing:.4px}
 .documento-exportable .doc-brand div{justify-items:center;text-align:center}
 @media print{.documento-exportable .doc-brand img{width:104px;height:104px}}
+
+/* Ronda 2 — catálogo: h3 usa el mismo indicio visual que el r2 CSS ya define para h4
+   (ProductCatalog no cambió de tag; se agrega el selector correspondiente acá en vez de
+   tocar el archivo r2, que se deja exactamente como fue entregado). */
+.product-card h3[title]{cursor:help}
+
+/* Ronda 2 — botón "i" de info del producto: absolutamente posicionado sobre la fila de
+   SKU para no alterar la altura de la tarjeta (todas las tarjetas lo llevan por igual). */
+.product-info{position:relative}
+.product-info-trigger{position:absolute;top:8px;right:8px;width:20px;height:20px;border-radius:50%;border:1px solid #e3ded5;background:#fff;color:#8c8880;display:grid;place-items:center;padding:0;z-index:1}
+.product-info-trigger:hover{border-color:var(--orange);color:var(--orange)}
+.product-info-trigger svg{width:11px;height:11px}
+.product-info-popover{width:min(420px,95vw)}
+.product-info-body{display:grid;gap:16px}
+.product-info-body h4{font-size:12px;margin:0 0 7px;color:#57544e}
+.product-info-list{list-style:none;margin:0;padding:0;display:grid;gap:5px}
+.product-info-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px;color:#4c4944}
+.product-info-list li strong{display:flex;align-items:center;gap:6px;font-weight:600}
+.product-info-empty{font-size:12px;color:#9a978f;margin:0}
+
+/* Ronda 2 — selector de cliente inline (TAREA 4). */
+.customer-picker{position:relative;margin:0 20px 13px}
+.customer-picker>.customer-select{margin:0;width:100%}
+.customer-picker .chevron-open{transform:rotate(180deg)}
+.customer-picker-panel{position:absolute;z-index:20;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px #28251d1c;padding:12px}
+.customer-search-box{display:flex;align-items:center;gap:7px;border:1px solid #e3ded5;border-radius:9px;padding:0 10px;height:36px}
+.customer-search-box svg{width:14px;color:#9a978f}
+.customer-search-box input{border:0;outline:0;background:transparent;font-size:12px;width:100%;height:100%}
+.customer-picker-quick{display:flex;flex-wrap:wrap;gap:6px;margin:9px 0}
+.customer-picker-quick button{border:1px solid #dfdad1;background:#faf9f6;border-radius:8px;height:30px;padding:0 10px;font-size:11px;font-weight:600;color:#57544e;display:flex;align-items:center;gap:5px}
+.customer-picker-quick button:hover{border-color:var(--orange);color:var(--orange)}
+.customer-picker-quick svg{width:12px}
+.customer-results{max-height:220px;overflow-y:auto;display:grid;gap:4px}
+.customer-result-row{display:grid;text-align:left;border:1px solid transparent;border-radius:8px;padding:7px 9px;background:transparent}
+.customer-result-row:hover{background:#faf9f6;border-color:#e3ded5}
+.customer-result-row strong{font-size:12px}
+.customer-result-row small{font-size:11px;color:#9a978f;margin-top:1px}
+.customer-new-form{display:grid;gap:4px}
+.customer-picker-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+
+/* Ronda 2 — resumen de acciones secundarias con tres botones (Suspender/Ticket/Revisar). */
+.secondary-actions-3{grid-template-columns:1fr 1fr 1fr}
+
+/* Ronda 2 — pantalla de revisión previa al cobro (TAREA 5): reutiliza las clases
+   .doc-table/.doc-totals de DocumentoExportable para mantener el mismo look de tabla. */
+.cart-review-body{display:grid;gap:14px}
+.cart-review-customer{margin:0;font-size:12px;color:#4c4944}
+.doc-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+.cart-review-table{width:100%;font-size:11px}
+.cart-review-table td,.cart-review-table th{white-space:nowrap}
+.cart-review-flagged{background:#fff6f0}
+.cart-review-table .line-stock-error{display:flex;align-items:center;gap:4px;white-space:normal;margin-top:3px}
+.cart-review-table .line-stock-error svg{width:11px}
+.price-overridden-badge{border-color:var(--orange)!important;color:var(--orange)!important;margin-left:4px}
+.cart-review-totals{justify-self:end;min-width:220px}
