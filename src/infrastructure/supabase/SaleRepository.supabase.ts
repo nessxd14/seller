@@ -65,13 +65,19 @@ export class SupabaseSaleRepository implements SaleRepository {
   }
 
   async checkout(
-    input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén' }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number },
+    input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number },
     context: MutationContext
   ) {
     const actor = context.actorId ?? 'pos'
+    // Mirrors TransferRepository.supabase.ts's buildLineasJsonb exactly: when a non-base
+    // presentation is active, registrar_venta expects presentacion_id + cantidad_presentacion
+    // (it resolves factor_unidad_base itself and prices per presentation unit); otherwise
+    // cantidad_base — line.quantity is already in whichever unit is active (see PaymentModal).
     const lineas = input.lines.map((line) => ({
       producto_id: Number(line.productId),
-      cantidad: line.quantity,
+      ...(line.presentacionId != null
+        ? { presentacion_id: line.presentacionId, cantidad_presentacion: line.quantity }
+        : { cantidad_base: line.quantity }),
       precio_unitario: centsToNumeric(line.unitPriceCents),
       ...(line.listPriceCents != null ? { precio_lista: centsToNumeric(line.listPriceCents) } : {}),
       // Optional: forces this line's stock to be taken from the chosen sucursal — registrar_venta

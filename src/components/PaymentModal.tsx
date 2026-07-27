@@ -50,7 +50,7 @@ export function PaymentModal({ onClose }: { onClose: () => void }) {
     setError('')
     try {
       const checkout = await saleService.checkout({
-        lines: cart.map((item) => ({ productId: String(item.id), quantity: item.cantidad, unitPriceCents: Math.round(item.precioAplicado * (1 - item.descuento / 100) * 100), sourceLocation: item.ubicacion })),
+        lines: cart.map((item) => ({ productId: String(item.id), quantity: item.cantidad, unitPriceCents: Math.round(item.precioAplicado * (1 - item.descuento / 100) * 100), sourceLocation: item.ubicacion, presentacionId: item.presentacionId })),
         payments: buildPayments(),
         cashSessionId: sessionId,
         discountCents: Math.round(discount * 100),

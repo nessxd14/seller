@@ -19,6 +19,7 @@ const estadoLabel: Record<TransferEstado, string> = {
 // transfer-specific keys there would be more confusing than a small local helper here).
 const transferChipClass = (estado: TransferEstado): 'ok' | 'pending' | 'problem' =>
   estado === 'RECIBIDO' ? 'ok' : estado === 'RECHAZADO' || estado === 'CANCELADO' ? 'problem' : 'pending'
+const fmtQty = (n: number) => n.toLocaleString('es-BO', { maximumFractionDigits: 2 })
 
 function SortTh({ label, sortkey, activeKey, onToggle }: { label: string; sortkey: SortKey; activeKey: SortKey; onToggle: (key: SortKey) => void }) {
   return <button className={`sortable-th ${activeKey === sortkey ? 'active' : ''}`} onClick={() => onToggle(sortkey)}>{label}<ArrowUpDown size={11} /></button>
@@ -157,16 +158,29 @@ function TransferDetailPanel({ transfer, canCancel, onClose, onCancel, onReceive
         <div className="table-head"><span>Producto</span><span>Solicitado</span><span>Despachado</span><span>{canReceive ? 'Recibido (editable)' : 'Recibido'}</span></div>
         {transfer.lines.map((line) => {
           const despachada = line.cantidadDespachada ?? line.cantidadBase
-          const received = receivedByLine[line.id] ?? despachada
-          const short = canReceive && received < despachada
+          // TAREA 4: receive in the unit it was requested in. `factor` is derived from the
+          // line's own requested ratio (cantidadBase = cantidadPresentacion × factor at
+          // creation time — see TransferRepository.supabase.ts / crear_solicitud_traslado),
+          // never re-fetched. receive() itself is unchanged: it always sends cantidad_base.
+          const factor = line.presentacionId != null && line.cantidadPresentacion ? line.cantidadBase / line.cantidadPresentacion : 1
+          const receivedBase = receivedByLine[line.id] ?? despachada
+          const short = canReceive && receivedBase < despachada
+          const receivedInUnit = receivedBase / factor
+          const despachadaInUnit = despachada / factor
+          const onChangeReceived = (raw: string) => {
+            const entered = Number(raw)
+            const nextBase = Number.isFinite(entered) ? Math.max(0, Math.min(despachada, entered * factor)) : 0
+            setReceivedByLine((prev) => ({ ...prev, [line.id]: nextBase }))
+          }
           return <article key={line.id}>
             <span><strong>{line.name}</strong><small>{line.sku}</small></span>
             <span>{line.presentacionNombre ? `${line.cantidadPresentacion} ${line.presentacionNombre}` : line.cantidadBase}</span>
             <span>{line.cantidadDespachada ?? '—'}</span>
             {canReceive ? (
               <div>
-                <input type="number" min="0" max={despachada} value={received} onChange={(e) => setReceivedByLine((prev) => ({ ...prev, [line.id]: Math.max(0, Math.min(despachada, Number(e.target.value))) }))} />
-                {short && <small className="line-stock-error">La diferencia ({despachada - received}) se registrará como faltante en Tienda</small>}
+                <input type="number" min="0" max={despachadaInUnit} step="any" value={receivedInUnit} onChange={(e) => onChangeReceived(e.target.value)} />
+                {factor !== 1 && <small className="line-equivalence">{line.presentacionNombre} = {fmtQty(receivedBase)} u</small>}
+                {short && <small className="line-stock-error">La diferencia ({fmtQty(despachada - receivedBase)}) se registrará como faltante en Tienda</small>}
               </div>
             ) : <span>{line.cantidadRecibida ?? '—'}</span>}
           </article>

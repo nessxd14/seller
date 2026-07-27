@@ -6,6 +6,7 @@ import './phase11.css'
 import './workflows.css'
 import './print.css'
 import './integration-readiness.css'
+import './pos-ajustes.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
