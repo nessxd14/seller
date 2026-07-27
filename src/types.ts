@@ -38,4 +38,10 @@ export interface CartItem extends Product {
   presentacionId?: number
   presentacionNombre?: string
   factorUnidadBase?: number
+  // TAREA B: true once the seller has manually committed a price for this line (via the
+  // inline editor or EditCartItemModal) — freezes precioAplicado/descuento against the
+  // automatic channel-switch recompute in PosContext's setChannel until cleared. Cleared
+  // again on a presentation change, since that recompute is itself a fresh, deliberate
+  // baseline the seller just triggered.
+  precioModificado?: boolean
 }

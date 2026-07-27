@@ -8,6 +8,7 @@ import { moneyToDecimal } from '../domain/common/money'
 import { getPrice } from '../data/products'
 import { listPresentations } from '../infrastructure/services'
 import { isLineUnderstocked } from '../domain/sales/stockCheck'
+import { isLineUnpriced } from '../domain/sales/priceCheck'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
@@ -48,7 +49,11 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
   // that happens it's no longer "not negotiated," so the inherited badge only shows while the
   // applied price still equals the untouched suggested value.
   const priceMatchesSuggestion = Math.abs(item.precioAplicado - channelListPrice) < 0.005
-  const showInheritedBadge = isHeredado && priceMatchesSuggestion
+  // TAREA A / three-state badges: "heredado" is a lie when there's nothing to inherit —
+  // retail itself being 0/NULL means the line has NO price anywhere, not a borrowed one.
+  // That state gets its own "sin precio" badge instead, and the two are mutually exclusive.
+  const isUnpriced = isLineUnpriced(item)
+  const showInheritedBadge = isHeredado && priceMatchesSuggestion && !isUnpriced
   const isOverridden = !priceMatchesSuggestion
 
   const [editing, setEditing] = useState(false)
@@ -56,7 +61,10 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
   const startEdit = () => { setDraftValue(String(item.precioAplicado)); setEditing(true) }
   const commit = () => {
     const parsed = Number(draftValue)
-    updateItem(item.id, { precioAplicado: Number.isFinite(parsed) ? Math.max(0, parsed) : item.precioAplicado })
+    // TAREA B: committing via the inline editor IS the definition of "manually modified" —
+    // set precioModificado unconditionally so PosContext's channel-switch recompute leaves
+    // this line alone from now on, regardless of whether the new value actually differs.
+    updateItem(item.id, { precioAplicado: Number.isFinite(parsed) ? Math.max(0, parsed) : item.precioAplicado, precioModificado: true })
     setEditing(false)
   }
   const cancelEdit = () => setEditing(false)
@@ -77,6 +85,10 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
       presentacionNombre: isBase ? undefined : chosen.nombre,
       factorUnidadBase: isBase ? undefined : nextFactor,
       precioAplicado: nextPrice,
+      // TAREA B: a presentation change is itself a fresh, deliberate recompute the seller
+      // just triggered — it supersedes any earlier manual price edit, so it clears the
+      // "frozen" flag rather than leaving a stale override in place.
+      precioModificado: false,
     })
   }
 
@@ -104,6 +116,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
               Bs {money(item.precioAplicado)} c/u {item.descuento > 0 && <em>−{item.descuento}%</em>}
             </button>}
         {showInheritedBadge && <small className="price-heredado-badge" title="Este canal no tiene precio propio configurado: se usa el precio de mostrador. No es un precio negociado.">precio heredado, no negociado</small>}
+        {isUnpriced && <small className="price-heredado-badge price-overridden-badge" title="Esta línea no tiene precio configurado en ningún canal. Escribí un precio para poder cobrarla.">sin precio</small>}
       </div>
     </div><button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button></div>
     {onSetOrigin && <div className="channel-tabs origin-tabs" role="group" aria-label={`Origen ${item.nombre}`}>{(['Tienda', 'Almacén'] as const).map((loc) => <button key={loc} type="button" className={item.ubicacion === loc ? 'active' : ''} onClick={() => onSetOrigin(loc)}>{loc}{originStock ? ` ${loc === 'Tienda' ? originStock.tienda : originStock.almacen}` : ''}</button>)}</div>}
@@ -111,6 +124,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
       {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
     </select></div>}
     {insufficient && <small className="line-stock-error">Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBase)} uds.{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
+    {isUnpriced && <small className="line-stock-error">{item.nombre} no tiene precio. Escribilo en la línea para poder cobrar.</small>}
     <div className="cart-line-bottom"><div className="qty-control"><button disabled={item.cantidad <= 1} onClick={() => updateQuantity(item.id, item.cantidad - 1)}><Minus /></button><strong>{item.cantidad}</strong><button onClick={() => updateQuantity(item.id, item.cantidad + 1)}><Plus /></button></div><button className="edit-link" onClick={onEdit}><Pencil /> Editar</button><strong className="line-total">Bs {money(lineTotal)}</strong></div>
     {factor !== 1 && <small className="line-equivalence">{fmtQty(item.cantidad)} {item.presentacionNombre} = {fmtQty(cantidadBase)} u</small>}
     </div></article>
