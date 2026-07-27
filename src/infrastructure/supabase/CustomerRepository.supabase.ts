@@ -14,6 +14,9 @@ interface ClienteRow {
   activo: boolean
   creado_en: string
   actualizado_en: string | null
+  origen: string | null
+  ciudad: string | null
+  razon_social: string | null
 }
 
 const rowToCustomer = (row: ClienteRow): CustomerRecord & Versioned => ({
@@ -30,6 +33,9 @@ const rowToCustomer = (row: ClienteRow): CustomerRecord & Versioned => ({
   paymentTerms: 'Contado',
   creditLimitCents: 0,
   pendingBalanceCents: 0,
+  origin: row.origen === 'shopify' ? 'shopify' : 'manual',
+  businessName: row.razon_social ?? undefined,
+  city: row.ciudad ?? undefined,
   // cliente has no version column: not optimistically locked at the DB level.
   version: 1,
   updatedAt: row.actualizado_en ?? row.creado_en,
@@ -69,6 +75,8 @@ export class SupabaseCustomerRepository implements CustomerRepository {
       telefono: value.phone || null,
       email: value.email || null,
       direccion: value.address || null,
+      ciudad: value.city || null,
+      razon_social: value.businessName || null,
       activo: true,
       actualizado_en: new Date().toISOString(),
     }

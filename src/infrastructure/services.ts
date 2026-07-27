@@ -23,3 +23,5 @@ export const sensitiveOperations = mockServices.sensitiveOperations
 export const cashService = featureFlags.supabase ? supabaseServices.cashService : mockServices.cashService
 export const saleService = featureFlags.supabase ? supabaseServices.saleService : mockServices.saleService
 export const transferService = featureFlags.supabase ? supabaseServices.transferService : mockServices.transferService
+export const configService = featureFlags.supabase ? supabaseServices.configService : mockServices.configService
+export const reportsService = featureFlags.supabase ? supabaseServices.reportsService : mockServices.reportsService

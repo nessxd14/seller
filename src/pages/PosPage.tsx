@@ -13,11 +13,13 @@ import { CashPage } from '../features/cash/CashPage'
 import { SuspendedSalesPage, type SuspendedSale } from '../features/suspended-sales/SuspendedSalesPage'
 import { ProductsPage } from '../features/products/ProductsPage'
 import { InventoryPage } from '../features/inventory/InventoryPage'
-import { PlaceholderPage } from '../features/shared/PlaceholderPage'
 import { TransfersPage, type PendingTransferRequest } from '../features/transfers/TransfersPage'
+import { ConfigPage } from '../features/settings/ConfigPage'
+import { ReportsPage } from '../features/reports/ReportsPage'
 import { featureFlags } from '../config/featureFlags'
 import { products } from '../data/products'
 import { productRepository } from '../infrastructure/services'
+import { loadEmpresaConfig } from '../config/empresaStore'
 import { AuthDevSelector } from '../features/auth/AuthDevSelector'
 import { LoginScreen } from '../features/auth/LoginScreen'
 import { IntegrationState } from '../features/integration/IntegrationState'
@@ -66,6 +68,12 @@ function PosContent() {
     return () => window.removeEventListener('keydown', onKeyDown)
   })
   useEffect(() => { const show = () => setConflictDemo(true); window.addEventListener('roari:conflict-demo', show); return () => window.removeEventListener('roari:conflict-demo', show) }, [])
+  // Loaded once at app start so real config_empresa data has had a chance to arrive
+  // before a user opens a print preview or the login screen; empresaStore keeps
+  // rendering the hardcoded fallback until this resolves (or forever, on failure).
+  // Mutates a plain module-level object, not React state, so this is not subject to
+  // the react-hooks/set-state-in-effect rule.
+  useEffect(() => { void loadEmpresaConfig() }, [])
   // Supabase mode: real session via authSessionProvider (AuthDevSelector only wires the
   // mock provider). Mock mode is untouched — AuthDevSelector keeps driving `session` below.
   useEffect(() => {
@@ -88,7 +96,7 @@ function PosContent() {
     setActiveModule('Venta')
   }
   const readOnly=session?.user.role==='auditor'||session?.user.role==='operario'
-  const page = activeModule === 'Cotizaciones' ? <QuotationsPage notify={notify} readOnly={readOnly} onOrderCreated={() => setActiveModule('Pedidos')} initialDraft={pendingDraft} onInitialDraftConsumed={() => setPendingDraft(null)} /> : activeModule === 'Pedidos' ? <OrdersPage notify={notify} readOnly={readOnly} canDispatch={hasPermission(session,'orders_dispatch')} /> : activeModule === 'Clientes' ? <CustomersPage notify={notify} /> : activeModule === 'Caja' ? <CashPage notify={notify} canCloseCash={!featureFlags.supabase || session?.user.role === 'admin'} /> : activeModule === 'Suspendidas' ? <SuspendedSalesPage hasCurrentCart={Boolean(cart.length)} onRestore={restoreSale} notify={notify} /> : activeModule === 'Productos' ? <ProductsPage notify={notify} /> : activeModule === 'Inventario' ? <InventoryPage notify={notify} /> : activeModule === 'Traslados' ? <TransfersPage notify={notify} initialRequest={pendingTransfer} onInitialRequestConsumed={() => setPendingTransfer(null)} /> : activeModule === 'Reportes' ? <PlaceholderPage title="Reportes" /> : activeModule === 'Configuración' ? <PlaceholderPage title="Configuración" /> : <main className="catalog"><div className="catalog-title"><div><span className="eyebrow">PUNTO DE VENTA</span><h1>¿Qué vamos a vender hoy?</h1></div><p>{capitalize(new Date().toLocaleDateString('es-BO', { weekday: 'long', day: 'numeric', month: 'long' }))}</p></div><SalesChannelTabs /><ProductCatalog search={search} category={category} setCategory={setCategory} /></main>
+  const page = activeModule === 'Cotizaciones' ? <QuotationsPage notify={notify} readOnly={readOnly} onOrderCreated={() => setActiveModule('Pedidos')} initialDraft={pendingDraft} onInitialDraftConsumed={() => setPendingDraft(null)} /> : activeModule === 'Pedidos' ? <OrdersPage notify={notify} readOnly={readOnly} canDispatch={hasPermission(session,'orders_dispatch')} /> : activeModule === 'Clientes' ? <CustomersPage notify={notify} /> : activeModule === 'Caja' ? <CashPage notify={notify} canCloseCash={!featureFlags.supabase || session?.user.role === 'admin'} /> : activeModule === 'Suspendidas' ? <SuspendedSalesPage hasCurrentCart={Boolean(cart.length)} onRestore={restoreSale} notify={notify} /> : activeModule === 'Productos' ? <ProductsPage notify={notify} /> : activeModule === 'Inventario' ? <InventoryPage notify={notify} /> : activeModule === 'Traslados' ? <TransfersPage notify={notify} initialRequest={pendingTransfer} onInitialRequestConsumed={() => setPendingTransfer(null)} /> : activeModule === 'Reportes' ? <ReportsPage notify={notify} /> : activeModule === 'Configuración' ? <ConfigPage notify={notify} /> : <main className="catalog"><div className="catalog-title"><div><span className="eyebrow">PUNTO DE VENTA</span><h1>¿Qué vamos a vender hoy?</h1></div><p>{capitalize(new Date().toLocaleDateString('es-BO', { weekday: 'long', day: 'numeric', month: 'long' }))}</p></div><SalesChannelTabs /><ProductCatalog search={search} category={category} setCategory={setCategory} /></main>
   const blockKind = !session || session.user.hasProfile === false
     ? 'unauthorized'
     : !session.user.active

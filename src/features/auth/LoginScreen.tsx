@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { LogIn } from 'lucide-react'
 import { supabaseAuthSessionProvider } from '../../infrastructure/supabase/SupabaseAuthSessionProvider'
-import { empresa } from '../../config/empresa'
+import { empresaStore as empresa } from '../../config/empresaStore'
 
 export function LoginScreen() {
   const [email, setEmail] = useState('')

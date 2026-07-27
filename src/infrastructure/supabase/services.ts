@@ -8,6 +8,11 @@ import { saleRepository } from './SaleRepository.supabase'
 import { supabaseAuthSessionProvider } from './SupabaseAuthSessionProvider'
 import { transferRepository, type CreateTransferInput } from './TransferRepository.supabase'
 import type { TransferEstado, TransferRecord } from '../../application/shared/models'
+import { configRepository } from './ConfigRepository.supabase'
+import { reportsRepository } from './ReportsRepository.supabase'
+
+export const configService = configRepository
+export const reportsService = reportsRepository
 
 const currentActorId = async (): Promise<string> => {
   const session = await supabaseAuthSessionProvider.getSession()
