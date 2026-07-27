@@ -2,11 +2,12 @@ import { Building2, Landmark, Plus, Warehouse, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { QuoteDraft, WorkflowLine } from '../../application/shared/models'
 import type { CustomerRecord } from '../../application/shared/models'
-import { customerService, productRepository, getStockByProduct, listPresentations, authSessionProvider } from '../../infrastructure/services'
+import { customerService, productRepository, getStockByProduct, listPresentations, listLineIdentifiers, authSessionProvider } from '../../infrastructure/services'
 import { featureFlags } from '../../config/featureFlags'
 import { aggregateStockBySucursal } from '../inventory/stockAggregation'
 import { formatMoney, money } from '../../domain/common/money'
 import { Modal } from '../../components/Modal'
+import { LineIdentifiersRow, type LineIdentifiers } from '../../components/LineIdentifiersRow'
 import type { Product } from '../../types'
 
 type EditableChannel = QuoteDraft['channel']
@@ -54,6 +55,9 @@ export function DraftOrderEditor({ quote, onClose, onSave, onCreateOrder, onConv
   // Base (per-base-unit) price captured at add-time, used to suggest a price when the
   // presentation changes; keyed by line id so overrides via PricePopover aren't disturbed.
   const [basePriceCentsByLine, setBasePriceCentsByLine] = useState<Record<string, number>>({})
+  // Item 2.2: barra/fábrica/marca, batch-fetched per productId set so a multi-line
+  // quote/order doesn't trigger an identifier lookup per line render.
+  const [identifiersByProduct, setIdentifiersByProduct] = useState<Record<string, LineIdentifiers>>({})
 
   useEffect(() => { void authSessionProvider.getSession().then((session) => session && setActorId(session.user.email ?? session.user.id)) }, [])
   useEffect(() => { void customerService.list().then(setCustomers) }, [])
@@ -167,6 +171,13 @@ export function DraftOrderEditor({ quote, onClose, onSave, onCreateOrder, onConv
 
   const catalogLines = value.lines.filter((line) => !line.isCustomItem)
   const customLines = value.lines.filter((line) => line.isCustomItem)
+
+  useEffect(() => {
+    const missing = Array.from(new Set(catalogLines.map((line) => line.productId).filter((id) => id && !(id in identifiersByProduct))))
+    if (!missing.length) return
+    void listLineIdentifiers(missing).then((result) => setIdentifiersByProduct((prev) => ({ ...prev, ...result })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogLines])
 
   // Item 2: stock validation against the currently selected origin only. Base-unit quantity
   // = quantity * factorUnidadBase (item 3's presentation math folded in here).
@@ -290,7 +301,7 @@ export function DraftOrderEditor({ quote, onClose, onSave, onCreateOrder, onConv
             return (
               <div key={line.id} className={`draft-line-row presentation-line-row ${stockError ? 'has-stock-error' : ''}`}>
                 <div className="draft-line-top">
-                  <span><strong>{line.name}</strong><small>{line.sku}</small></span>
+                  <span><strong>{line.name}</strong><small>{line.sku}</small><LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} /></span>
                   <input aria-label={`Cantidad ${line.name}`} type="number" min="1" disabled={readOnly} value={line.quantity} onChange={(e) => updateLine(line.id, { quantity: Math.max(1, Number(e.target.value)) })} />
                   {presentations.length > 0 && (
                     <select
@@ -343,13 +354,16 @@ export function DraftOrderEditor({ quote, onClose, onSave, onCreateOrder, onConv
         <div className="editor-lines draft-lines custom-lines">
           <header><strong>Ítems especiales / a pedido</strong>{!readOnly && <button type="button" onClick={addCustomLine}><Plus /> Añadir ítem personalizado</button>}</header>
           {customLines.map((line) => (
-            <div key={line.id} className="draft-line-row custom-line-row">
-              <input aria-label="Descripción" disabled={readOnly} placeholder="Descripción" value={line.name} onChange={(e) => updateLine(line.id, { name: e.target.value })} />
-              <input aria-label="Cantidad" type="number" min="1" disabled={readOnly} value={line.quantity} onChange={(e) => updateLine(line.id, { quantity: Math.max(1, Number(e.target.value)) })} />
-              <input aria-label="Precio" type="number" min="0" disabled={readOnly} value={line.unitPriceCents / 100} onChange={(e) => updateLine(line.id, { unitPriceCents: Math.max(0, Math.round(Number(e.target.value) * 100)) })} />
-              <input aria-label="Nota" disabled={readOnly} placeholder="Nota (ej. comprar a proveedor X)" value={line.note ?? ''} onChange={(e) => updateLine(line.id, { note: e.target.value })} />
-              <strong>{formatMoney(money(lineTotalCents(line)))}</strong>
-              {!readOnly && <button type="button" onClick={() => removeLine(line.id)}><X /></button>}
+            <div key={line.id} className="draft-line-row-wrap">
+              <div className="draft-line-row custom-line-row">
+                <input aria-label="Descripción" disabled={readOnly} placeholder="Descripción" value={line.name} onChange={(e) => updateLine(line.id, { name: e.target.value })} />
+                <input aria-label="Cantidad" type="number" min="1" disabled={readOnly} value={line.quantity} onChange={(e) => updateLine(line.id, { quantity: Math.max(1, Number(e.target.value)) })} />
+                <input aria-label="Precio" type="number" min="0" disabled={readOnly} value={line.unitPriceCents / 100} onChange={(e) => updateLine(line.id, { unitPriceCents: Math.max(0, Math.round(Number(e.target.value) * 100)) })} />
+                <input aria-label="Nota" disabled={readOnly} placeholder="Nota (ej. comprar a proveedor X)" value={line.note ?? ''} onChange={(e) => updateLine(line.id, { note: e.target.value })} />
+                <strong>{formatMoney(money(lineTotalCents(line)))}</strong>
+                {!readOnly && <button type="button" onClick={() => removeLine(line.id)}><X /></button>}
+              </div>
+              <LineIdentifiersRow isCustomItem />
             </div>
           ))}
           {!customLines.length && <div className="empty-hint" style={{ padding: '10px 12px' }}>Sin ítems especiales.</div>}

@@ -93,6 +93,7 @@ const bpToPctSafe = (pct: number) => Math.round(pct * 100)
 const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[]): OrderView & Versioned => ({
   id: String(header.id),
   number: header.referencia ?? `PED-${header.id}`,
+  customerId: header.cliente_id != null ? String(header.cliente_id) : undefined,
   customerName: header.cliente?.nombre ?? '',
   channel: categoriaToChannel(header.categoria) as OrderView['channel'],
   status: estadoPedidoToStatus(header.estado),
@@ -184,7 +185,7 @@ export class SupabaseOrderRepository implements OrderRepository {
       p_referencia: value.number || null,
       p_lineas: buildLineasJsonb(value.lines, value.channel),
       p_usuario: actor,
-      p_cliente_id: null,
+      p_cliente_id: value.customerId ? Number(value.customerId) : null,
       p_descuento_general: 0,
     })
     if (error) throw error

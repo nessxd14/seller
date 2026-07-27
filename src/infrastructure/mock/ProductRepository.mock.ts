@@ -43,3 +43,19 @@ export const listPresentations = async (productId: number): Promise<Array<{ id: 
   void productId
   return [{ id: 0, nombre: 'Unidad', factorUnidadBase: 1, esBase: true }]
 }
+
+export interface LineIdentifiers { barra?: string; fabrica?: string; marca?: string }
+
+// Mock mode has no `identificador` table — stand in with the mock Product's own
+// codigoBarra/codigoFabrica fields (they already exist on the mock seed data and read
+// naturally as "barra"/"fabrica"), so mock mode's secondary line doesn't look broken/empty
+// next to Supabase mode. There is no mock equivalent of producto.marca, so marca stays
+// undefined and is simply skipped by the renderer.
+export const listLineIdentifiers = async (productIds: string[]): Promise<Record<string, LineIdentifiers>> => {
+  const result: Record<string, LineIdentifiers> = {}
+  productIds.forEach((id) => {
+    const product = products.find((item) => String(item.id) === id)
+    if (product) result[id] = { barra: product.codigoBarra || undefined, fabrica: product.codigoFabrica || undefined }
+  })
+  return result
+}

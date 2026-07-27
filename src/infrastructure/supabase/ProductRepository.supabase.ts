@@ -117,3 +117,48 @@ export const listPresentations = async (productId: number): Promise<Presentation
   const rows = (data ?? []) as Array<{ id: number; nombre: string; factor_unidad_base: number | string; es_base: boolean; activo: boolean | null }>
   return rows.filter((row) => row.activo !== false).map((row) => ({ id: row.id, nombre: row.nombre, factorUnidadBase: num(row.factor_unidad_base), esBase: row.es_base }))
 }
+
+export interface LineIdentifiers { barra?: string; fabrica?: string; marca?: string }
+
+/**
+ * Batch-fetch barcode/factory-code/brand for a set of product ids, for the secondary
+ * "identifiers" line on order/quote rows (item 2.2). Codes live on `identificador`,
+ * keyed by presentacion_id — NOT producto_id — so this resolves each product's BASE
+ * presentation first, then looks up its identificador rows. Batched via `.in()` across
+ * all requested products in two round trips total (not one query per line) to avoid an
+ * N+1 waterfall on a multi-line quote/order.
+ */
+export const listIdentifiersForProducts = async (productIds: string[]): Promise<Record<string, LineIdentifiers>> => {
+  const ids = [...new Set(productIds.map(Number))].filter((id) => Number.isFinite(id))
+  if (!ids.length) return {}
+  const [{ data: productos, error: prodError }, { data: presentaciones, error: presError }] = await Promise.all([
+    supabase.from('producto').select('id,marca').in('id', ids),
+    supabase.from('presentacion').select('id,producto_id').in('producto_id', ids).eq('es_base', true),
+  ])
+  if (prodError) throw prodError
+  if (presError) throw presError
+  const basePresByProduct = new Map<number, number>()
+  ;(presentaciones ?? []).forEach((row) => basePresByProduct.set((row as { producto_id: number }).producto_id, (row as { id: number }).id))
+  const presIds = [...basePresByProduct.values()]
+  const { data: identificadores, error: idError } = presIds.length
+    ? await supabase.from('identificador').select('presentacion_id,tipo,valor,activo').in('presentacion_id', presIds).in('tipo', ['barra', 'fabrica'])
+    : { data: [] as unknown[], error: null }
+  if (idError) throw idError
+  const codesByPres = new Map<number, { barra?: string; fabrica?: string }>()
+  ;(identificadores ?? []).forEach((row) => {
+    const typed = row as { presentacion_id: number; tipo: 'barra' | 'fabrica'; valor: string; activo: boolean | null }
+    if (typed.activo === false) return
+    const entry = codesByPres.get(typed.presentacion_id) ?? {}
+    if (typed.tipo === 'barra' && !entry.barra) entry.barra = typed.valor
+    if (typed.tipo === 'fabrica' && !entry.fabrica) entry.fabrica = typed.valor
+    codesByPres.set(typed.presentacion_id, entry)
+  })
+  const result: Record<string, LineIdentifiers> = {}
+  ;(productos ?? []).forEach((row) => {
+    const typed = row as { id: number; marca: string | null }
+    const presId = basePresByProduct.get(typed.id)
+    const codes = presId != null ? codesByPres.get(presId) : undefined
+    result[String(typed.id)] = { barra: codes?.barra, fabrica: codes?.fabrica, marca: typed.marca ?? undefined }
+  })
+  return result
+}

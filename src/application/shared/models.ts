@@ -52,6 +52,7 @@ export interface QuoteDraft {
 export interface OrderView {
   id: string
   number: string
+  customerId?: string
   customerName: string
   channel: Extract<SalesChannel, 'mayoreo' | 'institucional' | 'municipal'>
   status: OrderWorkflowStatus
@@ -73,6 +74,45 @@ export interface CustomerRecord {
   paymentTerms: string
   creditLimitCents: number
   pendingBalanceCents: number
+}
+
+// Traslados Almacén <-> Tienda (Parte 1). Mirrors solicitud_traslado/solicitud_traslado_linea
+// closely rather than forcing it into the generic Versioned/CRUD repository shape — like
+// SaleRepository/CashRepository, transfers are RPC-driven (create/receive/cancel actions,
+// no optimistic-edit "save" verb) and solicitud_traslado has no version column.
+export type TransferMotivo = 'VENTA_DIRECTA' | 'REPOSICION'
+export type TransferEstado = 'SOLICITADO' | 'EN_TRANSITO' | 'RECIBIDO' | 'RECHAZADO' | 'CANCELADO'
+
+export interface TransferLine {
+  id: string
+  productId: string
+  name: string
+  sku: string
+  presentacionId?: number
+  presentacionNombre?: string
+  cantidadPresentacion?: number
+  cantidadBase: number
+  cantidadDespachada?: number
+  cantidadRecibida?: number
+  nota?: string
+}
+
+export interface TransferRecord {
+  id: string
+  motivo: TransferMotivo
+  estado: TransferEstado
+  sucursalOrigenId: number
+  sucursalDestinoId: number
+  referencia?: string
+  nota?: string
+  solicitadoPor: string
+  solicitadoEn: string
+  despachadoPor?: string
+  despachadoEn?: string
+  recibidoPor?: string
+  recibidoEn?: string
+  creadoEn: string
+  lines: TransferLine[]
 }
 
 export interface CashSessionRecord {
