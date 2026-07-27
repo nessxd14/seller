@@ -44,7 +44,7 @@ export interface OrderRepository {
   getById(id:string):Promise<(OrderView & Versioned)|null>
   save(value:OrderView & Partial<Versioned>,context:MutationContext):Promise<OrderView & Versioned>
 }
-export interface SaleCheckoutLine { productId:string; quantity:number; unitPriceCents:number; listPriceCents?:number; sourceLocation?:'Tienda'|'Almacén' }
+export interface SaleCheckoutLine { productId:string; quantity:number; unitPriceCents:number; listPriceCents?:number; sourceLocation?:'Tienda'|'Almacén'; presentacionId?:number }
 export interface SaleCheckoutPayment { method:'cash'|'qr'|'transfer'; amountCents:number }
 export interface SaleCheckoutResult { saleId:string; subtotalCents:number; discountCents:number; totalCents:number }
 export interface SaleRepository {

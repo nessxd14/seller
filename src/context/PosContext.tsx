@@ -36,7 +36,13 @@ export function PosProvider({ children }: { children: ReactNode }) {
 
   const setChannel = (next: SalesChannel) => {
     setChannelState(next)
-    setCart((items) => items.map((item) => ({ ...item, precioAplicado: getPrice(item, next), descuento: 0 })))
+    // Bug fix (brief TAREA 3): getPrice() always returns the product's PER-BASE-UNIT channel
+    // price. A line with an active non-base presentation (e.g. "3 Caja") must multiply that
+    // by its factorUnidadBase to get the per-presentation-unit price — otherwise switching
+    // channels silently re-prices a "Caja" line as if it were a single loose unit. Mirrors
+    // DraftOrderEditor's channel/presentation recompute: reset to the new channel's suggested
+    // price (any manual override the seller made is discarded, same as changing presentation).
+    setCart((items) => items.map((item) => ({ ...item, precioAplicado: roundMoney(getPrice(item, next) * (item.factorUnidadBase ?? 1)), descuento: 0 })))
     setDiscount(0)
   }
 

@@ -17,6 +17,10 @@ export interface Product {
   precioMunicipal: number
   stockTienda: number
   stockAlmacen: number
+  // Which non-retail channel prices were NOT set explicitly and fell back to precioRetail
+  // (Supabase adapter only — see ProductRepository.supabase.ts's precioCanal helper). Absent/
+  // undefined in mock mode, where every channel price is seeded, so there is no gap to mark.
+  preciosHeredados?: { mayoreo: boolean; institucional: boolean; municipal: boolean }
 }
 
 export interface CartItem extends Product {
@@ -28,4 +32,10 @@ export interface CartItem extends Product {
   ubicacion: 'Tienda' | 'Almacén'
   observacion: string
   motivoPrecio: string
+  // Active sales-unit presentation for this line (e.g. "Caja" with factor 24). Absent (or
+  // factorUnidadBase === 1) means the line is in the product's base unit — mirrors
+  // WorkflowLine's vocabulary in src/application/shared/models.ts exactly.
+  presentacionId?: number
+  presentacionNombre?: string
+  factorUnidadBase?: number
 }

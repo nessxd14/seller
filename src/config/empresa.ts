@@ -7,7 +7,7 @@ import logoCation from '../assets/logo-cation.png'
 // src/config/empresaStore.ts. nit is intentionally blank in the fallback — the export
 // component must not render the NIT line while it stays empty.
 export const empresaFallback = {
-  razonSocial: 'Comercializadora Cation SRL',
+  razonSocial: 'Cation SRL y Asociados',
   direccion: 'Calle Secure s/n entre 1 de Mayo e Ibare',
   ciudad: 'Trinidad · Beni · Bolivia',
   celular: '67986727',

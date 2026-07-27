@@ -20,24 +20,41 @@ interface ProductoRow {
 
 const num = (value: number | string | null | undefined): number => (value == null ? 0 : Number(value))
 
-const rowToProduct = (row: ProductoRow): Product => ({
-  id: row.id,
-  sku: row.sku_interno ?? String(row.id),
-  codigoBarra: row.sku_interno ?? '',
-  codigoFabrica: row.sku_interno ?? '',
-  nombre: row.nombre,
-  descripcion: row.marca ?? '',
-  categoria: row.marca ?? 'General',
-  imagen: '',
-  imagenUrl: row.imagen_url ?? undefined,
-  color: '#585b63',
-  precioRetail: num(row.precio_base),
-  precioMayoreo: num(row.precio_mayoreo),
-  precioInstitucional: num(row.precio_institucion),
-  precioMunicipal: num(row.precio_municipal),
-  stockTienda: 0,
-  stockAlmacen: 0,
-})
+/**
+ * Channel-price resolution with retail fallback (TAREA 2, option a confirmed by Ness): a
+ * missing precio_mayoreo/precio_institucion/precio_municipal must NEVER be charged as Bs 0 —
+ * it falls back to precio_base (retail) and is flagged as "heredado" (inherited, not
+ * negotiated) so the UI can mark it distinctly from a real, deliberately-set channel price.
+ * Never applied to retail itself — retail has no fallback target, it IS the fallback source.
+ */
+const precioCanal = (valor: number | string | null, retail: number): { precio: number; heredado: boolean } =>
+  valor == null ? { precio: retail, heredado: true } : { precio: Number(valor), heredado: false }
+
+const rowToProduct = (row: ProductoRow): Product => {
+  const retail = num(row.precio_base)
+  const mayoreo = precioCanal(row.precio_mayoreo, retail)
+  const institucional = precioCanal(row.precio_institucion, retail)
+  const municipal = precioCanal(row.precio_municipal, retail)
+  return {
+    id: row.id,
+    sku: row.sku_interno ?? String(row.id),
+    codigoBarra: row.sku_interno ?? '',
+    codigoFabrica: row.sku_interno ?? '',
+    nombre: row.nombre,
+    descripcion: row.marca ?? '',
+    categoria: row.marca ?? 'General',
+    imagen: '',
+    imagenUrl: row.imagen_url ?? undefined,
+    color: '#585b63',
+    precioRetail: retail,
+    precioMayoreo: mayoreo.precio,
+    precioInstitucional: institucional.precio,
+    precioMunicipal: municipal.precio,
+    stockTienda: 0,
+    stockAlmacen: 0,
+    preciosHeredados: { mayoreo: mayoreo.heredado, institucional: institucional.heredado, municipal: municipal.heredado },
+  }
+}
 
 export class SupabaseProductRepository implements ProductRepository {
   async search(input: { query?: string; category?: string; active?: boolean; page: PageRequest }): Promise<Page<Product>> {
