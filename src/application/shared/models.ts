@@ -74,6 +74,13 @@ export interface CustomerRecord {
   paymentTerms: string
   creditLimitCents: number
   pendingBalanceCents: number
+  // Optional Supabase-backed extensions (all optional so mock consumers/seeds are
+  // unaffected). origin: cliente.origen ('shopify' rows come from
+  // scripts/bootstrap_clientes.mjs; everything else is 'manual'). businessName/city:
+  // cliente.razon_social/ciudad.
+  origin?: 'shopify' | 'manual'
+  businessName?: string
+  city?: string
 }
 
 // Traslados Almacén <-> Tienda (Parte 1). Mirrors solicitud_traslado/solicitud_traslado_linea

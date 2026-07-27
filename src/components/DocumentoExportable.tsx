@@ -4,7 +4,7 @@ import type { WorkflowLine } from '../application/shared/models'
 import { customerService, listLineIdentifiers } from '../infrastructure/services'
 import { formatMoney, money } from '../domain/common/money'
 import { Modal } from './Modal'
-import { empresa } from '../config/empresa'
+import { empresaStore as empresa } from '../config/empresaStore'
 import { LineIdentifiersRow, type LineIdentifiers } from './LineIdentifiersRow'
 
 export interface ExportableDoc {

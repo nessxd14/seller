@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "test": "vitest run src",
     "test:e2e": "playwright test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "bootstrap:clientes": "node --env-file=.env scripts/bootstrap_clientes.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
@@ -29,6 +30,7 @@
     "eslint-plugin-react-hooks": "latest",
     "eslint-plugin-react-refresh": "latest",
     "globals": "latest",
+    "pg": "^8.13.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "latest",
     "vitest": "latest"

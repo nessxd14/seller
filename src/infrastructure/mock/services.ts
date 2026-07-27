@@ -10,6 +10,11 @@ import { SensitiveOperationExecutor } from '../../application/idempotency/Sensit
 import { transferService as rawTransferService, type CreateTransferInput } from './TransferRepository.mock'
 import { mockAuthSessionProvider } from './MockAuthSessionProvider'
 import type { TransferEstado, TransferRecord } from '../../application/shared/models'
+import { configRepository } from './ConfigRepository.mock'
+import { reportsRepository } from './ReportsRepository.mock'
+
+export const configService = configRepository
+export const reportsService = reportsRepository
 
 export const quoteService = new QuoteService(new LocalStorageRepository<QuoteDraft>('roari-quotes-v1', quoteSeeds))
 export const orderService = new OrderService(new LocalStorageRepository<OrderView>('roari-orders-v1', orderSeeds))
