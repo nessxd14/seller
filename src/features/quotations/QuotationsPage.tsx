@@ -62,7 +62,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   const duplicate = async (id: string) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.duplicate(id); await load(); notify('Cotización duplicada') }
   const createOrderDirect = async (quote: QuoteDraft) => {
     if(readOnly){notify('Modo solo lectura');return}
-    await orderService.save({ id: featureFlags.supabase ? '' : crypto.randomUUID(), number: '', customerName: quote.customerName, channel: quote.channel, status: 'draft', createdAt: new Date().toISOString(), lines: quote.lines.map((line) => ({ ...line, prepared: 0, allocations: [] })), events: [] })
+    await orderService.save({ id: featureFlags.supabase ? '' : crypto.randomUUID(), number: '', customerId: quote.customerId, customerName: quote.customerName, channel: quote.channel, status: 'draft', createdAt: new Date().toISOString(), lines: quote.lines.map((line) => ({ ...line, prepared: 0, allocations: [] })), events: [] })
     setEditing(null)
     onOrderCreated()
     notify('Pedido creado')

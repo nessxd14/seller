@@ -2,10 +2,12 @@ import type { CashSessionRecord, CustomerRecord, OrderView, QuoteDraft } from '.
 import { quoteRepository } from './QuoteRepository.supabase'
 import { orderRepository } from './OrderRepository.supabase'
 import { customerRepository } from './CustomerRepository.supabase'
-import { productRepository as supabaseProductRepository, getStockByProduct as supabaseGetStockByProduct, listPresentations as supabaseListPresentations } from './ProductRepository.supabase'
+import { productRepository as supabaseProductRepository, getStockByProduct as supabaseGetStockByProduct, listPresentations as supabaseListPresentations, listIdentifiersForProducts as supabaseListLineIdentifiers } from './ProductRepository.supabase'
 import { cashRepository, getAdvancesForOrder, getOpenSession } from './CashRepository.supabase'
 import { saleRepository } from './SaleRepository.supabase'
 import { supabaseAuthSessionProvider } from './SupabaseAuthSessionProvider'
+import { transferRepository, type CreateTransferInput } from './TransferRepository.supabase'
+import type { TransferEstado, TransferRecord } from '../../application/shared/models'
 
 const currentActorId = async (): Promise<string> => {
   const session = await supabaseAuthSessionProvider.getSession()
@@ -72,6 +74,7 @@ export const customerService = {
 export const productRepository = supabaseProductRepository
 export const getStockByProduct = supabaseGetStockByProduct
 export const listPresentations = supabaseListPresentations
+export const listLineIdentifiers = supabaseListLineIdentifiers
 
 const bigPageCash = { page: 1, pageSize: 200 }
 
@@ -109,5 +112,23 @@ export const saleService = {
   async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number }) {
     const actorId = await currentActorId()
     return saleRepository.checkout(input, { actorId })
+  },
+}
+
+export const transferService = {
+  async list(filters?: { estado?: TransferEstado }): Promise<TransferRecord[]> {
+    return transferRepository.list(filters)
+  },
+  async create(input: CreateTransferInput): Promise<TransferRecord> {
+    const actorId = await currentActorId()
+    return transferRepository.create(input, actorId)
+  },
+  async receive(id: string, lines: null | Array<{ lineaId: string; cantidadBase: number }>): Promise<TransferRecord> {
+    const actorId = await currentActorId()
+    return transferRepository.receive(id, lines, actorId)
+  },
+  async cancel(id: string, nota?: string): Promise<TransferRecord> {
+    const actorId = await currentActorId()
+    return transferRepository.cancel(id, actorId, nota)
   },
 }

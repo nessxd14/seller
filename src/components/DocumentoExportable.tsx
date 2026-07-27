@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { FileDown, Printer } from 'lucide-react'
 import type { WorkflowLine } from '../application/shared/models'
-import { customerService } from '../infrastructure/services'
+import { customerService, listLineIdentifiers } from '../infrastructure/services'
 import { formatMoney, money } from '../domain/common/money'
 import { Modal } from './Modal'
 import { empresa } from '../config/empresa'
+import { LineIdentifiersRow, type LineIdentifiers } from './LineIdentifiersRow'
 
 export interface ExportableDoc {
   number: string
@@ -47,6 +48,15 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
     })
   }, [doc.customerId, doc.customerName])
 
+  // Item 2.2: batch-fetch barra/fábrica/marca for every catalog line's product in one call
+  // when the document loads, not one lookup per rendered row.
+  const [identifiersByProduct, setIdentifiersByProduct] = useState<Record<string, LineIdentifiers>>({})
+  useEffect(() => {
+    const ids = Array.from(new Set(doc.lines.filter((line) => !line.isCustomItem && line.productId).map((line) => line.productId)))
+    if (!ids.length) return
+    void listLineIdentifiers(ids).then(setIdentifiersByProduct)
+  }, [doc.lines])
+
   const catalogLines = doc.lines.filter((line) => !line.isCustomItem)
   const customLines = doc.lines.filter((line) => line.isCustomItem)
   const subtotalCents = doc.lines.reduce((sum, line) => sum + lineTotalCents(line), 0)
@@ -86,7 +96,7 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
               return (
                 <tr key={line.id}>
                   <td>{index + 1}</td>
-                  <td>{line.name}</td>
+                  <td>{line.name}<LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} /></td>
                   <td>{line.presentacionNombre ?? 'Unidad'}</td>
                   <td>{line.quantity}</td>
                   <td className="doc-equivalence">{hasEquivalence ? `${line.quantity * factor} u` : '—'}</td>
@@ -106,15 +116,15 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
               <thead><tr><th>Descripción</th><th>Cant</th><th>P/U</th>{mode === 'nota-entrega' && <th>Origen</th>}<th>Total</th></tr></thead>
               <tbody>
                 {customLines.map((line) => (
-                  <tr key={line.id}><td>{line.name}</td><td>{line.quantity}</td><td>{formatMoney(money(line.unitPriceCents))}</td>{mode === 'nota-entrega' && <td>{line.sourceLocation ?? '—'}</td>}<td>{formatMoney(money(lineTotalCents(line)))}</td></tr>
+                  <tr key={line.id}><td>{line.name}<LineIdentifiersRow isCustomItem /></td><td>{line.quantity}</td><td>{formatMoney(money(line.unitPriceCents))}</td>{mode === 'nota-entrega' && <td>{line.sourceLocation ?? '—'}</td>}<td>{formatMoney(money(lineTotalCents(line)))}</td></tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
         <footer className="doc-totals">
-          <div><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
-          <div className="doc-total-line"><span>Total en Bs</span><strong>{formatMoney(money(Math.max(0, subtotalCents)))}</strong></div>
+          <div className="doc-total-row"><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
+          <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(Math.max(0, subtotalCents)))}</strong></div>
         </footer>
         {(doc.validUntil || doc.conditionPago) && (
           <div className="doc-footer-notes">

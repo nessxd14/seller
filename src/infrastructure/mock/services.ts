@@ -7,13 +7,16 @@ import { LocalStorageRepository } from './localStore'
 import { cashSeeds, customerSeeds, orderSeeds, quoteSeeds } from './seeds'
 import { LocalIdempotencyService } from '../../application/idempotency/IdempotencyService'
 import { SensitiveOperationExecutor } from '../../application/idempotency/SensitiveOperationExecutor'
+import { transferService as rawTransferService, type CreateTransferInput } from './TransferRepository.mock'
+import { mockAuthSessionProvider } from './MockAuthSessionProvider'
+import type { TransferEstado, TransferRecord } from '../../application/shared/models'
 
 export const quoteService = new QuoteService(new LocalStorageRepository<QuoteDraft>('roari-quotes-v1', quoteSeeds))
 export const orderService = new OrderService(new LocalStorageRepository<OrderView>('roari-orders-v1', orderSeeds))
 export const customerService = new CustomerService(new LocalStorageRepository<CustomerRecord>('roari-customers-v1', customerSeeds))
 const rawCashService = new CashService(new LocalStorageRepository<CashSessionRecord>('roari-cash-v1', cashSeeds))
 export const sensitiveOperations = new SensitiveOperationExecutor(new LocalIdempotencyService())
-export { productRepository, getStockByProduct, listPresentations } from './ProductRepository.mock'
+export { productRepository, getStockByProduct, listPresentations, listLineIdentifiers } from './ProductRepository.mock'
 
 // Only one mock caja exists, mirroring the real backend's single "Caja Tienda".
 const MOCK_REGISTER = 'Caja 01 · Sucursal Central'
@@ -76,5 +79,28 @@ export const saleService = {
       current = await rawCashService.addMovement(current, 'income', payment.amountCents, 'Venta mock', payment.method)
     }
     return { saleId: crypto.randomUUID(), subtotalCents, discountCents, totalCents }
+  },
+}
+
+const currentMockActor = async (): Promise<string> => {
+  const session = await mockAuthSessionProvider.getSession()
+  return session?.user.name ?? 'Usuario POS'
+}
+
+export const transferService = {
+  async list(filters?: { estado?: TransferEstado }): Promise<TransferRecord[]> {
+    return rawTransferService.list(filters)
+  },
+  async create(input: CreateTransferInput): Promise<TransferRecord> {
+    const actor = await currentMockActor()
+    return rawTransferService.create(input, actor)
+  },
+  async receive(id: string, lines: null | Array<{ lineaId: string; cantidadBase: number }>): Promise<TransferRecord> {
+    const actor = await currentMockActor()
+    return rawTransferService.receive(id, lines, actor)
+  },
+  async cancel(id: string, nota?: string): Promise<TransferRecord> {
+    const actor = await currentMockActor()
+    return rawTransferService.cancel(id, actor, nota)
   },
 }
