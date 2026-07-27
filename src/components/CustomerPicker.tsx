@@ -13,8 +13,17 @@ const emptyForm = { name: '', businessName: '', document: '', phone: '', email: 
  * blank "new customer" form. Mirrors DraftOrderEditor's 250ms product-search debounce
  * convention for the customer query.
  */
-export function CustomerPicker({ channel }: { channel: 'retail' | 'mayoreo' | 'institucional' | 'municipal' }) {
-  const { customer, selectCustomer } = usePos()
+// Channel display-name lookup — mirrors CartPanel.tsx's existing channelNames constant
+// exactly (kept as a local duplicate rather than importing it, since CartPanel imports
+// this component, not the other way around — see report for why this wasn't hoisted).
+const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
+// Brief's exact announcement copy pattern: "Canal cambiado a Mayoreo (cliente mayorista)" —
+// the parenthetical names the CUSTOMER TYPE, not the channel again.
+const customerTypeLabel = (channel: 'retail' | 'mayoreo' | 'institucional' | 'municipal') =>
+  ({ retail: 'cliente minorista', mayoreo: 'cliente mayorista', institucional: 'cliente institucional', municipal: 'cliente municipal' })[channel]
+
+export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayoreo' | 'institucional' | 'municipal'; notify?: (message: string) => void }) {
+  const { customer, selectCustomer, setChannel } = usePos()
   const [expanded, setExpanded] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<CustomerRecord[]>([])
@@ -45,8 +54,25 @@ export function CustomerPicker({ channel }: { channel: 'retail' | 'mayoreo' | 'i
     return () => { cancelled = true; clearTimeout(handle) }
   }, [expanded, creating, query])
 
-  const pick = (record: CustomerRecord) => { selectCustomer({ id: record.id, name: record.name, documento: record.document || undefined }); closeAll() }
-  const pickCounter = () => { selectCustomer(null); closeAll() }
+  // TAREA B — "channel follows the customer": picking a customer auto-sets the active
+  // channel to their usualChannel (a smart default, not a lock — the seller can still
+  // change it manually afterward). Guarded so we don't re-announce/re-trigger when the
+  // customer's channel already matches what's active.
+  const pick = (record: CustomerRecord) => {
+    selectCustomer({ id: record.id, name: record.name, documento: record.document || undefined })
+    if (record.usualChannel !== channel) {
+      setChannel(record.usualChannel)
+      notify?.(`Canal cambiado a ${channelNames[record.usualChannel]} (${customerTypeLabel(record.usualChannel)})`)
+    }
+    closeAll()
+  }
+  // "Cliente de mostrador" is the normal baseline, not a surprising change — reset the
+  // channel back to retail silently (no announcement), same non-duplicate-trigger guard.
+  const pickCounter = () => {
+    selectCustomer(null)
+    if (channel !== 'retail') setChannel('retail')
+    closeAll()
+  }
 
   const startNew = () => { setEditingBase(null); setCreating({ ...emptyForm }) }
   const startEdit = () => {

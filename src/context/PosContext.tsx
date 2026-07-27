@@ -54,7 +54,13 @@ export function PosProvider({ children }: { children: ReactNode }) {
     // channels silently re-prices a "Caja" line as if it were a single loose unit. Mirrors
     // DraftOrderEditor's channel/presentation recompute: reset to the new channel's suggested
     // price (any manual override the seller made is discarded, same as changing presentation).
-    setCart((items) => items.map((item) => ({ ...item, precioAplicado: roundMoney(getPrice(item, next) * (item.factorUnidadBase ?? 1)), descuento: 0 })))
+    // TAREA B: lines the seller already manually re-priced (precioModificado) are frozen —
+    // "se respeta" applies to both the applied price and its discount, so neither is touched
+    // by an automatic channel switch. Untouched lines keep the exact recompute above,
+    // including the presentation-factor multiplication.
+    setCart((items) => items.map((item) => item.precioModificado
+      ? item
+      : { ...item, precioAplicado: roundMoney(getPrice(item, next) * (item.factorUnidadBase ?? 1)), descuento: 0 }))
     setDiscount(0)
   }
 

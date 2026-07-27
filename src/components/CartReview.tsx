@@ -6,6 +6,7 @@ import { getPrice } from '../data/products'
 import { calculateLineTotal } from '../domain/sales/cartCalculator'
 import { moneyToDecimal } from '../domain/common/money'
 import { cantidadBaseFor, isLineUnderstocked } from '../domain/sales/stockCheck'
+import { isLineUnpriced } from '../domain/sales/priceCheck'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
@@ -34,6 +35,10 @@ export function CartReview({
   onCheckout: () => void
 }) {
   const heredadoKey = heredadoKeyForChannel(channel)
+  // TAREA A: CartReview's own "Cobrar" button calls onCheckout directly, bypassing
+  // CartPanel's pay-button disabled check — it needs the same block so a seller can't
+  // route around the guard just by opening the review screen first.
+  const hasUnpricedLine = items.some((item) => isLineUnpriced(item))
 
   return <Modal title="Revisar venta" subtitle="Antes de cobrar, un vistazo a lo que puede necesitar atención" onClose={onClose} side>
     <div className="modal-body cart-review-body">
@@ -50,14 +55,18 @@ export function CartReview({
               const priceMatchesSuggestion = Math.abs(item.precioAplicado - channelListPrice) < 0.005
               const isOverridden = !priceMatchesSuggestion
               const isHeredado = heredadoKey ? Boolean(item.preciosHeredados?.[heredadoKey]) : false
-              const showInheritedBadge = isHeredado && priceMatchesSuggestion
+              // TAREA A: "heredado" only means something when a real (non-zero) price is
+              // actually being inherited — nothing to inherit gets the "sin precio" state
+              // below instead, never both, never neither.
+              const isUnpriced = isLineUnpriced(item)
+              const showInheritedBadge = isHeredado && priceMatchesSuggestion && !isUnpriced
               const understocked = isLineUnderstocked(item, originStock[item.id])
               const lineTotal = moneyToDecimal(calculateLineTotal({ unitPrice: item.precioAplicado, quantity: item.cantidad, discountPercent: item.descuento }))
-              return <tr key={item.id} className={understocked ? 'cart-review-flagged' : ''}>
-                <td>{item.nombre}{understocked && <small className="line-stock-error"><AlertTriangle /> Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBaseFor(item))} uds.</small>}</td>
+              return <tr key={item.id} className={understocked || isUnpriced ? 'cart-review-flagged' : ''}>
+                <td>{item.nombre}{understocked && <small className="line-stock-error"><AlertTriangle /> Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBaseFor(item))} uds.</small>}{isUnpriced && <small className="line-stock-error"><AlertTriangle /> {item.nombre} no tiene precio.</small>}</td>
                 <td>{item.presentacionNombre ?? 'Unidad'}</td>
                 <td>{fmtQty(item.cantidad)}</td>
-                <td className={isOverridden ? 'price-overridden' : ''}>Bs {money(item.precioAplicado)}{showInheritedBadge && <small className="price-heredado-badge" title="Este canal no tiene precio propio: se usa el precio de mostrador.">heredado</small>}{isOverridden && <small className="price-heredado-badge price-overridden-badge" title={`Precio de lista: Bs ${money(channelListPrice)}`}>modificado</small>}</td>
+                <td className={isOverridden ? 'price-overridden' : ''}>Bs {money(item.precioAplicado)}{showInheritedBadge && <small className="price-heredado-badge" title="Este canal no tiene precio propio: se usa el precio de mostrador.">heredado</small>}{isUnpriced && <small className="price-heredado-badge price-overridden-badge" title="Esta línea no tiene precio configurado.">sin precio</small>}{isOverridden && !isUnpriced && <small className="price-heredado-badge price-overridden-badge" title={`Precio de lista: Bs ${money(channelListPrice)}`}>modificado</small>}</td>
                 <td>{item.descuento > 0 ? `${item.descuento}%` : '—'}</td>
                 <td>Bs {money(lineTotal)}</td>
               </tr>
@@ -73,7 +82,7 @@ export function CartReview({
     </div>
     <footer className="modal-actions">
       <button className="secondary-button" onClick={onClose}><Pencil /> Volver a editar</button>
-      <button className="primary-button" onClick={onCheckout}>Cobrar</button>
+      <button className="primary-button" disabled={hasUnpricedLine} onClick={onCheckout}>Cobrar</button>
     </footer>
   </Modal>
 }
