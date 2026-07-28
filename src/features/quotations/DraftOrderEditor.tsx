@@ -278,11 +278,16 @@ export function DraftOrderEditor({ quote, onClose, onSave, onCreateOrder, onConv
             />
             {productQuery && (
               <div className="product-search-results">
-                {productResults.map((p) => (
-                  <button type="button" key={p.id} onClick={() => addCatalogProduct(p)}>
-                    <strong>{p.nombre}</strong><small>{p.sku} · {formatMoney(money(Math.round(priceForChannel(p, value.channel) * 100)))}</small>
-                  </button>
-                ))}
+                {productResults.map((p) => {
+                  const priceValue = priceForChannel(p, value.channel)
+                  return (
+                    <button type="button" key={p.id} title={p.nombre} onClick={() => addCatalogProduct(p)}>
+                      <strong>{p.nombre}</strong>
+                      <small>{[p.sku, p.codigoBarra].filter(Boolean).join(' · ')}</small>
+                      <span className={`precio ${priceValue ? '' : 'sin-precio'}`}>{formatMoney(money(Math.round(priceValue * 100)))}</span>
+                    </button>
+                  )
+                })}
                 {!productResults.length && <span className="empty-hint">Sin resultados</span>}
               </div>
             )}
@@ -301,47 +306,51 @@ export function DraftOrderEditor({ quote, onClose, onSave, onCreateOrder, onConv
             return (
               <div key={line.id} className={`draft-line-row presentation-line-row ${stockError ? 'has-stock-error' : ''}`}>
                 <div className="draft-line-top">
-                  <span><strong>{line.name}</strong><small>{line.sku}</small><LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} /></span>
-                  <input aria-label={`Cantidad ${line.name}`} type="number" min="1" disabled={readOnly} value={line.quantity} onChange={(e) => updateLine(line.id, { quantity: Math.max(1, Number(e.target.value)) })} />
-                  {presentations.length > 0 && (
-                    <select
-                      aria-label={`Presentación ${line.name}`}
-                      disabled={readOnly}
-                      value={line.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id}
-                      onChange={(e) => {
-                        const chosen = presentations.find((p) => p.id === Number(e.target.value))
-                        if (chosen) onPresentationChange(line, chosen)
-                      }}
-                    >
-                      {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
-                  )}
-                  <div className="channel-tabs origin-tabs" role="group" aria-label={`Origen ${line.name}`}>
-                    {(['Tienda', 'Almacén'] as const).map((loc) => (
-                      <button
-                        key={loc}
-                        type="button"
-                        disabled={readOnly}
-                        className={origin === loc ? 'active' : ''}
-                        onClick={() => updateLine(line.id, { sourceLocation: loc })}
-                      >
-                        {loc}{stock ? ` ${fmtQty(loc === 'Tienda' ? stock.tienda : stock.almacen)}` : ''}
-                      </button>
-                    ))}
+                  <div className="dl-head">
+                    <span><strong>{line.name}</strong><small>{line.sku}</small><LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} /></span>
+                    <strong className="dl-total">{formatMoney(money(lineTotalCents(line)))}</strong>
+                    {!readOnly && <button type="button" onClick={() => removeLine(line.id)}><X /></button>}
                   </div>
-                  <button type="button" className="price-cell" disabled={readOnly} onClick={() => setPriceEditorLineId(priceEditorLineId === line.id ? null : line.id)}>
-                    {formatMoney(money(line.unitPriceCents))}{line.discountBasisPoints > 0 && <small> −{(line.discountBasisPoints / 100).toFixed(1)}%</small>}
-                    {line.priceOverridden && <small className="overridden-badge">editado</small>}
-                  </button>
-                  <strong>{formatMoney(money(lineTotalCents(line)))}</strong>
-                  {!readOnly && <button type="button" onClick={() => removeLine(line.id)}><X /></button>}
-                  {priceEditorLineId === line.id && (
-                    <PricePopover
-                      line={line}
-                      onClose={() => setPriceEditorLineId(null)}
-                      onApply={(patch) => { updateLine(line.id, { ...patch, priceOverridden: true, modifiedBy: actorId, modifiedAt: new Date().toISOString() }); setPriceEditorLineId(null) }}
-                    />
-                  )}
+                  <div className="dl-controls">
+                    <input aria-label={`Cantidad ${line.name}`} type="number" min="1" disabled={readOnly} value={line.quantity} onChange={(e) => updateLine(line.id, { quantity: Math.max(1, Number(e.target.value)) })} />
+                    {presentations.length > 0 && (
+                      <select
+                        aria-label={`Presentación ${line.name}`}
+                        disabled={readOnly}
+                        value={line.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id}
+                        onChange={(e) => {
+                          const chosen = presentations.find((p) => p.id === Number(e.target.value))
+                          if (chosen) onPresentationChange(line, chosen)
+                        }}
+                      >
+                        {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                      </select>
+                    )}
+                    <div className="channel-tabs origin-tabs" role="group" aria-label={`Origen ${line.name}`}>
+                      {(['Tienda', 'Almacén'] as const).map((loc) => (
+                        <button
+                          key={loc}
+                          type="button"
+                          disabled={readOnly}
+                          className={origin === loc ? 'active' : ''}
+                          onClick={() => updateLine(line.id, { sourceLocation: loc })}
+                        >
+                          {loc}{stock ? ` ${fmtQty(loc === 'Tienda' ? stock.tienda : stock.almacen)}` : ''}
+                        </button>
+                      ))}
+                    </div>
+                    <button type="button" className="price-cell" disabled={readOnly} onClick={() => setPriceEditorLineId(priceEditorLineId === line.id ? null : line.id)}>
+                      {formatMoney(money(line.unitPriceCents))}{line.discountBasisPoints > 0 && <small> −{(line.discountBasisPoints / 100).toFixed(1)}%</small>}
+                      {line.priceOverridden && <small className="overridden-badge">editado</small>}
+                    </button>
+                    {priceEditorLineId === line.id && (
+                      <PricePopover
+                        line={line}
+                        onClose={() => setPriceEditorLineId(null)}
+                        onApply={(patch) => { updateLine(line.id, { ...patch, priceOverridden: true, modifiedBy: actorId, modifiedAt: new Date().toISOString() }); setPriceEditorLineId(null) }}
+                      />
+                    )}
+                  </div>
                 </div>
                 {showEquivalence && <small className="line-equivalence">{line.quantity} {line.presentacionNombre} = {fmtQty(line.quantity * factor)} u</small>}
                 {stockError && <small className="line-stock-error">{stockError}</small>}
@@ -356,12 +365,16 @@ export function DraftOrderEditor({ quote, onClose, onSave, onCreateOrder, onConv
           {customLines.map((line) => (
             <div key={line.id} className="draft-line-row-wrap">
               <div className="draft-line-row custom-line-row">
-                <input aria-label="Descripción" disabled={readOnly} placeholder="Descripción" value={line.name} onChange={(e) => updateLine(line.id, { name: e.target.value })} />
-                <input aria-label="Cantidad" type="number" min="1" disabled={readOnly} value={line.quantity} onChange={(e) => updateLine(line.id, { quantity: Math.max(1, Number(e.target.value)) })} />
-                <input aria-label="Precio" type="number" min="0" disabled={readOnly} value={line.unitPriceCents / 100} onChange={(e) => updateLine(line.id, { unitPriceCents: Math.max(0, Math.round(Number(e.target.value) * 100)) })} />
-                <input aria-label="Nota" disabled={readOnly} placeholder="Nota (ej. comprar a proveedor X)" value={line.note ?? ''} onChange={(e) => updateLine(line.id, { note: e.target.value })} />
-                <strong>{formatMoney(money(lineTotalCents(line)))}</strong>
-                {!readOnly && <button type="button" onClick={() => removeLine(line.id)}><X /></button>}
+                <div className="cl-head">
+                  <input aria-label="Descripción" disabled={readOnly} placeholder="Descripción" value={line.name} onChange={(e) => updateLine(line.id, { name: e.target.value })} />
+                  <strong>{formatMoney(money(lineTotalCents(line)))}</strong>
+                  {!readOnly && <button type="button" onClick={() => removeLine(line.id)}><X /></button>}
+                </div>
+                <div className="cl-controls">
+                  <input aria-label="Cantidad" type="number" min="1" disabled={readOnly} value={line.quantity} onChange={(e) => updateLine(line.id, { quantity: Math.max(1, Number(e.target.value)) })} />
+                  <input aria-label="Precio" type="number" min="0" disabled={readOnly} value={line.unitPriceCents / 100} onChange={(e) => updateLine(line.id, { unitPriceCents: Math.max(0, Math.round(Number(e.target.value) * 100)) })} />
+                  <input aria-label="Nota" disabled={readOnly} placeholder="Nota (ej. comprar a proveedor X)" value={line.note ?? ''} onChange={(e) => updateLine(line.id, { note: e.target.value })} />
+                </div>
               </div>
               <LineIdentifiersRow isCustomItem />
             </div>
@@ -378,7 +391,7 @@ export function DraftOrderEditor({ quote, onClose, onSave, onCreateOrder, onConv
       </div>
       <footer className="modal-actions">
         <button className="secondary-button" onClick={onClose}>Cancelar</button>
-        {!readOnly && <button className="primary-button" disabled={!value.lines.length || saving || hasStockErrors} onClick={() => void runAction(onSave)}>Guardar como cotización</button>}
+        {!readOnly && <button className="secondary-button" disabled={!value.lines.length || saving || hasStockErrors} onClick={() => void runAction(onSave)}>Guardar como cotización</button>}
         {!readOnly && onCreateOrder && <button className="primary-button" disabled={!value.lines.length || saving || hasStockErrors} onClick={() => void runAction(onCreateOrder)}>Crear pedido</button>}
         {onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
       </footer>
