@@ -9,6 +9,7 @@ import { getPrice } from '../data/products'
 import { listPresentations } from '../infrastructure/services'
 import { isLineUnderstocked } from '../domain/sales/stockCheck'
 import { isLineUnpriced } from '../domain/sales/priceCheck'
+import { OriginPin, buildOriginOptions } from './OriginPin'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
@@ -119,7 +120,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
         {isUnpriced && <small className="price-heredado-badge price-overridden-badge" title="Esta línea no tiene precio configurado en ningún canal. Escribí un precio para poder cobrarla.">sin precio</small>}
       </div>
     </div><button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button></div>
-    {onSetOrigin && <div className="channel-tabs origin-tabs" role="group" aria-label={`Origen ${item.nombre}`}>{(['Tienda', 'Almacén'] as const).map((loc) => <button key={loc} type="button" className={item.ubicacion === loc ? 'active' : ''} onClick={() => onSetOrigin(loc)}>{loc}{originStock ? ` ${loc === 'Tienda' ? originStock.tienda : originStock.almacen}` : ''}</button>)}</div>}
+    {onSetOrigin && <OriginPin value={item.ubicacion} options={buildOriginOptions(originStock)} onChange={onSetOrigin} ariaLabel={`Origen ${item.nombre}`} />}
     {presentations.length > 1 && <div className="cart-presentacion"><select aria-label={`Presentación ${item.nombre}`} value={item.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id} onChange={(e) => { const chosen = presentations.find((p) => p.id === Number(e.target.value)); if (chosen) onPresentationChange(chosen) }}>
       {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
     </select></div>}

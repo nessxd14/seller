@@ -1,0 +1,288 @@
+/* ============================================================================
+ * pos-ajustes-r4.css — líneas en dos renglones, pin de origen, resumen
+ * plegable del carrito, modal de ítems a pedido y filtro de marca.
+ * Importar en src/main.tsx DESPUÉS de pos-ajustes-r3.css.
+ * ========================================================================== */
+
+/* ── 1. Línea en dos renglones (catálogo y personalizada) ─────────────────
+ *
+ * Renglón 1: nombre + stepper de cantidad + presentación.
+ * Renglón 2: SKU · código de barra · precio unitario · equivalencia,
+ * origen (pin), total (negrita, tabular) y quitar (×).
+ * Sólo nombre y total llevan peso completo — todo lo demás en `.tl-meta`
+ * es gris y chico: es dato de apoyo, no el foco de la línea.
+ */
+
+.two-row-line {
+  display: block;
+  padding: 10px 12px;
+  border-top: 1px solid #eeeae3;
+}
+
+.two-row-line.has-stock-error { background: #fdf3f1 }
+
+.tl-row1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tl-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #24231f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qty-stepper {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  border: 1px solid #e3ded5;
+  border-radius: 7px;
+  flex: 0 0 auto;
+}
+.qty-stepper button { border: 0; background: transparent; width: 26px; height: 100%; display: grid; place-items: center; color: #777 }
+.qty-stepper button svg { width: 11px }
+.qty-stepper strong { font-size: 12px; width: 24px; text-align: center; font-variant-numeric: tabular-nums }
+
+.tl-row1 select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--line);
+  background: #fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2377746d' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center;
+  border-radius: 7px;
+  height: 28px;
+  padding: 0 24px 0 8px;
+  font-size: 11px;
+  color: #4c4944;
+  flex: 0 0 auto;
+  max-width: 130px;
+  text-overflow: ellipsis;
+}
+
+.tl-row2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.tl-meta {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-unit-price {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.tl-unit-price:disabled { text-decoration: none; cursor: default }
+
+.tl-total {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.tl-remove {
+  border: 0;
+  background: transparent;
+  color: #c2beb6;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+.tl-remove:hover { background: #fbeceb; color: #c84f44 }
+.tl-remove svg { width: 13px }
+
+.tl-edit {
+  border: 0;
+  background: transparent;
+  color: var(--orange);
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.tl-edit svg { width: 11px }
+
+/* Ítem "a pedido": mismo formato de dos renglones, fondo tenue y badge ámbar. */
+.custom-two-row-line { background: #fffaf2 }
+.a-pedido-badge {
+  display: inline-block;
+  background: #fdecc8;
+  color: #9a6a12;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: .2px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+
+
+/* ── 2. Pin de origen (reemplaza el toggle segmentado Tienda/Almacén) ────── */
+
+.origin-pin-root { position: relative; flex: 0 0 auto }
+
+.origin-pin-trigger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4c4944;
+  white-space: nowrap;
+}
+.origin-pin-trigger svg { width: 12px; color: var(--orange) }
+.origin-pin-trigger[aria-expanded="true"] { border-color: var(--orange); box-shadow: 0 0 0 3px #f26b2b17 }
+
+.origin-pin-popover {
+  position: absolute;
+  z-index: 30;
+  bottom: calc(100% + 6px);
+  right: 0;
+  min-width: 190px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 14px 34px #28251d1c;
+  padding: 6px;
+  transform-origin: bottom right;
+  animation: origin-pin-pop 140ms ease-out;
+}
+
+@keyframes origin-pin-pop {
+  from { opacity: 0; transform: scale(.96) translateY(4px) }
+  to   { opacity: 1; transform: scale(1) translateY(0) }
+}
+
+.origin-pin-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 9px;
+  font-size: 12px;
+  text-align: left;
+  color: #2a2926;
+  flex-wrap: wrap;
+}
+.origin-pin-option + .origin-pin-option { margin-top: 1px }
+.origin-pin-option:hover:not(:disabled),
+.origin-pin-option:focus-visible { background: #f5f2ed; outline: 0 }
+.origin-pin-option.active { background: #fff3ee; color: var(--orange); font-weight: 700 }
+.origin-pin-option:disabled { color: #b3afa7; cursor: not-allowed }
+
+.origin-pin-option-name { flex: 1; min-width: 0 }
+.origin-pin-option-stock { font-variant-numeric: tabular-nums; color: #8a867e; font-size: 11px }
+.origin-pin-option-stock.zero { color: #a74739; font-weight: 700 }
+.origin-pin-option-reason { flex-basis: 100%; color: #b3afa7; font-size: 10.5px }
+
+
+/* ── 3. Resumen del carrito plegable ──────────────────────────────────────
+ *
+ * El total NUNCA se oculta. Sólo el desglose (subtotal + descuento) colapsa,
+ * animado por max-height. La flecha vive en la misma barra que el total.
+ */
+
+.cart-summary-breakdown {
+  max-height: 60px;
+  overflow: hidden;
+  transition: max-height 260ms ease;
+}
+.cart-summary-breakdown.collapsed { max-height: 0 }
+.cart-summary-breakdown-inner > div { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: 12px }
+
+.grand-total { position: relative; display: flex; align-items: center; gap: 8px }
+.grand-total strong { margin-right: auto }
+
+.summary-collapse-toggle {
+  border: 1px solid #ddd8cf;
+  background: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: #77746d;
+  flex: 0 0 auto;
+}
+.summary-collapse-toggle svg { width: 13px; transition: transform 180ms ease }
+.summary-collapse-toggle svg.chevron-open { transform: rotate(180deg) }
+
+
+/* ── 4. Modal de ítem a pedido (TAREA 4) ──────────────────────────────────── */
+
+.custom-item-modal .form-grid { margin-top: 4px }
+.custom-modal-counter {
+  margin: 12px 0 0;
+  font-size: 11.5px;
+  color: var(--orange);
+  font-weight: 700;
+}
+.custom-modal-add-another {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  font-size: 11.5px;
+  color: #55524d;
+  font-weight: 600;
+}
+.custom-modal-add-another input { margin: 0 }
+
+
+/* ── 5. Filtro de marca del catálogo (TAREA 6) ────────────────────────────── */
+
+.brand-filter {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 30px;
+  border: 1px solid #e1ded6;
+  background: #fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2377746d' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+  border-radius: 18px;
+  padding: 0 26px 0 12px;
+  font-size: 12px;
+  color: #68655e;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
