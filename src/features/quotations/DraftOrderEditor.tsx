@@ -374,47 +374,49 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             const almacenCovers = stock ? stock.almacen >= cantidadBaseFor({ cantidad: line.quantity, ubicacion: origin, factorUnidadBase: line.factorUnidadBase }) : false
             const originOptions = buildOriginOptions(stock, almacenCovers ? { Tienda: 'Almacén cubre esta línea' } : undefined)
             return (
-              <div key={line.id} className={`draft-line-row two-row-line ${stockError ? 'has-stock-error' : ''}`}>
-                <div className="tl-row1">
-                  <strong className="tl-name" title={line.name}>{line.name}</strong>
-                  <div className="qty-stepper">
-                    <button type="button" aria-label={`Restar cantidad ${line.name}`} disabled={readOnly || line.quantity <= 1} onClick={() => updateLine(line.id, { quantity: Math.max(1, line.quantity - 1) })}><Minus /></button>
-                    <strong>{line.quantity}</strong>
-                    <button type="button" aria-label={`Sumar cantidad ${line.name}`} disabled={readOnly} onClick={() => updateLine(line.id, { quantity: line.quantity + 1 })}><Plus /></button>
-                  </div>
-                  {presentations.length > 0 && (
-                    <select
-                      aria-label={`Presentación ${line.name}`}
-                      disabled={readOnly}
-                      value={line.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id}
-                      onChange={(e) => {
-                        const chosen = presentations.find((p) => p.id === Number(e.target.value))
-                        if (chosen) onPresentationChange(line, chosen)
-                      }}
-                    >
-                      {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
-                  )}
-                </div>
-                <div className="tl-row2">
-                  <span className="tl-meta">
-                    {[line.sku, identifiers?.barra].filter(Boolean).join(' · ')}
-                    {' · '}
-                    <button type="button" className="tl-unit-price" disabled={readOnly} onClick={() => setPriceEditorLineId(priceEditorLineId === line.id ? null : line.id)}>
-                      Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u{line.discountBasisPoints > 0 && ` −${(line.discountBasisPoints / 100).toFixed(1)}%`}{line.priceOverridden && <small className="overridden-badge">editado</small>}
-                    </button>
-                    {priceEditorLineId === line.id && (
-                      <PricePopover
-                        line={line}
-                        onClose={() => setPriceEditorLineId(null)}
-                        onApply={(patch) => { updateLine(line.id, { ...patch, priceOverridden: true, modifiedBy: actorId, modifiedAt: new Date().toISOString() }); setPriceEditorLineId(null) }}
-                      />
+              <div key={line.id} className={`draft-line-row presentation-line-row ${stockError ? 'has-stock-error' : ''}`}>
+                <div className="draft-line-top">
+                  <div className="dl-r1">
+                    <span className="dl-nombre" title={line.name}>{line.name}</span>
+                    <div className="qty-control">
+                      <button type="button" aria-label={`Restar cantidad ${line.name}`} disabled={readOnly || line.quantity <= 1} onClick={() => updateLine(line.id, { quantity: Math.max(1, line.quantity - 1) })}><Minus /></button>
+                      <strong>{line.quantity}</strong>
+                      <button type="button" aria-label={`Sumar cantidad ${line.name}`} disabled={readOnly} onClick={() => updateLine(line.id, { quantity: line.quantity + 1 })}><Plus /></button>
+                    </div>
+                    {presentations.length > 0 && (
+                      <select
+                        aria-label={`Presentación ${line.name}`}
+                        disabled={readOnly}
+                        value={line.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id}
+                        onChange={(e) => {
+                          const chosen = presentations.find((p) => p.id === Number(e.target.value))
+                          if (chosen) onPresentationChange(line, chosen)
+                        }}
+                      >
+                        {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                      </select>
                     )}
-                    {showEquivalence && <> · {line.quantity} {line.presentacionNombre} ({factor} und) → {fmtQty(line.quantity * factor)} u</>}
-                  </span>
-                  <OriginPin value={origin} options={originOptions} onChange={(loc) => updateLine(line.id, { sourceLocation: loc })} ariaLabel={`Origen ${line.name}`} />
-                  <strong className="tl-total">{formatMoney(money(lineTotalCents(line)))}</strong>
-                  {!readOnly && <button type="button" className="tl-remove" onClick={() => removeLine(line.id)}><X /></button>}
+                  </div>
+                  <div className="dl-r2">
+                    <span className="dl-meta">
+                      {[line.sku, identifiers?.barra].filter(Boolean).join(' · ')}
+                      {' · '}
+                      <button type="button" className="tl-unit-price" disabled={readOnly} onClick={() => setPriceEditorLineId(priceEditorLineId === line.id ? null : line.id)}>
+                        Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u{line.discountBasisPoints > 0 && ` −${(line.discountBasisPoints / 100).toFixed(1)}%`}{line.priceOverridden && <small className="overridden-badge">editado</small>}
+                      </button>
+                      {priceEditorLineId === line.id && (
+                        <PricePopover
+                          line={line}
+                          onClose={() => setPriceEditorLineId(null)}
+                          onApply={(patch) => { updateLine(line.id, { ...patch, priceOverridden: true, modifiedBy: actorId, modifiedAt: new Date().toISOString() }); setPriceEditorLineId(null) }}
+                        />
+                      )}
+                      {showEquivalence && <> · <span className="dl-equiv">{fmtQty(line.quantity * factor)} u</span></>}
+                    </span>
+                    <div className="dl-origen"><OriginPin value={origin} options={originOptions} onChange={(loc) => updateLine(line.id, { sourceLocation: loc })} ariaLabel={`Origen ${line.name}`} /></div>
+                    <strong className="dl-total">{formatMoney(money(lineTotalCents(line)))}</strong>
+                    {!readOnly && <button type="button" aria-label={`Quitar ${line.name}`} onClick={() => removeLine(line.id)}><X /></button>}
+                  </div>
                 </div>
                 {stockError && <small className="line-stock-error">{stockError}</small>}
               </div>
@@ -426,19 +428,19 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         <div className="editor-lines draft-lines custom-lines">
           <header><strong>Ítems especiales / a pedido</strong>{!readOnly && <button type="button" onClick={openNewCustomModal}><Plus /> Agregar ítem a pedido</button>}</header>
           {customLines.map((line) => (
-            <div key={line.id} className="draft-line-row two-row-line custom-two-row-line">
-              <div className="tl-row1">
-                <strong className="tl-name" title={line.name}>{line.name}</strong>
+            <div key={line.id} className="draft-line-row custom-line-row">
+              <div className="dl-r1">
+                <span className="dl-nombre" title={line.name}>{line.name}</span>
+                {!readOnly && <button type="button" className="edit-link" onClick={() => openEditCustomModal(line)}><Pencil /> Editar</button>}
               </div>
-              <div className="tl-row2">
-                <span className="tl-meta">
-                  <small className="a-pedido-badge">A pedido</small>
-                  {' · '}Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u
+              <div className="dl-r2">
+                <span className="dl-meta">
+                  <small className="dl-badge">A pedido</small>
+                  Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u
                   {line.note && ` · ${line.note}`}
                 </span>
-                {!readOnly && <button type="button" className="tl-edit" onClick={() => openEditCustomModal(line)}><Pencil /> Editar</button>}
-                <strong className="tl-total">{formatMoney(money(lineTotalCents(line)))}</strong>
-                {!readOnly && <button type="button" className="tl-remove" onClick={() => removeLine(line.id)}><X /></button>}
+                <strong className="dl-total">{formatMoney(money(lineTotalCents(line)))}</strong>
+                {!readOnly && <button type="button" aria-label={`Quitar ${line.name}`} onClick={() => removeLine(line.id)}><X /></button>}
               </div>
             </div>
           ))}
