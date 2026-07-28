@@ -133,6 +133,7 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
           </div>
         )}
       </div>
+      <p className="print-header-footer-hint">Si el PDF sale con fecha y URL arriba/abajo, es el encabezado que agrega el navegador — desactivalo en el diálogo de impresión, en "Más ajustes" → "Encabezados y pies de página".</p>
       <footer className="modal-actions">
         <button className="secondary-button" onClick={() => window.print()}><FileDown /> Guardar PDF</button>
         <button className="primary-button" onClick={() => window.print()}><Printer /> Imprimir</button>

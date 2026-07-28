@@ -1,0 +1,17 @@
+/* Ronda 9 — TAREA 4: estilo del botón de plegar el resumen del carrito
+   (subtotal/descuento). El total sigue siempre visible; esto solo pliega el
+   desglose. Nombrado por concern, no por ronda — ver Nota de proceso del
+   brief sobre pos-ajustes-r2/r3/r4 pisándose entre sí. */
+.cart-summary-breakdown { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 200ms ease }
+.cart-summary-breakdown.collapsed { grid-template-rows: 0fr }
+.cart-summary-breakdown-inner { overflow: hidden; min-height: 0 }
+.summary-collapse-toggle {
+  width: 26px; height: 26px; min-width: 26px;
+  border: 1px solid #e3ded6; background: #fff; border-radius: 8px;
+  display: grid; place-items: center; color: #77736c;
+  margin-left: 8px;
+  transition: background 150ms ease;
+}
+.summary-collapse-toggle:hover { background: #f5f2ed }
+.summary-collapse-toggle svg { width: 14px; transition: transform 160ms ease }
+.summary-collapse-toggle[aria-expanded="false"] svg { transform: rotate(180deg) }

@@ -1,0 +1,4 @@
+/* Ronda 9 — TAREA 1: aviso sobre el encabezado/pie que agrega el navegador al
+   imprimir (no es CSS del documento, no se puede eliminar de forma confiable
+   con @page{margin:0} — se documenta para el usuario en su lugar). */
+.print-header-footer-hint { margin: 12px 22px 0; font-size: 11px; color: #96928a }

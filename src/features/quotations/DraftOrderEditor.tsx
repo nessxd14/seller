@@ -260,6 +260,11 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   }, [catalogLines, stockByProduct])
 
   const hasStockErrors = Object.keys(lineErrors).length > 0
+  // TAREA 3 (Ronda 9): cliente obligatorio para guardar/convertir una cotización.
+  // "Cliente de mostrador" (customerId vacío) no cuenta — es UI-only, no toca la base
+  // (8 cotizaciones viejas sin cliente siguen abriéndose porque esto solo bloquea el
+  // guardado, no la carga).
+  const missingCustomer = !value.customerId
 
   const runAction = async (action: (q: QuoteDraft) => void | Promise<void>) => {
     setSaving(true)
@@ -312,6 +317,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                 </div>
               )}
             </div>
+            {!readOnly && missingCustomer && <small className="line-stock-error">Elegí un cliente en el buscador de arriba — una cotización sin cliente no se puede guardar. "Cliente de mostrador" no cuenta.</small>}
           </label>
           <label>Vigencia<input type="date" disabled={readOnly} value={value.validUntil} onChange={(e) => setValue((v) => ({ ...v, validUntil: e.target.value }))} /></label>
           <label>Fecha<input type="date" disabled={readOnly} value={value.documentDate ?? ''} onChange={(e) => setValue((v) => ({ ...v, documentDate: e.target.value || undefined }))} /></label>
@@ -456,7 +462,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       </div>
       <footer className="modal-actions">
         <button className="secondary-button" onClick={onClose}>Cancelar</button>
-        {!readOnly && <button className="secondary-button" disabled={!value.lines.length || saving || hasStockErrors} onClick={() => void runAction(onSave)}>Guardar como cotización</button>}
+        {!readOnly && <button className="secondary-button" disabled={!value.lines.length || saving || hasStockErrors || missingCustomer} title={missingCustomer ? 'Elegí un cliente para guardar' : undefined} onClick={() => void runAction(onSave)}>Guardar como cotización</button>}
         {/* Ronda 5 — TAREA 1: which conversion action shows depends on WHERE this editor
             was opened from, not on the form's current state. Editing an existing
             cotización (isExistingQuote) → only "Convertir a pedido" is offered, since
@@ -469,7 +475,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             existed and was verified to already block reconversion of a CONVERTIDA
             quote, not a new restriction added here). */}
         {!readOnly && !isExistingQuote && onCreateOrder && <button className="primary-button" disabled={!value.lines.length || saving || hasStockErrors} onClick={() => void runAction(onCreateOrder)}>Crear pedido</button>}
-        {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
+        {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors || missingCustomer} title={missingCustomer ? 'Elegí un cliente para convertir' : undefined} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
       </footer>
       {customModalOpen && (
         <CustomItemModal

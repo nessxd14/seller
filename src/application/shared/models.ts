@@ -60,6 +60,11 @@ export interface OrderView {
   sourceQuoteId?: string
   lines: Array<WorkflowLine & { prepared: number; allocations: { location: 'Tienda' | 'Almacén'; quantity: number }[] }>
   events: { at: string; label: string; detail: string }[]
+  // Mock backend only: remembers the status a cancelled order had before anulación,
+  // so restore() can return it there instead of always defaulting to 'confirmed'.
+  // Supabase mode doesn't need this field — restaurar_pedido() reads estado_previo
+  // straight from pedido_evento.
+  previousStatus?: OrderWorkflowStatus
 }
 
 export interface CustomerRecord {

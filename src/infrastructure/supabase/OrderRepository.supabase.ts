@@ -56,6 +56,23 @@ interface PedidoLineaRow {
   presentacion?: { nombre: string; factor_unidad_base: number | string } | null
 }
 
+interface PedidoEventoRow {
+  id: number
+  accion: 'ANULADO' | 'RESTAURADO'
+  motivo: string
+  estado_previo: string
+  usuario: string
+  creado_en: string
+}
+
+const estadoLabel: Record<string, string> = { ABIERTO: 'Abierto', COMPLETADO: 'Completado', CANCELADO: 'Cancelado' }
+
+const eventoRowToEvent = (row: PedidoEventoRow) => ({
+  at: new Date(row.creado_en).toLocaleString('es-BO'),
+  label: row.accion === 'ANULADO' ? 'Pedido anulado' : 'Pedido restaurado',
+  detail: `${row.usuario} · ${row.motivo} · antes: ${estadoLabel[row.estado_previo] ?? row.estado_previo}`,
+})
+
 const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
 
 type OrderLine = WorkflowLine & { prepared: number; allocations: { location: 'Tienda' | 'Almacén'; quantity: number }[] }
@@ -90,7 +107,7 @@ const lineaRowToOrderLine = (row: PedidoLineaRow): OrderLine => {
 // local alias to avoid importing pctToBp under a name collision with bpToPct import above
 const bpToPctSafe = (pct: number) => Math.round(pct * 100)
 
-const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[]): OrderView & Versioned => ({
+const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[], eventos: PedidoEventoRow[]): OrderView & Versioned => ({
   id: String(header.id),
   number: header.referencia ?? `PED-${header.id}`,
   customerId: header.cliente_id != null ? String(header.cliente_id) : undefined,
@@ -99,7 +116,7 @@ const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[]): OrderView &
   status: estadoPedidoToStatus(header.estado),
   createdAt: header.creado_en,
   lines: lines.map(lineaRowToOrderLine),
-  events: [],
+  events: eventos.map(eventoRowToEvent),
   // pedido has no version column: orders are created/converted/dispatched, not
   // optimistically edited, so we synthesize a constant version.
   version: 1,
@@ -112,7 +129,11 @@ const fetchOrderById = async (id: number): Promise<(OrderView & Versioned) | nul
   if (!header) return null
   const { data: lines, error: linesError } = await supabase.from('pedido_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').eq('pedido_id', id)
   if (linesError) throw linesError
-  return rowToOrderView(header as PedidoRow, (lines ?? []) as PedidoLineaRow[])
+  const { data: eventos, error: eventosError } = await supabase.from('pedido_evento').select('*').eq('pedido_id', id).order('creado_en', { ascending: true })
+  // pedido_evento is created by TAREA 2's migration — not applied yet, so a missing-table
+  // error here shouldn't break order loading; just show no history until it lands.
+  const eventRows = eventosError ? [] : ((eventos ?? []) as PedidoEventoRow[])
+  return rowToOrderView(header as PedidoRow, (lines ?? []) as PedidoLineaRow[], eventRows)
 }
 
 const buildLineasJsonb = (lines: WorkflowLine[], channel: OrderView['channel']) =>
@@ -158,7 +179,9 @@ export class SupabaseOrderRepository implements OrderRepository {
       ? await supabase.from('pedido_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').in('pedido_id', ids)
       : { data: [] as PedidoLineaRow[], error: null }
     if (linesError) throw linesError
-    const items = headers.map((header) => rowToOrderView(header, (allLines ?? []).filter((l) => l.pedido_id === header.id) as PedidoLineaRow[]))
+    // List rows don't need the bitácora — only the detail panel does — so events stay
+    // empty here rather than fetching pedido_evento for every row on every page load.
+    const items = headers.map((header) => rowToOrderView(header, (allLines ?? []).filter((l) => l.pedido_id === header.id) as PedidoLineaRow[], []))
     return { items, page: page.page, pageSize: page.pageSize, total: count ?? 0 }
   }
 
