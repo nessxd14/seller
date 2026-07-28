@@ -10,6 +10,8 @@ import './pos-ajustes.css'
 import './pos-ajustes-r2.css'
 import './pos-ajustes-r3.css'
 import './pos-ajustes-r4.css'
+import './pos-resumen-carrito.css'
+import './pos-impresion.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

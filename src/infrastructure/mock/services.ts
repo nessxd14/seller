@@ -17,7 +17,18 @@ export const configService = configRepository
 export const reportsService = reportsRepository
 
 export const quoteService = new QuoteService(new LocalStorageRepository<QuoteDraft>('roari-quotes-v1', quoteSeeds))
-export const orderService = new OrderService(new LocalStorageRepository<OrderView>('roari-orders-v1', orderSeeds))
+const rawOrderService = new OrderService(new LocalStorageRepository<OrderView>('roari-orders-v1', orderSeeds))
+const currentMockActorId = async (): Promise<string> => {
+  const session = await mockAuthSessionProvider.getSession()
+  return session?.user.email ?? session?.user.name ?? 'pos'
+}
+export const orderService = {
+  list: () => rawOrderService.list(),
+  save: (order: OrderView) => rawOrderService.save(order),
+  partialDispatch: (id: string) => rawOrderService.partialDispatch(id),
+  cancel: async (id: string, motivo: string) => rawOrderService.cancel(id, motivo, await currentMockActorId()),
+  restore: async (id: string, motivo: string) => rawOrderService.restore(id, motivo, await currentMockActorId()),
+}
 export const customerService = new CustomerService(new LocalStorageRepository<CustomerRecord>('roari-customers-v1', customerSeeds))
 const rawCashService = new CashService(new LocalStorageRepository<CashSessionRecord>('roari-cash-v1', cashSeeds))
 export const sensitiveOperations = new SensitiveOperationExecutor(new LocalIdempotencyService())

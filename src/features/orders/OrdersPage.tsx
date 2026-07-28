@@ -1,4 +1,4 @@
-import { CheckCircle2, HandCoins, PackageCheck, Truck, XCircle, ArrowUpDown, FileDown } from 'lucide-react'
+import { CheckCircle2, HandCoins, PackageCheck, Truck, XCircle, RotateCcw, ArrowUpDown, FileDown } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { OrderView, OrderWorkflowStatus } from '../../application/shared/models'
 import { cashService, orderService, sensitiveOperations } from '../../infrastructure/services'
@@ -32,6 +32,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   const [orderDoc, setOrderDoc] = useState<OrderView | null>(null)
   const [advanceOpen, setAdvanceOpen] = useState(false)
   const [advances, setAdvances] = useState<Array<{ id: string; amountCents: number; method: string; note: string; at: string }>>([])
+  const [reasonModal, setReasonModal] = useState<{ action: 'cancel' | 'restore'; order: OrderView } | null>(null)
   const { sessionId } = useCashSession()
   const load = () => { setStatus('loading'); return orderService.list().then((items) => { setOrders(items); setStatus('ready') }).catch(() => setStatus('error')) }
   useEffect(() => {
@@ -74,7 +75,22 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     return withStats
   }, [orders, query, filter, channelFilter, sortKey, sortDir])
   const dispatch = async (order: OrderView) => { if (!canDispatch) { notify('Tu rol no permite despachar pedidos'); return } if (!confirm('¿Registrar un despacho parcial simulado? No modificará inventario.')) return; const result = await sensitiveOperations.execute('dispatch',order.id,()=>orderService.partialDispatch(order.id)); setSelected(result); await load(); notify('Despacho parcial simulado') }
-  const cancel = async (order: OrderView) => { if (readOnly) { notify('Modo solo lectura'); return } if (!confirm(`¿Cancelar ${order.number}? Esta acción solo afecta datos mock.`)) return; const updated = { ...order, status: 'cancelled' as const, events: [...order.events, { at: new Date().toLocaleString('es-BO'), label: 'Pedido cancelado', detail: 'Sin movimientos reales de inventario' }] }; await orderService.save(updated); setSelected(updated); await load(); notify('Pedido cancelado') }
+  // TAREA 2 (Ronda 9): anular/restaurar, siempre con motivo obligatorio y confirmación.
+  // Decisión confirmada con Ness: solo se anulan pedidos sin líneas despachadas.
+  const hasDispatchedLines = (order: OrderView) => order.lines.some((line) => line.prepared > 0)
+  const confirmReason = async (motivo: string) => {
+    if (readOnly || !reasonModal) { notify('Modo solo lectura'); return }
+    const { action, order } = reasonModal
+    try {
+      const updated = action === 'cancel' ? await orderService.cancel(order.id, motivo) : await orderService.restore(order.id, motivo)
+      setReasonModal(null)
+      setSelected(updated)
+      await load()
+      notify(action === 'cancel' ? 'Pedido anulado' : 'Pedido restaurado')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo completar la acción')
+    }
+  }
   return <FeatureShell eyebrow="OPERACIONES" title="Pedidos" subtitle={featureFlags.supabase ? "Pedidos confirmados desde el POS — despacho y estado se gestionan en el WMS" : "Reserva, preparación y despacho simulado"}>
     <FeatureToolbar query={query} onQuery={setQuery} placeholder="Buscar por pedido o cliente...">
       <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}><option value="all">Todos los estados</option>{['draft','confirmed','awaiting_stock','reserved','preparing','ready','dispatched','delivered','cancelled'].map((value) => <option key={value} value={value}>{statusLabel[value]}</option>)}</select>
@@ -99,11 +115,27 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       {selected.lines.some((line) => line.isCustomItem) && <><h3>Ítems especiales / a pedido</h3>{selected.lines.filter((line) => line.isCustomItem).map((line) => <article key={line.id}><header><div><strong>{line.name}</strong><small>Personalizado</small></div><span>{line.prepared}/{line.quantity} preparadas</span></header></article>)}</>}
       <h3>Historial</h3><div className="timeline">{selected.events.map((event,index) => <div key={`${event.at}-${index}`}><CheckCircle2 /><span><strong>{event.label}</strong><small>{event.at} · {event.detail}</small></span></div>)}</div>
       {<><h3>Anticipos</h3>{advances.length ? <div className="timeline">{advances.map((advance) => <div key={advance.id}><HandCoins /><span><strong>{formatMoney(money(advance.amountCents))} · {advance.method}</strong><small>{new Date(advance.at).toLocaleString('es-BO')}</small></span></div>)}</div> : <FeatureState type="empty" text="Sin anticipos registrados" />}{featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar un anticipo.</p>}</>}
-    </div><footer className="modal-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}>Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}>Nota de entrega A4</button>{!featureFlags.supabase && <button className="danger-button" disabled={['delivered','cancelled'].includes(selected.status)} onClick={() => cancel(selected)}><XCircle /> Cancelar</button>}{!featureFlags.supabase && <button className="primary-button" disabled={!['preparing','ready'].includes(selected.status)} onClick={() => dispatch(selected)}><Truck /> Despacho parcial</button>}</footer></Modal>}
+    </div><footer className="modal-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}>Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}>Nota de entrega A4</button>{selected.status === 'cancelled' ? <button className="primary-button" onClick={() => setReasonModal({ action: 'restore', order: selected })}><RotateCcw /> Restaurar</button> : <button className="danger-button" disabled={hasDispatchedLines(selected)} title={hasDispatchedLines(selected) ? 'No se puede anular: tiene líneas despachadas' : undefined} onClick={() => setReasonModal({ action: 'cancel', order: selected })}><XCircle /> Anular pedido</button>}{!featureFlags.supabase && <button className="primary-button" disabled={!['preparing','ready'].includes(selected.status)} onClick={() => dispatch(selected)}><Truck /> Despacho parcial</button>}</footer></Modal>}
     {advanceOpen && selected && <AdvanceModal onClose={()=>setAdvanceOpen(false)} onConfirm={registerAdvance}/>}
+    {reasonModal && <ReasonModal action={reasonModal.action} orderNumber={reasonModal.order.number} onClose={()=>setReasonModal(null)} onConfirm={confirmReason}/>}
     {deliveryNote && <DocumentoExportable mode="nota-entrega" doc={{ number: deliveryNote.number, customerName: deliveryNote.customerName, channel: deliveryNote.channel, lines: deliveryNote.lines }} onClose={()=>setDeliveryNote(null)} />}
     {orderDoc && <DocumentoExportable mode="pedido" doc={{ number: orderDoc.number, customerName: orderDoc.customerName, channel: orderDoc.channel, lines: orderDoc.lines }} onClose={()=>setOrderDoc(null)} />}
   </FeatureShell>
+}
+
+// TAREA 2 (Ronda 9): motivo obligatorio + confirmación explícita antes de anular o
+// restaurar — la bitácora sin motivo responde quién y cuándo, pero no por qué.
+function ReasonModal({ action, orderNumber, onClose, onConfirm }: { action: 'cancel' | 'restore'; orderNumber: string; onClose: () => void; onConfirm: (motivo: string) => void | Promise<void> }) {
+  const [motivo, setMotivo] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const title = action === 'cancel' ? 'Anular pedido' : 'Restaurar pedido'
+  const valid = motivo.trim().length > 0 && confirmed
+  const submit = async () => { setSaving(true); try { await onConfirm(motivo.trim()) } finally { setSaving(false) } }
+  return <Modal title={title} subtitle={orderNumber} onClose={onClose}><div className="modal-body form-grid">
+    <label className="full">Motivo<textarea rows={3} autoFocus placeholder={action === 'cancel' ? 'Ej. cliente canceló el pedido' : 'Ej. anulación por error, se repone'} value={motivo} onChange={(e)=>setMotivo(e.target.value)}/></label>
+    <label className="full custom-modal-add-another"><input type="checkbox" checked={confirmed} onChange={(e)=>setConfirmed(e.target.checked)}/> {action === 'cancel' ? `Confirmo que quiero anular ${orderNumber}` : `Confirmo que quiero restaurar ${orderNumber}`}</label>
+  </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className={action === 'cancel' ? 'danger-button' : 'primary-button'} disabled={!valid || saving} onClick={()=>void submit()}>{title}</button></footer></Modal>
 }
 
 function AdvanceModal({onClose,onConfirm}:{onClose:()=>void;onConfirm:(amountCents:number,method:'cash'|'qr'|'transfer')=>void}) {

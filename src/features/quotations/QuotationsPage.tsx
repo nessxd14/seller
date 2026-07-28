@@ -81,6 +81,8 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   // `sourceQuoteId`, and no separate quoteService.markConverted() call is made.
   const convert = async (quote: QuoteDraft) => {
     if(readOnly){notify('Modo solo lectura');return}
+    // TAREA 3 (Ronda 9): sin cliente no se puede convertir — mismo requisito que guardar.
+    if(!quote.customerId){notify('Esta cotización no tiene cliente. Abrila y elegí uno en el buscador antes de convertirla.');return}
     if (!confirm(`¿Convertir ${quote.number} en pedido?`)) return
     if (featureFlags.supabase) {
       await sensitiveOperations.execute('convert_quote', quote.id, () => orderService.save({ id: '', number: '', customerName: quote.customerName, channel: quote.channel, status: 'draft', createdAt: new Date().toISOString(), sourceQuoteId: quote.id, lines: [], events: [] }))
@@ -110,7 +112,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
           <span className={`status-chip ${statusChipClass(quote.status)}`}>{statusLabel[quote.status]}</span>
           <span>{nearExpiry ? <span className="vigencia-warning"><AlertTriangle />{days < 0 ? 'Vencida' : `${quote.validUntil} (${days} d)`}</span> : quote.validUntil}</span>
           <strong>{formatMoney(money(Math.max(0,total(quote))))}</strong>
-          <div className="row-actions"><button title="Vista previa / exportar" onClick={() => setPreview(quote)}><Eye /></button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => { setEditingIsExisting(true); setEditing(quote) }}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title="Convertir en pedido" onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
+          <div className="row-actions"><button title="Vista previa / exportar" onClick={() => setPreview(quote)}><Eye /></button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => { setEditingIsExisting(true); setEditing(quote) }}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title={quote.customerId ? 'Convertir en pedido' : 'Sin cliente — abrí la cotización y elegí uno'} onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
         </article>
       })}
     </div>}
