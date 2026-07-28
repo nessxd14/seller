@@ -30,7 +30,7 @@ const num = (value: number | string | null | undefined): number => (value == nul
 const precioCanal = (valor: number | string | null, retail: number): { precio: number; heredado: boolean } =>
   valor == null ? { precio: retail, heredado: true } : { precio: Number(valor), heredado: false }
 
-const rowToProduct = (row: ProductoRow): Product => {
+const rowToProduct = (row: ProductoRow, codes?: { barra?: string; fabrica?: string }): Product => {
   const retail = num(row.precio_base)
   const mayoreo = precioCanal(row.precio_mayoreo, retail)
   const institucional = precioCanal(row.precio_institucion, retail)
@@ -38,8 +38,8 @@ const rowToProduct = (row: ProductoRow): Product => {
   return {
     id: row.id,
     sku: row.sku_interno ?? String(row.id),
-    codigoBarra: row.sku_interno ?? '',
-    codigoFabrica: row.sku_interno ?? '',
+    codigoBarra: codes?.barra ?? '',
+    codigoFabrica: codes?.fabrica ?? '',
     nombre: row.nombre,
     descripcion: row.marca ?? '',
     categoria: row.marca ?? 'General',
@@ -56,6 +56,54 @@ const rowToProduct = (row: ProductoRow): Product => {
   }
 }
 
+/**
+ * Batch-fetch each product's REAL barcode (`identificador.tipo='barra'`) and factory code
+ * (`tipo='fabrica'`) off its BASE presentation, for display purposes (TAREA 1 — these used
+ * to be faked as `sku_interno` duplicated into both fields, which is not a real code and was
+ * confusing in the search-results dropdown). A product can have more than one `barra`
+ * identificador, so `es_principal` wins; ties keep whichever row comes back first. Two
+ * round-trips total regardless of how many product ids are passed — mirrors
+ * `listIdentifiersForProducts`'s existing batching convention in this same file, scoped here
+ * to a bounded set of ids (a search results page, never the full catalog) so this is never at
+ * risk of PostgREST's 1000-row cap.
+ */
+const fetchBarcodeCodes = async (productIds: number[]): Promise<Map<number, { barra?: string; fabrica?: string }>> => {
+  const ids = [...new Set(productIds)].filter((id) => Number.isFinite(id))
+  const result = new Map<number, { barra?: string; fabrica?: string }>()
+  if (!ids.length) return result
+  const { data: presentaciones, error: presError } = await supabase
+    .from('presentacion')
+    .select('id,producto_id')
+    .in('producto_id', ids)
+    .eq('es_base', true)
+  if (presError) throw presError
+  const basePresByProduct = new Map<number, number>()
+  ;(presentaciones ?? []).forEach((row) => basePresByProduct.set((row as { producto_id: number }).producto_id, (row as { id: number }).id))
+  const presIds = [...basePresByProduct.values()]
+  if (!presIds.length) return result
+  const { data: identificadores, error: idError } = await supabase
+    .from('identificador')
+    .select('presentacion_id,tipo,valor,activo,es_principal')
+    .in('presentacion_id', presIds)
+    .in('tipo', ['barra', 'fabrica'])
+    .order('es_principal', { ascending: false })
+  if (idError) throw idError
+  const codesByPres = new Map<number, { barra?: string; fabrica?: string }>()
+  ;(identificadores ?? []).forEach((row) => {
+    const typed = row as { presentacion_id: number; tipo: 'barra' | 'fabrica'; valor: string; activo: boolean | null }
+    if (typed.activo === false) return
+    const entry = codesByPres.get(typed.presentacion_id) ?? {}
+    if (typed.tipo === 'barra' && !entry.barra) entry.barra = typed.valor
+    if (typed.tipo === 'fabrica' && !entry.fabrica) entry.fabrica = typed.valor
+    codesByPres.set(typed.presentacion_id, entry)
+  })
+  basePresByProduct.forEach((presId, productId) => {
+    const codes = codesByPres.get(presId)
+    if (codes) result.set(productId, codes)
+  })
+  return result
+}
+
 export class SupabaseProductRepository implements ProductRepository {
   async search(input: { query?: string; category?: string; active?: boolean; page: PageRequest }): Promise<Page<Product>> {
     const { query, active, page } = input
@@ -69,8 +117,13 @@ export class SupabaseProductRepository implements ProductRepository {
     if (active !== undefined) builder = builder.eq('activo', active)
     const { data, error, count } = await builder.range(from, to)
     if (error) throw error
+    const rows = (data ?? []) as ProductoRow[]
+    // Separate batched call, scoped to just this page's product ids — kept apart from
+    // `producto`'s own paginated fetch above so the search's count/pagination can never be
+    // affected by the identifier join (see fetchBarcodeCodes doc comment).
+    const codes = await fetchBarcodeCodes(rows.map((row) => row.id))
     return {
-      items: (data ?? []).map((row) => rowToProduct(row as ProductoRow)),
+      items: rows.map((row) => rowToProduct(row, codes.get(row.id))),
       page: page.page,
       pageSize: page.pageSize,
       total: count ?? 0,
@@ -82,14 +135,19 @@ export class SupabaseProductRepository implements ProductRepository {
     if (!Number.isFinite(numericId)) return null
     const { data, error } = await supabase.from('producto').select('*').eq('id', numericId).maybeSingle()
     if (error) throw error
-    return data ? rowToProduct(data as ProductoRow) : null
+    if (!data) return null
+    const codes = await fetchBarcodeCodes([numericId])
+    return rowToProduct(data as ProductoRow, codes.get(numericId))
   }
 
   /** Exact-match lookup by internal SKU (barcode-scanner style Enter-to-search). */
   async findBySku(sku: string): Promise<Product | null> {
     const { data, error } = await supabase.from('producto').select('*').eq('sku_interno', sku).maybeSingle()
     if (error) throw error
-    return data ? rowToProduct(data as ProductoRow) : null
+    if (!data) return null
+    const row = data as ProductoRow
+    const codes = await fetchBarcodeCodes([row.id])
+    return rowToProduct(row, codes.get(row.id))
   }
 }
 

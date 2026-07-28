@@ -1,0 +1,327 @@
+/* ============================================================================
+ * pos-ajustes-r3.css — buscador, líneas del pedido, botonera y membrete.
+ * Importar en src/main.tsx DESPUÉS de pos-ajustes-r2.css.
+ * ========================================================================== */
+
+/* ── 1. Resultados del buscador de productos ──────────────────────────────
+ *
+ * Qué estaba mal, concretamente:
+ *  · El desplegable ocupa media pantalla (`right:50%`) y los nombres del
+ *    catálogo son largos de verdad — "MARCADORES FABER CASTELL 13 COLORES
+ *    10 +3 CAMBIA COLORES +1 HOJA DE STICKERS" no entra ni cerca.
+ *  · `strong` y `small` son los dos `display:block` con el tamaño heredado,
+ *    sin jerarquía: el nombre y el metadato pesan casi igual.
+ *  · `padding:7px 8px` sobre 20 resultados da una lista apretada, difícil de
+ *    apuntar con el mouse y peor con el dedo.
+ *  · `max-height:220px` muestra ~5 resultados de 20.
+ */
+
+.product-search-results {
+  right: 0;                /* usa el ancho completo, no la mitad */
+  max-height: 340px;
+  padding: 5px;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px #28251d1f;
+}
+
+.product-search-results button {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "nombre precio"
+    "meta   precio";
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 1px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  transition: background .1s;
+}
+
+.product-search-results button + button { margin-top: 1px }
+
+.product-search-results button:hover,
+.product-search-results button:focus-visible {
+  background: #f5f2ed;
+  outline: 0;
+}
+
+/* Nombre: una línea con corte limpio. El nombre completo va en el atributo
+   `title` desde el componente — el globito del sistema operativo, igual que
+   en las tarjetas del catálogo. */
+.product-search-results button strong {
+  grid-area: nombre;
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #24231f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* SKU · código de barra. Gris y chico, como se pidió. */
+.product-search-results button small {
+  grid-area: meta;
+  display: block;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+  letter-spacing: .2px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Precio a la derecha, en su propia columna: deja de competir con el SKU por
+   el mismo renglón y los importes quedan alineados entre resultados. */
+.product-search-results button .precio {
+  grid-area: precio;
+  font-size: 12px;
+  font-weight: 700;
+  color: #3d3b36;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.product-search-results button .precio.sin-precio {
+  color: #b3afa7;
+  font-weight: 500;
+}
+
+
+/* ── 2. Línea de producto del pedido ──────────────────────────────────────
+ *
+ * `.draft-line-top` tenía SIETE columnas en una fila:
+ *     1.3fr 55px 95px 150px 90px 70px 25px
+ * Son 485px fijos más 42px de gaps; al nombre le sobran ~200px en un modal de
+ * 560px. De ahí la compresión.
+ *
+ * Se parte en dos filas. Arriba lo que se lee (nombre y total), abajo lo que
+ * se manipula (cantidad, presentación, origen, precio).
+ *
+ * Requiere un cambio mínimo de JSX: envolver en dos divs, `.dl-head` y
+ * `.dl-controls`. Ver el brief.
+ */
+
+.draft-line-top {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.draft-line-top .dl-head {
+  display: grid;
+  grid-template-columns: 1fr auto 25px;
+  align-items: start;
+  gap: 10px;
+}
+
+.draft-line-top .dl-head > span {
+  min-width: 0;   /* sin esto el ellipsis no funciona dentro de un grid */
+}
+
+.draft-line-top .dl-head strong {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #24231f;
+  /* Dos líneas: la mayoría de los nombres del catálogo entran completos. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.draft-line-top .dl-head > strong:last-of-type,
+.draft-line-top .dl-head > .dl-total {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  align-self: center;
+}
+
+.draft-line-top .dl-controls {
+  display: grid;
+  grid-template-columns: 62px minmax(110px, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.draft-line-top .dl-controls > input[type="number"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* El selector de presentación hereda la piel de la ronda 2. */
+.draft-line-top .dl-controls select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--line);
+  background: #fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2377746d' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center;
+  border-radius: 7px;
+  height: 32px;
+  padding: 0 26px 0 9px;
+  font-size: 11px;
+  color: #4c4944;
+  text-overflow: ellipsis;
+}
+
+.draft-line-top .dl-controls .price-cell {
+  height: 32px;
+  min-width: 82px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.draft-line-top .origin-tabs { padding: 3px }
+.draft-line-top .origin-tabs button {
+  padding: 5px 9px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Botón de quitar: gris hasta que se lo apunta. */
+.draft-line-top .dl-head > button {
+  border: 0;
+  background: transparent;
+  color: #c2beb6;
+  padding: 0;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 6px;
+}
+.draft-line-top .dl-head > button:hover { background: #fbeceb; color: #c84f44 }
+.draft-line-top .dl-head > button svg { width: 14px }
+
+
+/* ── 3. Ítems a pedido (línea personalizada) ──────────────────────────────
+ * Mismo problema: 6 columnas (`1.6fr 60px 90px 1.2fr 70px 25px`). Descripción
+ * y nota se pelean por el ancho y ninguna queda usable.
+ */
+
+.custom-line-row {
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.custom-line-row .cl-head {
+  display: grid;
+  grid-template-columns: 1fr auto 25px;
+  align-items: center;
+  gap: 10px;
+}
+
+.custom-line-row .cl-controls {
+  display: grid;
+  grid-template-columns: 70px 90px 1fr;
+  align-items: center;
+  gap: 7px;
+}
+
+.custom-line-row input {
+  height: 32px;
+  border: 1px solid #e0dbd2;
+  border-radius: 7px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  outline: 0;
+  background: #fff;
+  min-width: 0;
+}
+
+.custom-line-row input:focus {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px #f26b2b17;
+}
+
+.custom-line-row input[type="number"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.custom-line-row .cl-head strong {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.draft-line-row-wrap .line-identifiers { padding: 0 12px 8px }
+
+
+/* ── 4. Botonera del modal ────────────────────────────────────────────────
+ *
+ * Había tres `.primary-button` naranjas juntos. Cuando todo es principal, nada
+ * lo es: el ojo no sabe cuál es la acción esperada y termina leyendo los tres.
+ *
+ * Jerarquía: Cancelar como texto a la izquierda, "Guardar como cotización"
+ * secundario, y UN solo botón naranja para la acción que cierra el flujo.
+ */
+
+.modal-actions {
+  padding: 14px 22px 20px;
+  gap: 9px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+/* Cancelar se va a la izquierda: separa "salir" de "confirmar" y baja el
+   riesgo de tocarlo por inercia al apuntar al botón de al lado. */
+.modal-actions > .secondary-button:first-child {
+  margin-right: auto;
+  border-color: transparent;
+  background: transparent;
+  color: #8a867e;
+  padding-inline: 4px;
+}
+.modal-actions > .secondary-button:first-child:hover {
+  background: #f2efe9;
+  color: #55524d;
+}
+
+.modal-actions .primary-button,
+.modal-actions .secondary-button {
+  height: 38px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  letter-spacing: .1px;
+}
+
+/* Sólo el último naranja lleva sombra: refuerza cuál es la acción principal. */
+.modal-actions .primary-button { box-shadow: none }
+.modal-actions .primary-button:last-child { box-shadow: 0 6px 14px #f26b2b28 }
+
+
+/* ── 5. Membrete: logo al doble, título más chico ─────────────────────────
+ *
+ * Valores absolutos, no relativos a la ronda 1 — así no dependen de cómo haya
+ * quedado implementado aquello.
+ */
+
+.documento-exportable .doc-brand img {
+  width: 264px;
+  height: 264px;
+}
+
+.documento-exportable .doc-brand b {
+  font-size: 13px;
+  letter-spacing: 1.1px;
+}
+
+@media print {
+  /* 208px sobre A4 con margen de 15mm son ~30% del ancho útil: grande y
+     equilibrado. Más que eso empuja la tabla a la segunda página. */
+  .documento-exportable .doc-brand img { width: 208px; height: 208px }
+  .documento-exportable .doc-brand b { font-size: 11px; letter-spacing: 1px }
+}
