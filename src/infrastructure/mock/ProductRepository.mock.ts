@@ -44,6 +44,14 @@ export const listPresentations = async (productId: number): Promise<Array<{ id: 
   return [{ id: 0, nombre: 'Unidad', factorUnidadBase: 1, esBase: true }]
 }
 
+// TAREA 6 — mock seed data (src/data/products.ts) predates the marca concept and has
+// nothing meaningful to expose here (no marca field on the mock Product shape) — a
+// trivial empty list keeps the brand filter dropdown present-but-empty in mock mode
+// rather than over-investing in fake mock brand data.
+export interface BrandList { marcas: string[]; sinMarca: number }
+
+export const listBrands = async (): Promise<BrandList> => ({ marcas: [], sinMarca: 0 })
+
 export interface LineIdentifiers { barra?: string; fabrica?: string; marca?: string }
 
 // Mock mode has no `identificador` table — stand in with the mock Product's own

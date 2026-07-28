@@ -9,6 +9,7 @@ import './integration-readiness.css'
 import './pos-ajustes.css'
 import './pos-ajustes-r2.css'
 import './pos-ajustes-r3.css'
+import './pos-ajustes-r4.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

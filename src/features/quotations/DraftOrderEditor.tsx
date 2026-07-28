@@ -1,5 +1,5 @@
-import { Building2, Landmark, Plus, Warehouse, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { Building2, Landmark, Minus, Pencil, Plus, Warehouse, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { QuoteDraft, WorkflowLine } from '../../application/shared/models'
 import type { CustomerRecord } from '../../application/shared/models'
 import { customerService, productRepository, getStockByProduct, listPresentations, listLineIdentifiers, authSessionProvider } from '../../infrastructure/services'
@@ -7,7 +7,9 @@ import { featureFlags } from '../../config/featureFlags'
 import { aggregateStockBySucursal } from '../inventory/stockAggregation'
 import { formatMoney, money } from '../../domain/common/money'
 import { Modal } from '../../components/Modal'
-import { LineIdentifiersRow, type LineIdentifiers } from '../../components/LineIdentifiersRow'
+import type { LineIdentifiers } from '../../components/LineIdentifiersRow'
+import { OriginPin, buildOriginOptions, type OriginLocation } from '../../components/OriginPin'
+import { cantidadBaseFor } from '../../domain/sales/stockCheck'
 import type { Product } from '../../types'
 
 type EditableChannel = QuoteDraft['channel']
@@ -67,6 +69,17 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // Item 2.2: barra/fábrica/marca, batch-fetched per productId set so a multi-line
   // quote/order doesn't trigger an identifier lookup per line render.
   const [identifiersByProduct, setIdentifiersByProduct] = useState<Record<string, LineIdentifiers>>({})
+
+  // TAREA 4 — custom/personalizado item capture modal state. `customModalForm` holds
+  // the in-progress (not-yet-confirmed) form fields; cancelling only discards THIS,
+  // never items already committed to value.lines via a previous "Agregar otro" round.
+  const emptyCustomForm = { descripcion: '', cantidad: 1, precio: 0, nota: '' }
+  const [customModalOpen, setCustomModalOpen] = useState(false)
+  const [customModalForm, setCustomModalForm] = useState(emptyCustomForm)
+  const [customModalEditingId, setCustomModalEditingId] = useState<string | null>(null)
+  const [customModalAddAnother, setCustomModalAddAnother] = useState(false)
+  const [customModalCount, setCustomModalCount] = useState(0)
+  const customModalDescripcionRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { void authSessionProvider.getSession().then((session) => session && setActorId(session.user.email ?? session.user.id)) }, [])
   useEffect(() => { void customerService.list().then(setCustomers) }, [])
@@ -158,25 +171,65 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     setScanSku('')
   }
 
-  const addCustomLine = () => {
-    const newLine: WorkflowLine = {
-      id: crypto.randomUUID(),
-      productId: '',
-      name: 'Ítem personalizado',
-      sku: '',
-      quantity: 1,
-      unitPriceCents: 0,
-      discountBasisPoints: 0,
-      isCustomItem: true,
-      note: '',
-    }
-    setValue((v) => ({ ...v, lines: [...v.lines, newLine] }))
-  }
-
   const updateLine = (id: string, patch: Partial<WorkflowLine>) =>
     setValue((v) => ({ ...v, lines: v.lines.map((line) => (line.id === id ? { ...line, ...patch } : line)) }))
 
   const removeLine = (id: string) => setValue((v) => ({ ...v, lines: v.lines.filter((line) => line.id !== id) }))
+
+  // TAREA 4 — modal-driven capture flow. "No cambies cómo se guardan las líneas
+  // personalizadas. Es UI de captura": the resulting WorkflowLine shape and the
+  // updateLine/removeLine mechanism are exactly what addCustomLine used before —
+  // only how the fields get typed in changes.
+  const openNewCustomModal = () => {
+    setCustomModalForm(emptyCustomForm)
+    setCustomModalEditingId(null)
+    setCustomModalAddAnother(false)
+    setCustomModalCount(0)
+    setCustomModalOpen(true)
+  }
+
+  const openEditCustomModal = (line: WorkflowLine) => {
+    setCustomModalForm({ descripcion: line.name, cantidad: line.quantity, precio: line.unitPriceCents / 100, nota: line.note ?? '' })
+    setCustomModalEditingId(line.id)
+    setCustomModalAddAnother(false)
+    setCustomModalCount(0)
+    setCustomModalOpen(true)
+  }
+
+  const closeCustomModal = () => setCustomModalOpen(false)
+
+  const confirmCustomModal = () => {
+    if (!customModalForm.descripcion.trim()) return
+    if (customModalEditingId) {
+      updateLine(customModalEditingId, {
+        name: customModalForm.descripcion.trim(),
+        quantity: Math.max(1, customModalForm.cantidad),
+        unitPriceCents: Math.max(0, Math.round(customModalForm.precio * 100)),
+        note: customModalForm.nota,
+      })
+      setCustomModalOpen(false)
+      return
+    }
+    const newLine: WorkflowLine = {
+      id: crypto.randomUUID(),
+      productId: '',
+      name: customModalForm.descripcion.trim(),
+      sku: '',
+      quantity: Math.max(1, customModalForm.cantidad),
+      unitPriceCents: Math.max(0, Math.round(customModalForm.precio * 100)),
+      discountBasisPoints: 0,
+      isCustomItem: true,
+      note: customModalForm.nota,
+    }
+    setValue((v) => ({ ...v, lines: [...v.lines, newLine] }))
+    setCustomModalCount((n) => n + 1)
+    if (customModalAddAnother) {
+      setCustomModalForm(emptyCustomForm)
+      requestAnimationFrame(() => customModalDescripcionRef.current?.focus())
+    } else {
+      setCustomModalOpen(false)
+    }
+  }
 
   const catalogLines = value.lines.filter((line) => !line.isCustomItem)
   const customLines = value.lines.filter((line) => line.isCustomItem)
@@ -226,7 +279,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   }
 
   return (
-    <Modal title={value.id ? `Cotización ${value.number || value.id}` : 'Nueva cotización'} subtitle={readOnly ? 'Solo lectura — esta cotización ya no está en borrador' : 'Editor tipo borrador de pedido'} onClose={onClose} wide>
+    <Modal title={value.id ? `Cotización ${value.number || value.id}` : 'Nueva cotización'} subtitle={readOnly ? 'Solo lectura — esta cotización ya no está en borrador' : 'Editor tipo borrador de pedido'} onClose={onClose} wide escapeToClose={!customModalOpen}>
       <div className="modal-body quote-editor draft-order-editor">
         <div className="channel-tabs draft-order-tabs">
           {channelTabs.map(({ id, label, icon: Icon }) => (
@@ -308,49 +361,47 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
           {catalogLines.map((line) => {
             const stock = stockByProduct[line.productId]
             const presentations = presentationsByProduct[line.productId] ?? []
-            const origin = line.sourceLocation ?? 'Almacén'
+            const origin: OriginLocation = line.sourceLocation ?? 'Almacén'
             const stockError = lineErrors[line.id]
             const factor = line.factorUnidadBase ?? 1
             const showEquivalence = factor !== 1
+            const identifiers = identifiersByProduct[line.productId]
+            // TAREA 5 — Almacén-default-with-conditional-Tienda-unlock: Tienda is only
+            // selectable here when Almacén's stock does NOT cover this line's requested
+            // quantity in base units (a strict "<" comparison, not "=== 0" — see brief).
+            // Undetermined stock (not yet loaded) never disables anything, mirroring the
+            // existing lineErrors guard above.
+            const almacenCovers = stock ? stock.almacen >= cantidadBaseFor({ cantidad: line.quantity, ubicacion: origin, factorUnidadBase: line.factorUnidadBase }) : false
+            const originOptions = buildOriginOptions(stock, almacenCovers ? { Tienda: 'Almacén cubre esta línea' } : undefined)
             return (
-              <div key={line.id} className={`draft-line-row presentation-line-row ${stockError ? 'has-stock-error' : ''}`}>
-                <div className="draft-line-top">
-                  <div className="dl-head">
-                    <span><strong>{line.name}</strong><small>{line.sku}</small><LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} /></span>
-                    <strong className="dl-total">{formatMoney(money(lineTotalCents(line)))}</strong>
-                    {!readOnly && <button type="button" onClick={() => removeLine(line.id)}><X /></button>}
+              <div key={line.id} className={`draft-line-row two-row-line ${stockError ? 'has-stock-error' : ''}`}>
+                <div className="tl-row1">
+                  <strong className="tl-name" title={line.name}>{line.name}</strong>
+                  <div className="qty-stepper">
+                    <button type="button" aria-label={`Restar cantidad ${line.name}`} disabled={readOnly || line.quantity <= 1} onClick={() => updateLine(line.id, { quantity: Math.max(1, line.quantity - 1) })}><Minus /></button>
+                    <strong>{line.quantity}</strong>
+                    <button type="button" aria-label={`Sumar cantidad ${line.name}`} disabled={readOnly} onClick={() => updateLine(line.id, { quantity: line.quantity + 1 })}><Plus /></button>
                   </div>
-                  <div className="dl-controls">
-                    <input aria-label={`Cantidad ${line.name}`} type="number" min="1" disabled={readOnly} value={line.quantity} onChange={(e) => updateLine(line.id, { quantity: Math.max(1, Number(e.target.value)) })} />
-                    {presentations.length > 0 && (
-                      <select
-                        aria-label={`Presentación ${line.name}`}
-                        disabled={readOnly}
-                        value={line.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id}
-                        onChange={(e) => {
-                          const chosen = presentations.find((p) => p.id === Number(e.target.value))
-                          if (chosen) onPresentationChange(line, chosen)
-                        }}
-                      >
-                        {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                      </select>
-                    )}
-                    <div className="channel-tabs origin-tabs" role="group" aria-label={`Origen ${line.name}`}>
-                      {(['Tienda', 'Almacén'] as const).map((loc) => (
-                        <button
-                          key={loc}
-                          type="button"
-                          disabled={readOnly}
-                          className={origin === loc ? 'active' : ''}
-                          onClick={() => updateLine(line.id, { sourceLocation: loc })}
-                        >
-                          {loc}{stock ? ` ${fmtQty(loc === 'Tienda' ? stock.tienda : stock.almacen)}` : ''}
-                        </button>
-                      ))}
-                    </div>
-                    <button type="button" className="price-cell" disabled={readOnly} onClick={() => setPriceEditorLineId(priceEditorLineId === line.id ? null : line.id)}>
-                      {formatMoney(money(line.unitPriceCents))}{line.discountBasisPoints > 0 && <small> −{(line.discountBasisPoints / 100).toFixed(1)}%</small>}
-                      {line.priceOverridden && <small className="overridden-badge">editado</small>}
+                  {presentations.length > 0 && (
+                    <select
+                      aria-label={`Presentación ${line.name}`}
+                      disabled={readOnly}
+                      value={line.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id}
+                      onChange={(e) => {
+                        const chosen = presentations.find((p) => p.id === Number(e.target.value))
+                        if (chosen) onPresentationChange(line, chosen)
+                      }}
+                    >
+                      {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    </select>
+                  )}
+                </div>
+                <div className="tl-row2">
+                  <span className="tl-meta">
+                    {[line.sku, identifiers?.barra].filter(Boolean).join(' · ')}
+                    {' · '}
+                    <button type="button" className="tl-unit-price" disabled={readOnly} onClick={() => setPriceEditorLineId(priceEditorLineId === line.id ? null : line.id)}>
+                      Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u{line.discountBasisPoints > 0 && ` −${(line.discountBasisPoints / 100).toFixed(1)}%`}{line.priceOverridden && <small className="overridden-badge">editado</small>}
                     </button>
                     {priceEditorLineId === line.id && (
                       <PricePopover
@@ -359,9 +410,12 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                         onApply={(patch) => { updateLine(line.id, { ...patch, priceOverridden: true, modifiedBy: actorId, modifiedAt: new Date().toISOString() }); setPriceEditorLineId(null) }}
                       />
                     )}
-                  </div>
+                    {showEquivalence && <> · {line.quantity} {line.presentacionNombre} ({factor} und) → {fmtQty(line.quantity * factor)} u</>}
+                  </span>
+                  <OriginPin value={origin} options={originOptions} onChange={(loc) => updateLine(line.id, { sourceLocation: loc })} ariaLabel={`Origen ${line.name}`} />
+                  <strong className="tl-total">{formatMoney(money(lineTotalCents(line)))}</strong>
+                  {!readOnly && <button type="button" className="tl-remove" onClick={() => removeLine(line.id)}><X /></button>}
                 </div>
-                {showEquivalence && <small className="line-equivalence">{line.quantity} {line.presentacionNombre} = {fmtQty(line.quantity * factor)} u</small>}
                 {stockError && <small className="line-stock-error">{stockError}</small>}
               </div>
             )
@@ -370,22 +424,22 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         </div>
 
         <div className="editor-lines draft-lines custom-lines">
-          <header><strong>Ítems especiales / a pedido</strong>{!readOnly && <button type="button" onClick={addCustomLine}><Plus /> Añadir ítem personalizado</button>}</header>
+          <header><strong>Ítems especiales / a pedido</strong>{!readOnly && <button type="button" onClick={openNewCustomModal}><Plus /> Agregar ítem a pedido</button>}</header>
           {customLines.map((line) => (
-            <div key={line.id} className="draft-line-row-wrap">
-              <div className="draft-line-row custom-line-row">
-                <div className="cl-head">
-                  <input aria-label="Descripción" disabled={readOnly} placeholder="Descripción" value={line.name} onChange={(e) => updateLine(line.id, { name: e.target.value })} />
-                  <strong>{formatMoney(money(lineTotalCents(line)))}</strong>
-                  {!readOnly && <button type="button" onClick={() => removeLine(line.id)}><X /></button>}
-                </div>
-                <div className="cl-controls">
-                  <input aria-label="Cantidad" type="number" min="1" disabled={readOnly} value={line.quantity} onChange={(e) => updateLine(line.id, { quantity: Math.max(1, Number(e.target.value)) })} />
-                  <input aria-label="Precio" type="number" min="0" disabled={readOnly} value={line.unitPriceCents / 100} onChange={(e) => updateLine(line.id, { unitPriceCents: Math.max(0, Math.round(Number(e.target.value) * 100)) })} />
-                  <input aria-label="Nota" disabled={readOnly} placeholder="Nota (ej. comprar a proveedor X)" value={line.note ?? ''} onChange={(e) => updateLine(line.id, { note: e.target.value })} />
-                </div>
+            <div key={line.id} className="draft-line-row two-row-line custom-two-row-line">
+              <div className="tl-row1">
+                <strong className="tl-name" title={line.name}>{line.name}</strong>
               </div>
-              <LineIdentifiersRow isCustomItem />
+              <div className="tl-row2">
+                <span className="tl-meta">
+                  <small className="a-pedido-badge">A pedido</small>
+                  {' · '}Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u
+                  {line.note && ` · ${line.note}`}
+                </span>
+                {!readOnly && <button type="button" className="tl-edit" onClick={() => openEditCustomModal(line)}><Pencil /> Editar</button>}
+                <strong className="tl-total">{formatMoney(money(lineTotalCents(line)))}</strong>
+                {!readOnly && <button type="button" className="tl-remove" onClick={() => removeLine(line.id)}><X /></button>}
+              </div>
             </div>
           ))}
           {!customLines.length && <div className="empty-hint" style={{ padding: '10px 12px' }}>Sin ítems especiales.</div>}
@@ -414,6 +468,59 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             quote, not a new restriction added here). */}
         {!readOnly && !isExistingQuote && onCreateOrder && <button className="primary-button" disabled={!value.lines.length || saving || hasStockErrors} onClick={() => void runAction(onCreateOrder)}>Crear pedido</button>}
         {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
+      </footer>
+      {customModalOpen && (
+        <CustomItemModal
+          form={customModalForm}
+          setForm={setCustomModalForm}
+          editing={Boolean(customModalEditingId)}
+          addAnother={customModalAddAnother}
+          setAddAnother={setCustomModalAddAnother}
+          count={customModalCount}
+          descripcionRef={customModalDescripcionRef}
+          onClose={closeCustomModal}
+          onConfirm={confirmCustomModal}
+        />
+      )}
+    </Modal>
+  )
+}
+
+// TAREA 4 — plain centered modal (reuses the shared Modal component) with real,
+// spaced-out fields, replacing the old cramped four-input inline row. "Agregar
+// otro ítem" keeps the modal open, resets the form, refocuses descripción, and
+// bumps the running "N ítems agregados" counter — all scoped to this one
+// continuous open-modal session (reset whenever the modal is freshly opened).
+function CustomItemModal({ form, setForm, editing, addAnother, setAddAnother, count, descripcionRef, onClose, onConfirm }: {
+  form: { descripcion: string; cantidad: number; precio: number; nota: string }
+  setForm: (updater: (prev: { descripcion: string; cantidad: number; precio: number; nota: string }) => { descripcion: string; cantidad: number; precio: number; nota: string }) => void
+  editing: boolean
+  addAnother: boolean
+  setAddAnother: (value: boolean) => void
+  count: number
+  descripcionRef: RefObject<HTMLInputElement | null>
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <Modal title={editing ? 'Editar ítem a pedido' : 'Agregar ítem a pedido'} onClose={onClose}>
+      <div className="modal-body custom-item-modal">
+        <div className="form-grid">
+          <label className="full">Descripción<input ref={descripcionRef} autoFocus value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} /></label>
+          <label>Cantidad<input type="number" min="1" value={form.cantidad} onChange={(e) => setForm((f) => ({ ...f, cantidad: Math.max(1, Number(e.target.value)) }))} /></label>
+          <label>Precio unitario (Bs)<input type="number" min="0" value={form.precio} onChange={(e) => setForm((f) => ({ ...f, precio: Math.max(0, Number(e.target.value)) }))} /></label>
+          <label className="full">Nota<input placeholder="Ej. comprar a proveedor X" value={form.nota} onChange={(e) => setForm((f) => ({ ...f, nota: e.target.value }))} /></label>
+        </div>
+        {!editing && count > 0 && <p className="custom-modal-counter">{count} ítem{count > 1 ? 's' : ''} agregado{count > 1 ? 's' : ''}</p>}
+      </div>
+      <footer className="modal-actions">
+        {!editing && (
+          <label className="custom-modal-add-another">
+            <input type="checkbox" checked={addAnother} onChange={(e) => setAddAnother(e.target.checked)} /> Agregar otro ítem
+          </label>
+        )}
+        <button className="secondary-button" onClick={onClose}>Cancelar</button>
+        <button className="primary-button" disabled={!form.descripcion.trim()} onClick={onConfirm}>{editing ? 'Guardar cambios' : 'Agregar'}</button>
       </footer>
     </Modal>
   )

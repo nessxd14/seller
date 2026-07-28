@@ -193,6 +193,27 @@ export const listPresentations = async (productId: number): Promise<Presentation
   return rows.filter((row) => row.activo !== false).map((row) => ({ id: row.id, nombre: row.nombre, factorUnidadBase: num(row.factor_unidad_base), esBase: row.es_base }))
 }
 
+/**
+ * TAREA 6 — distinct brand list for the catalog's brand filter dropdown.
+ * A dedicated lightweight query rather than deriving brands from a paginated/
+ * filtered search result set (which might not include every brand on the
+ * current page) — 89 distinct brands across up to 1492 active products, cheap
+ * enough for a plain `select distinct`. `sinMarca` counts active products with
+ * a null/empty marca, for the dropdown's "Sin marca" option.
+ */
+export interface BrandList { marcas: string[]; sinMarca: number }
+
+export const listBrands = async (): Promise<BrandList> => {
+  const [{ data: marcaRows, error: marcaError }, { count: sinMarcaCount, error: sinMarcaError }] = await Promise.all([
+    supabase.from('producto').select('marca').eq('activo', true).not('marca', 'is', null),
+    supabase.from('producto').select('id', { count: 'exact', head: true }).eq('activo', true).or('marca.is.null,marca.eq.'),
+  ])
+  if (marcaError) throw marcaError
+  if (sinMarcaError) throw sinMarcaError
+  const marcas = [...new Set((marcaRows ?? []).map((row) => (row as { marca: string | null }).marca).filter((m): m is string => Boolean(m && m.trim())))].sort((a, b) => a.localeCompare(b, 'es'))
+  return { marcas, sinMarca: sinMarcaCount ?? 0 }
+}
+
 export interface LineIdentifiers { barra?: string; fabrica?: string; marca?: string }
 
 /**
