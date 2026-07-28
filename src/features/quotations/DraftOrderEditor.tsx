@@ -30,8 +30,17 @@ type LineStock = { tienda: number; almacen: number }
 
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
 
-export function DraftOrderEditor({ quote, onClose, onSave, onCreateOrder, onConvert }: {
+export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSave, onCreateOrder, onConvert }: {
   quote: QuoteDraft
+  // Ronda 5 — TAREA 1: whether `quote` was loaded from an existing row in the
+  // Cotizaciones table (as opposed to a brand-new draft just created, or one
+  // handed off from the cart's "Crear pedido"/"Cotización" shortcuts). This is
+  // NOT the same as `quote.id` being non-empty: in mock mode a fresh draft is
+  // minted with a real crypto.randomUUID() id immediately (no server round trip
+  // to leave it empty), so `quote.id` alone can't distinguish "existing" from
+  // "brand new" the way it can in Supabase mode. The caller (QuotationsPage)
+  // tracks this explicitly at each of its three entry points instead.
+  isExistingQuote?: boolean
   onClose: () => void
   onSave: (quote: QuoteDraft) => void | Promise<void>
   onCreateOrder?: (quote: QuoteDraft) => void | Promise<void>
@@ -392,8 +401,19 @@ export function DraftOrderEditor({ quote, onClose, onSave, onCreateOrder, onConv
       <footer className="modal-actions">
         <button className="secondary-button" onClick={onClose}>Cancelar</button>
         {!readOnly && <button className="secondary-button" disabled={!value.lines.length || saving || hasStockErrors} onClick={() => void runAction(onSave)}>Guardar como cotización</button>}
-        {!readOnly && onCreateOrder && <button className="primary-button" disabled={!value.lines.length || saving || hasStockErrors} onClick={() => void runAction(onCreateOrder)}>Crear pedido</button>}
-        {onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
+        {/* Ronda 5 — TAREA 1: which conversion action shows depends on WHERE this editor
+            was opened from, not on the form's current state. Editing an existing
+            cotización (isExistingQuote) → only "Convertir a pedido" is offered, since
+            that cotización already exists and creating a separate, unlinked pedido
+            alongside it would leave the cotización a "zombie" nobody knows is still
+            live. Starting fresh (a brand-new draft or a cart handoff, no cotización of
+            origin) → only "Crear pedido" is offered, since there is nothing to convert.
+            "Convertir a pedido" additionally still requires draft/approved status —
+            CONVERTIDA/VENCIDA/ANULADA correctly show neither (this guard already
+            existed and was verified to already block reconversion of a CONVERTIDA
+            quote, not a new restriction added here). */}
+        {!readOnly && !isExistingQuote && onCreateOrder && <button className="primary-button" disabled={!value.lines.length || saving || hasStockErrors} onClick={() => void runAction(onCreateOrder)}>Crear pedido</button>}
+        {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
       </footer>
     </Modal>
   )

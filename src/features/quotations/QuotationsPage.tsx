@@ -29,6 +29,12 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   const [sortKey, setSortKey] = useState<SortKey>('createdAt')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [editing, setEditing] = useState<QuoteDraft | null>(null)
+  // Ronda 5 — TAREA 1: tracks whether `editing` came from an existing row in this table
+  // (row-click "Editar"/"Ver") vs a brand-new draft (create(), or a cart handoff via
+  // initialDraft) — this, not `editing.id`, is what DraftOrderEditor uses to decide
+  // between offering "Convertir a pedido" (existing cotización) or "Crear pedido"
+  // (nothing to convert yet). See DraftOrderEditor's isExistingQuote prop comment.
+  const [editingIsExisting, setEditingIsExisting] = useState(false)
   const [preview, setPreview] = useState<QuoteDraft | null>(null)
   const load = () => quoteService.list().then((items) => { setQuotes(items); setStatus('ready') }).catch(() => setStatus('error'))
   useEffect(() => { void load() }, [])
@@ -36,7 +42,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   // clears the parent's pending state so navigating away and back doesn't reopen it.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs an external draft (from CartPanel) into local editor state, then immediately notifies the parent to clear it
-    if (initialDraft) { setEditing(initialDraft); onInitialDraftConsumed?.() }
+    if (initialDraft) { setEditing(initialDraft); setEditingIsExisting(false); onInitialDraftConsumed?.() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDraft])
   const toggleSort = (key: SortKey) => { if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setSortDir('asc') } }
@@ -57,7 +63,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   // Supabase adapters use an empty id as the "not yet persisted" sentinel and mint
   // the real numeric id from crear_cotizacion's return value; the mock repository
   // still needs a client-generated id up front (it has no server round trip).
-  const create = () => { if(readOnly){notify('Modo solo lectura');return} setEditing({ id: featureFlags.supabase ? '' : crypto.randomUUID(), number: '', customerId: '', customerName: '', channel: 'mayoreo', status: 'draft', validUntil: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10), terms: 'Contado', notes: '', generalDiscountCents: 0, createdAt: new Date().toISOString(), lines: [] }) }
+  const create = () => { if(readOnly){notify('Modo solo lectura');return} setEditingIsExisting(false); setEditing({ id: featureFlags.supabase ? '' : crypto.randomUUID(), number: '', customerId: '', customerName: '', channel: 'mayoreo', status: 'draft', validUntil: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10), terms: 'Contado', notes: '', generalDiscountCents: 0, createdAt: new Date().toISOString(), lines: [] }) }
   const save = async (quote: QuoteDraft) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.save(quote); setEditing(null); await load(); notify('Cotización guardada') }
   const duplicate = async (id: string) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.duplicate(id); await load(); notify('Cotización duplicada') }
   const createOrderDirect = async (quote: QuoteDraft) => {
@@ -104,11 +110,11 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
           <span className={`status-chip ${statusChipClass(quote.status)}`}>{statusLabel[quote.status]}</span>
           <span>{nearExpiry ? <span className="vigencia-warning"><AlertTriangle />{days < 0 ? 'Vencida' : `${quote.validUntil} (${days} d)`}</span> : quote.validUntil}</span>
           <strong>{formatMoney(money(Math.max(0,total(quote))))}</strong>
-          <div className="row-actions"><button title="Vista previa / exportar" onClick={() => setPreview(quote)}><Eye /></button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => setEditing(quote)}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title="Convertir en pedido" onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
+          <div className="row-actions"><button title="Vista previa / exportar" onClick={() => setPreview(quote)}><Eye /></button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => { setEditingIsExisting(true); setEditing(quote) }}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title="Convertir en pedido" onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
         </article>
       })}
     </div>}
-    {editing && <DraftOrderEditor quote={editing} onClose={() => setEditing(null)} onSave={save} onCreateOrder={createOrderDirect} onConvert={editing.id ? convert : undefined} />}
+    {editing && <DraftOrderEditor quote={editing} isExistingQuote={editingIsExisting} onClose={() => setEditing(null)} onSave={save} onCreateOrder={createOrderDirect} onConvert={editingIsExisting ? convert : undefined} />}
     {preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, asunto: preview.asunto, documentDate: preview.documentDate }} onClose={() => setPreview(null)} />}
   </FeatureShell>
 }
