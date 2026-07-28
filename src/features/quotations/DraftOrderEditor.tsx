@@ -401,7 +401,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                     <span className="dl-meta">
                       {[line.sku, identifiers?.barra].filter(Boolean).join(' · ')}
                       {' · '}
-                      <button type="button" className="tl-unit-price" disabled={readOnly} onClick={() => setPriceEditorLineId(priceEditorLineId === line.id ? null : line.id)}>
+                      <button type="button" className="price-cell" disabled={readOnly} onClick={() => setPriceEditorLineId(priceEditorLineId === line.id ? null : line.id)}>
                         Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u{line.discountBasisPoints > 0 && ` −${(line.discountBasisPoints / 100).toFixed(1)}%`}{line.priceOverridden && <small className="overridden-badge">editado</small>}
                       </button>
                       {priceEditorLineId === line.id && (

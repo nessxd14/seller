@@ -61,6 +61,22 @@
   max-width: 170px;
   height: 30px;
   padding: 0 26px 0 10px;
+  /* Ronda 8: piel propia perdida en la ronda 7 — el selector estilado vivía en
+     `.draft-line-top .dl-controls select` (pos-ajustes-r3.css), selector que
+     dejó de existir en el DOM cuando `.dl-controls` se reemplazó por `.dl-r1`.
+     Sin esto, el <select> caía al estilo por defecto del navegador. */
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--line);
+  background: #fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2377746d' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center;
+  border-radius: 7px;
+  font-size: 11px;
+  color: #4c4944;
+  text-overflow: ellipsis;
+}
+.draft-lines .presentation-line-row .draft-line-top .dl-r1 > select:focus-visible {
+  outline: 0;
+  border-color: var(--orange);
 }
 
 /* Renglón 2 — SKU · código · precio c/u · equivalencia | pin | total | quitar */
@@ -101,6 +117,42 @@
   font-variant-numeric: tabular-nums;
   min-width: 88px;
   text-align: right;
+}
+
+/* Ronda 8: `.price-cell` ya tiene su piel base (borde, fondo, cursor) en
+   workflows.css, sin scope — se conserva. Lo que vivía scoped bajo el
+   `.dl-controls` ahora inexistente era sólo el tamaño; se restaura acá. */
+.draft-lines .presentation-line-row .draft-line-top .dl-r2 .price-cell {
+  height: 32px;
+  min-width: 82px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ronda 8: el botón de quitar vivía sin clase propia, estilado por posición
+   bajo `.dl-head > button` (pos-ajustes-r3.css) — selector muerto desde que
+   `.dl-head` se reemplazó por `.dl-r1`/`.dl-r2`. Mismo tratamiento, reapuntado. */
+.draft-lines .presentation-line-row .draft-line-top .dl-r2 > button,
+.draft-lines .custom-line-row .dl-r2 > button {
+  border: 0;
+  background: transparent;
+  color: #c2beb6;
+  padding: 0;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 6px;
+}
+.draft-lines .presentation-line-row .draft-line-top .dl-r2 > button:hover,
+.draft-lines .custom-line-row .dl-r2 > button:hover {
+  background: #fbeceb;
+  color: #c84f44;
+}
+.draft-lines .presentation-line-row .draft-line-top .dl-r2 > button svg,
+.draft-lines .custom-line-row .dl-r2 > button svg {
+  width: 14px;
 }
 
 /* Los inputs de la línea dejan de ocupar el 100%: en flex eso los estira. */
@@ -222,6 +274,82 @@
   height: 12px;
   flex: 0 0 auto;
 }
+
+
+/* ── R8 · Pin de origen ────────────────────────────────────────────────────
+ *
+ * Esta sección la había agregado la ronda 6 (`cf99eee`) en este mismo archivo,
+ * junto a los estilos de OriginPin.tsx. Al sobreescribir el archivo completo
+ * en la ronda 7 con el contenido del brief adjunto (que sólo cubría el layout
+ * de dos renglones, el botón y el ancho del modal), este bloque se borró sin
+ * que nada lo reemplazara — ninguna otra hoja de estilos define `.origin-pin-*`.
+ * Restaurado tal cual estaba en cf99eee.
+ */
+
+.origin-pin-root { position: relative; flex: 0 0 auto }
+
+.origin-pin-trigger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4c4944;
+  white-space: nowrap;
+}
+.origin-pin-trigger svg { width: 12px; color: var(--orange) }
+.origin-pin-trigger[aria-expanded="true"] { border-color: var(--orange); box-shadow: 0 0 0 3px #f26b2b17 }
+
+.origin-pin-popover {
+  position: absolute;
+  z-index: 30;
+  bottom: calc(100% + 6px);
+  right: 0;
+  min-width: 190px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 14px 34px #28251d1c;
+  padding: 6px;
+  transform-origin: bottom right;
+  animation: origin-pin-pop 140ms ease-out;
+}
+
+@keyframes origin-pin-pop {
+  from { opacity: 0; transform: scale(.96) translateY(4px) }
+  to   { opacity: 1; transform: scale(1) translateY(0) }
+}
+
+.origin-pin-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 9px;
+  font-size: 12px;
+  text-align: left;
+  color: #2a2926;
+  flex-wrap: wrap;
+}
+.origin-pin-option + .origin-pin-option { margin-top: 1px }
+.origin-pin-option:hover:not(:disabled),
+.origin-pin-option:focus-visible { background: #f5f2ed; outline: 0 }
+.origin-pin-option.active { background: #fff3ee; color: var(--orange); font-weight: 700 }
+.origin-pin-option:disabled { color: #b3afa7; cursor: not-allowed }
+
+.origin-pin-option-name { flex: 1; min-width: 0 }
+.origin-pin-option-stock { font-variant-numeric: tabular-nums; color: #8a867e; font-size: 11px }
+.origin-pin-option-stock.zero { color: #a74739; font-weight: 700 }
+.origin-pin-option-reason { flex-basis: 100%; color: #b3afa7; font-size: 10.5px }
 
 
 /* ── 4. El modal necesita más ancho ───────────────────────────────────────
