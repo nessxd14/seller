@@ -1,0 +1,13 @@
+/* Ronda 10 — TAREA 4: el detalle del pedido usaba <Modal side wide>, que lo
+   renderiza como panel lateral (.modal.side-panel{position:fixed;right:0}) —
+   fuera del centro. Se sacó el prop `side` en OrdersPage.tsx (vuelve al
+   modal-backdrop centrado por default: place-items:center, cubre toda la
+   ventana) y acá se le da el mismo ancho que el editor de líneas, con el
+   mismo truco de :has() ya usado en pos-ajustes-r4.css para
+   `.modal:has(.draft-lines)` — mismo problema de especificidad, misma
+   solución. El scroll interno ya lo da `.modal{overflow:auto;max-height:92vh}`
+   (styles.css), sin cambios. */
+.modal:has(.order-detail) {
+  max-width: min(920px, calc(100vw - 48px));
+  width: 100%;
+}

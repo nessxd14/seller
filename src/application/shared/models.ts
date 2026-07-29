@@ -27,6 +27,12 @@ export interface WorkflowLine {
   presentacionNombre?: string
   factorUnidadBase?: number
   cantidadPresentacion?: number
+  // Ronda 10 — TAREA 1: catalog-line-only "print name" mask (backed by cotizacion_linea/
+  // pedido_linea.descripcion, same column es_personalizado items already used). `name`
+  // always stays the real catalog product name — never overwritten — so despacho/picking
+  // views and the editor keep showing it regardless of this field. Irrelevant when
+  // isCustomItem is true (there, `name` already IS the free-text descripcion).
+  maskName?: string
 }
 
 export interface QuoteDraft {

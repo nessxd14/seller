@@ -55,28 +55,15 @@
   flex: 0 0 auto;
 }
 
+/* Ronda 8: la piel (appearance/flecha/borde/radio) vivía duplicada acá — Ronda
+   10 la extrajo a la clase compartida `.select-skin` (pos-select-skin.css),
+   reusada también por el filtro de marcas. Acá solo queda tamaño/posición,
+   que sí es específico de este layout. */
 .draft-lines .presentation-line-row .draft-line-top .dl-r1 > select {
   width: auto;
   min-width: 118px;
   max-width: 170px;
   height: 30px;
-  padding: 0 26px 0 10px;
-  /* Ronda 8: piel propia perdida en la ronda 7 — el selector estilado vivía en
-     `.draft-line-top .dl-controls select` (pos-ajustes-r3.css), selector que
-     dejó de existir en el DOM cuando `.dl-controls` se reemplazó por `.dl-r1`.
-     Sin esto, el <select> caía al estilo por defecto del navegador. */
-  appearance: none;
-  -webkit-appearance: none;
-  border: 1px solid var(--line);
-  background: #fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2377746d' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center;
-  border-radius: 7px;
-  font-size: 11px;
-  color: #4c4944;
-  text-overflow: ellipsis;
-}
-.draft-lines .presentation-line-row .draft-line-top .dl-r1 > select:focus-visible {
-  outline: 0;
-  border-color: var(--orange);
 }
 
 /* Renglón 2 — SKU · código · precio c/u · equivalencia | pin | total | quitar */

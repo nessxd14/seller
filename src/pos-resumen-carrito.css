@@ -2,8 +2,16 @@
    (subtotal/descuento). El total sigue siempre visible; esto solo pliega el
    desglose. Nombrado por concern, no por ronda — ver Nota de proceso del
    brief sobre pos-ajustes-r2/r3/r4 pisándose entre sí. */
-.cart-summary-breakdown { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 200ms ease }
-.cart-summary-breakdown.collapsed { grid-template-rows: 0fr }
+/* Ronda 10 — TAREA 3: el botón "respondía" (el estado cambiaba, la clase
+   .collapsed se aplicaba) pero no se veía: `.cart-summary>div{display:flex}`
+   (styles.css) es más específico (0-2-0) que `.cart-summary-breakdown{display:grid}`
+   sola (0-1-0) y ganaba siempre, sin importar el orden de los @import — con
+   display:flex, grid-template-rows no hace nada. Mismo problema de
+   especificidad que el layout de dos renglones (pos-ajustes-r4.css). Se sube
+   la especificidad a la par (0-2-0); como este archivo se importa después,
+   desempata a favor de esta regla. */
+.cart-summary > .cart-summary-breakdown { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 200ms ease }
+.cart-summary > .cart-summary-breakdown.collapsed { grid-template-rows: 0fr }
 .cart-summary-breakdown-inner { overflow: hidden; min-height: 0 }
 .summary-collapse-toggle {
   width: 26px; height: 26px; min-width: 26px;
