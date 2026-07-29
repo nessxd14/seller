@@ -93,10 +93,15 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
             {catalogLines.map((line, index) => {
               const factor = line.factorUnidadBase ?? 1
               const hasEquivalence = factor !== 1
+              // TAREA 1 (Ronda 10): la máscara (descripcion) es para el cliente — cotización
+              // y pedido la imprimen si existe; la nota de entrega siempre muestra el nombre
+              // real de catálogo (quien despacha tiene que agarrar lo que dice el estante).
+              // Nunca los dos juntos.
+              const displayName = mode !== 'nota-entrega' && line.maskName ? line.maskName : line.name
               return (
                 <tr key={line.id}>
                   <td>{index + 1}</td>
-                  <td>{line.name}<LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} /></td>
+                  <td>{displayName}<LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} /></td>
                   <td>{line.presentacionNombre ?? 'Unidad'}</td>
                   <td>{line.quantity}</td>
                   <td className="doc-equivalence">{hasEquivalence ? `${line.quantity * factor} u` : '—'}</td>

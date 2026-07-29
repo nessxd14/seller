@@ -1,0 +1,20 @@
+/* Ronda 10 — TAREA 2: piel de <select> compartida. Antes vivía duplicada (y a
+   punto de triplicarse con el filtro de marcas) dentro del selector muy
+   específico de pos-ajustes-r4.css (`.draft-lines .presentation-line-row
+   .draft-line-top .dl-r1 > select`, necesario ahí solo por especificidad de
+   layout). Se extrae la parte visual a esta clase compartida — pos-ajustes-r4.css
+   ahora solo controla tamaño/posición, no apariencia. */
+.select-skin {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--line);
+  background: #fff url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2377746d' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center;
+  border-radius: 7px;
+  padding: 0 26px 0 10px;
+  font-size: 11px;
+  color: #4c4944;
+  text-overflow: ellipsis;
+}
+.select-skin:focus-visible { outline: 0; border-color: var(--orange) }
+
+.brand-filter { height: 30px; min-width: 160px; max-width: 220px }

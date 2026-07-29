@@ -108,7 +108,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
         <span>{new Date(order.createdAt).toLocaleDateString('es-BO')}</span>
       </article>)}
     </div>}
-    {selected && <Modal title={selected.number} subtitle={selected.customerName} onClose={() => setSelected(null)} side wide><div className="modal-body order-detail">
+    {selected && <Modal title={selected.number} subtitle={selected.customerName} onClose={() => setSelected(null)}><div className="modal-body order-detail">
       <div className="panel-top-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={featureFlags.supabase && !sessionId} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button></div>
       <div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong>{statusLabel[selected.status]}</strong></div></div>
       {selected.lines.filter((line) => !line.isCustomItem).map((line) => <article key={line.id}><header><div><strong>{line.name}</strong><small>{line.sku}{line.sourceLocation ? ` · Origen: ${line.sourceLocation}` : ''}</small></div><span>{line.prepared}/{line.quantity} preparadas</span></header><div className="allocation-bars">{line.allocations.map((allocation) => <div key={allocation.location}><span>{allocation.location}</span><b>{allocation.quantity} uds.</b></div>)}</div></article>)}

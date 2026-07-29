@@ -1,4 +1,4 @@
-import { Building2, Landmark, Minus, Pencil, Plus, Warehouse, X } from 'lucide-react'
+import { Building2, Landmark, Minus, Pencil, Plus, Tag, Warehouse, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { QuoteDraft, WorkflowLine } from '../../application/shared/models'
 import type { CustomerRecord } from '../../application/shared/models'
@@ -57,6 +57,9 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const [productResults, setProductResults] = useState<Product[]>([])
   const [scanSku, setScanSku] = useState('')
   const [priceEditorLineId, setPriceEditorLineId] = useState<string | null>(null)
+  // Ronda 10 — TAREA 1: máscara de nombres. Popover chico en vez de un input
+  // permanente por fila (20 líneas con un input vacío cada una es ruido).
+  const [maskEditorLineId, setMaskEditorLineId] = useState<string | null>(null)
   const [actorId, setActorId] = useState('pos')
   const [saving, setSaving] = useState(false)
   // Item 2/3: per-productId caches so stock + presentations are fetched once (on add), not
@@ -384,6 +387,25 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                 <div className="draft-line-top">
                   <div className="dl-r1">
                     <span className="dl-nombre" title={line.name}>{line.name}</span>
+                    <div className="mask-pin-root">
+                      <button
+                        type="button"
+                        className={`mask-pin-trigger ${line.maskName ? 'active' : ''}`}
+                        title={line.maskName ? `Nombre para el cliente: ${line.maskName}` : 'Poner nombre para el cliente'}
+                        aria-label={line.maskName ? `Editar nombre para el cliente de ${line.name}` : `Agregar nombre para el cliente para ${line.name}`}
+                        disabled={readOnly}
+                        onClick={() => setMaskEditorLineId(maskEditorLineId === line.id ? null : line.id)}
+                      >
+                        <Tag />
+                      </button>
+                      {maskEditorLineId === line.id && (
+                        <MaskPopover
+                          line={line}
+                          onClose={() => setMaskEditorLineId(null)}
+                          onApply={(mask) => { updateLine(line.id, { maskName: mask || undefined }); setMaskEditorLineId(null) }}
+                        />
+                      )}
+                    </div>
                     <div className="qty-control">
                       <button type="button" aria-label={`Restar cantidad ${line.name}`} disabled={readOnly || line.quantity <= 1} onClick={() => updateLine(line.id, { quantity: Math.max(1, line.quantity - 1) })}><Minus /></button>
                       <strong>{line.quantity}</strong>
@@ -391,6 +413,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                     </div>
                     {presentations.length > 0 && (
                       <select
+                        className="select-skin"
                         aria-label={`Presentación ${line.name}`}
                         disabled={readOnly}
                         value={line.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id}
@@ -405,6 +428,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                   </div>
                   <div className="dl-r2">
                     <span className="dl-meta">
+                      {line.maskName && <span className="dl-mask-note">Imprime: {line.maskName} · </span>}
                       {[line.sku, identifiers?.barra].filter(Boolean).join(' · ')}
                       {' · '}
                       <button type="button" className="price-cell" disabled={readOnly} onClick={() => setPriceEditorLineId(priceEditorLineId === line.id ? null : line.id)}>
@@ -531,6 +555,22 @@ function CustomItemModal({ form, setForm, editing, addAnother, setAddAnother, co
         <button className="primary-button" disabled={!form.descripcion.trim()} onClick={onConfirm}>{editing ? 'Guardar cambios' : 'Agregar'}</button>
       </footer>
     </Modal>
+  )
+}
+
+// Ronda 10 — TAREA 1: el nombre real de catálogo (line.name) nunca desaparece de la
+// fila; esto solo captura la máscara aparte, que es lo que imprimen cotización/pedido
+// (nota de entrega y picking siguen mostrando el nombre real, sin tocar esta pieza).
+function MaskPopover({ line, onApply, onClose }: { line: WorkflowLine; onApply: (mask: string) => void; onClose: () => void }) {
+  const [value, setValue] = useState(line.maskName ?? '')
+  return (
+    <div className="mask-pin-popover" role="dialog" aria-label="Nombre para el cliente">
+      <label>Nombre para el cliente (opcional)<input value={value} placeholder={line.name} autoFocus onChange={(e) => setValue(e.target.value)} /></label>
+      <div className="price-popover-actions">
+        <button type="button" className="secondary-button" onClick={onClose}>Cancelar</button>
+        <button type="button" className="primary-button" onClick={() => onApply(value.trim())}>Guardar</button>
+      </div>
+    </div>
   )
 }
 

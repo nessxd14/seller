@@ -55,7 +55,7 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   return <>
     <div className="category-row"><div className="category-scroll">{categories.map((item) => <button key={item} onClick={() => setCategory(item)} className={category === item ? 'active' : ''}>{item}</button>)}</div>
       {(brandOptions.marcas.length > 0 || brandOptions.sinMarca > 0) && (
-        <select aria-label="Filtrar por marca" className="brand-filter" value={brand} onChange={(e) => setBrand(e.target.value)}>
+        <select aria-label="Filtrar por marca" className="brand-filter select-skin" value={brand} onChange={(e) => setBrand(e.target.value)}>
           <option value="">Todas las marcas</option>
           {brandOptions.marcas.map((m) => <option key={m} value={m}>{m}</option>)}
           {brandOptions.sinMarca > 0 && <option value={SIN_MARCA}>Sin marca</option>}

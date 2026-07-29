@@ -96,6 +96,7 @@ const lineaRowToOrderLine = (row: PedidoLineaRow): OrderLine => {
     priceOverridden: row.precio_modificado,
     modifiedBy: row.modificado_por ?? undefined,
     modifiedAt: row.modificado_en ?? undefined,
+    maskName: !row.es_personalizado ? (row.descripcion ?? undefined) : undefined,
     presentacionId: row.presentacion_id ?? undefined,
     presentacionNombre: row.presentacion?.nombre,
     factorUnidadBase: row.presentacion?.factor_unidad_base != null ? num(row.presentacion.factor_unidad_base) : undefined,
@@ -155,6 +156,7 @@ const buildLineasJsonb = (lines: WorkflowLine[], channel: OrderView['channel']) 
       precio_lista: line.listPriceCents != null ? centsToNumeric(line.listPriceCents) : centsToNumeric(line.unitPriceCents),
       precio_unitario: centsToNumeric(line.unitPriceCents),
       descuento_pct: bpToPct(line.discountBasisPoints),
+      descripcion: line.maskName || null,
       ...(line.presentacionId != null ? { presentacion_id: line.presentacionId, cantidad_presentacion: line.quantity } : {}),
     }
   })
