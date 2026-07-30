@@ -18,6 +18,7 @@ interface SolicitudTrasladoRow {
   recibido_por: string | null
   recibido_en: string | null
   creado_en: string
+  reversible_hasta: string | null
 }
 
 interface SolicitudTrasladoLineaRow {
@@ -65,6 +66,7 @@ const rowToTransferRecord = (header: SolicitudTrasladoRow, lines: SolicitudTrasl
   recibidoPor: header.recibido_por ?? undefined,
   recibidoEn: header.recibido_en ?? undefined,
   creadoEn: header.creado_en,
+  reversibleHasta: header.reversible_hasta ?? undefined,
   lines: lines.map(lineaRowToTransferLine),
 })
 
@@ -140,6 +142,29 @@ export class SupabaseTransferRepository {
     const created = await fetchTransferById(newId as number)
     if (!created) throw new NotFoundError('No se pudo releer la solicitud de traslado recién creada')
     return created
+  }
+
+  // Brief K: "no reimplementar despachar_traslado/recibir_traslado en el frontend" — se
+  // llama por RPC, tal cual receive() ya hacía con recibir_traslado.
+  async dispatch(id: string, actor: string): Promise<TransferRecord> {
+    const numericId = Number(id)
+    const { error } = await supabase.rpc('despachar_traslado', { p_solicitud_id: numericId, p_usuario: actor })
+    if (error) throw error
+    const updated = await fetchTransferById(numericId)
+    if (!updated) throw new NotFoundError('No se pudo releer la solicitud de traslado despachada')
+    return updated
+  }
+
+  // revertir_traslado ya decide todo el comportamiento (SOLICITADO cancela sin tocar
+  // Kardex, EN_TRANSITO dentro de ventana revierte el Kardex a las ubicaciones exactas de
+  // origen, fuera de ventana o RECIBIDO rechaza) — acá solo se llama y se relee la fila.
+  async revert(id: string, actor: string, nota?: string): Promise<TransferRecord> {
+    const numericId = Number(id)
+    const { error } = await supabase.rpc('revertir_traslado', { p_solicitud_id: numericId, p_usuario: actor, p_nota: nota || null })
+    if (error) throw error
+    const updated = await fetchTransferById(numericId)
+    if (!updated) throw new NotFoundError('No se pudo releer la solicitud de traslado revertida')
+    return updated
   }
 
   async receive(id: string, lines: null | Array<{ lineaId: string; cantidadBase: number }>, actor: string): Promise<TransferRecord> {

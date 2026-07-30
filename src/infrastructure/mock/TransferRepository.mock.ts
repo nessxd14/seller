@@ -142,6 +142,45 @@ export const transferService = {
     // exists to reconcile against, matching mock checkout's "lightweight" precedent.
     return store.save(record)
   },
+  // Brief K — mock equivalents of despachar_traslado/revertir_traslado. Mock mode has no
+  // Kardex to reconcile against, so this only mirrors the state-machine + reversible_hasta
+  // window the UI depends on (so the countdown / "Registrar devolución" fallback are both
+  // exercisable in mock mode too).
+  async dispatch(id: string, actor: string): Promise<TransferRecord> {
+    const existing = await store.get(id)
+    if (!existing) throw new Error('Solicitud de traslado no encontrada')
+    if (existing.estado !== 'SOLICITADO') throw new Error(`La solicitud está en estado ${existing.estado} y no se puede despachar`)
+    const updated: TransferRecord = {
+      ...existing,
+      estado: 'EN_TRANSITO',
+      despachadoPor: actor,
+      despachadoEn: now(),
+      reversibleHasta: new Date(Date.now() + 30 * 60_000).toISOString(),
+      lines: existing.lines.map((line) => ({ ...line, cantidadDespachada: line.cantidadBase })),
+    }
+    return store.save(updated)
+  },
+  async revert(id: string, actor: string, nota?: string): Promise<TransferRecord> {
+    void actor
+    const existing = await store.get(id)
+    if (!existing) throw new Error('Solicitud de traslado no encontrada')
+    if (existing.estado === 'SOLICITADO') {
+      return store.save({ ...existing, estado: 'CANCELADO', nota: nota || existing.nota || 'Cancelado antes de despachar' })
+    }
+    if (existing.estado !== 'EN_TRANSITO') {
+      throw new Error(`La solicitud está en estado ${existing.estado}; después de recibida se registra una devolución, no una reversión`)
+    }
+    if (!existing.reversibleHasta || new Date(existing.reversibleHasta) < new Date()) {
+      throw new Error('La ventana de reversión venció. Registrá una devolución Tienda -> Almacén.')
+    }
+    return store.save({
+      ...existing,
+      estado: 'CANCELADO',
+      reversibleHasta: undefined,
+      nota: nota || existing.nota || 'Revertido dentro de la ventana',
+      lines: existing.lines.map((line) => ({ ...line, cantidadDespachada: 0 })),
+    })
+  },
   async receive(id: string, lines: null | Array<{ lineaId: string; cantidadBase: number }>, actor: string): Promise<TransferRecord> {
     const existing = await store.get(id)
     if (!existing) throw new Error('Solicitud de traslado no encontrada')

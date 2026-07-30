@@ -153,6 +153,14 @@ export const transferService = {
     const actorId = await currentActorId()
     return transferRepository.create(input, actorId)
   },
+  async dispatch(id: string): Promise<TransferRecord> {
+    const actorId = await currentActorId()
+    return transferRepository.dispatch(id, actorId)
+  },
+  async revert(id: string, nota?: string): Promise<TransferRecord> {
+    const actorId = await currentActorId()
+    return transferRepository.revert(id, actorId, nota)
+  },
   async receive(id: string, lines: null | Array<{ lineaId: string; cantidadBase: number }>): Promise<TransferRecord> {
     const actorId = await currentActorId()
     return transferRepository.receive(id, lines, actorId)

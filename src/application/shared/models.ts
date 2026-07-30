@@ -98,7 +98,9 @@ export interface CustomerRecord {
 // closely rather than forcing it into the generic Versioned/CRUD repository shape — like
 // SaleRepository/CashRepository, transfers are RPC-driven (create/receive/cancel actions,
 // no optimistic-edit "save" verb) and solicitud_traslado has no version column.
-export type TransferMotivo = 'VENTA_DIRECTA' | 'REPOSICION'
+// Brief J: DEVOLUCION added to the DB enum by 2026-07-30_traslado_devolucion_enum.sql
+// (verified applied against production before adding this — see motivo_traslado in pg_enum).
+export type TransferMotivo = 'VENTA_DIRECTA' | 'REPOSICION' | 'DEVOLUCION'
 export type TransferEstado = 'SOLICITADO' | 'EN_TRANSITO' | 'RECIBIDO' | 'RECHAZADO' | 'CANCELADO'
 
 export interface TransferLine {
@@ -130,6 +132,10 @@ export interface TransferRecord {
   recibidoPor?: string
   recibidoEn?: string
   creadoEn: string
+  // Brief K: solo tiene valor mientras estado === 'EN_TRANSITO' y la ventana de reversión
+  // de 30 min (fijada por despachar_traslado, ver 2026-07-30_traslado_reversion.sql) sigue
+  // abierta. Nunca hardcodear los 30 min en el frontend — se calcula contra esto.
+  reversibleHasta?: string
   lines: TransferLine[]
 }
 

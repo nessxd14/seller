@@ -2,6 +2,15 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 import { getPrice } from '../data/products'
 import type { CartItem, Product, SalesChannel } from '../types'
 import { calculateCartTotals } from '../domain/sales/cartCalculator'
+import type { TransferMotivo } from '../application/shared/models'
+
+// Brief J: 1 = Almacén Central, 2 = Tienda (mismos ids que SUCURSAL_ALMACEN_ID/
+// SUCURSAL_TIENDA_ID en infrastructure/supabase/mappers.ts — no se importan de ahí
+// para no acoplar este contexto, backend-agnóstico, a la capa Supabase).
+const SUCURSAL_ALMACEN = 1
+const SUCURSAL_TIENDA = 2
+
+export type PosMode = 'venta' | 'traslado'
 
 // TAREA 4: the cart's active customer. undefined/null id means "Cliente de mostrador"
 // (anonymous, cliente_id = null at checkout) — the default and always-available state.
@@ -31,6 +40,16 @@ interface PosState {
   loadSuspendedSale: (sale: { channel: SalesChannel; cart: CartItem[]; discount: number; customer?: CartCustomer | null }) => void
   customer: CartCustomer | null
   selectCustomer: (customer: CartCustomer | null) => void
+  // Brief J — modo traslado: mismo carrito, mismo motor de agregar productos; solo
+  // cambia el destino (registrar_venta vs crear_solicitud_traslado) y qué se muestra.
+  mode: PosMode
+  setMode: (mode: PosMode) => void
+  trasladoMotivo: TransferMotivo
+  setTrasladoMotivo: (motivo: TransferMotivo) => void
+  trasladoOrigenId: number
+  trasladoDestinoId: number
+  setTrasladoDireccion: (origenId: number, destinoId: number) => void
+  loadTrasladoDraft: (draft: { cart: CartItem[]; trasladoMotivo: TransferMotivo; trasladoOrigenId: number; trasladoDestinoId: number }) => void
 }
 
 const PosContext = createContext<PosState | null>(null)
@@ -43,6 +62,27 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const [hasSuspendedSale, setHasSuspendedSale] = useState(() => Boolean(localStorage.getItem('roari-suspended-sale')))
   const [customer, setCustomer] = useState<CartCustomer | null>(null)
   const selectCustomer = (next: CartCustomer | null) => setCustomer(next)
+
+  const [mode, setMode] = useState<PosMode>('venta')
+  const [trasladoMotivo, setTrasladoMotivoState] = useState<TransferMotivo>('REPOSICION')
+  const [trasladoOrigenId, setTrasladoOrigenId] = useState(SUCURSAL_ALMACEN)
+  const [trasladoDestinoId, setTrasladoDestinoId] = useState(SUCURSAL_TIENDA)
+  // El motivo Devolución preselecciona la dirección invertida (Tienda → Almacén);
+  // los otros dos motivos vuelven al default Almacén → Tienda. El admin puede
+  // corregirla después con setTrasladoDireccion — esa es la última palabra.
+  const setTrasladoMotivo = (motivo: TransferMotivo) => {
+    setTrasladoMotivoState(motivo)
+    if (motivo === 'DEVOLUCION') { setTrasladoOrigenId(SUCURSAL_TIENDA); setTrasladoDestinoId(SUCURSAL_ALMACEN) }
+    else { setTrasladoOrigenId(SUCURSAL_ALMACEN); setTrasladoDestinoId(SUCURSAL_TIENDA) }
+  }
+  const setTrasladoDireccion = (origenId: number, destinoId: number) => { setTrasladoOrigenId(origenId); setTrasladoDestinoId(destinoId) }
+  const loadTrasladoDraft = (draft: { cart: CartItem[]; trasladoMotivo: TransferMotivo; trasladoOrigenId: number; trasladoDestinoId: number }) => {
+    setMode('traslado')
+    setCart(draft.cart)
+    setTrasladoMotivoState(draft.trasladoMotivo)
+    setTrasladoOrigenId(draft.trasladoOrigenId)
+    setTrasladoDestinoId(draft.trasladoDestinoId)
+  }
 
   const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
 
@@ -107,7 +147,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setCustomer(sale.customer ?? null)
   }
 
-  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, newOperation, restoreSuspended, hasSuspendedSale, loadSuspendedSale, customer, selectCustomer }}>{children}</PosContext.Provider>
+  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, newOperation, restoreSuspended, hasSuspendedSale, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {

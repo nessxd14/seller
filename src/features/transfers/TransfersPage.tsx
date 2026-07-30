@@ -1,28 +1,24 @@
-import { ArrowUpDown, Plus, X, XCircle, PackageCheck } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronUp, Clock, PackageCheck, Plus, RotateCcw, Truck, Undo2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { TransferEstado, TransferMotivo, TransferRecord } from '../../application/shared/models'
-import { transferService, productRepository, listPresentations, authSessionProvider } from '../../infrastructure/services'
-import type { Product } from '../../types'
-import { FeatureShell, FeatureState, FeatureToolbar } from '../shared/FeatureShell'
+import { transferService, productRepository, listPresentations } from '../../infrastructure/services'
+import type { CartItem, Product } from '../../types'
+import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
+import { usePos } from '../../context/PosContext'
 
-type SortKey = 'id' | 'motivo' | 'estado' | 'solicitadoEn' | 'solicitadoPor'
-type SortDir = 'asc' | 'desc'
-
-const motivoLabel: Record<TransferMotivo, string> = { VENTA_DIRECTA: 'Venta directa', REPOSICION: 'Reposición' }
-const estadoLabel: Record<TransferEstado, string> = {
-  SOLICITADO: 'Solicitado', EN_TRANSITO: 'En tránsito', RECIBIDO: 'Recibido', RECHAZADO: 'Rechazado', CANCELADO: 'Cancelado',
-}
-// Local 3-bucket mapping (ok/pending/problem) for the uppercase estado_traslado vocabulary —
-// deliberately not folded into FeatureShell's shared statusChipClass sets (those are keyed to
-// the lowercase QuoteWorkflowStatus/OrderWorkflowStatus vocabulary and adding uppercase
-// transfer-specific keys there would be more confusing than a small local helper here).
-const transferChipClass = (estado: TransferEstado): 'ok' | 'pending' | 'problem' =>
-  estado === 'RECIBIDO' ? 'ok' : estado === 'RECHAZADO' || estado === 'CANCELADO' ? 'problem' : 'pending'
+const motivoLabel: Record<TransferMotivo, string> = { VENTA_DIRECTA: 'Venta directa', REPOSICION: 'Reposición', DEVOLUCION: 'Devolución' }
+// Brief K: mismos ids que PosContext.tsx / TrasladoTargetPicker (1 = Almacén Central, 2 = Tienda).
+const sucursalLabel: Record<number, string> = { 1: 'Almacén Central', 2: 'Tienda' }
 const fmtQty = (n: number) => n.toLocaleString('es-BO', { maximumFractionDigits: 2 })
-
-function SortTh({ label, sortkey, activeKey, onToggle }: { label: string; sortkey: SortKey; activeKey: SortKey; onToggle: (key: SortKey) => void }) {
-  return <button className={`sortable-th ${activeKey === sortkey ? 'active' : ''}`} onClick={() => onToggle(sortkey)}>{label}<ArrowUpDown size={11} /></button>
+const fechaFmt = (iso?: string) => iso ? new Date(iso).toLocaleString('es-BO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
+// Brief K: "reusar el helper mmss(ms) que ya existe en PedidosApp.jsx" (WMS) — mismo
+// gesto, puerto TS. m:ss, sin ceros a la izquierda en los minutos.
+const mmss = (ms: number) => {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${String(s).padStart(2, '0')}`
 }
 
 export interface PendingTransferRequest {
@@ -32,29 +28,40 @@ export interface PendingTransferRequest {
   quantity: number
 }
 
-export function TransfersPage({ notify, initialRequest = null, onInitialRequestConsumed }: {
+export function TransfersPage({ notify, initialRequest = null, onInitialRequestConsumed, onRegistrarDevolucion }: {
   notify: (message: string) => void
   initialRequest?: PendingTransferRequest | null
   onInitialRequestConsumed?: () => void
+  // Brief K: "Registrar devolución" abre el carrito en modo traslado — la navegación de
+  // vuelta a la pestaña Venta vive en PosPage, no acá (mismo patrón que onOpenDraftOrder).
+  onRegistrarDevolucion?: () => void
 }) {
+  const { loadTrasladoDraft } = usePos()
   const [transfers, setTransfers] = useState<TransferRecord[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<'all' | TransferEstado>('all')
-  const [sortKey, setSortKey] = useState<SortKey>('solicitadoEn')
-  const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [selected, setSelected] = useState<TransferRecord | null>(null)
   const [creating, setCreating] = useState(false)
-  const [actorName, setActorName] = useState('')
+  const [cerradosAbierto, setCerradosAbierto] = useState(false)
+  // Contador mm:ss en vivo. `now` (no Date.now() inline en el render — la regla de pureza
+  // de hooks lo rechaza) se actualiza cada segundo mientras haya algo EN_TRANSITO con
+  // reversible_hasta futuro visible en pantalla.
+  const [now, setNow] = useState(() => Date.now())
 
   const load = () => { setStatus('loading'); return transferService.list().then((items) => { setTransfers(items); setStatus('ready') }).catch(() => setStatus('error')) }
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch on mount, not a derived-state sync
     void load()
   }, [])
-  useEffect(() => { void authSessionProvider.getSession().then((session) => session && setActorName(session.user.name)) }, [])
 
-  // Cart -> Traslados handoff (item 1.2): opens the create form pre-filled with the
+  useEffect(() => {
+    const hasLiveCountdown = transfers.some((t) => t.estado === 'EN_TRANSITO' && t.reversibleHasta && new Date(t.reversibleHasta).getTime() > now)
+    if (!hasLiveCountdown) return
+    const interval = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` deliberately excluded: re-evaluating hasLiveCountdown every tick would tear down and rebuild the interval every second
+  }, [transfers])
+
+  // Cart -> Traslados handoff (Brief J item 1.2): opens the create form pre-filled with the
   // shortfall line, mirroring QuotationsPage's initialDraft/onInitialDraftConsumed pattern.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs an external pending request (from CartPanel) into local UI state, then immediately notifies the parent to clear it
@@ -62,63 +69,92 @@ export function TransfersPage({ notify, initialRequest = null, onInitialRequestC
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialRequest])
 
-  const toggleSort = (key: SortKey) => { if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setSortDir('asc') } }
+  // Brief K: la bandeja reemplaza al armador de una línea a la vez — tres grupos, en el
+  // orden en que se trabaja.
+  const porDespachar = useMemo(() => transfers.filter((t) => t.estado === 'SOLICITADO'), [transfers])
+  const enTransito = useMemo(() => transfers.filter((t) => t.estado === 'EN_TRANSITO'), [transfers])
+  const cerrados = useMemo(() => transfers.filter((t) => t.estado === 'RECIBIDO' || t.estado === 'CANCELADO' || t.estado === 'RECHAZADO'), [transfers])
 
-  const filtered = useMemo(() => {
-    const list = transfers.filter((t) =>
-      (filter === 'all' || t.estado === filter) &&
-      `${t.referencia ?? ''} ${t.motivo} ${t.solicitadoPor}`.toLowerCase().includes(query.toLowerCase())
-    )
-    const dir = sortDir === 'asc' ? 1 : -1
-    return [...list].sort((a, b) => {
-      switch (sortKey) {
-        case 'id': return (Number(a.id) - Number(b.id)) * dir
-        case 'motivo': return a.motivo.localeCompare(b.motivo) * dir
-        case 'estado': return a.estado.localeCompare(b.estado) * dir
-        case 'solicitadoPor': return a.solicitadoPor.localeCompare(b.solicitadoPor) * dir
-        case 'solicitadoEn': return (new Date(a.solicitadoEn).getTime() - new Date(b.solicitadoEn).getTime()) * dir
+  const dispatchTransfer = async (transfer: TransferRecord) => {
+    try {
+      const updated = await transferService.dispatch(transfer.id)
+      setSelected(updated)
+      await load()
+      notify(`Traslado #${updated.id} despachado`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo despachar el traslado')
+    }
+  }
+
+  const revertTransfer = async (transfer: TransferRecord) => {
+    if (!confirm(`¿Revertir el traslado #${transfer.id}? El stock vuelve a su ubicación de origen.`)) return
+    try {
+      const updated = await transferService.revert(transfer.id)
+      setSelected(updated)
+      await load()
+      notify(`Traslado #${updated.id} revertido`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo revertir el traslado')
+    }
+  }
+
+  // Brief K: fuera de ventana (o ya RECIBIDO) revertir_traslado rechaza — el camino es una
+  // devolución nueva Tienda -> Almacén, precargada con lo que efectivamente salió/llegó.
+  const registrarDevolucion = async (transfer: TransferRecord) => {
+    const items = await Promise.all(transfer.lines.map(async (line): Promise<CartItem | null> => {
+      const product = await productRepository.getById(line.productId)
+      if (!product) return null
+      const cantidadBase = line.cantidadRecibida ?? line.cantidadDespachada ?? line.cantidadBase
+      const factor = line.presentacionId != null && line.cantidadPresentacion ? line.cantidadBase / line.cantidadPresentacion : 1
+      return {
+        ...product,
+        cantidad: factor !== 0 ? cantidadBase / factor : cantidadBase,
+        precioAplicado: 0,
+        descuento: 0,
+        ubicacion: 'Tienda',
+        observacion: '',
+        motivoPrecio: '',
+        presentacionId: line.presentacionId,
+        presentacionNombre: line.presentacionNombre,
+        factorUnidadBase: line.presentacionId != null ? factor : undefined,
       }
-    })
-  }, [transfers, query, filter, sortKey, sortDir])
-
-  const cancelTransfer = async (transfer: TransferRecord) => {
-    if (!confirm(`¿Cancelar la solicitud #${transfer.id}?`)) return
-    await transferService.cancel(transfer.id)
+    }))
+    const cart = items.filter((item): item is CartItem => item !== null)
+    if (!cart.length) { notify('No se pudo precargar el carrito — los productos ya no existen'); return }
+    loadTrasladoDraft({ cart, trasladoMotivo: 'DEVOLUCION', trasladoOrigenId: 2, trasladoDestinoId: 1 })
     setSelected(null)
-    await load()
-    notify('Solicitud de traslado cancelada')
+    onRegistrarDevolucion?.()
+    notify('Carrito abierto en modo traslado — Devolución, Tienda → Almacén')
   }
 
   const receiveTransfer = async (transfer: TransferRecord, lines: null | Array<{ lineaId: string; cantidadBase: number }>) => {
-    await transferService.receive(transfer.id, lines)
-    setSelected(null)
+    const updated = await transferService.receive(transfer.id, lines)
+    setSelected(updated)
     await load()
     notify('Recepción registrada')
   }
 
-  return <FeatureShell eyebrow="LOGÍSTICA" title="Traslados" subtitle="Solicitudes de traslado Almacén → Tienda" action={<button className="primary-button" onClick={() => setCreating(true)}><Plus /> Nueva solicitud</button>}>
-    <FeatureToolbar query={query} onQuery={setQuery} placeholder="Buscar por referencia, motivo o solicitante...">
-      <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}>
-        <option value="all">Todos los estados</option>
-        {(['SOLICITADO', 'EN_TRANSITO', 'RECIBIDO', 'RECHAZADO', 'CANCELADO'] as const).map((value) => <option key={value} value={value}>{estadoLabel[value]}</option>)}
-      </select>
-    </FeatureToolbar>
-    {status === 'loading' ? <FeatureState type="skeleton" text="Cargando traslados" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.length ? <FeatureState type={transfers.length ? 'no-results' : 'empty'} text="No hay solicitudes de traslado" /> : <div className="feature-table transfers-table sticky-head">
-      <div className="table-head"><SortTh label="Nº" sortkey="id" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Motivo" sortkey="motivo" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Estado" sortkey="estado" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Fecha" sortkey="solicitadoEn" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Solicitado por" sortkey="solicitadoPor" activeKey={sortKey} onToggle={toggleSort} /></div>
-      {filtered.map((transfer) => <article key={transfer.id} className="clickable-row" onClick={() => setSelected(transfer)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') setSelected(transfer) }}>
-        <strong>{transfer.referencia || `#${transfer.id}`}</strong>
-        <span>{motivoLabel[transfer.motivo]}</span>
-        <span className={`status-chip ${transferChipClass(transfer.estado)}`}>{estadoLabel[transfer.estado]}</span>
-        <span>{new Date(transfer.solicitadoEn).toLocaleDateString('es-BO')}</span>
-        <span>{transfer.solicitadoPor}</span>
-      </article>)}
+  return <FeatureShell eyebrow="LOGÍSTICA" title="Traslados" subtitle="Bandeja: despachar, recibir y revertir traslados Almacén ↔ Tienda" action={<button className="primary-button" onClick={() => setCreating(true)}><Plus /> Nueva solicitud</button>}>
+    {status === 'loading' ? <FeatureState type="skeleton" text="Cargando traslados" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !transfers.length ? <FeatureState type="empty" text="No hay solicitudes de traslado" /> : <div className="traslados-bandeja">
+      <TrasladoGrupo titulo="Por despachar" items={porDespachar} onSelect={setSelected} now={now} />
+      <TrasladoGrupo titulo="En tránsito" items={enTransito} onSelect={setSelected} now={now} />
+      <div className="traslados-grupo">
+        <button type="button" className="traslados-grupo-header traslados-grupo-toggle" onClick={() => setCerradosAbierto((v) => !v)}>
+          <span>Cerrados<b>{cerrados.length}</b></span>
+          {cerradosAbierto ? <ChevronUp /> : <ChevronDown />}
+        </button>
+        {cerradosAbierto && (cerrados.length
+          ? <div className="traslados-grupo-cards">{cerrados.map((t) => <TrasladoCard key={t.id} transfer={t} onSelect={setSelected} now={now} />)}</div>
+          : <p className="traslados-grupo-empty">Sin traslados cerrados todavía.</p>)}
+      </div>
     </div>}
     {selected && (
       <TransferDetailPanel
         transfer={selected}
-        canCancel={selected.estado === 'SOLICITADO' && selected.solicitadoPor === actorName}
         onClose={() => setSelected(null)}
-        onCancel={() => void cancelTransfer(selected)}
+        onDispatch={() => void dispatchTransfer(selected)}
+        onRevert={() => void revertTransfer(selected)}
+        onRegistrarDevolucion={() => void registrarDevolucion(selected)}
         onReceive={(lines) => void receiveTransfer(selected, lines)}
       />
     )}
@@ -132,36 +168,76 @@ export function TransfersPage({ notify, initialRequest = null, onInitialRequestC
   </FeatureShell>
 }
 
-function TransferDetailPanel({ transfer, canCancel, onClose, onCancel, onReceive }: {
+function EstadoBadge({ estado }: { estado: TransferEstado }) {
+  // Brief K: reusa la convención de colores de PedidosApp.jsx (WMS) — mismo significado
+  // semántico, trasladado a las clases de este proyecto (sin Tailwind acá).
+  const cls = estado === 'SOLICITADO' ? 'solicitado' : estado === 'EN_TRANSITO' ? 'en-transito' : estado === 'RECIBIDO' ? 'recibido' : 'cerrado'
+  const label = estado === 'SOLICITADO' ? 'Por despachar' : estado === 'EN_TRANSITO' ? 'En tránsito' : estado === 'RECIBIDO' ? 'Recibido' : estado === 'RECHAZADO' ? 'Rechazado' : 'Cancelado'
+  return <span className={`traslado-badge traslado-badge-${cls}`}>{label}</span>
+}
+
+function TrasladoGrupo({ titulo, items, onSelect, now }: { titulo: string; items: TransferRecord[]; onSelect: (t: TransferRecord) => void; now: number }) {
+  return <div className="traslados-grupo">
+    <div className="traslados-grupo-header"><span>{titulo}<b>{items.length}</b></span></div>
+    {items.length
+      ? <div className="traslados-grupo-cards">{items.map((t) => <TrasladoCard key={t.id} transfer={t} onSelect={onSelect} now={now} />)}</div>
+      : <p className="traslados-grupo-empty">Nada acá por ahora.</p>}
+  </div>
+}
+
+function TrasladoCard({ transfer, onSelect, now }: { transfer: TransferRecord; onSelect: (t: TransferRecord) => void; now: number }) {
+  const restanteMs = transfer.reversibleHasta ? new Date(transfer.reversibleHasta).getTime() - now : 0
+  const vigente = transfer.estado === 'EN_TRANSITO' && restanteMs > 0
+  return <button type="button" className="traslado-card" onClick={() => onSelect(transfer)}>
+    <div className="traslado-card-top">
+      <strong>{transfer.referencia || `Traslado #${transfer.id}`}</strong>
+      <EstadoBadge estado={transfer.estado} />
+    </div>
+    <p className="traslado-card-direccion">{sucursalLabel[transfer.sucursalOrigenId] ?? `Sucursal ${transfer.sucursalOrigenId}`} <ArrowRight size={11} /> {sucursalLabel[transfer.sucursalDestinoId] ?? `Sucursal ${transfer.sucursalDestinoId}`}</p>
+    <p className="traslado-card-meta">{motivoLabel[transfer.motivo]} · {transfer.lines.length} línea{transfer.lines.length === 1 ? '' : 's'}</p>
+    <p className="traslado-card-meta">{transfer.solicitadoPor} · {fechaFmt(transfer.solicitadoEn)}</p>
+    {vigente && <p className="traslado-card-countdown"><Clock size={11} /> {mmss(restanteMs)} para revertir</p>}
+  </button>
+}
+
+function TransferDetailPanel({ transfer, onClose, onDispatch, onRevert, onRegistrarDevolucion, onReceive }: {
   transfer: TransferRecord
-  canCancel: boolean
   onClose: () => void
-  onCancel: () => void
+  onDispatch: () => void
+  onRevert: () => void
+  onRegistrarDevolucion: () => void
   onReceive: (lines: null | Array<{ lineaId: string; cantidadBase: number }>) => void
 }) {
   const [receivedByLine, setReceivedByLine] = useState<Record<string, number>>(() =>
     Object.fromEntries(transfer.lines.map((line) => [line.id, line.cantidadDespachada ?? line.cantidadBase])))
+  const [now, setNow] = useState(() => Date.now())
+  const canDispatch = transfer.estado === 'SOLICITADO'
   const canReceive = transfer.estado === 'EN_TRANSITO'
+  const restanteMs = transfer.reversibleHasta ? new Date(transfer.reversibleHasta).getTime() - now : 0
+  const dentroDeVentana = transfer.estado === 'EN_TRANSITO' && restanteMs > 0
+  const fueraDeVentana = transfer.estado === 'EN_TRANSITO' && !dentroDeVentana
+  useEffect(() => {
+    if (!dentroDeVentana) return
+    const interval = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [dentroDeVentana])
   const confirmReceive = () => {
     const changed = transfer.lines.filter((line) => (receivedByLine[line.id] ?? 0) !== (line.cantidadDespachada ?? line.cantidadBase))
     onReceive(changed.length ? changed.map((line) => ({ lineaId: line.id, cantidadBase: receivedByLine[line.id] })) : null)
   }
   return <Modal title={transfer.referencia || `Traslado #${transfer.id}`} subtitle={motivoLabel[transfer.motivo]} onClose={onClose} side wide>
     <div className="modal-body transfer-detail">
-      <div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong>{estadoLabel[transfer.estado]}</strong></div></div>
-      <p><b>Solicitado por:</b> {transfer.solicitadoPor} · {new Date(transfer.solicitadoEn).toLocaleString('es-BO')}</p>
-      {transfer.despachadoPor && <p><b>Despachado por:</b> {transfer.despachadoPor} · {transfer.despachadoEn && new Date(transfer.despachadoEn).toLocaleString('es-BO')}</p>}
-      {transfer.recibidoPor && <p><b>Recibido por:</b> {transfer.recibidoPor} · {transfer.recibidoEn && new Date(transfer.recibidoEn).toLocaleString('es-BO')}</p>}
+      <div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong><EstadoBadge estado={transfer.estado} /></strong></div></div>
+      <p><b>Dirección:</b> {sucursalLabel[transfer.sucursalOrigenId] ?? `Sucursal ${transfer.sucursalOrigenId}`} <ArrowRight size={11} /> {sucursalLabel[transfer.sucursalDestinoId] ?? `Sucursal ${transfer.sucursalDestinoId}`}</p>
+      <p><b>Solicitado por:</b> {transfer.solicitadoPor} · {fechaFmt(transfer.solicitadoEn)}</p>
+      {transfer.despachadoPor && <p><b>Despachado por:</b> {transfer.despachadoPor} · {fechaFmt(transfer.despachadoEn)}</p>}
+      {transfer.recibidoPor && <p><b>Recibido por:</b> {transfer.recibidoPor} · {fechaFmt(transfer.recibidoEn)}</p>}
       {transfer.nota && <p><b>Nota:</b> {transfer.nota}</p>}
       <h3>Líneas</h3>
       <div className="feature-table transfer-lines-table">
         <div className="table-head"><span>Producto</span><span>Solicitado</span><span>Despachado</span><span>{canReceive ? 'Recibido (editable)' : 'Recibido'}</span></div>
         {transfer.lines.map((line) => {
           const despachada = line.cantidadDespachada ?? line.cantidadBase
-          // TAREA 4: receive in the unit it was requested in. `factor` is derived from the
-          // line's own requested ratio (cantidadBase = cantidadPresentacion × factor at
-          // creation time — see TransferRepository.supabase.ts / crear_solicitud_traslado),
-          // never re-fetched. receive() itself is unchanged: it always sends cantidad_base.
           const factor = line.presentacionId != null && line.cantidadPresentacion ? line.cantidadBase / line.cantidadPresentacion : 1
           const receivedBase = receivedByLine[line.id] ?? despachada
           const short = canReceive && receivedBase < despachada
@@ -188,7 +264,10 @@ function TransferDetailPanel({ transfer, canCancel, onClose, onCancel, onReceive
       </div>
     </div>
     <footer className="modal-actions">
-      {canCancel && <button className="danger-button" onClick={onCancel}><XCircle /> Cancelar solicitud</button>}
+      {canDispatch && <button className="primary-button" onClick={onDispatch}><Truck /> Despachar</button>}
+      {dentroDeVentana && <button className="danger-button" onClick={onRevert}><Undo2 /> Revertir <Clock size={11} /> {mmss(restanteMs)}</button>}
+      {fueraDeVentana && <button className="danger-button" onClick={onRegistrarDevolucion}><RotateCcw /> Registrar devolución</button>}
+      {transfer.estado === 'RECIBIDO' && <button className="danger-button" onClick={onRegistrarDevolucion}><RotateCcw /> Registrar devolución</button>}
       {canReceive && <button className="primary-button" onClick={confirmReceive}><PackageCheck /> Confirmar recepción</button>}
     </footer>
   </Modal>
@@ -258,7 +337,7 @@ function CreateTransferModal({ initialRequest, onClose, onCreated }: {
 
   return <Modal title="Nueva solicitud de traslado" subtitle="Almacén → Tienda" onClose={onClose} wide>
     <div className="modal-body form-grid">
-      <label>Motivo<select value={motivo} onChange={(e) => setMotivo(e.target.value as TransferMotivo)}><option value="VENTA_DIRECTA">Venta directa</option><option value="REPOSICION">Reposición</option></select></label>
+      <label>Motivo<select value={motivo} onChange={(e) => setMotivo(e.target.value as TransferMotivo)}><option value="VENTA_DIRECTA">Venta directa</option><option value="REPOSICION">Reposición</option><option value="DEVOLUCION">Devolución</option></select></label>
       <label>Referencia (opcional)<input value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="Ej. TR-0005" /></label>
       <label className="full">Nota (opcional)<input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Motivo del traslado, notas para almacén..." /></label>
       <div className="full line-add-controls">
