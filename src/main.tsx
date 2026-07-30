@@ -17,6 +17,7 @@ import './pos-mascara-nombres.css'
 import './pos-detalle-pedido.css'
 import './pos-borrador.css'
 import './styles/pos-modo-traslado.css'
+import './styles/pos-traslados-bandeja.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

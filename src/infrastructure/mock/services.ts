@@ -111,6 +111,14 @@ export const transferService = {
     const actor = await currentMockActor()
     return rawTransferService.create(input, actor)
   },
+  async dispatch(id: string): Promise<TransferRecord> {
+    const actor = await currentMockActor()
+    return rawTransferService.dispatch(id, actor)
+  },
+  async revert(id: string, nota?: string): Promise<TransferRecord> {
+    const actor = await currentMockActor()
+    return rawTransferService.revert(id, actor, nota)
+  },
   async receive(id: string, lines: null | Array<{ lineaId: string; cantidadBase: number }>): Promise<TransferRecord> {
     const actor = await currentMockActor()
     return rawTransferService.receive(id, lines, actor)

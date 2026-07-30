@@ -132,6 +132,10 @@ export interface TransferRecord {
   recibidoPor?: string
   recibidoEn?: string
   creadoEn: string
+  // Brief K: solo tiene valor mientras estado === 'EN_TRANSITO' y la ventana de reversión
+  // de 30 min (fijada por despachar_traslado, ver 2026-07-30_traslado_reversion.sql) sigue
+  // abierta. Nunca hardcodear los 30 min en el frontend — se calcula contra esto.
+  reversibleHasta?: string
   lines: TransferLine[]
 }
 

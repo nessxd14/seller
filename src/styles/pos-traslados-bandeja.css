@@ -1,0 +1,76 @@
+/* Brief K — bandeja de Traslados: de armador de una línea a la vez a bandeja
+   por estado. Archivo nuevo, no toca styles.css, pos-modo-traslado.css
+   (Brief J) ni ningún pos-ajustes-*.css.
+
+   El acento azul del modo traslado es la misma familia visual acá, pero esta
+   página no depende de `.pos-root[data-modo="traslado"]` — esa clase refleja
+   el toggle del carrito, no si estoy mirando el módulo Traslados (puedo
+   estar acá con el carrito en modo venta). Se redefinen los mismos tokens
+   directamente en `.traslados-bandeja`, con los mismos valores del Brief J. */
+.traslados-bandeja {
+  --pos-acento: #378ADD;
+  --pos-acento-suave: #E6F1FB;
+  --pos-acento-texto: #042C53;
+}
+
+.traslados-grupo { margin-bottom: 18px }
+.traslados-grupo-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.traslados-grupo-header > span { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #2a2926 }
+.traslados-grupo-header b {
+  font-size: 11px; font-weight: 700;
+  background: var(--pos-acento-suave); color: var(--pos-acento-texto);
+  border-radius: 10px; padding: 2px 8px;
+}
+.traslados-grupo-toggle {
+  width: 100%; border: 0; background: transparent; padding: 0; cursor: pointer;
+}
+.traslados-grupo-toggle svg { width: 15px; color: #96928a }
+.traslados-grupo-empty {
+  font-size: 11px; color: #96928a; margin: 0;
+  border: 1px dashed var(--line); border-radius: 12px; padding: 14px; text-align: center;
+}
+
+.traslados-grupo-cards {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+}
+@media (max-width: 1500px) {
+  .traslados-grupo-cards { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+}
+
+/* Tarjetas: fondo blanco, borde 0.5px, radio 12px — igual que Pedidos. */
+.traslado-card {
+  text-align: left;
+  background: #fff;
+  border: 0.5px solid var(--line);
+  border-radius: 12px;
+  padding: 13px 14px;
+  display: block;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.traslado-card:hover { border-color: var(--pos-acento); box-shadow: 0 6px 16px #0000000d }
+.traslado-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px }
+.traslado-card-top strong { font-size: 12px; color: #24231f; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.traslado-card-direccion { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #4c4944; font-weight: 600; margin: 0 0 4px }
+.traslado-card-direccion svg { width: 11px; color: #96928a }
+.traslado-card-meta { font-size: 11px; color: #96928a; margin: 2px 0 0 }
+.traslado-card-countdown {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 700; color: var(--pos-acento-texto);
+  margin: 8px 0 0; font-variant-numeric: tabular-nums;
+}
+.traslado-card-countdown svg { width: 11px }
+
+/* Badges — misma convención de PedidosApp.jsx (WMS), sin Tailwind acá. */
+.traslado-badge {
+  font-size: 11px; font-weight: 700;
+  border-radius: 10px; padding: 3px 8px;
+  white-space: nowrap;
+}
+.traslado-badge-solicitado { background: var(--pos-acento-suave); color: var(--pos-acento-texto) }
+.traslado-badge-en-transito { background: #fff2de; color: #a76a19 }
+.traslado-badge-recibido { background: #e7f6eb; color: #3d8750 }
+.traslado-badge-cerrado { background: #ece9e3; color: #6e6a63 }
