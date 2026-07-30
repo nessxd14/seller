@@ -26,9 +26,20 @@ export class SupabaseAuthSessionProvider implements AuthSessionProvider {
   private listeners = new Set<(session: AuthSession | null) => void>()
 
   constructor() {
+    // Brief I: un 401 de una consulta cualquiera (JWT vencido, red caída, lo que
+    // sea) NO es motivo para expulsar — solo un SIGNED_OUT real de GoTrueClient
+    // (logout explícito, o refresco de token fallado de verdad: eso también lo
+    // emite como SIGNED_OUT, no hace falta reimplementarlo acá). Antes, cualquier
+    // evento con `authSession` null caía por la misma rama que SIGNED_OUT —
+    // INITIAL_SESSION con sesión null (arranque en frío, nunca hubo login) es
+    // legítimo y sigue mostrando el login, pero ya no se trata como una expulsión.
     supabase.auth.onAuthStateChange((event: string, authSession: { user: { id: string } } | null) => {
-      if (event === 'SIGNED_OUT' || !authSession) {
+      if (event === 'SIGNED_OUT') {
         this.listeners.forEach((listener) => listener(null))
+        return
+      }
+      if (!authSession) {
+        if (event === 'INITIAL_SESSION') this.listeners.forEach((listener) => listener(null))
         return
       }
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {

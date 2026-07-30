@@ -11,6 +11,8 @@ import type { LineIdentifiers } from '../../components/LineIdentifiersRow'
 import { OriginPin, buildOriginOptions, type OriginLocation } from '../../components/OriginPin'
 import { cantidadBaseFor } from '../../domain/sales/stockCheck'
 import type { Product } from '../../types'
+import { useBorrador, borradorKey } from '../../hooks/useBorrador'
+import { BorradorBanner } from '../../components/BorradorBanner'
 
 type EditableChannel = QuoteDraft['channel']
 
@@ -62,6 +64,11 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const [maskEditorLineId, setMaskEditorLineId] = useState<string | null>(null)
   const [actorId, setActorId] = useState('pos')
   const [saving, setSaving] = useState(false)
+  // Brief H — useBorrador: autosave de la cotización. Desactivado en solo-lectura (nada
+  // que autoguardar ahí); si queda un borrador viejo de otra cotización nueva sin
+  // terminar, igual se ofrece — el banner es por tipo de formulario, no por registro.
+  const { borradorPendiente, descartar: descartarBorrador, limpiar: limpiarBorrador } = useBorrador(borradorKey('cotizacion', actorId), value, { activo: !readOnly })
+  const retomarBorrador = () => { if (borradorPendiente) { setValue(borradorPendiente.datos); limpiarBorrador() } }
   // Item 2/3: per-productId caches so stock + presentations are fetched once (on add), not
   // on every render or toggle interaction.
   const [stockByProduct, setStockByProduct] = useState<Record<string, LineStock>>({})
@@ -271,7 +278,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
 
   const runAction = async (action: (q: QuoteDraft) => void | Promise<void>) => {
     setSaving(true)
-    try { await action(value) } finally { setSaving(false) }
+    try { await action(value); limpiarBorrador() } finally { setSaving(false) }
   }
 
   const onPresentationChange = (line: WorkflowLine, presentation: LinePresentation) => {
@@ -289,6 +296,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   return (
     <Modal title={value.id ? `Cotización ${value.number || value.id}` : 'Nueva cotización'} subtitle={readOnly ? 'Solo lectura — esta cotización ya no está en borrador' : 'Editor tipo borrador de pedido'} onClose={onClose} wide escapeToClose={!customModalOpen}>
       <div className="modal-body quote-editor draft-order-editor">
+        {borradorPendiente && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}
         <div className="channel-tabs draft-order-tabs">
           {channelTabs.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" disabled={readOnly} className={value.channel === id ? 'active' : ''} onClick={() => setChannel(id)}>

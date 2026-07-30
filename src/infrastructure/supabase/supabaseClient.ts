@@ -11,7 +11,19 @@ export const getSupabaseClient = (): SupabaseClient => {
       'Faltan las variables de entorno VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY. Configura un archivo .env.local (ver .env.example).'
     )
   }
-  cached = createClient(url, anonKey)
+  cached = createClient(url, anonKey, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+  })
+  // Brief I: los navegadores móviles congelan los temporizadores de pestañas en
+  // segundo plano — autoRefreshToken no dispara mientras la pestaña está oculta, y
+  // al volver el token ya venció (la primera consulta rebota con 401). Registrado
+  // una sola vez, junto con el cliente — nunca por componente.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') void cached?.auth.startAutoRefresh()
+      else void cached?.auth.stopAutoRefresh()
+    })
+  }
   return cached
 }
 
