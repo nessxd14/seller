@@ -1,7 +1,10 @@
 import { ChevronDown, FileText, HandCoins, Pause, ReceiptText, RotateCcw, ShoppingCart, Sparkles } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { usePos } from '../context/PosContext'
-import type { CartItem as CartItemType } from '../types'
+import { useEffect, useRef, useState } from 'react'
+import { usePos, type CartCustomer } from '../context/PosContext'
+import type { CartItem as CartItemType, SalesChannel } from '../types'
+import { useBorrador, borradorKey } from '../hooks/useBorrador'
+import { BorradorBanner } from './BorradorBanner'
+import { authSessionProvider } from '../infrastructure/services'
 import { CartItem } from './CartItem'
 import { EditCartItemModal } from './EditCartItemModal'
 import { PaymentModal } from './PaymentModal'
@@ -20,7 +23,7 @@ const money = (value: number) => value.toLocaleString('es-BO', { minimumFraction
 const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
 
 export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, onRequestTransfer }: { notify: (message: string) => void; onOpenDraftOrder: (draft: QuoteDraft) => void; onGoToCash: () => void; sellerName?: string; onRequestTransfer?: (request: PendingTransferRequest) => void }) {
-  const { channel, cart, subtotal, total, discount, setDiscount, operationNumber, clearCart, restoreSuspended, updateItem, customer } = usePos()
+  const { channel, cart, subtotal, total, discount, setDiscount, operationNumber, clearCart, restoreSuspended, loadSuspendedSale, updateItem, customer } = usePos()
   const { sessionId } = useCashSession()
   const cashClosed = channel === 'retail' && featureFlags.supabase && !sessionId
   const [editing, setEditing] = useState<CartItemType | null>(null)
@@ -32,6 +35,24 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // persistent across reloads.
   const [summaryCollapsed, setSummaryCollapsed] = useState(() => sessionStorage.getItem('roari-cart-summary-collapsed') === '1')
   useEffect(() => { sessionStorage.setItem('roari-cart-summary-collapsed', summaryCollapsed ? '1' : '0') }, [summaryCollapsed])
+
+  // Brief H — useBorrador: autosave del carrito. `usuarioId` por sesión (evita que en
+  // un mostrador compartido a alguien le aparezca el borrador de otro); 'anon' solo
+  // hasta que resuelva la sesión (mismo patrón que actorId en DraftOrderEditor).
+  const [usuarioId, setUsuarioId] = useState('anon')
+  useEffect(() => { void authSessionProvider.getSession().then((session) => session && setUsuarioId(session.user.id)) }, [])
+  const borradorEstado: { channel: SalesChannel; cart: CartItemType[]; discount: number; customer: CartCustomer | null } = { channel, cart, discount, customer }
+  const { borradorPendiente, descartar: descartarBorrador, limpiar: limpiarBorrador } = useBorrador(borradorKey('carrito', usuarioId), borradorEstado)
+  // operationNumber solo avanza en newOperation() (checkout exitoso finalizado) — no en
+  // suspender ni restaurar. Es la señal de "se envió con éxito, ya no ofrezcas este borrador".
+  const prevOperationNumberRef = useRef(operationNumber)
+  useEffect(() => {
+    if (prevOperationNumberRef.current !== operationNumber) {
+      prevOperationNumberRef.current = operationNumber
+      limpiarBorrador()
+    }
+  }, [operationNumber, limpiarBorrador])
+  const retomarBorrador = () => { if (borradorPendiente) { loadSuspendedSale(borradorPendiente.datos); limpiarBorrador() } }
   // Origin-toggle stock cache (item 5): per-productId, fetched/read once and kept for the
   // cart panel's lifetime so switching items or re-rendering doesn't refetch repeatedly.
   const [originStock, setOriginStock] = useState<Record<number, { tienda: number; almacen: number }>>({})
@@ -122,7 +143,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       lines,
     })
   }
-  return <aside className="cart-panel"><div className="cart-header"><div><span>OPERACIÓN ACTUAL</span><h2>Venta <b>#{operationNumber}</b></h2></div><span className="channel-badge">{channelNames[channel]}</span></div><div className="operation-meta"><span>{new Date().toLocaleDateString('es-BO', { day: '2-digit', month: 'short' })}</span><i /> <span>{new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</span></div><CustomerPicker channel={channel} notify={notify} />
+  return <aside className="cart-panel">{borradorPendiente && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}<div className="cart-header"><div><span>OPERACIÓN ACTUAL</span><h2>Venta <b>#{operationNumber}</b></h2></div><span className="channel-badge">{channelNames[channel]}</span></div><div className="operation-meta"><span>{new Date().toLocaleDateString('es-BO', { day: '2-digit', month: 'short' })}</span><i /> <span>{new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</span></div><CustomerPicker channel={channel} notify={notify} />
     <div className="cart-list-heading"><span>Detalle de venta</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b></div><div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={() => setEditing(item)} originStock={channel === 'retail' ? originStock[item.id] : undefined} onSetOrigin={channel === 'retail' ? (loc) => updateItem(item.id, { ubicacion: loc }) : undefined} onRequestTransfer={channel === 'retail' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} />) : <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar una venta.</p></div>}</div>
     <div className="cart-summary">
       <div className={`cart-summary-breakdown ${summaryCollapsed ? 'collapsed' : ''}`}>

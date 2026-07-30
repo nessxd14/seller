@@ -15,6 +15,7 @@ import './pos-resumen-carrito.css'
 import './pos-impresion.css'
 import './pos-mascara-nombres.css'
 import './pos-detalle-pedido.css'
+import './pos-borrador.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

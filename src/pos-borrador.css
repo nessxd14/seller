@@ -1,0 +1,21 @@
+/* Brief H — banner de recuperación de borrador. Informativo, no un error: sin
+   colores de alarma. El brief pide `var(--text-secondary)` sobre superficie
+   neutra, pero ese token no existe en este proyecto — se usan los
+   equivalentes reales ya definidos en :root (styles.css): `--muted` para el
+   texto, `--surface-1` para el fondo. */
+.borrador-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--surface-1, #efede7);
+  color: var(--muted, #77746d);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.borrador-banner-actions { display: flex; gap: 6px; flex: 0 0 auto }
+.borrador-banner-actions button {
+  border: 1px solid var(--line); background: #fff; color: #4c4944;
+  border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600;
+}
+.borrador-banner-actions button:first-child { border-color: var(--orange); color: var(--orange) }
+.borrador-banner-actions button:hover { background: #f5f2ed }
