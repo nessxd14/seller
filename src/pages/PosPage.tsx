@@ -31,7 +31,7 @@ import type { QuoteDraft } from '../application/shared/models'
 const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 
 function PosContent() {
-  const { newOperation, cart, loadSuspendedSale, addProduct } = usePos()
+  const { newOperation, cart, loadSuspendedSale, addProduct, mode } = usePos()
   const [activeModule, setActiveModule] = useState('Venta')
   const [session, setSession] = useState<AuthSession | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(!featureFlags.supabase)
@@ -113,7 +113,7 @@ function PosContent() {
   if(conflictDemo)return <div className="integration-demo-page"><IntegrationState kind="conflict" onReload={()=>setConflictDemo(false)} onKeepCopy={()=>{setConflictDemo(false);notify('Copia local conservada')}} onCancel={()=>setConflictDemo(false)}/></div>
   if (featureFlags.supabase && !sessionLoaded) return null
   if (featureFlags.supabase && !session) return <LoginScreen />
-  return <div className={`app-shell ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} user={session?.user} onOpenSettings={() => navigate('Configuración')} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}</div>
+  return <div className={`app-shell pos-root ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`} data-modo={mode}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} user={session?.user} onOpenSettings={() => navigate('Configuración')} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}</div>
 }
 
 export function PosPage() { return <PosProvider><CashSessionProvider><PosContent /></CashSessionProvider></PosProvider> }

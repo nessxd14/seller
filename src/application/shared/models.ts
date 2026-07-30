@@ -98,7 +98,9 @@ export interface CustomerRecord {
 // closely rather than forcing it into the generic Versioned/CRUD repository shape — like
 // SaleRepository/CashRepository, transfers are RPC-driven (create/receive/cancel actions,
 // no optimistic-edit "save" verb) and solicitud_traslado has no version column.
-export type TransferMotivo = 'VENTA_DIRECTA' | 'REPOSICION'
+// Brief J: DEVOLUCION added to the DB enum by 2026-07-30_traslado_devolucion_enum.sql
+// (verified applied against production before adding this — see motivo_traslado in pg_enum).
+export type TransferMotivo = 'VENTA_DIRECTA' | 'REPOSICION' | 'DEVOLUCION'
 export type TransferEstado = 'SOLICITADO' | 'EN_TRANSITO' | 'RECIBIDO' | 'RECHAZADO' | 'CANCELADO'
 
 export interface TransferLine {

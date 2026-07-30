@@ -1,0 +1,107 @@
+/* Brief J — modo traslado en el carrito: acento naranja → azul. Archivo nuevo,
+   no toca styles.css ni los pos-ajustes-*.css existentes.
+
+   ADVERTENCIA DE ESPECIFICIDAD (ya nos pasó tres veces): las reglas de
+   styles.css/phase11.css que pintan de naranja (.pay-button, .eyebrow,
+   .channel-tabs button.active, ...) usan selectores de 1-2 clases. Cualquier
+   regla de acá que tenga que ganarles usa `.pos-root[data-modo="traslado"]`
+   como prefijo — atributo + clase ya cuentan como dos "clases" de
+   especificidad, y encadenado a la clase real del elemento supera cómodamente
+   cualquier 0-2-0/0-2-1 existente. Nada de !important. */
+
+.pos-root {
+  --pos-acento: #EF9F27;
+  --pos-acento-suave: #FAEEDA;
+  --pos-acento-texto: #412402;
+  transition: --pos-acento 220ms ease;
+}
+.pos-root[data-modo="traslado"] {
+  --pos-acento: #378ADD;
+  --pos-acento-suave: #E6F1FB;
+  --pos-acento-texto: #042C53;
+}
+
+/* Las custom properties no interpolan solas en todos los navegadores — la
+   transición real vive en las propiedades que consumen el acento. */
+.modo-toggle,
+.pos-root[data-modo="traslado"] .pay-button,
+.pos-root[data-modo="traslado"] .channel-tabs button,
+.traslado-target,
+.traslado-target-swap {
+  transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease, box-shadow 220ms ease;
+}
+
+/* ── Toggle venta/traslado (cabecera del carrito) ─────────────────────────── */
+.modo-toggle {
+  display: flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 11px; margin-left: 8px;
+  border: 1px solid var(--line); background: #fff; color: #68655e;
+  border-radius: 16px; font-size: 11px; font-weight: 700;
+}
+.modo-toggle svg { width: 13px }
+.modo-toggle[aria-checked="true"] {
+  border-color: var(--pos-acento);
+  background: var(--pos-acento-suave);
+  color: var(--pos-acento-texto);
+}
+
+/* ── Botón principal ("Solicitar traslado") ───────────────────────────────
+   .pay-button es 0-1-0 en styles.css y toma un box-shadow hardcoded (no var)
+   en phase11.css — hace falta pisar ambas propiedades acá. */
+.pos-root[data-modo="traslado"] .pay-button {
+  background: var(--pos-acento);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--pos-acento) 24%, transparent);
+}
+
+/* ── Fila de pestañas (Reposición/Venta directa/Devolución) ───────────────
+   .channel-tabs button.active es 0-2-1 en phase11.css; el eyebrow de arriba
+   ("MOTIVO DEL TRASLADO") es 0-1-0 en styles.css. */
+.pos-root[data-modo="traslado"] .channel-wrap .eyebrow { color: var(--pos-acento) }
+.pos-root[data-modo="traslado"] .channel-tabs button.active {
+  color: var(--pos-acento);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--pos-acento) 20%, transparent);
+}
+
+/* ── Selector superior: TRASLADO A ─────────────────────────────────────────
+   Reemplaza a .customer-select; clase propia, sin pelea de especificidad. */
+.traslado-target {
+  margin: 0 20px 13px;
+  border: 1px solid var(--pos-acento);
+  background: var(--pos-acento-suave);
+  border-radius: 10px;
+  height: 47px;
+  display: flex; align-items: center; gap: 9px;
+  padding: 0 11px;
+}
+.traslado-target > svg:first-child { width: 20px; color: var(--pos-acento) }
+.traslado-target span { display: block; flex: 1; min-width: 0 }
+.traslado-target small { font-size: 11px; letter-spacing: 1px; color: var(--pos-acento-texto); opacity: .75 }
+.traslado-target strong { display: block; font-size: 12px; margin-top: 2px; color: var(--pos-acento-texto); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.traslado-target-swap {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border: 1px solid var(--pos-acento);
+  background: #fff; color: var(--pos-acento);
+  border-radius: 8px;
+}
+.traslado-target-swap svg { width: 13px }
+.traslado-target-swap:hover { background: var(--pos-acento-suave) }
+
+/* ── Resumen: Líneas / Unidades base (reemplaza Subtotal/Descuento/Total) ── */
+.cart-summary-traslado {
+  border-top: 1px solid var(--line);
+  padding: 12px 20px;
+  background: #fcfbf8;
+  display: flex; justify-content: space-between; gap: 12px;
+}
+.cart-summary-traslado > div { text-align: center; flex: 1 }
+.cart-summary-traslado span { display: block; font-size: 11px; color: #8d8a84 }
+.cart-summary-traslado strong { display: block; font-size: 18px; margin-top: 3px; color: var(--pos-acento-texto) }
+
+/* ── Línea de carrito en modo traslado ─────────────────────────────────────ç */
+.cart-item-sku { display: block; font-size: 11px; color: #8c8880; margin-top: 2px }
+.cart-unidad-plain { font-size: 11px; color: #77746d; white-space: nowrap }
+.cart-disponible { display: block; margin-top: 6px; font-size: 11px; color: #8d8a84; font-variant-numeric: tabular-nums }
+/* Aviso, no bloqueo — ámbar siempre, no sigue al acento naranja/azul. */
+.cart-disponible-warn { color: #a76a19; font-weight: 600 }

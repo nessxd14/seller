@@ -21,8 +21,8 @@ interface Presentation { id: number; nombre: string; factorUnidadBase: number; e
 const heredadoKeyForChannel = (channel: SalesChannel): 'mayoreo' | 'institucional' | 'municipal' | null =>
   channel === 'mayoreo' || channel === 'institucional' || channel === 'municipal' ? channel : null
 
-export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTransfer }: { item: CartItemType; onEdit: () => void; originStock?: { tienda: number; almacen: number }; onSetOrigin?: (location: 'Tienda' | 'Almacén') => void; onRequestTransfer?: (shortfall: number) => void }) {
-  const { channel, updateQuantity, updateItem, removeItem } = usePos()
+export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTransfer, trasladoDisponible }: { item: CartItemType; onEdit: () => void; originStock?: { tienda: number; almacen: number }; onSetOrigin?: (location: 'Tienda' | 'Almacén') => void; onRequestTransfer?: (shortfall: number) => void; trasladoDisponible?: number }) {
+  const { channel, mode, updateQuantity, updateItem, removeItem } = usePos()
   const lineTotal = moneyToDecimal(calculateLineTotal({ unitPrice: item.precioAplicado, quantity: item.cantidad, discountPercent: item.descuento }))
 
   // TAREA 3.2: presentations are loaded per product, on demand, when the line first mounts —
@@ -91,6 +91,30 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
       // "frozen" flag rather than leaving a stale override in place.
       precioModificado: false,
     })
+  }
+
+  // Brief J — modo traslado: mismo motor (mismo item, misma cantidad, misma
+  // presentación), pero sin precios y con el disponible de la sucursal origen del
+  // traslado en vez del split Tienda/Almacén de venta. Rama separada del return de
+  // venta de abajo para no arriesgar ese camino — nada de esto lo toca.
+  if (mode === 'traslado') {
+    const disponible = trasladoDisponible ?? 0
+    const noAlcanza = cantidadBase > disponible
+    return <article className="cart-item"><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} /><div className="cart-item-main">
+      <div className="cart-title"><div><h4 title={item.nombre}>{item.nombre}</h4><span className="cart-item-sku">{item.sku}</span></div>
+        <button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button>
+      </div>
+      <div className="cart-line-bottom">
+        <div className="qty-control"><button disabled={item.cantidad <= 1} onClick={() => updateQuantity(item.id, item.cantidad - 1)}><Minus /></button><strong>{item.cantidad}</strong><button onClick={() => updateQuantity(item.id, item.cantidad + 1)}><Plus /></button></div>
+        {presentations.length > 1
+          ? <select aria-label={`Presentación ${item.nombre}`} value={item.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id} onChange={(e) => { const chosen = presentations.find((p) => p.id === Number(e.target.value)); if (chosen) onPresentationChange(chosen) }}>
+              {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+          : <span className="cart-unidad-plain">{presentations[0]?.nombre ?? 'Unidad'}</span>}
+      </div>
+      {factor !== 1 && <small className="line-equivalence">{fmtQty(item.cantidad)} {item.presentacionNombre} = {fmtQty(cantidadBase)} u</small>}
+      <small className={`cart-disponible ${noAlcanza ? 'cart-disponible-warn' : ''}`}>{fmtQty(cantidadBase)} base · disponible {fmtQty(disponible)}</small>
+    </div></article>
   }
 
   return <article className="cart-item"><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} /><div className="cart-item-main"><div className="cart-title"><div>

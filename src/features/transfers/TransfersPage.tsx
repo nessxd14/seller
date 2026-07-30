@@ -9,7 +9,7 @@ import { Modal } from '../../components/Modal'
 type SortKey = 'id' | 'motivo' | 'estado' | 'solicitadoEn' | 'solicitadoPor'
 type SortDir = 'asc' | 'desc'
 
-const motivoLabel: Record<TransferMotivo, string> = { VENTA_DIRECTA: 'Venta directa', REPOSICION: 'Reposición' }
+const motivoLabel: Record<TransferMotivo, string> = { VENTA_DIRECTA: 'Venta directa', REPOSICION: 'Reposición', DEVOLUCION: 'Devolución' }
 const estadoLabel: Record<TransferEstado, string> = {
   SOLICITADO: 'Solicitado', EN_TRANSITO: 'En tránsito', RECIBIDO: 'Recibido', RECHAZADO: 'Rechazado', CANCELADO: 'Cancelado',
 }
@@ -258,7 +258,7 @@ function CreateTransferModal({ initialRequest, onClose, onCreated }: {
 
   return <Modal title="Nueva solicitud de traslado" subtitle="Almacén → Tienda" onClose={onClose} wide>
     <div className="modal-body form-grid">
-      <label>Motivo<select value={motivo} onChange={(e) => setMotivo(e.target.value as TransferMotivo)}><option value="VENTA_DIRECTA">Venta directa</option><option value="REPOSICION">Reposición</option></select></label>
+      <label>Motivo<select value={motivo} onChange={(e) => setMotivo(e.target.value as TransferMotivo)}><option value="VENTA_DIRECTA">Venta directa</option><option value="REPOSICION">Reposición</option><option value="DEVOLUCION">Devolución</option></select></label>
       <label>Referencia (opcional)<input value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="Ej. TR-0005" /></label>
       <label className="full">Nota (opcional)<input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Motivo del traslado, notas para almacén..." /></label>
       <div className="full line-add-controls">
