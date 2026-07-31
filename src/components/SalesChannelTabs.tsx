@@ -7,7 +7,7 @@ const tabs: { id: SalesChannel; label: string; note: string; icon: typeof Store 
   { id: 'retail', label: 'Retail', note: 'Venta directa', icon: Store },
   { id: 'mayoreo', label: 'Mayoreo', note: 'Precio mayorista', icon: Warehouse },
   { id: 'institucional', label: 'Institucional', note: 'Convenios', icon: Building2 },
-  { id: 'municipal', label: 'Municipal / Gobierno', note: 'Municipios', icon: Landmark },
+  { id: 'municipal', label: 'Municipal', note: 'Municipios', icon: Landmark },
 ]
 
 // Brief J: en modo traslado esta misma fila de pestañas pasa a elegir el motivo del

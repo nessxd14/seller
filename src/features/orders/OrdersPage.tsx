@@ -13,7 +13,7 @@ type SortKey = 'number' | 'customerName' | 'channel' | 'status' | 'lines' | 'tot
 type SortDir = 'asc' | 'desc'
 
 const orderTotal = (order: OrderView) => order.lines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0)
-const channelNames: Record<string, string> = { mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal / Gobierno' }
+const channelNames: Record<string, string> = { mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
 
 function SortTh({ label, sortkey, activeKey, onToggle }: { label: string; sortkey: SortKey; activeKey: SortKey; onToggle: (key: SortKey) => void }) {
   return <button className={`sortable-th ${activeKey === sortkey ? 'active' : ''}`} onClick={() => onToggle(sortkey)}>{label}<ArrowUpDown size={11} /></button>

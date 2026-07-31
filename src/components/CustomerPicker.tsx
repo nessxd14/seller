@@ -16,11 +16,11 @@ const emptyForm = { name: '', businessName: '', document: '', phone: '', email: 
 // Channel display-name lookup — mirrors CartPanel.tsx's existing channelNames constant
 // exactly (kept as a local duplicate rather than importing it, since CartPanel imports
 // this component, not the other way around — see report for why this wasn't hoisted).
-const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal / Gobierno' }
+const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
 // Brief's exact announcement copy pattern: "Canal cambiado a Mayoreo (cliente mayorista)" —
 // the parenthetical names the CUSTOMER TYPE, not the channel again.
 const customerTypeLabel = (channel: 'retail' | 'mayoreo' | 'institucional' | 'municipal') =>
-  ({ retail: 'cliente minorista', mayoreo: 'cliente mayorista', institucional: 'cliente institucional', municipal: 'cliente municipal / gobierno' })[channel]
+  ({ retail: 'cliente minorista', mayoreo: 'cliente mayorista', institucional: 'cliente institucional', municipal: 'cliente municipal' })[channel]
 
 export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayoreo' | 'institucional' | 'municipal'; notify?: (message: string) => void }) {
   const { customer, selectCustomer, setChannel } = usePos()
