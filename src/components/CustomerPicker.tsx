@@ -20,7 +20,7 @@ const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Ins
 // Brief's exact announcement copy pattern: "Canal cambiado a Mayoreo (cliente mayorista)" —
 // the parenthetical names the CUSTOMER TYPE, not the channel again.
 const customerTypeLabel = (channel: 'retail' | 'mayoreo' | 'institucional' | 'municipal') =>
-  ({ retail: 'cliente minorista', mayoreo: 'cliente mayorista', institucional: 'cliente institucional', municipal: 'cliente municipal' })[channel]
+  ({ retail: 'cliente minorista', mayoreo: 'cliente mayorista', institucional: 'cliente corporativo', municipal: 'cliente institución / gobierno' })[channel]
 
 export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayoreo' | 'institucional' | 'municipal'; notify?: (message: string) => void }) {
   const { customer, selectCustomer, setChannel } = usePos()
@@ -103,7 +103,10 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
         : {
             id: creating.id ?? (featureFlags.supabase ? '' : crypto.randomUUID()),
             name: creating.name.trim(),
-            type: channel === 'mayoreo' ? 'wholesale' : channel === 'institucional' ? 'institutional' : channel === 'municipal' ? 'municipal' : 'retail',
+            // Brief M: categoría de cliente distinta de canal de precio — parado en la
+            // pestaña Institucional se da de alta como Corporativo (empresa privada);
+            // parado en Municipal, como Institución/gobierno.
+            type: channel === 'mayoreo' ? 'wholesale' : channel === 'institucional' ? 'corporate' : channel === 'municipal' ? 'institutional' : 'retail',
             // NIT queda opcional en todo el flujo: nunca se bloquea el guardado por esto.
             document: creating.document.trim(),
             phone: creating.phone.trim(),

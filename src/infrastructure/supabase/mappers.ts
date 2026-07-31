@@ -5,7 +5,9 @@ import type { SalesChannel } from '../../domain/common/types'
 import type { CustomerRecord } from '../../application/shared/models'
 
 export type CategoriaPedido = 'TIENDA' | 'MAYOR' | 'INSTITUCIONAL' | 'MUNICIPAL'
-export type TipoPrecioCliente = 'retail' | 'mayorista' | 'institucion' | 'municipal'
+// Brief M: institucion (DB) -> corporativo (DB, empresas privadas), municipal (DB) ->
+// institucion (DB, gobierno/instituciones públicas). Migración aparte, ya validada.
+export type TipoPrecioCliente = 'retail' | 'mayorista' | 'corporativo' | 'institucion'
 
 export const SUCURSAL_ALMACEN_ID = 1
 export const SUCURSAL_TIENDA_ID = 2
@@ -34,7 +36,7 @@ export const customerTypeToTipoPrecio = (type: CustomerRecord['type']): TipoPrec
     case 'retail': return 'retail'
     case 'wholesale': return 'mayorista'
     case 'institutional': return 'institucion'
-    case 'municipal': return 'municipal'
+    case 'corporate': return 'corporativo'
   }
 }
 
@@ -43,7 +45,7 @@ export const tipoPrecioToCustomerType = (tipo: TipoPrecioCliente): CustomerRecor
     case 'retail': return 'retail'
     case 'mayorista': return 'wholesale'
     case 'institucion': return 'institutional'
-    case 'municipal': return 'municipal'
+    case 'corporativo': return 'corporate'
   }
 }
 

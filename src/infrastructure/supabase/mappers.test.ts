@@ -18,7 +18,7 @@ describe('mappers', () => {
   })
 
   it('round-trips customer type <-> tipo_precio', () => {
-    const types: CustomerRecord['type'][] = ['retail', 'wholesale', 'institutional', 'municipal']
+    const types: CustomerRecord['type'][] = ['retail', 'wholesale', 'institutional', 'corporate']
     for (const type of types) expect(tipoPrecioToCustomerType(customerTypeToTipoPrecio(type))).toBe(type)
     expect(customerTypeToTipoPrecio('wholesale')).toBe('mayorista')
     expect(customerTypeToTipoPrecio('institutional')).toBe('institucion')

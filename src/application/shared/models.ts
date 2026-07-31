@@ -76,7 +76,7 @@ export interface OrderView {
 export interface CustomerRecord {
   id: string
   name: string
-  type: 'retail' | 'wholesale' | 'institutional' | 'municipal'
+  type: 'retail' | 'wholesale' | 'institutional' | 'corporate'
   document: string
   phone: string
   email: string
