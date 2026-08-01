@@ -47,3 +47,27 @@
   color: #15803d;
   font-weight: 600;
 }
+
+.pago-tipo-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.pago-tipo-toggle button {
+  height: 40px;
+  border: 1px solid #e2ddd5;
+  border-radius: 9px;
+  background: #fff;
+  color: #76736d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pago-tipo-toggle button.active {
+  border-color: var(--orange);
+  background: #fff7f2;
+  color: var(--orange);
+  box-shadow: inset 0 0 0 1px var(--orange);
+}

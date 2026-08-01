@@ -69,6 +69,7 @@ export interface CashRepository {
   close(id:string,countedCents:number,context:MutationContext&{idempotencyKey:string}):Promise<CashSessionRecord & Versioned>
   addMovement(sessionId:string,input:{type:'income'|'expense';method:'cash'|'qr'|'transfer';amountCents:number;note:string},context:MutationContext&{idempotencyKey:string}):Promise<CashSessionRecord & Versioned>
   registerAdvance(input:{orderId:string;amountCents:number;method:'cash'|'qr'|'transfer';sessionId:string},context:MutationContext&{idempotencyKey:string}):Promise<{movementId:string}>
+  registerPayment(input:{customerId:string;orderId?:string;amountCents:number;method:'cash'|'qr'|'transfer'|'deposit'|'sigep'|'check';sessionId:string},context:MutationContext&{idempotencyKey:string}):Promise<{movementId:string}>
 }
 export interface SuspendedSaleRepository<T extends {id:string}> {
   list(input:{query?:string;page:PageRequest}):Promise<Page<T & Versioned>>
