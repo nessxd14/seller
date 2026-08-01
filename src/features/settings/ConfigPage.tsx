@@ -7,7 +7,8 @@ import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { PRINT_FORMAT_STORAGE_KEY, type PrintFormat } from '../../components/printFormat'
 import { featureFlags } from '../../config/featureFlags'
 import { pendienteSyncHermesRepository, type PendienteSyncHermes } from '../../infrastructure/supabase/PendienteSyncHermesRepository'
-import { registrarCargoSaldo } from '../../infrastructure/hermes/client'
+import { pendienteSyncHermesPagoRepository, type PendienteSyncHermesPago } from '../../infrastructure/supabase/PendienteSyncHermesPagoRepository'
+import { registrarCargoSaldo, registrarPago } from '../../infrastructure/hermes/client'
 
 const emptyEmpresa: EmpresaConfig = { razonSocial: '', nit: '', direccion: '', ciudad: '', telefono: '', email: '', pieDocumento: '' }
 const moneyBs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -90,6 +91,7 @@ export function ConfigPage({ notify }: { notify: (message: string) => void }) {
     </section>
 
     {featureFlags.supabase && <HermesSyncSection notify={notify} />}
+    {featureFlags.supabase && <HermesPagosSyncSection notify={notify} />}
   </FeatureShell>
 }
 
@@ -130,6 +132,61 @@ function HermesSyncSection({ notify }: { notify: (message: string) => void }) {
       {pendientes.map((p) => <div key={p.id} className="hermes-pendiente-row">
         <div className="hermes-pendiente-info">
           <strong>Venta #{p.ventaId} · Bs {moneyBs(p.monto)}</strong>
+          <small>{p.intentos} intento{p.intentos === 1 ? '' : 's'}{p.ultimoIntento ? ` · último ${new Date(p.ultimoIntento).toLocaleString('es-BO')}` : ''}</small>
+          {p.ultimoError && <span className="hermes-pendiente-error">{p.ultimoError}</span>}
+        </div>
+        <button className="secondary-button" disabled={retryingId === p.id} onClick={() => void retry(p)}>{retryingId === p.id ? 'Reintentando...' : 'Reintentar'}</button>
+      </div>)}
+    </div>}
+  </section>
+}
+
+function HermesPagosSyncSection({ notify }: { notify: (message: string) => void }) {
+  const [pendientes, setPendientes] = useState<PendienteSyncHermesPago[]>([])
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [retryingId, setRetryingId] = useState<string | null>(null)
+
+  const fetchPendientes = () => pendienteSyncHermesPagoRepository.listPendientes().then((value) => { setPendientes(value); setStatus('ready') }).catch(() => setStatus('error'))
+  const load = () => { setStatus('loading'); void fetchPendientes() }
+  useEffect(() => { void fetchPendientes() }, [])
+
+  const retry = async (pendiente: PendienteSyncHermesPago) => {
+    setRetryingId(pendiente.id)
+    try {
+      await registrarPago({
+        clienteId: Number(pendiente.clienteId),
+        monto: pendiente.monto,
+        medio: pendiente.metodo,
+        pedidoId: pendiente.pedidoId,
+        movimientoCajaId: pendiente.movimientoCajaId,
+        usuarioPos: pendiente.usuarioPos ?? 'config',
+      })
+      await pendienteSyncHermesPagoRepository.marcarSincronizado(pendiente.id)
+      notify(`Pago del movimiento #${pendiente.movimientoCajaId} sincronizado con Hermes`)
+      load()
+    } catch (err) {
+      await pendienteSyncHermesPagoRepository.registrarFallo({
+        movimientoCajaId: pendiente.movimientoCajaId,
+        clienteId: pendiente.clienteId,
+        pedidoId: pendiente.pedidoId,
+        monto: pendiente.monto,
+        metodo: pendiente.metodo,
+        usuarioPos: pendiente.usuarioPos ?? 'config',
+        error: err instanceof Error ? err.message : 'No se pudo registrar el pago en Hermes',
+      })
+      notify('No se pudo sincronizar. Se mantiene en la cola de reintentos')
+      load()
+    } finally {
+      setRetryingId(null)
+    }
+  }
+
+  return <section className="settings-section">
+    <header><RefreshCw size={16} /><h2>Sincronización de pagos con Hermes</h2><p>Pagos de clientes que no se pudieron proponer en Hermes al momento de cobrarlos</p></header>
+    {status === 'loading' ? <FeatureState type="loading" text="Cargando pendientes" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar los pendientes" /> : !pendientes.length ? <FeatureState type="empty" text="No hay sincronizaciones pendientes" /> : <div className="hermes-pendientes-list">
+      {pendientes.map((p) => <div key={p.id} className="hermes-pendiente-row">
+        <div className="hermes-pendiente-info">
+          <strong>Movimiento #{p.movimientoCajaId} · Bs {moneyBs(p.monto)}{p.pedidoId ? ` · Pedido ${p.pedidoId}` : ''}</strong>
           <small>{p.intentos} intento{p.intentos === 1 ? '' : 's'}{p.ultimoIntento ? ` · último ${new Date(p.ultimoIntento).toLocaleString('es-BO')}` : ''}</small>
           {p.ultimoError && <span className="hermes-pendiente-error">{p.ultimoError}</span>}
         </div>

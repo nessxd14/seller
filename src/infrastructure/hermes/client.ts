@@ -16,6 +16,11 @@ export interface CargoRegistrado {
   cubiertoPorSaldo: boolean
 }
 
+export interface PagoRegistrado {
+  pagoId: string
+  saldoProvisional: number
+}
+
 const authHeaders = async (): Promise<HeadersInit> => {
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
@@ -54,4 +59,19 @@ export async function registrarCargoSaldo(input: { clienteId: number; monto: num
   const data = await response.json().catch(() => null)
   if (!response.ok) throw new Error((data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) || 'No se pudo registrar el cargo en Hermes')
   return data as CargoRegistrado
+}
+
+/** Mismo contrato que registrarCargoSaldo — SÍ lanza en caso de fallo, el llamador
+ * (PagoModal) necesita saberlo para encolar el reintento en pendiente_sync_hermes_pago.
+ * El PROPUESTO/confirmación en Hermes es cosa de supervisores en otra app: acá no hay
+ * nada que interpretar sobre ese estado, solo éxito (se pudo proponer) o fallo (se encola). */
+export async function registrarPago(input: { clienteId: number; monto: number; medio: string; pedidoId?: string | number; movimientoCajaId: string | number; usuarioPos: string }): Promise<PagoRegistrado> {
+  const response = await fetch('/api/hermes/registrar-pago', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify(input),
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok) throw new Error((data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) || 'No se pudo registrar el pago en Hermes')
+  return data as PagoRegistrado
 }

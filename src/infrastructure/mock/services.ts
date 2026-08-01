@@ -72,6 +72,19 @@ export const cashService = {
   // No real pedido/movimiento_caja link exists in the mock store; history is deliberately
   // skipped rather than faking a persistence layer that doesn't otherwise exist in mock mode.
   getAdvancesForOrder: async (orderId: string): Promise<Array<{ id: string; amountCents: number; method: string; note: string; at: string }>> => { void orderId; return [] },
+  // Igual que registerAdvance: el mock no tiene una tabla movimiento_caja real, así que
+  // depósito/SIGEP/cheque se registran como 'transfer' (el mock sólo distingue cash/qr/
+  // transfer) con la nota indicando el método real. No hay puente a Hermes en modo mock.
+  registerPayment: async (input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string }) => {
+    const session = (await rawCashService.list()).find((s) => s.id === input.sessionId)
+    if (!session) throw new Error('Sesión de caja no encontrada')
+    const mockMethod: 'cash' | 'qr' | 'transfer' = input.method === 'cash' || input.method === 'qr' ? input.method : 'transfer'
+    const extraNota = input.method === 'deposit' ? ' · Depósito bancario' : input.method === 'sigep' ? ' · SIGEP' : input.method === 'check' ? ' · Cheque' : ''
+    const nota = `Pago cliente ${input.customerId}${input.orderId ? ` · Pedido ${input.orderId}` : ''}${extraNota}`
+    const updated = await rawCashService.addMovement(session, 'income', input.amountCents, nota, mockMethod)
+    const movement = updated.movements[updated.movements.length - 1]
+    return { movementId: movement.id }
+  },
   expected: (session: CashSessionRecord) => rawCashService.expected(session),
 }
 

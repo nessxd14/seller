@@ -2,7 +2,7 @@ import { supabase } from './supabaseClient'
 import type { CashRepository, MutationContext, Page, PageRequest, Versioned } from '../../application/ports/repositories'
 import type { CashSessionRecord } from '../../application/shared/models'
 import { NotFoundError } from '../../application/errors/AppError'
-import { centsToNumeric, methodToMetodoPago, metodoPagoToMethod, numericToCents, tipoMovimientoToType, type MetodoPago } from './mappers'
+import { centsToNumeric, methodToMetodoPago, metodoPagoToMethod, methodExtToMetodoPago, methodExtNotaExtra, numericToCents, tipoMovimientoToType, type MetodoPago, type PosPaymentMethodExt } from './mappers'
 
 const CAJA_ID = 1
 
@@ -145,14 +145,46 @@ export class SupabaseCashRepository implements CashRepository {
 
   async registerAdvance(input: { orderId: string; amountCents: number; method: 'cash' | 'qr' | 'transfer'; sessionId: string }, context: MutationContext): Promise<{ movementId: string }> {
     const actor = context.actorId ?? 'pos'
+    // registrar_anticipo ahora recibe p_cliente_id (segundo parámetro) — se manda null
+    // explícito acá porque este flujo (anticipo desde un pedido) no lo necesita, la RPC
+    // resuelve el cliente a través del pedido. Todos los parámetros van por nombre, así
+    // que el orden real de la firma no afecta este call site.
     const { data: movementId, error } = await supabase.rpc('registrar_anticipo', {
       p_pedido_id: Number(input.orderId),
+      p_cliente_id: null,
       p_monto: centsToNumeric(input.amountCents),
       p_metodo: methodToMetodoPago(input.method),
       p_sesion_id: Number(input.sessionId),
       p_usuario: actor,
     })
     if (error) throw error
+    return { movementId: String(movementId) }
+  }
+
+  // "Registrar pago" del header: pago libre del cliente, sobre el total adeudado o sobre
+  // un pedido específico — a diferencia de registerAdvance (siempre atado a un pedido),
+  // acá el cliente es obligatorio y el pedido es opcional.
+  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: PosPaymentMethodExt; sessionId: string }, context: MutationContext): Promise<{ movementId: string }> {
+    const actor = context.actorId ?? 'pos'
+    const { data: movementId, error } = await supabase.rpc('registrar_anticipo', {
+      p_pedido_id: input.orderId ? Number(input.orderId) : null,
+      p_cliente_id: Number(input.customerId),
+      p_monto: centsToNumeric(input.amountCents),
+      p_metodo: methodExtToMetodoPago(input.method),
+      p_sesion_id: Number(input.sessionId),
+      p_usuario: actor,
+    })
+    if (error) throw error
+    // El pago ya quedó registrado — si esta nota cosmética falla, no vale la pena
+    // reportarlo como error al cajero.
+    const nota = methodExtNotaExtra(input.method)
+    if (nota) {
+      try {
+        await supabase.from('movimiento_caja').update({ nota }).eq('id', movementId)
+      } catch {
+        // ver comentario arriba
+      }
+    }
     return { movementId: String(movementId) }
   }
 }

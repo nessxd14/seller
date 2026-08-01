@@ -130,6 +130,10 @@ export const cashService = {
     const actorId = await currentActorId()
     return cashRepository.registerAdvance({ orderId, amountCents, method, sessionId }, { actorId })
   },
+  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string }): Promise<{ movementId: string }> {
+    const actorId = await currentActorId()
+    return cashRepository.registerPayment(input, { actorId })
+  },
   getAdvancesForOrder,
   // Backend truth is authoritative (esperado_efectivo comes from cerrar_caja's RPC
   // response); this client-side estimate is only used for the pre-close preview.

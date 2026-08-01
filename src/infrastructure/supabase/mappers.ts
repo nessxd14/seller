@@ -92,6 +92,45 @@ export const metodoPagoToMethod = (metodo: MetodoPago | null | undefined): PosPa
   }
 }
 
+// El enum metodo_pago en producción solo tiene EFECTIVO/QR/TRANSFERENCIA — depósito, SIGEP
+// y cheque no existen ahí (SIGEP es un valor de condicion_pago, un enum distinto para
+// términos de pago, no de método). Para "Registrar pago" el cajero elige entre 6 métodos,
+// pero del lado de Cation se guardan en el mismo bucket TRANSFERENCIA que ya existe —
+// el detalle real se preserva en la nota del movimiento y, del lado de Hermes, en el
+// campo medio (texto libre, sin esa restricción).
+export type PosPaymentMethodExt = PosPaymentMethod | 'deposit' | 'sigep' | 'check'
+
+/** POS payment method extendido -> backend metodo_pago enum (bucket, ver nota arriba). */
+export const methodExtToMetodoPago = (method: PosPaymentMethodExt): MetodoPago => {
+  switch (method) {
+    case 'cash': return 'EFECTIVO'
+    case 'qr': return 'QR'
+    default: return 'TRANSFERENCIA'
+  }
+}
+
+/** Nota a anexar en movimiento_caja para los métodos que el enum no distingue. */
+export const methodExtNotaExtra = (method: PosPaymentMethodExt): string | undefined => {
+  switch (method) {
+    case 'deposit': return 'Depósito bancario'
+    case 'sigep': return 'SIGEP'
+    case 'check': return 'Cheque'
+    default: return undefined
+  }
+}
+
+/** POS payment method extendido -> código medio para Hermes (texto libre, sin bucket). */
+export const methodExtToMedioHermes = (method: PosPaymentMethodExt): string => {
+  switch (method) {
+    case 'cash': return 'EFECTIVO'
+    case 'qr': return 'QR'
+    case 'transfer': return 'TRANSFERENCIA'
+    case 'deposit': return 'DEPOSITO'
+    case 'sigep': return 'SIGEP'
+    case 'check': return 'CHEQUE'
+  }
+}
+
 export type TipoMovimientoCaja = 'VENTA' | 'ANTICIPO' | 'INGRESO' | 'EGRESO' | 'ANULACION'
 
 /** movimiento_caja.tipo -> CashSessionRecord movement type ('income'/'expense'). */
