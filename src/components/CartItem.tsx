@@ -3,8 +3,7 @@ import { useEffect, useState } from 'react'
 import { usePos } from '../context/PosContext'
 import type { CartItem as CartItemType, SalesChannel } from '../types'
 import { ProductVisual } from './ProductVisual'
-import { calculateLineTotal } from '../domain/sales/cartCalculator'
-import { moneyToDecimal } from '../domain/common/money'
+import { ventaLineTotalCents } from '../domain/sales/ventaPricing'
 import { getPrice } from '../data/products'
 import { listPresentations } from '../infrastructure/services'
 import { isLineUnderstocked } from '../domain/sales/stockCheck'
@@ -23,7 +22,7 @@ const heredadoKeyForChannel = (channel: SalesChannel): 'mayoreo' | 'instituciona
 
 export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTransfer, trasladoDisponible }: { item: CartItemType; onEdit: () => void; originStock?: { tienda: number; almacen: number }; onSetOrigin?: (location: 'Tienda' | 'Almacén') => void; onRequestTransfer?: (shortfall: number) => void; trasladoDisponible?: number }) {
   const { channel, mode, updateQuantity, updateItem, removeItem } = usePos()
-  const lineTotal = moneyToDecimal(calculateLineTotal({ unitPrice: item.precioAplicado, quantity: item.cantidad, discountPercent: item.descuento }))
+  const lineTotal = ventaLineTotalCents(item) / 100
 
   // TAREA 3.2: presentations are loaded per product, on demand, when the line first mounts —
   // never in bulk (the `presentacion` table has 1000+ rows and PostgREST truncates past 1000).

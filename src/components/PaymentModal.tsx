@@ -8,6 +8,7 @@ import { saleService, authSessionProvider } from '../infrastructure/services'
 import type { SaleCheckoutPayment } from '../application/ports/repositories'
 import { registrarCargoSaldo } from '../infrastructure/hermes/client'
 import { pendienteSyncHermesRepository } from '../infrastructure/supabase/PendienteSyncHermesRepository'
+import { netUnitPriceCents } from '../domain/sales/ventaPricing'
 
 const allMethods = [
   { id: 'efectivo', label: 'Efectivo', icon: Banknote },
@@ -89,7 +90,16 @@ export function PaymentModal({ onClose }: { onClose: () => void }) {
     setError('')
     try {
       const checkout = await saleService.checkout({
-        lines: cart.map((item) => ({ productId: String(item.id), quantity: item.cantidad, unitPriceCents: Math.round(item.precioAplicado * (1 - item.descuento / 100) * 100), sourceLocation: item.ubicacion, presentacionId: item.presentacionId })),
+        lines: cart.map((item) => ({
+          productId: String(item.id),
+          quantity: item.cantidad,
+          unitPriceCents: netUnitPriceCents(item),
+          // precio de lista SIN descuento — habilita venta_linea.precio_modificado
+          // (columna GENERATED: precio_unitario <> precio_lista).
+          listPriceCents: Math.round(item.precioAplicado * 100),
+          sourceLocation: item.ubicacion,
+          presentacionId: item.presentacionId,
+        })),
         payments: buildPayments(),
         cashSessionId: sessionId,
         discountCents: Math.round(discount * 100),
