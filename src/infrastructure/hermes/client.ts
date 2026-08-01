@@ -13,7 +13,7 @@ export interface SaldoCliente {
 export interface CargoRegistrado {
   movimientoId: string
   saldoResultante: number
-  cubiertoPorSaldo: number
+  cubiertoPorSaldo: boolean
 }
 
 const authHeaders = async (): Promise<HeadersInit> => {
