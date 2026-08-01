@@ -1,0 +1,49 @@
+.saldo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.saldo-badge svg {
+  width: 14px;
+  height: 14px;
+}
+
+.hermes-pendientes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hermes-pendiente-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+}
+
+.hermes-pendiente-row .hermes-pendiente-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hermes-pendiente-row .hermes-pendiente-error {
+  color: #b91c1c;
+  font-size: 0.85em;
+}
+
+.saldo-cubierto-msg {
+  color: #15803d;
+  font-weight: 600;
+}
