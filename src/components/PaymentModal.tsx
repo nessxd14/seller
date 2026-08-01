@@ -37,6 +37,11 @@ export function PaymentModal({ onClose }: { onClose: () => void }) {
   // Resultado del cargo a saldo de Hermes (registrado en segundo plano tras confirmar la
   // venta) — undefined mientras está en curso o no aplica, null si falló (encolado para
   // reintento), un objeto si se cubrió con saldo a favor.
+  // OJO al reactivar hermesCargoVenta: saldoResultante viene de
+  // v_saldo_cliente.saldo_confirmado con la convención de Hermes (positivo =
+  // deuda), así que "Saldo restante: Bs {saldoResultante}" imprime un número
+  // negativo o cero cuando cubierto_por_saldo es true. Corregir junto con el
+  // resto del flujo de crédito, no antes.
   const [cargoResult, setCargoResult] = useState<{ cubiertoPorSaldo: boolean; saldoResultante: number } | null | undefined>(undefined)
   const mixedSum = Math.round((mixedCash + mixedDigital + Number.EPSILON) * 100) / 100
   const paymentValid = method === 'mixto' ? Math.abs(mixedSum - total) < 0.005 : received >= total
@@ -54,6 +59,7 @@ export function PaymentModal({ onClose }: { onClose: () => void }) {
   // La venta ya está confirmada en Supabase cuando esto corre — un fallo acá nunca revierte
   // la venta, solo encola un reintento en pendiente_sync_hermes.
   const syncHermesCargo = async (saleId: string, totalCents: number) => {
+    if (!featureFlags.hermesCargoVenta) return
     if (!customer?.id) return
     setCargoResult(undefined)
     const monto = totalCents / 100
