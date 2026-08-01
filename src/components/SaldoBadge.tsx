@@ -26,10 +26,14 @@ export function SaldoBadge({ clienteId }: { clienteId?: string }) {
     return () => { cancelled = true }
   }, [clienteId])
 
-  if (!saldo || saldo.saldoConfirmado <= 0) return null
+  // Convención de Hermes (v_saldo_cliente): saldo_confirmado > 0 = DEUDOR,
+  // < 0 = ACREEDOR (saldo a favor), 0 = AL_DIA. El signo NO es intuitivo —
+  // es un libro auxiliar de cuentas por cobrar, no una billetera.
+  if (!saldo || saldo.saldoConfirmado === 0) return null
+  const debe = saldo.saldoConfirmado > 0
   return (
-    <small className="saldo-badge">
-      <CircleDollarSign /> Saldo a favor: Bs {money(saldo.saldoConfirmado)}
+    <small className={`saldo-badge ${debe ? 'saldo-badge-deudor' : 'saldo-badge-acreedor'}`}>
+      <CircleDollarSign /> {debe ? 'Debe' : 'Saldo a favor'}: Bs {money(Math.abs(saldo.saldoConfirmado))}
     </small>
   )
 }

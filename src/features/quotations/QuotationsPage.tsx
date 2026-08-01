@@ -68,7 +68,20 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   const duplicate = async (id: string) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.duplicate(id); await load(); notify('Cotización duplicada') }
   const createOrderDirect = async (quote: QuoteDraft) => {
     if(readOnly){notify('Modo solo lectura');return}
-    await orderService.save({ id: featureFlags.supabase ? '' : crypto.randomUUID(), number: '', customerId: quote.customerId, customerName: quote.customerName, channel: quote.channel, status: 'draft', createdAt: new Date().toISOString(), lines: quote.lines.map((line) => ({ ...line, prepared: 0, allocations: [] })), events: [] })
+    await orderService.save({
+      id: featureFlags.supabase ? '' : crypto.randomUUID(),
+      number: '',
+      customerId: quote.customerId,
+      customerName: quote.customerName,
+      channel: quote.channel,
+      status: 'draft',
+      createdAt: new Date().toISOString(),
+      // El editor permite cargar "Descuento general (Bs)" y lo muestra en el
+      // footer del total; sin esto el pedido nacía con descuento 0.
+      generalDiscountCents: quote.generalDiscountCents,
+      lines: quote.lines.map((line) => ({ ...line, prepared: 0, allocations: [] })),
+      events: [],
+    })
     setEditing(null)
     onOrderCreated()
     notify('Pedido creado')
@@ -117,6 +130,6 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
       })}
     </div>}
     {editing && <DraftOrderEditor quote={editing} isExistingQuote={editingIsExisting} onClose={() => setEditing(null)} onSave={save} onCreateOrder={createOrderDirect} onConvert={editingIsExisting ? convert : undefined} />}
-    {preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, asunto: preview.asunto, documentDate: preview.documentDate }} onClose={() => setPreview(null)} />}
+    {preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, asunto: preview.asunto, documentDate: preview.documentDate, generalDiscountCents: preview.generalDiscountCents }} onClose={() => setPreview(null)} />}
   </FeatureShell>
 }

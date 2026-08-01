@@ -3,8 +3,7 @@ import { Modal } from './Modal'
 import type { CartItem, SalesChannel } from '../types'
 import type { CartCustomer } from '../context/PosContext'
 import { getPrice } from '../data/products'
-import { calculateLineTotal } from '../domain/sales/cartCalculator'
-import { moneyToDecimal } from '../domain/common/money'
+import { ventaLineTotalCents } from '../domain/sales/ventaPricing'
 import { cantidadBaseFor, isLineUnderstocked } from '../domain/sales/stockCheck'
 import { isLineUnpriced } from '../domain/sales/priceCheck'
 
@@ -61,7 +60,7 @@ export function CartReview({
               const isUnpriced = isLineUnpriced(item)
               const showInheritedBadge = isHeredado && priceMatchesSuggestion && !isUnpriced
               const understocked = isLineUnderstocked(item, originStock[item.id])
-              const lineTotal = moneyToDecimal(calculateLineTotal({ unitPrice: item.precioAplicado, quantity: item.cantidad, discountPercent: item.descuento }))
+              const lineTotal = ventaLineTotalCents(item) / 100
               return <tr key={item.id} className={understocked || isUnpriced ? 'cart-review-flagged' : ''}>
                 <td>{item.nombre}{understocked && <small className="line-stock-error"><AlertTriangle /> Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBaseFor(item))} uds.</small>}{isUnpriced && <small className="line-stock-error"><AlertTriangle /> {item.nombre} no tiene precio.</small>}</td>
                 <td>{item.presentacionNombre ?? 'Unidad'}</td>

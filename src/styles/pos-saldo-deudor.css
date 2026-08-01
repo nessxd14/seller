@@ -1,0 +1,5 @@
+/* Deudor vs acreedor. Ambas reglas con la misma especificidad que
+   .saldo-badge en pos-saldo-hermes.css (0-1-0) más la clase modificadora
+   (0-2-0), para que ganen sin !important. */
+.saldo-badge.saldo-badge-deudor { color: #b42318; border-color: #fda29b; background: #fef3f2; }
+.saldo-badge.saldo-badge-acreedor { color: #067647; border-color: #abefc6; background: #ecfdf3; }

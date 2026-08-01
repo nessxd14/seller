@@ -1,7 +1,8 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
 import { getPrice } from '../data/products'
 import type { CartItem, Product, SalesChannel } from '../types'
-import { calculateCartTotals } from '../domain/sales/cartCalculator'
+import { ventaLineTotalCents } from '../domain/sales/ventaPricing'
+import { moneyFromDecimal } from '../domain/common/money'
 import type { TransferMotivo } from '../application/shared/models'
 
 // Brief J: 1 = Almacén Central, 2 = Tienda (mismos ids que SUCURSAL_ALMACEN_ID/
@@ -116,7 +117,11 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const removeItem = (id: number) => setCart((items) => items.filter((item) => item.id !== id))
   const clearCart = () => { setCart([]); setDiscount(0) }
   const newOperation = () => { clearCart(); setChannelState('retail'); setCustomer(null); setOperationNumber((number) => number + 1) }
-  const totals = useMemo(() => calculateCartTotals(cart.map((item) => ({ unitPrice: item.precioAplicado, quantity: item.cantidad, discountPercent: item.descuento })), discount), [cart, discount])
+  const totals = useMemo(() => {
+    const subtotalCents = cart.reduce((sum, item) => sum + ventaLineTotalCents(item), 0)
+    const discountCents = Math.min(subtotalCents, Math.max(0, moneyFromDecimal(discount).cents))
+    return { subtotalDecimal: subtotalCents / 100, totalDecimal: (subtotalCents - discountCents) / 100 }
+  }, [cart, discount])
   const subtotal = totals.subtotalDecimal
   const total = totals.totalDecimal
   const safeSetDiscount = (value: number) => setDiscount(roundMoney(Math.min(subtotal, Math.max(0, Number.isFinite(value) ? value : 0))))

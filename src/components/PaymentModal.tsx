@@ -8,6 +8,7 @@ import { saleService, authSessionProvider } from '../infrastructure/services'
 import type { SaleCheckoutPayment } from '../application/ports/repositories'
 import { registrarCargoSaldo } from '../infrastructure/hermes/client'
 import { pendienteSyncHermesRepository } from '../infrastructure/supabase/PendienteSyncHermesRepository'
+import { netUnitPriceCents } from '../domain/sales/ventaPricing'
 
 const allMethods = [
   { id: 'efectivo', label: 'Efectivo', icon: Banknote },
@@ -36,6 +37,11 @@ export function PaymentModal({ onClose }: { onClose: () => void }) {
   // Resultado del cargo a saldo de Hermes (registrado en segundo plano tras confirmar la
   // venta) — undefined mientras está en curso o no aplica, null si falló (encolado para
   // reintento), un objeto si se cubrió con saldo a favor.
+  // OJO al reactivar hermesCargoVenta: saldoResultante viene de
+  // v_saldo_cliente.saldo_confirmado con la convención de Hermes (positivo =
+  // deuda), así que "Saldo restante: Bs {saldoResultante}" imprime un número
+  // negativo o cero cuando cubierto_por_saldo es true. Corregir junto con el
+  // resto del flujo de crédito, no antes.
   const [cargoResult, setCargoResult] = useState<{ cubiertoPorSaldo: boolean; saldoResultante: number } | null | undefined>(undefined)
   const mixedSum = Math.round((mixedCash + mixedDigital + Number.EPSILON) * 100) / 100
   const paymentValid = method === 'mixto' ? Math.abs(mixedSum - total) < 0.005 : received >= total
@@ -53,6 +59,7 @@ export function PaymentModal({ onClose }: { onClose: () => void }) {
   // La venta ya está confirmada en Supabase cuando esto corre — un fallo acá nunca revierte
   // la venta, solo encola un reintento en pendiente_sync_hermes.
   const syncHermesCargo = async (saleId: string, totalCents: number) => {
+    if (!featureFlags.hermesCargoVenta) return
     if (!customer?.id) return
     setCargoResult(undefined)
     const monto = totalCents / 100
@@ -89,7 +96,16 @@ export function PaymentModal({ onClose }: { onClose: () => void }) {
     setError('')
     try {
       const checkout = await saleService.checkout({
-        lines: cart.map((item) => ({ productId: String(item.id), quantity: item.cantidad, unitPriceCents: Math.round(item.precioAplicado * (1 - item.descuento / 100) * 100), sourceLocation: item.ubicacion, presentacionId: item.presentacionId })),
+        lines: cart.map((item) => ({
+          productId: String(item.id),
+          quantity: item.cantidad,
+          unitPriceCents: netUnitPriceCents(item),
+          // precio de lista SIN descuento — habilita venta_linea.precio_modificado
+          // (columna GENERATED: precio_unitario <> precio_lista).
+          listPriceCents: Math.round(item.precioAplicado * 100),
+          sourceLocation: item.ubicacion,
+          presentacionId: item.presentacionId,
+        })),
         payments: buildPayments(),
         cashSessionId: sessionId,
         discountCents: Math.round(discount * 100),

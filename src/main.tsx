@@ -19,6 +19,7 @@ import './pos-borrador.css'
 import './styles/pos-modo-traslado.css'
 import './styles/pos-traslados-bandeja.css'
 import './styles/pos-saldo-hermes.css'
+import './styles/pos-saldo-deudor.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

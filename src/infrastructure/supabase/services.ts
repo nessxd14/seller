@@ -143,7 +143,7 @@ export const cashService = {
 }
 
 export const saleService = {
-  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number }) {
+  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number }) {
     const actorId = await currentActorId()
     return saleRepository.checkout(input, { actorId })
   },
