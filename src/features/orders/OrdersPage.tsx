@@ -12,7 +12,15 @@ import { useCashSession } from '../../context/CashSessionContext'
 type SortKey = 'number' | 'customerName' | 'channel' | 'status' | 'lines' | 'total' | 'createdAt'
 type SortDir = 'asc' | 'desc'
 
-const orderTotal = (order: OrderView) => order.lines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0)
+// El backend ya calculó pedido.total (subtotal con descuentos de línea, menos
+// descuento_general). Se usa tal cual. El cálculo de abajo es solo el fallback
+// para modo mock y pedidos sin precios, y ahí sí aplica discountBasisPoints —
+// ignorarlo era el bug original.
+const orderTotal = (order: OrderView) =>
+  order.totalCents ?? order.lines.reduce(
+    (sum, line) => sum + Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000),
+    0
+  )
 const channelNames: Record<string, string> = { mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
 
 function SortTh({ label, sortkey, activeKey, onToggle }: { label: string; sortkey: SortKey; activeKey: SortKey; onToggle: (key: SortKey) => void }) {
@@ -118,8 +126,8 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     </div><footer className="modal-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}>Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}>Nota de entrega A4</button>{selected.status === 'cancelled' ? <button className="primary-button" onClick={() => setReasonModal({ action: 'restore', order: selected })}><RotateCcw /> Restaurar</button> : <button className="danger-button" disabled={hasDispatchedLines(selected)} title={hasDispatchedLines(selected) ? 'No se puede anular: tiene líneas despachadas' : undefined} onClick={() => setReasonModal({ action: 'cancel', order: selected })}><XCircle /> Anular pedido</button>}{!featureFlags.supabase && <button className="primary-button" disabled={!['preparing','ready'].includes(selected.status)} onClick={() => dispatch(selected)}><Truck /> Despacho parcial</button>}</footer></Modal>}
     {advanceOpen && selected && <AdvanceModal onClose={()=>setAdvanceOpen(false)} onConfirm={registerAdvance}/>}
     {reasonModal && <ReasonModal action={reasonModal.action} orderNumber={reasonModal.order.number} onClose={()=>setReasonModal(null)} onConfirm={confirmReason}/>}
-    {deliveryNote && <DocumentoExportable mode="nota-entrega" doc={{ number: deliveryNote.number, customerName: deliveryNote.customerName, channel: deliveryNote.channel, lines: deliveryNote.lines }} onClose={()=>setDeliveryNote(null)} />}
-    {orderDoc && <DocumentoExportable mode="pedido" doc={{ number: orderDoc.number, customerName: orderDoc.customerName, channel: orderDoc.channel, lines: orderDoc.lines }} onClose={()=>setOrderDoc(null)} />}
+    {deliveryNote && <DocumentoExportable mode="nota-entrega" doc={{ number: deliveryNote.number, customerName: deliveryNote.customerName, channel: deliveryNote.channel, lines: deliveryNote.lines, generalDiscountCents: deliveryNote.generalDiscountCents }} onClose={()=>setDeliveryNote(null)} />}
+    {orderDoc && <DocumentoExportable mode="pedido" doc={{ number: orderDoc.number, customerName: orderDoc.customerName, channel: orderDoc.channel, lines: orderDoc.lines, generalDiscountCents: orderDoc.generalDiscountCents }} onClose={()=>setOrderDoc(null)} />}
   </FeatureShell>
 }
 

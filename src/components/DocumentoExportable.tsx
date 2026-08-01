@@ -17,6 +17,8 @@ export interface ExportableDoc {
   conditionPago?: string
   asunto?: string
   documentDate?: string
+  /** Descuento general del encabezado, en centavos. Ausente = sin descuento. */
+  generalDiscountCents?: number
 }
 
 const conditionPagoLabel: Record<string, string> = {
@@ -129,7 +131,10 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
         )}
         <footer className="doc-totals">
           <div className="doc-total-row"><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
-          <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(Math.max(0, subtotalCents)))}</strong></div>
+          {Boolean(doc.generalDiscountCents) && (
+            <div className="doc-total-row"><span>Descuento general</span><strong>−{formatMoney(money(doc.generalDiscountCents ?? 0))}</strong></div>
+          )}
+          <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))))}</strong></div>
         </footer>
         {(doc.validUntil || doc.conditionPago) && (
           <div className="doc-footer-notes">

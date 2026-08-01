@@ -71,6 +71,14 @@ export interface OrderView {
   // Supabase mode doesn't need this field — restaurar_pedido() reads estado_previo
   // straight from pedido_evento.
   previousStatus?: OrderWorkflowStatus
+  // Totales del encabezado (pedido.subtotal / descuento_general / total).
+  // De IDA: generalDiscountCents es lo que se manda a crear_pedido.
+  // De VUELTA: los tres se leen tal cual de la fila; son la verdad, no se
+  // recalculan. Quedan undefined en modo mock y en pedidos sin precios
+  // (crear_pedido deja el header en NULL si ninguna línea trae precio_unitario).
+  subtotalCents?: number
+  generalDiscountCents?: number
+  totalCents?: number
 }
 
 export interface CustomerRecord {

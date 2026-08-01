@@ -26,9 +26,9 @@ interface PedidoRow {
   creado_por: string | null
   creado_en: string
   cliente_id: number | null
-  subtotal: number | string
-  descuento_general: number | string
-  total: number | string
+  subtotal: number | string | null
+  descuento_general: number | string | null
+  total: number | string | null
   cliente?: { nombre: string } | null
 }
 
@@ -118,6 +118,9 @@ const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[], eventos: Ped
   createdAt: header.creado_en,
   lines: lines.map(lineaRowToOrderLine),
   events: eventos.map(eventoRowToEvent),
+  subtotalCents: header.subtotal != null ? numericToCents(num(header.subtotal)) : undefined,
+  generalDiscountCents: header.descuento_general != null ? numericToCents(num(header.descuento_general)) : undefined,
+  totalCents: header.total != null ? numericToCents(num(header.total)) : undefined,
   // pedido has no version column: orders are created/converted/dispatched, not
   // optimistically edited, so we synthesize a constant version.
   version: 1,
@@ -211,7 +214,7 @@ export class SupabaseOrderRepository implements OrderRepository {
       p_lineas: buildLineasJsonb(value.lines, value.channel),
       p_usuario: actor,
       p_cliente_id: value.customerId ? Number(value.customerId) : null,
-      p_descuento_general: 0,
+      p_descuento_general: centsToNumeric(value.generalDiscountCents ?? 0),
     })
     if (error) throw error
     const created = await fetchOrderById(newId as number)
