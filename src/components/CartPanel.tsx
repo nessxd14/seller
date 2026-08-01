@@ -10,6 +10,7 @@ import { EditCartItemModal } from './EditCartItemModal'
 import { PaymentModal } from './PaymentModal'
 import { TicketPreviewModal } from './TicketPreviewModal'
 import { CustomerPicker } from './CustomerPicker'
+import { SaldoBadge } from './SaldoBadge'
 import { TrasladoTargetPicker } from './TrasladoTargetPicker'
 import { CartReview } from './CartReview'
 import type { QuoteDraft, TransferMotivo, WorkflowLine } from '../application/shared/models'
@@ -207,7 +208,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   return <aside className="cart-panel">{borradorPendiente && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}<div className="cart-header"><div><span>OPERACIÓN ACTUAL</span><h2>{mode === 'traslado' ? 'Traslado' : 'Venta'} <b>#{operationNumber}</b></h2></div><button type="button" className="modo-toggle" role="switch" aria-checked={mode === 'traslado'} onClick={toggleMode} title={mode === 'traslado' ? 'Volver a modo venta' : 'Cambiar a modo traslado'}>{mode === 'traslado' ? <Truck /> : <ShoppingCart />}<span>{mode === 'traslado' ? 'Traslado' : 'Venta'}</span></button>{mode === 'venta' && <span className="channel-badge">{channelNames[channel]}</span>}</div><div className="operation-meta"><span>{new Date().toLocaleDateString('es-BO', { day: '2-digit', month: 'short' })}</span><i /> <span>{new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</span></div>
     {mode === 'traslado'
       ? <TrasladoTargetPicker origenId={trasladoOrigenId} destinoId={trasladoDestinoId} isAdmin={isAdmin} onInvertir={() => setTrasladoDireccion(trasladoDestinoId, trasladoOrigenId)} />
-      : <CustomerPicker channel={channel} notify={notify} />}
+      : <>{<CustomerPicker channel={channel} notify={notify} />}{customer && <SaldoBadge clienteId={customer.id} />}</>}
     <div className="cart-list-heading"><span>{mode === 'traslado' ? 'Detalle del traslado' : 'Detalle de venta'}</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b></div><div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={() => setEditing(item)} originStock={mode === 'venta' && channel === 'retail' ? originStock[item.id] : undefined} onSetOrigin={mode === 'venta' && channel === 'retail' ? (loc) => updateItem(item.id, { ubicacion: loc }) : undefined} onRequestTransfer={mode === 'venta' && channel === 'retail' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} trasladoDisponible={mode === 'traslado' ? trasladoDisponibleFor(item.id) : undefined} />) : <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar {mode === 'traslado' ? 'un traslado' : 'una venta'}.</p></div>}</div>
     {mode === 'traslado' ? (
       <div className="cart-summary cart-summary-traslado">

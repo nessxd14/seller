@@ -7,6 +7,7 @@ import { featureFlags } from '../../config/featureFlags'
 import { aggregateStockBySucursal } from '../inventory/stockAggregation'
 import { formatMoney, money } from '../../domain/common/money'
 import { Modal } from '../../components/Modal'
+import { SaldoBadge } from '../../components/SaldoBadge'
 import type { LineIdentifiers } from '../../components/LineIdentifiersRow'
 import { OriginPin, buildOriginOptions, type OriginLocation } from '../../components/OriginPin'
 import { cantidadBaseFor } from '../../domain/sales/stockCheck'
@@ -329,6 +330,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
               )}
             </div>
             {!readOnly && missingCustomer && <small className="line-stock-error">Elegí un cliente en el buscador de arriba — una cotización sin cliente no se puede guardar. "Cliente de mostrador" no cuenta.</small>}
+            {value.customerId && <SaldoBadge clienteId={value.customerId} />}
           </label>
           <label>Vigencia<input type="date" disabled={readOnly} value={value.validUntil} onChange={(e) => setValue((v) => ({ ...v, validUntil: e.target.value }))} /></label>
           <label>Fecha<input type="date" disabled={readOnly} value={value.documentDate ?? ''} onChange={(e) => setValue((v) => ({ ...v, documentDate: e.target.value || undefined }))} /></label>

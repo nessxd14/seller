@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Printer, ShieldCheck, Store, User } from 'lucide-react'
+import { Printer, RefreshCw, ShieldCheck, Store, User } from 'lucide-react'
 import { configService } from '../../infrastructure/services'
 import { loadEmpresaConfig } from '../../config/empresaStore'
 import type { CajaSummary, EmpresaConfig, SucursalSummary, UserSummary } from '../../application/ports/configRepository'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { PRINT_FORMAT_STORAGE_KEY, type PrintFormat } from '../../components/printFormat'
+import { featureFlags } from '../../config/featureFlags'
+import { pendienteSyncHermesRepository, type PendienteSyncHermes } from '../../infrastructure/supabase/PendienteSyncHermesRepository'
+import { registrarCargoSaldo } from '../../infrastructure/hermes/client'
 
 const emptyEmpresa: EmpresaConfig = { razonSocial: '', nit: '', direccion: '', ciudad: '', telefono: '', email: '', pieDocumento: '' }
+const moneyBs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export function ConfigPage({ notify }: { notify: (message: string) => void }) {
   const [empresa, setEmpresa] = useState<EmpresaConfig>(emptyEmpresa)
@@ -84,5 +88,53 @@ export function ConfigPage({ notify }: { notify: (message: string) => void }) {
         <button className={printFormat === 'ticket-80' ? 'active' : ''} onClick={() => changeFormat('ticket-80')}>Térmico 80 mm</button>
       </div>
     </section>
+
+    {featureFlags.supabase && <HermesSyncSection notify={notify} />}
   </FeatureShell>
+}
+
+function HermesSyncSection({ notify }: { notify: (message: string) => void }) {
+  const [pendientes, setPendientes] = useState<PendienteSyncHermes[]>([])
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [retryingId, setRetryingId] = useState<string | null>(null)
+
+  const fetchPendientes = () => pendienteSyncHermesRepository.listPendientes().then((value) => { setPendientes(value); setStatus('ready') }).catch(() => setStatus('error'))
+  const load = () => { setStatus('loading'); void fetchPendientes() }
+  useEffect(() => { void fetchPendientes() }, [])
+
+  const retry = async (pendiente: PendienteSyncHermes) => {
+    setRetryingId(pendiente.id)
+    try {
+      await registrarCargoSaldo({ clienteId: Number(pendiente.clienteId), monto: pendiente.monto, ventaId: pendiente.ventaId, usuarioPos: pendiente.usuarioPos ?? 'config' })
+      await pendienteSyncHermesRepository.marcarSincronizado(pendiente.id)
+      notify(`Venta #${pendiente.ventaId} sincronizada con Hermes`)
+      load()
+    } catch (err) {
+      await pendienteSyncHermesRepository.registrarFallo({
+        ventaId: pendiente.ventaId,
+        clienteId: pendiente.clienteId,
+        monto: pendiente.monto,
+        usuarioPos: pendiente.usuarioPos ?? 'config',
+        error: err instanceof Error ? err.message : 'No se pudo registrar el cargo en Hermes',
+      })
+      notify('No se pudo sincronizar. Se mantiene en la cola de reintentos')
+      load()
+    } finally {
+      setRetryingId(null)
+    }
+  }
+
+  return <section className="settings-section">
+    <header><RefreshCw size={16} /><h2>Sincronización con Hermes</h2><p>Cargos a saldo a favor que no se pudieron registrar en Hermes al momento de la venta</p></header>
+    {status === 'loading' ? <FeatureState type="loading" text="Cargando pendientes" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar los pendientes" /> : !pendientes.length ? <FeatureState type="empty" text="No hay sincronizaciones pendientes" /> : <div className="hermes-pendientes-list">
+      {pendientes.map((p) => <div key={p.id} className="hermes-pendiente-row">
+        <div className="hermes-pendiente-info">
+          <strong>Venta #{p.ventaId} · Bs {moneyBs(p.monto)}</strong>
+          <small>{p.intentos} intento{p.intentos === 1 ? '' : 's'}{p.ultimoIntento ? ` · último ${new Date(p.ultimoIntento).toLocaleString('es-BO')}` : ''}</small>
+          {p.ultimoError && <span className="hermes-pendiente-error">{p.ultimoError}</span>}
+        </div>
+        <button className="secondary-button" disabled={retryingId === p.id} onClick={() => void retry(p)}>{retryingId === p.id ? 'Reintentando...' : 'Reintentar'}</button>
+      </div>)}
+    </div>}
+  </section>
 }
