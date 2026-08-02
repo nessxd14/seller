@@ -3,3 +3,4 @@
    (0-2-0), para que ganen sin !important. */
 .saldo-badge.saldo-badge-deudor { color: #b42318; border-color: #fda29b; background: #fef3f2; }
 .saldo-badge.saldo-badge-acreedor { color: #067647; border-color: #abefc6; background: #ecfdf3; }
+.saldo-badge.saldo-badge-sin-cuenta { color: #93370d; border-color: #fec84b; background: #fffaeb; }

@@ -8,9 +8,9 @@ const money = (value: number) => value.toLocaleString('es-BO', { minimumFraction
 /**
  * Ficha de cliente / cotización / carrito: saldo a favor real desde Hermes. Resuelto
  * server-side (api/hermes/consultar-saldo.ts) — este componente solo llama a ese
- * endpoint propio, nunca a Hermes directo. Si no hay saldo, el cliente no está
- * importado a Hermes, o la consulta falla por cualquier razón: no se muestra nada,
- * nunca un error ni un estado de carga que bloquee la pantalla.
+ * endpoint propio, nunca a Hermes directo. Tres estados posibles: sin cuenta en
+ * Hermes (badge ámbar), al día o puente caído (sin badge), o deudor/acreedor (badge
+ * rojo/verde). Nunca un error ni un estado de carga que bloquee la pantalla.
  */
 export function SaldoBadge({ clienteId }: { clienteId?: string }) {
   const [saldo, setSaldo] = useState<SaldoCliente | null>(null)
@@ -26,10 +26,18 @@ export function SaldoBadge({ clienteId }: { clienteId?: string }) {
     return () => { cancelled = true }
   }, [clienteId])
 
+  if (!saldo) return null // puente caído: no inventar nada
+  if (saldo.sinCuenta) {
+    return (
+      <small className="saldo-badge saldo-badge-sin-cuenta">
+        <CircleDollarSign /> Sin cuenta en Hermes
+      </small>
+    )
+  }
   // Convención de Hermes (v_saldo_cliente): saldo_confirmado > 0 = DEUDOR,
   // < 0 = ACREEDOR (saldo a favor), 0 = AL_DIA. El signo NO es intuitivo —
   // es un libro auxiliar de cuentas por cobrar, no una billetera.
-  if (!saldo || saldo.saldoConfirmado === 0) return null
+  if (saldo.saldoConfirmado === 0) return null // al día: no hay nada que decir
   const debe = saldo.saldoConfirmado > 0
   return (
     <small className={`saldo-badge ${debe ? 'saldo-badge-deudor' : 'saldo-badge-acreedor'}`}>
