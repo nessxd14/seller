@@ -8,6 +8,8 @@ export interface SaldoCliente {
   saldoConfirmado: number
   saldoProvisional: number
   situacion: string | null
+  /** true = el cliente no tiene cuenta corriente en Hermes (no está importado). */
+  sinCuenta?: boolean
 }
 
 export interface CargoRegistrado {

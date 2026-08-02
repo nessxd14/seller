@@ -3,7 +3,7 @@ import { Modal } from './Modal'
 import { customerService, orderService, cashService, authSessionProvider } from '../infrastructure/services'
 import { useCashSession } from '../context/CashSessionContext'
 import { featureFlags } from '../config/featureFlags'
-import { registrarPago } from '../infrastructure/hermes/client'
+import { consultarSaldo, registrarPago } from '../infrastructure/hermes/client'
 import { pendienteSyncHermesPagoRepository } from '../infrastructure/supabase/PendienteSyncHermesPagoRepository'
 import { methodExtToMedioHermes, type PosPaymentMethodExt } from '../infrastructure/supabase/mappers'
 import { formatMoney, money, moneyFromDecimal } from '../domain/common/money'
@@ -30,6 +30,18 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState<{ amountCents: number; customerName: string } | null>(null)
+  const [sinCuentaHermes, setSinCuentaHermes] = useState(false)
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the previous customer's warning immediately when customer changes, before the new fetch resolves
+    setSinCuentaHermes(false)
+    if (!featureFlags.supabase || !customer) return
+    const id = Number(customer.id)
+    if (!Number.isFinite(id) || id <= 0) return
+    let cancelled = false
+    void consultarSaldo(id).then((result) => { if (!cancelled) setSinCuentaHermes(!!result?.sinCuenta) })
+    return () => { cancelled = true }
+  }, [customer])
 
   useEffect(() => {
     if (!showCustomerPicker) return
@@ -159,6 +171,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
       {metodoOrder.map((m) => <option key={m} value={m}>{metodoLabels[m]}</option>)}
     </select></label>
     {featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar un pago.</p>}
+    {sinCuentaHermes && <p className="mock-note">Este cliente todavía no tiene cuenta corriente en Hermes. El pago se va a registrar en caja igual, pero no va a aparecer en su estado de cuenta hasta que se lo importe en Hermes.</p>}
     {error && <p className="mock-note payment-error">{error}</p>}
   </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid || submitting} onClick={() => void confirm()}>{submitting ? 'Registrando…' : 'Confirmar pago'}</button></footer></Modal>
 }
