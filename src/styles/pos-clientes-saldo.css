@@ -1,0 +1,7 @@
+/* Saldo real de Hermes en la grilla de Clientes. `.customer-card footer` en
+   workflows.css tiene especificidad 0-1-1 (clase + elemento); acá se le suma la clase
+   modificadora (0-2-1) para ganarle sin !important. */
+.customer-card footer .saldo-deudor { color: #b42318; }
+.customer-card footer .saldo-acreedor { color: #067647; }
+.customer-card footer .saldo-al-dia { color: #6e6a63; }
+.customer-card footer .saldo-sin-cuenta { color: #93370d; }

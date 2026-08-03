@@ -91,8 +91,9 @@ export interface CustomerRecord {
   address: string
   usualChannel: SalesChannel
   paymentTerms: string
-  creditLimitCents: number
-  pendingBalanceCents: number
+  /** Solo modo mock. En Supabase el saldo real viene de Hermes, no de Cation. */
+  creditLimitCents?: number
+  pendingBalanceCents?: number
   // Optional Supabase-backed extensions (all optional so mock consumers/seeds are
   // unaffected). origin: cliente.origen ('shopify' rows come from
   // scripts/bootstrap_clientes.mjs; everything else is 'manual'). businessName/city:

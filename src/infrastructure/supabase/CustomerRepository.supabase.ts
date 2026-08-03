@@ -38,8 +38,6 @@ const rowToCustomer = (row: ClienteRow): CustomerRecord & Versioned => ({
     : row.tipo_precio === 'institucion' ? 'municipal'
     : 'retail',
   paymentTerms: 'Contado',
-  creditLimitCents: 0,
-  pendingBalanceCents: 0,
   origin: row.origen === 'shopify' ? 'shopify' : 'manual',
   businessName: row.razon_social ?? undefined,
   city: row.ciudad ?? undefined,
