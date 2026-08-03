@@ -20,6 +20,7 @@ import './styles/pos-modo-traslado.css'
 import './styles/pos-traslados-bandeja.css'
 import './styles/pos-saldo-hermes.css'
 import './styles/pos-saldo-deudor.css'
+import './styles/pos-clientes-saldo.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
