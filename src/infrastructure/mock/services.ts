@@ -107,7 +107,7 @@ export const saleService = {
     for (const payment of input.payments) {
       current = await rawCashService.addMovement(current, 'income', payment.amountCents, 'Venta mock', payment.method)
     }
-    return { saleId: crypto.randomUUID(), subtotalCents, discountCents, totalCents }
+    return { saleId: crypto.randomUUID(), subtotalCents, discountCents, totalCents, isRetry: false }
   },
 }
 

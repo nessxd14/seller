@@ -11,6 +11,7 @@ import { transferRepository, type CreateTransferInput } from './TransferReposito
 import type { TransferEstado, TransferRecord } from '../../application/shared/models'
 import { configRepository } from './ConfigRepository.supabase'
 import { reportsRepository } from './ReportsRepository.supabase'
+import { sensitiveOperations } from '../mock/services'
 
 export const configService = configRepository
 export const reportsService = reportsRepository
@@ -144,9 +145,17 @@ export const cashService = {
 }
 
 export const saleService = {
-  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number }) {
+  /**
+   * `operationId` must be stable for the same cart and different across operations: it's
+   * PosContext's `operationNumber`, which only advances in `newOperation()` (i.e. after a
+   * checkout has finished). That's what lets an F5-mid-payment retry reuse the same
+   * idempotency key instead of registering the sale twice.
+   */
+  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number; operationId: number | string }) {
     const actorId = await currentActorId()
-    return saleRepository.checkout(input, { actorId })
+    return sensitiveOperations.execute('checkout', String(input.operationId), (idempotencyKey) =>
+      saleRepository.checkout(input, { actorId, idempotencyKey }),
+    )
   },
 }
 

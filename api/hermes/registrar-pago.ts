@@ -4,7 +4,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 // archivo EMITIDO. TypeScript resuelve './_auth.js' -> './_auth.ts' con
 // moduleResolution "Bundler", así que el fuente sigue typechequeando.
 // Sin la extensión: ERR_MODULE_NOT_FOUND y exit 1 en cada request.
-import { verificarSesionPos } from './_auth.js'
+import { verificarSesionPos, puedeMoverSaldo } from './_auth.js'
 
 // Mismo patrón que registrar-cargo.ts: acá SÍ hace falta que el frontend distinga éxito de
 // fallo — un fallo real dispara la cola de reintentos (pendiente_sync_hermes_pago) del
@@ -16,6 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const sesion = await verificarSesionPos(req.headers.authorization)
   if (!sesion) { res.status(401).json({ error: 'No autenticado' }); return }
+  if (!puedeMoverSaldo(sesion)) { res.status(403).json({ error: 'Tu rol no permite registrar movimientos de saldo' }); return }
 
   const { clienteId, monto, medio, pedidoId, movimientoCajaId, usuarioPos } = (req.body ?? {}) as {
     clienteId?: unknown; monto?: unknown; medio?: unknown; pedidoId?: unknown; movimientoCajaId?: unknown; usuarioPos?: unknown
