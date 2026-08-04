@@ -13,4 +13,4 @@ export const permissionsByRole:Record<MockRole,readonly Permission[]>={
   auditor:['orders_view'],
   operario:['orders_view'],
 }
-export const hasPermission=(session:AuthSession|null,permission:Permission)=>Boolean(session?.user.active&&session.user.hasProfile!==false&&permissionsByRole[session.user.role].includes(permission))
+export const hasPermission=(session:AuthSession|null,permission:Permission)=>Boolean(session?.user.active&&session.user.hasProfile!==false&&(permissionsByRole[session.user.role]??[]).includes(permission))

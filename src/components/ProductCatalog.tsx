@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { categories, getPrice, products } from '../data/products'
 import { usePos } from '../context/PosContext'
 import { ProductVisual } from './ProductVisual'
-import { productRepository, listBrands } from '../infrastructure/services'
+import { productRepository, listBrands, getStockBySucursalBatch } from '../infrastructure/services'
 import { featureFlags } from '../config/featureFlags'
 import type { Product } from '../types'
 import { ProductInfoPopover } from './ProductInfoPopover'
@@ -38,6 +38,23 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
     return () => { cancelled = true; clearTimeout(handle) }
   }, [search, category])
 
+  // TAREA 1: stockTienda/stockAlmacen vienen en 0 fijo desde rowToProduct (Supabase
+  // no llena stock ahí, para no cargar stock_actual entero por cada producto listado).
+  // Se resuelve acá, en un solo batch por página de grilla — mientras carga, la píldora
+  // muestra "—" en vez de un 0 falso.
+  const [stockByProduct, setStockByProduct] = useState<Map<number, { tienda: number; almacen: number }>>(new Map())
+  const [stockLoading, setStockLoading] = useState(false)
+  useEffect(() => {
+    if (!featureFlags.supabase || !remoteProducts.length) return
+    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the loading flag must flip the instant the page changes, before the batch fetch resolves
+    setStockLoading(true)
+    void getStockBySucursalBatch(remoteProducts.map((product) => product.id))
+      .then((stock) => { if (!cancelled) { setStockByProduct(stock); setStockLoading(false) } })
+      .catch(() => { if (!cancelled) setStockLoading(false) })
+    return () => { cancelled = true }
+  }, [remoteProducts])
+
   // Brand ANDs with search + category (all three combined), never a replacement for
   // either. `descripcion` doubles as `marca` on the Supabase adapter's mapped Product
   // shape (see rowToProduct) — mock mode has no marca concept, so the brand filter is
@@ -65,7 +82,11 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
     <div className="section-heading"><div><p>Catálogo de productos</p><span>{filtered.length} productos disponibles</span></div><small>Precios en Bs</small></div>
     {filtered.length ? <div className="product-grid">{filtered.map((product) => <article className="product-card" key={product.id}>
       <ProductVisual type={product.imagen} color={product.color} imagenUrl={product.imagenUrl} />
-      <div className="product-info"><div className="stock-pill"><span /> {product.stockTienda} en tienda</div><ProductInfoPopover product={product} /><h3 title={product.nombre}>{product.nombre}</h3><p>{product.descripcion}</p><small>SKU {product.sku}</small><div className="product-bottom"><div><span>Precio</span><strong>Bs {money(getPrice(product, channel))}{
+      <div className="product-info"><div className="stock-pill"><span /> {
+        featureFlags.supabase
+          ? (stockLoading ? '—' : (stockByProduct.get(product.id)?.tienda ?? 0))
+          : product.stockTienda
+      } en tienda</div><ProductInfoPopover product={product} /><h3 title={product.nombre}>{product.nombre}</h3><p>{product.descripcion}</p><small>SKU {product.sku}</small><div className="product-bottom"><div><span>Precio</span><strong>Bs {money(getPrice(product, channel))}{
         // TAREA A/three-state badges: "heredado" only means something when there's a real
         // (non-zero) price being inherited from retail — if retail itself is 0/NULL there's
         // nothing to inherit, so this shows "sin precio" instead of the misleading "heredado".

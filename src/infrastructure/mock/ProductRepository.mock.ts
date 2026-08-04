@@ -37,6 +37,19 @@ export const getStockByProduct = async (productId: number): Promise<{ onHand: Ar
   }
 }
 
+// Mock mode: derive the batch stock map straight from each mock product's own
+// stockTienda/stockAlmacen fields — no separate stock_actual table to query.
+export const getStockBySucursalBatch = async (
+  productIds: number[],
+): Promise<Map<number, { tienda: number; almacen: number }>> => {
+  const result = new Map<number, { tienda: number; almacen: number }>()
+  productIds.forEach((id) => {
+    const product = products.find((item) => item.id === id)
+    if (product) result.set(id, { tienda: product.stockTienda, almacen: product.stockAlmacen })
+  })
+  return result
+}
+
 // Mock seeds have no presentacion concept — degrade gracefully to a single synthetic
 // base presentation so the UI's presentation selector always has at least one option.
 export const listPresentations = async (productId: number): Promise<Array<{ id: number; nombre: string; factorUnidadBase: number; esBase: boolean }>> => {
