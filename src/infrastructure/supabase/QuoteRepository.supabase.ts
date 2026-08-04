@@ -178,7 +178,9 @@ export class SupabaseQuoteRepository implements QuoteRepository {
     if (dates?.from) builder = builder.gte('creado_en', dates.from)
     if (dates?.to) builder = builder.lte('creado_en', dates.to)
     if (query && query.trim()) {
-      const escaped = query.trim().replace(/[%,]/g, '')
+      // Dentro de un or=(...) de PostgREST, la coma separa condiciones y el paréntesis
+      // cierra el grupo: sin escapar, cualquiera de los dos rompe el filtro (400).
+      const escaped = query.trim().replace(/[%,()]/g, '')
       builder = builder.ilike('referencia', `%${escaped}%`)
     }
     const { data, error, count } = await builder.order('id', { ascending: false }).range(from, to)

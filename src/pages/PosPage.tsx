@@ -19,7 +19,7 @@ import { ConfigPage } from '../features/settings/ConfigPage'
 import { ReportsPage } from '../features/reports/ReportsPage'
 import { featureFlags } from '../config/featureFlags'
 import { products } from '../data/products'
-import { productRepository } from '../infrastructure/services'
+import { productRepository as supabaseProductRepository } from '../infrastructure/supabase/ProductRepository.supabase'
 import { loadEmpresaConfig } from '../config/empresaStore'
 import { AuthDevSelector } from '../features/auth/AuthDevSelector'
 import { LoginScreen } from '../features/auth/LoginScreen'
@@ -57,8 +57,16 @@ function PosContent() {
           event.preventDefault()
           const codigo = search.trim()
           void (async () => {
-            const exact = await productRepository.findBySku(codigo).catch(() => null)
-            if (exact) { addProduct(exact); setSearch(''); notify(`${exact.nombre} agregado`) }
+            const resolved = await supabaseProductRepository.resolveScannedCode(codigo).catch(() => ({ kind: 'not_found' as const }))
+            if (resolved.kind === 'found') {
+              addProduct(resolved.product)
+              setSearch('')
+              notify(`${resolved.product.nombre} agregado`)
+            } else if (resolved.kind === 'ambiguous') {
+              notify('Ese código está en más de un producto — buscalo por nombre')
+            } else {
+              notify('Código no reconocido')
+            }
           })()
         } else {
           const exact = products.find((product) => [product.codigoBarra, product.sku, product.codigoFabrica, product.nombre].some((value) => value.toLowerCase() === normalized))

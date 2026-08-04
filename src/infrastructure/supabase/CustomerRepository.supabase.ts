@@ -53,7 +53,9 @@ export class SupabaseCustomerRepository implements CustomerRepository {
     const to = from + page.pageSize - 1
     let builder = supabase.from('cliente').select('*', { count: 'exact' })
     if (query && query.trim()) {
-      const escaped = query.trim().replace(/[%,]/g, '')
+      // Dentro de un or=(...) de PostgREST, la coma separa condiciones y el paréntesis
+      // cierra el grupo: sin escapar, cualquiera de los dos rompe el filtro (400).
+      const escaped = query.trim().replace(/[%,()]/g, '')
       builder = builder.or(`nombre.ilike.%${escaped}%,documento.ilike.%${escaped}%,email.ilike.%${escaped}%`)
     }
     if (type) builder = builder.eq('tipo_precio', customerTypeToTipoPrecio(type))

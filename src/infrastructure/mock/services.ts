@@ -32,7 +32,7 @@ export const orderService = {
 export const customerService = new CustomerService(new LocalStorageRepository<CustomerRecord>('roari-customers-v1', customerSeeds))
 const rawCashService = new CashService(new LocalStorageRepository<CashSessionRecord>('roari-cash-v1', cashSeeds))
 export const sensitiveOperations = new SensitiveOperationExecutor(new LocalIdempotencyService())
-export { productRepository, getStockByProduct, listPresentations, listLineIdentifiers, listBrands } from './ProductRepository.mock'
+export { productRepository, getStockByProduct, getStockBySucursalBatch, listPresentations, listLineIdentifiers, listBrands } from './ProductRepository.mock'
 
 // Only one mock caja exists, mirroring the real backend's single "Caja Tienda".
 const MOCK_REGISTER = 'Caja 01 · Sucursal Central'

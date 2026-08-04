@@ -104,18 +104,22 @@ const fetchBarcodeCodes = async (productIds: number[]): Promise<Map<number, { ba
   return result
 }
 
+const PRODUCT_COLUMNS = 'id,nombre,sku_interno,marca,unidad_base,precio_base,precio_mayoreo,precio_institucion,precio_municipal,activo,imagen_url,stock_min,punto_reorden'
+
 export class SupabaseProductRepository implements ProductRepository {
   async search(input: { query?: string; category?: string; active?: boolean; page: PageRequest }): Promise<Page<Product>> {
     const { query, active, page } = input
     const from = (page.page - 1) * page.pageSize
     const to = from + page.pageSize - 1
-    let builder = supabase.from('producto').select('*', { count: 'exact' })
+    let builder = supabase.from('producto').select(PRODUCT_COLUMNS, { count: 'exact' })
     if (query && query.trim()) {
-      const escaped = query.trim().replace(/[%,]/g, '')
+      // Dentro de un or=(...) de PostgREST, la coma separa condiciones y el paréntesis
+      // cierra el grupo: sin escapar, cualquiera de los dos rompe el filtro (400).
+      const escaped = query.trim().replace(/[%,()]/g, '')
       builder = builder.or(`nombre.ilike.%${escaped}%,sku_interno.ilike.%${escaped}%`)
     }
     if (active !== undefined) builder = builder.eq('activo', active)
-    const { data, error, count } = await builder.range(from, to)
+    const { data, error, count } = await builder.order('nombre', { ascending: true }).order('id', { ascending: true }).range(from, to)
     if (error) throw error
     const rows = (data ?? []) as ProductoRow[]
     // Separate batched call, scoped to just this page's product ids — kept apart from
@@ -133,7 +137,7 @@ export class SupabaseProductRepository implements ProductRepository {
   async getById(id: string): Promise<Product | null> {
     const numericId = Number(id)
     if (!Number.isFinite(numericId)) return null
-    const { data, error } = await supabase.from('producto').select('*').eq('id', numericId).maybeSingle()
+    const { data, error } = await supabase.from('producto').select(PRODUCT_COLUMNS).eq('id', numericId).maybeSingle()
     if (error) throw error
     if (!data) return null
     const codes = await fetchBarcodeCodes([numericId])
@@ -142,16 +146,78 @@ export class SupabaseProductRepository implements ProductRepository {
 
   /** Exact-match lookup by internal SKU (barcode-scanner style Enter-to-search). */
   async findBySku(sku: string): Promise<Product | null> {
-    const { data, error } = await supabase.from('producto').select('*').eq('sku_interno', sku).maybeSingle()
+    const { data, error } = await supabase.from('producto').select(PRODUCT_COLUMNS).eq('sku_interno', sku).maybeSingle()
     if (error) throw error
     if (!data) return null
     const row = data as ProductoRow
     const codes = await fetchBarcodeCodes([row.id])
     return rowToProduct(row, codes.get(row.id))
   }
+
+  /**
+   * Resolución de un código escaneado: barra, fábrica o SKU interno, en ese orden.
+   * Usa la RPC `resolver_identificador` (la misma que ya usa el WMS) para no duplicar
+   * la lógica de resolución en dos frontends.
+   *
+   * Hay 40 códigos de barra ambiguos en la base (un mismo valor mapea a más de un
+   * producto), así que el resultado distingue explícitamente los tres casos en vez de
+   * elegir uno al azar: el llamador decide qué hacer con la ambigüedad.
+   */
+  async resolveScannedCode(codigo: string): Promise<
+    | { kind: 'found'; product: Product }
+    | { kind: 'ambiguous'; productIds: number[] }
+    | { kind: 'not_found' }
+  > {
+    // eslint-disable-next-line no-control-regex -- los lectores físicos a veces mandan basura de control antes del Enter
+    const code = codigo.trim().replace(/[\x00-\x1F\x7F]/g, '')
+    if (!code) return { kind: 'not_found' }
+    const { data, error } = await supabase.rpc('resolver_identificador', { p_codigo: code })
+    if (error) throw error
+    const rows = (data ?? []) as Array<{ producto_id: number }>
+    if (rows.length) {
+      const productIds = [...new Set(rows.map((row) => row.producto_id))]
+      if (productIds.length > 1) return { kind: 'ambiguous', productIds }
+      const product = await this.getById(String(productIds[0]))
+      return product ? { kind: 'found', product } : { kind: 'not_found' }
+    }
+    const bySku = await this.findBySku(code)
+    return bySku ? { kind: 'found', product: bySku } : { kind: 'not_found' }
+  }
 }
 
 export const productRepository = new SupabaseProductRepository()
+
+/**
+ * Stock por sucursal para un LOTE de productos (una página de grilla, nunca el catálogo
+ * entero). stock_actual tiene 1.284 filas totales y máx. 3 ubicaciones por producto, así
+ * que una página de 60 productos son ~65 filas: muy lejos del tope de 1.000 de PostgREST.
+ * Una sola ida y vuelta, no N+1.
+ */
+export const getStockBySucursalBatch = async (
+  productIds: number[],
+): Promise<Map<number, { tienda: number; almacen: number }>> => {
+  const ids = [...new Set(productIds)].filter((id) => Number.isFinite(id))
+  const result = new Map<number, { tienda: number; almacen: number }>()
+  if (!ids.length) return result
+  const { data, error } = await supabase
+    .from('stock_actual')
+    .select('producto_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id)')
+    .in('producto_id', ids)
+  if (error) throw error
+  const rows = (data ?? []) as unknown as Array<{
+    producto_id: number
+    cantidad_base: number | string
+    ubicacion?: { sucursal_id: number | null } | null
+  }>
+  for (const row of rows) {
+    const entry = result.get(row.producto_id) ?? { tienda: 0, almacen: 0 }
+    // Sucursal 1 = Almacén Central, 2 = Tienda, 3 = Shopify (virtual, se ignora).
+    if (row.ubicacion?.sucursal_id === 2) entry.tienda += num(row.cantidad_base)
+    else if (row.ubicacion?.sucursal_id === 1) entry.almacen += num(row.cantidad_base)
+    result.set(row.producto_id, entry)
+  }
+  return result
+}
 
 export interface StockByLocation { ubicacionId: number; sucursalId?: number; cantidadBase: number }
 
@@ -203,14 +269,42 @@ export const listPresentations = async (productId: number): Promise<Presentation
  */
 export interface BrandList { marcas: string[]; sinMarca: number }
 
+const PAGE_SIZE = 1000
+
+/**
+ * PostgREST corta en 1.000 filas por default. Con 1.497 productos activos, un solo
+ * `select('marca')` sin paginar pierde en silencio las marcas que solo aparecen en
+ * los productos que caen después de la fila 1.000. Se pagina en lotes de 1.000,
+ * ordenando por `id` para que la paginación no repita ni salte filas.
+ */
+const fetchAllMarcas = async (): Promise<string[]> => {
+  const marcas: string[] = []
+  let from = 0
+  for (;;) {
+    const to = from + PAGE_SIZE - 1
+    const { data, error } = await supabase
+      .from('producto')
+      .select('marca')
+      .eq('activo', true)
+      .not('marca', 'is', null)
+      .order('id', { ascending: true })
+      .range(from, to)
+    if (error) throw error
+    const rows = (data ?? []) as Array<{ marca: string | null }>
+    rows.forEach((row) => { if (row.marca) marcas.push(row.marca) })
+    if (rows.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  return marcas
+}
+
 export const listBrands = async (): Promise<BrandList> => {
-  const [{ data: marcaRows, error: marcaError }, { count: sinMarcaCount, error: sinMarcaError }] = await Promise.all([
-    supabase.from('producto').select('marca').eq('activo', true).not('marca', 'is', null),
+  const [marcaRows, { count: sinMarcaCount, error: sinMarcaError }] = await Promise.all([
+    fetchAllMarcas(),
     supabase.from('producto').select('id', { count: 'exact', head: true }).eq('activo', true).or('marca.is.null,marca.eq.'),
   ])
-  if (marcaError) throw marcaError
   if (sinMarcaError) throw sinMarcaError
-  const marcas = [...new Set((marcaRows ?? []).map((row) => (row as { marca: string | null }).marca).filter((m): m is string => Boolean(m && m.trim())))].sort((a, b) => a.localeCompare(b, 'es'))
+  const marcas = [...new Set(marcaRows.filter((m) => m.trim()))].sort((a, b) => a.localeCompare(b, 'es'))
   return { marcas, sinMarca: sinMarcaCount ?? 0 }
 }
 

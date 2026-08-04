@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient'
 import { quoteRepository } from './QuoteRepository.supabase'
 import { orderRepository } from './OrderRepository.supabase'
 import { customerRepository } from './CustomerRepository.supabase'
-import { productRepository as supabaseProductRepository, getStockByProduct as supabaseGetStockByProduct, listPresentations as supabaseListPresentations, listIdentifiersForProducts as supabaseListLineIdentifiers, listBrands as supabaseListBrands } from './ProductRepository.supabase'
+import { productRepository as supabaseProductRepository, getStockByProduct as supabaseGetStockByProduct, getStockBySucursalBatch as supabaseGetStockBySucursalBatch, listPresentations as supabaseListPresentations, listIdentifiersForProducts as supabaseListLineIdentifiers, listBrands as supabaseListBrands } from './ProductRepository.supabase'
 import { cashRepository, getAdvancesForOrder, getOpenSession } from './CashRepository.supabase'
 import { saleRepository } from './SaleRepository.supabase'
 import { supabaseAuthSessionProvider } from './SupabaseAuthSessionProvider'
@@ -102,6 +102,7 @@ export const customerService = {
 
 export const productRepository = supabaseProductRepository
 export const getStockByProduct = supabaseGetStockByProduct
+export const getStockBySucursalBatch = supabaseGetStockBySucursalBatch
 export const listPresentations = supabaseListPresentations
 export const listLineIdentifiers = supabaseListLineIdentifiers
 export const listBrands = supabaseListBrands
