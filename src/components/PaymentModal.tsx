@@ -21,7 +21,7 @@ const money = (value: number) => value.toLocaleString('es-BO', { minimumFraction
 const posMethod = (id: string): 'cash' | 'qr' | 'transfer' => (id === 'qr' ? 'qr' : id === 'transferencia' ? 'transfer' : 'cash')
 
 export function PaymentModal({ onClose }: { onClose: () => void }) {
-  const { cart, discount, total, newOperation, customer, operationNumber } = usePos()
+  const { cart, discount, total, newOperation, customer, operationId } = usePos()
   const { sessionId } = useCashSession()
   // Crédito has no metodo_pago equivalent in the real backend; only shown in mock mode.
   const methods = allMethods.filter((m) => m.id !== 'credito' || (featureFlags.credit && !featureFlags.supabase))
@@ -120,9 +120,11 @@ export function PaymentModal({ onClose }: { onClose: () => void }) {
         // mostrador") or missing an id if selection somehow failed; either way checkout
         // must never be blocked on it.
         customerId: customer?.id,
-        // Estable para este carrito, distinto por operación: es lo que permite que un
-        // reintento tras una respuesta perdida reuse la misma clave de idempotencia.
-        operationId: operationNumber,
+        // Estable por pestaña/operación (sobrevive a un F5); combinado con la huella del
+        // contenido del cobro del lado del servicio, es lo que permite que un reintento
+        // tras una respuesta perdida reuse la misma clave de idempotencia, y que un
+        // carrito editado tras un fallo genere una venta nueva en vez de perderse.
+        operationId,
       })
       // La venta se confirma primero, siempre — el cargo a saldo de Hermes es un paso
       // posterior que nunca bloquea ni revierte una venta ya confirmada.

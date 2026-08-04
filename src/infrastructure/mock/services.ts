@@ -97,7 +97,9 @@ export const cashService = {
  * never needed one); it exists so the facade shapes are symmetric and testable.
  */
 export const saleService = {
-  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; discountCents?: number }) {
+  // `operationId` no se usa acá (el mock no tiene idempotencia real) — solo mantiene la
+  // forma del input compartida con supabaseServices.saleService.checkout.
+  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; discountCents?: number; operationId?: string }) {
     const session = (await rawCashService.list()).find((s) => s.id === input.cashSessionId)
     if (!session || session.status !== 'open') throw new Error('No hay una sesión de caja abierta')
     const subtotalCents = input.lines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0)

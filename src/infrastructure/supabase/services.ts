@@ -12,6 +12,7 @@ import type { TransferEstado, TransferRecord } from '../../application/shared/mo
 import { configRepository } from './ConfigRepository.supabase'
 import { reportsRepository } from './ReportsRepository.supabase'
 import { sensitiveOperations } from '../mock/services'
+import { checkoutFingerprint } from '../../domain/sales/checkoutFingerprint'
 
 export const configService = configRepository
 export const reportsService = reportsRepository
@@ -146,16 +147,28 @@ export const cashService = {
 
 export const saleService = {
   /**
-   * `operationId` must be stable for the same cart and different across operations: it's
-   * PosContext's `operationNumber`, which only advances in `newOperation()` (i.e. after a
-   * checkout has finished). That's what lets an F5-mid-payment retry reuse the same
-   * idempotency key instead of registering the sale twice.
+   * `operationId` (de PosContext, persistido en sessionStorage) por sí solo identifica
+   * "la operación en curso", no "este cobro exacto": si sobreviviera a un F5 sin más,
+   * un cobro fallido + recarga + carrito distinto reusaría la clave de la venta vieja y
+   * el carrito nuevo nunca se cobraría. Por eso el aggregateId combina operationId con
+   * checkoutFingerprint(input) — cualquier cambio en lo que se cobra (línea agregada,
+   * cantidad, descuento, cliente, caja) da una huella distinta y por lo tanto una venta
+   * nueva; el mismo contenido reusa la clave, que es exactamente el reintento legítimo.
    */
-  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number; operationId: number | string }) {
+  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number; operationId: string }) {
     const actorId = await currentActorId()
-    return sensitiveOperations.execute('checkout', String(input.operationId), (idempotencyKey) =>
+    const aggregateId = `${input.operationId}:${checkoutFingerprint({ ...input, discountCents: input.discountCents ?? 0 })}`
+    const result = await sensitiveOperations.execute('checkout', aggregateId, (idempotencyKey) =>
       saleRepository.checkout(input, { actorId, idempotencyKey }),
     )
+    // Barre las claves huérfanas de intentos abandonados de esta misma operación (carritos
+    // que se editaron tras un fallo y nunca se volvieron a cobrar) — SensitiveOperationExecutor
+    // ya limpió la del intento que salió bien.
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i)
+      if (k?.startsWith(`roari-idempotency:checkout:${input.operationId}:`)) localStorage.removeItem(k)
+    }
+    return result
   },
 }
 

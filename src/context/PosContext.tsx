@@ -13,6 +13,19 @@ const SUCURSAL_TIENDA = 2
 
 export type PosMode = 'venta' | 'traslado'
 
+// Corrección Tanda 2 Tarea 1: operationNumber vive solo en memoria y vuelve a su valor
+// inicial en cada F5, así que no sirve como identidad de idempotencia (un cobro fallido
+// + recarga reusaría la clave de una operación distinta). sessionStorage sobrevive a un
+// F5 pero muere con la pestaña, y es independiente entre pestañas — dos cajeros en dos
+// pestañas del mismo navegador no pueden compartir identidad de operación.
+const OPERACION_ID_KEY = 'roari-operacion-id-v1'
+
+const nuevoOperacionId = () => {
+  const id = crypto.randomUUID()
+  sessionStorage.setItem(OPERACION_ID_KEY, id)
+  return id
+}
+
 // TAREA 4: the cart's active customer. undefined/null id means "Cliente de mostrador"
 // (anonymous, cliente_id = null at checkout) — the default and always-available state.
 export interface CartCustomer {
@@ -35,6 +48,7 @@ interface PosState {
   subtotal: number
   total: number
   operationNumber: number
+  operationId: string
   newOperation: () => void
   restoreSuspended: () => boolean
   hasSuspendedSale: boolean
@@ -60,6 +74,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([])
   const [discount, setDiscount] = useState(0)
   const [operationNumber, setOperationNumber] = useState(1048)
+  const [operationId, setOperationId] = useState<string>(
+    () => sessionStorage.getItem(OPERACION_ID_KEY) ?? nuevoOperacionId(),
+  )
   const [hasSuspendedSale, setHasSuspendedSale] = useState(() => Boolean(localStorage.getItem('roari-suspended-sale')))
   const [customer, setCustomer] = useState<CartCustomer | null>(null)
   const selectCustomer = (next: CartCustomer | null) => setCustomer(next)
@@ -116,7 +133,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const updateItem = (id: number, values: Partial<CartItem>) => setCart((items) => items.map((item) => item.id === id ? { ...item, ...values, cantidad: Math.max(1, Math.floor(values.cantidad ?? item.cantidad)), precioAplicado: Math.max(0, roundMoney(values.precioAplicado ?? item.precioAplicado)), descuento: Math.min(100, Math.max(0, values.descuento ?? item.descuento)) } : item))
   const removeItem = (id: number) => setCart((items) => items.filter((item) => item.id !== id))
   const clearCart = () => { setCart([]); setDiscount(0) }
-  const newOperation = () => { clearCart(); setChannelState('retail'); setCustomer(null); setOperationNumber((number) => number + 1) }
+  const newOperation = () => { clearCart(); setChannelState('retail'); setCustomer(null); setOperationNumber((number) => number + 1); setOperationId(nuevoOperacionId()) }
   const totals = useMemo(() => {
     const subtotalCents = cart.reduce((sum, item) => sum + ventaLineTotalCents(item), 0)
     const discountCents = Math.min(subtotalCents, Math.max(0, moneyFromDecimal(discount).cents))
@@ -152,7 +169,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setCustomer(sale.customer ?? null)
   }
 
-  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, newOperation, restoreSuspended, hasSuspendedSale, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft }}>{children}</PosContext.Provider>
+  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, restoreSuspended, hasSuspendedSale, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {
