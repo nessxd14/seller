@@ -1,4 +1,4 @@
-export type SensitiveOperation = 'confirm_sale'|'convert_quote'|'confirm_order'|'register_payment'|'open_cash'|'close_cash'|'dispatch'|'cancel'|'return'
+export type SensitiveOperation = 'confirm_sale'|'convert_quote'|'confirm_order'|'register_payment'|'open_cash'|'close_cash'|'dispatch'|'cancel'|'return'|'checkout'
 
 export interface IdempotencyService {
   getOrCreate(operation: SensitiveOperation, aggregateId: string): string

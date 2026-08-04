@@ -66,7 +66,7 @@ export class SupabaseSaleRepository implements SaleRepository {
 
   async checkout(
     input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number },
-    context: MutationContext
+    context: MutationContext & { idempotencyKey: string }
   ) {
     const actor = context.actorId ?? 'pos'
     // Mirrors TransferRepository.supabase.ts's buildLineasJsonb exactly: when a non-base
@@ -93,14 +93,16 @@ export class SupabaseSaleRepository implements SaleRepository {
       p_cliente_id: input.customerId ? Number(input.customerId) : null,
       p_descuento_total: centsToNumeric(input.discountCents ?? 0),
       p_usuario: actor,
+      p_idempotencia: context.idempotencyKey,
     })
     if (error) throw error
-    const result = data as { venta_id: number; subtotal: number | string; descuento_total: number | string; total: number | string }
+    const result = data as { venta_id: number; subtotal: number | string; descuento_total: number | string; total: number | string; reintento?: boolean }
     return {
       saleId: String(result.venta_id),
       subtotalCents: numericToCents(num(result.subtotal)),
       discountCents: numericToCents(num(result.descuento_total)),
       totalCents: numericToCents(num(result.total)),
+      isRetry: result.reintento === true,
     }
   }
 }

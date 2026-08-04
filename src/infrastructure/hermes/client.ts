@@ -23,6 +23,18 @@ export interface PagoRegistrado {
   saldoProvisional: number
 }
 
+/**
+ * Lleva el status HTTP además del mensaje, para que un llamador (syncHermesCargo) pueda
+ * distinguir un 403 (permiso denegado, reintentar nunca va a funcionar) de un fallo de
+ * red (sí vale la pena reintentar).
+ */
+export class HermesHttpError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message)
+    this.name = 'HermesHttpError'
+  }
+}
+
 export interface SaldoClienteLote {
   posClienteId: number
   saldoConfirmado: number
@@ -102,7 +114,7 @@ export async function registrarCargoSaldo(input: { clienteId: number; monto: num
     body: JSON.stringify(input),
   })
   const data = await response.json().catch(() => null)
-  if (!response.ok) throw new Error((data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) || 'No se pudo registrar el cargo en Hermes')
+  if (!response.ok) throw new HermesHttpError((data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) || 'No se pudo registrar el cargo en Hermes', response.status)
   return data as CargoRegistrado
 }
 
@@ -117,6 +129,6 @@ export async function registrarPago(input: { clienteId: number; monto: number; m
     body: JSON.stringify(input),
   })
   const data = await response.json().catch(() => null)
-  if (!response.ok) throw new Error((data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) || 'No se pudo registrar el pago en Hermes')
+  if (!response.ok) throw new HermesHttpError((data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) || 'No se pudo registrar el pago en Hermes', response.status)
   return data as PagoRegistrado
 }

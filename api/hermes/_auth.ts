@@ -10,7 +10,9 @@ import { createClient } from '@supabase/supabase-js'
  * afecta qué se empaqueta al bundle del navegador, no qué lee process.env del lado
  * del servidor, así que reusarlas acá es seguro.
  */
-export async function verificarSesionPos(authHeader: string | string[] | undefined): Promise<{ userId: string; email: string | null } | null> {
+export async function verificarSesionPos(
+  authHeader: string | string[] | undefined,
+): Promise<{ userId: string; email: string | null; rol: string; activo: boolean } | null> {
   const header = Array.isArray(authHeader) ? authHeader[0] : authHeader
   if (!header?.startsWith('Bearer ')) return null
   const token = header.slice('Bearer '.length)
@@ -20,5 +22,13 @@ export async function verificarSesionPos(authHeader: string | string[] | undefin
   const supabase = createClient(url, anonKey)
   const { data, error } = await supabase.auth.getUser(token)
   if (error || !data.user) return null
-  return { userId: data.user.id, email: data.user.email ?? null }
+  const { data: perfil, error: perfilError } = await supabase.from('perfil').select('rol,activo').eq('id', data.user.id).maybeSingle()
+  if (perfilError || !perfil || perfil.activo === false) return null
+  return { userId: data.user.id, email: data.user.email ?? null, rol: perfil.rol as string, activo: perfil.activo !== false }
 }
+
+/** Roles autorizados a mover plata en Hermes. Deliberadamente restrictivo:
+ *  agregar un rol acá es una decisión de negocio, no un detalle técnico. */
+const ROLES_MOVIMIENTO = new Set(['admin', 'supervisor', 'cajero'])
+export const puedeMoverSaldo = (sesion: { rol: string; activo: boolean }) =>
+  sesion.activo && ROLES_MOVIMIENTO.has(sesion.rol)

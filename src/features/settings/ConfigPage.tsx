@@ -13,7 +13,7 @@ import { registrarCargoSaldo, registrarPago } from '../../infrastructure/hermes/
 const emptyEmpresa: EmpresaConfig = { razonSocial: '', nit: '', direccion: '', ciudad: '', telefono: '', email: '', pieDocumento: '' }
 const moneyBs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export function ConfigPage({ notify }: { notify: (message: string) => void }) {
+export function ConfigPage({ notify, canEdit }: { notify: (message: string) => void; canEdit: boolean }) {
   const [empresa, setEmpresa] = useState<EmpresaConfig>(emptyEmpresa)
   const [empresaStatus, setEmpresaStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [saving, setSaving] = useState(false)
@@ -51,17 +51,18 @@ export function ConfigPage({ notify }: { notify: (message: string) => void }) {
   return <FeatureShell eyebrow="SISTEMA" title="Configuración" subtitle="Datos de la empresa, usuarios y preferencias de impresión">
     <section className="settings-section">
       <header><Store size={16} /><h2>Datos de la empresa</h2><p>Aparecen en tickets, cotizaciones, pedidos y notas de entrega</p></header>
+      {!canEdit && <p className="settings-note">Solo un administrador puede editar los datos de la empresa.</p>}
       {empresaStatus === 'loading' ? <FeatureState type="loading" text="Cargando datos de la empresa" /> : empresaStatus === 'error' ? <FeatureState type="error" text="No se pudieron cargar los datos de la empresa" /> : <>
         <div className="modal-body form-grid">
-          <label>Razón social<input value={empresa.razonSocial} onChange={(e) => setEmpresa({ ...empresa, razonSocial: e.target.value })} /></label>
-          <label>NIT<input value={empresa.nit} onChange={(e) => setEmpresa({ ...empresa, nit: e.target.value })} /></label>
-          <label>Dirección<input value={empresa.direccion} onChange={(e) => setEmpresa({ ...empresa, direccion: e.target.value })} /></label>
-          <label>Ciudad<input value={empresa.ciudad} onChange={(e) => setEmpresa({ ...empresa, ciudad: e.target.value })} /></label>
-          <label>Teléfono<input value={empresa.telefono} onChange={(e) => setEmpresa({ ...empresa, telefono: e.target.value })} /></label>
-          <label>Email<input type="email" value={empresa.email} onChange={(e) => setEmpresa({ ...empresa, email: e.target.value })} /></label>
-          <label className="full">Pie de documento<textarea value={empresa.pieDocumento} onChange={(e) => setEmpresa({ ...empresa, pieDocumento: e.target.value })} /></label>
+          <label>Razón social<input disabled={!canEdit} value={empresa.razonSocial} onChange={(e) => setEmpresa({ ...empresa, razonSocial: e.target.value })} /></label>
+          <label>NIT<input disabled={!canEdit} value={empresa.nit} onChange={(e) => setEmpresa({ ...empresa, nit: e.target.value })} /></label>
+          <label>Dirección<input disabled={!canEdit} value={empresa.direccion} onChange={(e) => setEmpresa({ ...empresa, direccion: e.target.value })} /></label>
+          <label>Ciudad<input disabled={!canEdit} value={empresa.ciudad} onChange={(e) => setEmpresa({ ...empresa, ciudad: e.target.value })} /></label>
+          <label>Teléfono<input disabled={!canEdit} value={empresa.telefono} onChange={(e) => setEmpresa({ ...empresa, telefono: e.target.value })} /></label>
+          <label>Email<input type="email" disabled={!canEdit} value={empresa.email} onChange={(e) => setEmpresa({ ...empresa, email: e.target.value })} /></label>
+          <label className="full">Pie de documento<textarea disabled={!canEdit} value={empresa.pieDocumento} onChange={(e) => setEmpresa({ ...empresa, pieDocumento: e.target.value })} /></label>
         </div>
-        <div className="settings-actions"><button className="primary-button" disabled={saving || !empresa.razonSocial.trim()} onClick={() => void saveEmpresa()}>{saving ? 'Guardando...' : 'Guardar cambios'}</button></div>
+        {canEdit && <div className="settings-actions"><button className="primary-button" disabled={saving || !empresa.razonSocial.trim()} onClick={() => void saveEmpresa()}>{saving ? 'Guardando...' : 'Guardar cambios'}</button></div>}
       </>}
     </section>
 
@@ -90,12 +91,12 @@ export function ConfigPage({ notify }: { notify: (message: string) => void }) {
       </div>
     </section>
 
-    {featureFlags.supabase && <HermesSyncSection notify={notify} />}
-    {featureFlags.supabase && <HermesPagosSyncSection notify={notify} />}
+    {featureFlags.supabase && <HermesSyncSection notify={notify} canEdit={canEdit} />}
+    {featureFlags.supabase && <HermesPagosSyncSection notify={notify} canEdit={canEdit} />}
   </FeatureShell>
 }
 
-function HermesSyncSection({ notify }: { notify: (message: string) => void }) {
+function HermesSyncSection({ notify, canEdit }: { notify: (message: string) => void; canEdit: boolean }) {
   const [pendientes, setPendientes] = useState<PendienteSyncHermes[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [retryingId, setRetryingId] = useState<string | null>(null)
@@ -135,13 +136,13 @@ function HermesSyncSection({ notify }: { notify: (message: string) => void }) {
           <small>{p.intentos} intento{p.intentos === 1 ? '' : 's'}{p.ultimoIntento ? ` · último ${new Date(p.ultimoIntento).toLocaleString('es-BO')}` : ''}</small>
           {p.ultimoError && <span className="hermes-pendiente-error">{p.ultimoError}</span>}
         </div>
-        <button className="secondary-button" disabled={retryingId === p.id} onClick={() => void retry(p)}>{retryingId === p.id ? 'Reintentando...' : 'Reintentar'}</button>
+        {canEdit && <button className="secondary-button" disabled={retryingId === p.id} onClick={() => void retry(p)}>{retryingId === p.id ? 'Reintentando...' : 'Reintentar'}</button>}
       </div>)}
     </div>}
   </section>
 }
 
-function HermesPagosSyncSection({ notify }: { notify: (message: string) => void }) {
+function HermesPagosSyncSection({ notify, canEdit }: { notify: (message: string) => void; canEdit: boolean }) {
   const [pendientes, setPendientes] = useState<PendienteSyncHermesPago[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [retryingId, setRetryingId] = useState<string | null>(null)
@@ -190,7 +191,7 @@ function HermesPagosSyncSection({ notify }: { notify: (message: string) => void 
           <small>{p.intentos} intento{p.intentos === 1 ? '' : 's'}{p.ultimoIntento ? ` · último ${new Date(p.ultimoIntento).toLocaleString('es-BO')}` : ''}</small>
           {p.ultimoError && <span className="hermes-pendiente-error">{p.ultimoError}</span>}
         </div>
-        <button className="secondary-button" disabled={retryingId === p.id} onClick={() => void retry(p)}>{retryingId === p.id ? 'Reintentando...' : 'Reintentar'}</button>
+        {canEdit && <button className="secondary-button" disabled={retryingId === p.id} onClick={() => void retry(p)}>{retryingId === p.id ? 'Reintentando...' : 'Reintentar'}</button>}
       </div>)}
     </div>}
   </section>
