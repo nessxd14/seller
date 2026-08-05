@@ -317,7 +317,12 @@ export const listBrands = async (): Promise<BrandList> => {
  */
 export const listFrecuentes = async (limit = 12): Promise<Product[]> => {
   const desde = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
-  const cantidadPorProducto = new Map<number, number>()
+  // Frecuencia = en cuántas ventas distintas apareció el producto (una fila de
+  // v_reporte_productos_vendidos por línea de venta), NO cuántas unidades se movieron.
+  // Sin esto, una sola venta mayorista de miles de unidades domina el ranking un mes
+  // entero, y un producto que se vende veinte veces por día en unidades sueltas nunca
+  // entra. Desempata por unidades totales descendente.
+  const acc = new Map<number, { veces: number; unidades: number }>()
   let from = 0
   for (;;) {
     const to = from + PAGE_SIZE - 1
@@ -329,11 +334,19 @@ export const listFrecuentes = async (limit = 12): Promise<Product[]> => {
       .range(from, to)
     if (error) throw error
     const rows = (data ?? []) as Array<{ producto_id: number; cantidad_base: number | string }>
-    rows.forEach((row) => cantidadPorProducto.set(row.producto_id, (cantidadPorProducto.get(row.producto_id) ?? 0) + num(row.cantidad_base)))
+    rows.forEach((row) => {
+      const entry = acc.get(row.producto_id) ?? { veces: 0, unidades: 0 }
+      entry.veces += 1
+      entry.unidades += num(row.cantidad_base)
+      acc.set(row.producto_id, entry)
+    })
     if (rows.length < PAGE_SIZE) break
     from += PAGE_SIZE
   }
-  const topIds = [...cantidadPorProducto.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([id]) => id)
+  const topIds = [...acc.entries()]
+    .sort((a, b) => b[1].veces - a[1].veces || b[1].unidades - a[1].unidades)
+    .slice(0, limit)
+    .map(([id]) => id)
   if (!topIds.length) return []
   const { data: rows, error } = await supabase.from('producto').select(PRODUCT_COLUMNS).in('id', topIds).eq('activo', true)
   if (error) throw error
