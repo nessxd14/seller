@@ -22,6 +22,11 @@ const SIN_MARCA = '__sin_marca__'
 // El filtro por marca sigue existiendo aparte (el <select> más abajo).
 const CATEGORIAS = ['Todos', 'Frecuentes']
 
+// Patch (2026-08-05): con pocas ventas en la ventana de 30 días el ranking puede volver
+// flaco — un chip que muestra una grilla de tres ítems invita a pensar que el catálogo
+// está roto. Por debajo de este umbral, se oculta el chip en vez de mostrarlo vacío.
+const MIN_FRECUENTES = 8
+
 export function ProductCatalog({ search, category, setCategory }: { search: string; category: string; setCategory: (value: string) => void }) {
   const { channel, addProduct } = usePos()
   const query = search.trim().toLowerCase()
@@ -45,13 +50,15 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   // TAREA 2 (Tanda 3): los N productos más vendidos de los últimos 30 días — el único
   // chip real además de Todos. Se resuelve igual en ambos backends (mock también expone
   // listFrecuentes, ver su doc comment sobre qué aproxima ahí).
+  // Patch (2026-08-05): se carga siempre al montar (no solo al seleccionar el chip),
+  // porque hace falta saber el tamaño del ranking para decidir si el chip se muestra.
   const [frecuentes, setFrecuentes] = useState<Product[]>([])
   useEffect(() => {
-    if (category !== 'Frecuentes') return
     let cancelled = false
     void listFrecuentes().then((items) => { if (!cancelled) setFrecuentes(items) })
     return () => { cancelled = true }
-  }, [category])
+  }, [])
+  const categoriasVisibles = frecuentes.length >= MIN_FRECUENTES ? CATEGORIAS : CATEGORIAS.filter((item) => item !== 'Frecuentes')
 
   // TAREA 1: stockTienda/stockAlmacen vienen en 0 fijo desde rowToProduct (Supabase
   // no llena stock ahí, para no cargar stock_actual entero por cada producto listado).
@@ -92,7 +99,7 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   const filtered = sourceItems.filter((product) => matchesBrand(product) && (!needsClientTextFilter || matchesQuery(product)))
 
   return <>
-    <div className="category-row"><div className="category-scroll">{CATEGORIAS.map((item) => <button key={item} onClick={() => setCategory(item)} className={category === item ? 'active' : ''}>{item}</button>)}</div>
+    <div className="category-row"><div className="category-scroll">{categoriasVisibles.map((item) => <button key={item} onClick={() => setCategory(item)} className={category === item ? 'active' : ''}>{item}</button>)}</div>
       {(brandOptions.marcas.length > 0 || brandOptions.sinMarca > 0) && (
         <select aria-label="Filtrar por marca" className="brand-filter select-skin" value={brand} onChange={(e) => setBrand(e.target.value)}>
           <option value="">Todas las marcas</option>
