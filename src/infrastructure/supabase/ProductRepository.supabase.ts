@@ -308,6 +308,43 @@ export const listBrands = async (): Promise<BrandList> => {
   return { marcas, sinMarca: sinMarcaCount ?? 0 }
 }
 
+/**
+ * TAREA 2 (Tanda 3) — "Frecuentes" real: los N productos más vendidos de los últimos 30
+ * días, sumando cantidad_base de v_reporte_productos_vendidos por producto_id. Reemplaza
+ * los chips de categoría falsos (producto.categoria no existe en el esquema — ver brief).
+ * Paginado en lotes de 1.000 igual que fetchAllMarcas, para no perder ventas silenciosamente
+ * si el rango de 30 días supera el tope de PostgREST.
+ */
+export const listFrecuentes = async (limit = 12): Promise<Product[]> => {
+  const desde = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
+  const cantidadPorProducto = new Map<number, number>()
+  let from = 0
+  for (;;) {
+    const to = from + PAGE_SIZE - 1
+    const { data, error } = await supabase
+      .from('v_reporte_productos_vendidos')
+      .select('producto_id,cantidad_base')
+      .gte('fecha', desde)
+      .order('producto_id', { ascending: true })
+      .range(from, to)
+    if (error) throw error
+    const rows = (data ?? []) as Array<{ producto_id: number; cantidad_base: number | string }>
+    rows.forEach((row) => cantidadPorProducto.set(row.producto_id, (cantidadPorProducto.get(row.producto_id) ?? 0) + num(row.cantidad_base)))
+    if (rows.length < PAGE_SIZE) break
+    from += PAGE_SIZE
+  }
+  const topIds = [...cantidadPorProducto.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([id]) => id)
+  if (!topIds.length) return []
+  const { data: rows, error } = await supabase.from('producto').select(PRODUCT_COLUMNS).in('id', topIds).eq('activo', true)
+  if (error) throw error
+  const codes = await fetchBarcodeCodes(topIds)
+  const productos = ((rows ?? []) as ProductoRow[]).map((row) => rowToProduct(row, codes.get(row.id)))
+  // v_reporte_productos_vendidos no garantiza el orden de vuelta de `producto` — reordenar
+  // por ranking de ventas, que es el punto de este chip.
+  const rank = new Map(topIds.map((id, i) => [id, i]))
+  return productos.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0))
+}
+
 export interface LineIdentifiers { barra?: string; fabrica?: string; marca?: string }
 
 /**

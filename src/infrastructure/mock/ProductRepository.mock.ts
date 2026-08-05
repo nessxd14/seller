@@ -57,6 +57,13 @@ export const listPresentations = async (productId: number): Promise<Array<{ id: 
   return [{ id: 0, nombre: 'Unidad', factorUnidadBase: 1, esBase: true }]
 }
 
+// TAREA 2 (Tanda 3) — el mock no tiene un reporte de ventas real (no hay v_reporte_
+// productos_vendidos equivalente en localStorage), así que "Frecuentes" acá es una
+// aproximación honesta: los N productos con más stock en tienda, como sustituto
+// determinístico para pruebas/demo — no una afirmación real de qué se vende más.
+export const listFrecuentes = async (limit = 12): Promise<Product[]> =>
+  [...products].sort((a, b) => b.stockTienda - a.stockTienda).slice(0, limit)
+
 // TAREA 6 — mock seed data (src/data/products.ts) predates the marca concept and has
 // nothing meaningful to expose here (no marca field on the mock Product shape) — a
 // trivial empty list keeps the brand filter dropdown present-but-empty in mock mode

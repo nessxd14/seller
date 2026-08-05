@@ -26,6 +26,21 @@ const nuevoOperacionId = () => {
   return id
 }
 
+// TAREA 8 (Tanda 3): operationNumber sale impreso en el ticket como "Operación #" — con
+// useState(1048) puro, dos tickets del mismo día podían llevar el mismo número tras un
+// F5. Ya no es crítico para idempotencia (ver corrección de Tanda 2 arriba), pero el
+// número visible sigue siendo el mismo, así que se persiste junto a operationId.
+const OPERACION_NUMERO_KEY = 'roari-operacion-numero-v1'
+const OPERACION_NUMERO_INICIAL = 1048
+
+const leerOperacionNumero = (): number => {
+  const raw = sessionStorage.getItem(OPERACION_NUMERO_KEY)
+  const parsed = raw != null ? Number(raw) : NaN
+  return Number.isFinite(parsed) ? parsed : OPERACION_NUMERO_INICIAL
+}
+
+const guardarOperacionNumero = (numero: number): void => { sessionStorage.setItem(OPERACION_NUMERO_KEY, String(numero)) }
+
 // TAREA 4: the cart's active customer. undefined/null id means "Cliente de mostrador"
 // (anonymous, cliente_id = null at checkout) — the default and always-available state.
 export interface CartCustomer {
@@ -50,8 +65,6 @@ interface PosState {
   operationNumber: number
   operationId: string
   newOperation: () => void
-  restoreSuspended: () => boolean
-  hasSuspendedSale: boolean
   loadSuspendedSale: (sale: { channel: SalesChannel; cart: CartItem[]; discount: number; customer?: CartCustomer | null }) => void
   customer: CartCustomer | null
   selectCustomer: (customer: CartCustomer | null) => void
@@ -73,11 +86,11 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const [channel, setChannelState] = useState<SalesChannel>('retail')
   const [cart, setCart] = useState<CartItem[]>([])
   const [discount, setDiscount] = useState(0)
-  const [operationNumber, setOperationNumber] = useState(1048)
+  const [operationNumber, setOperationNumberState] = useState(leerOperacionNumero)
+  const setOperationNumber = (updater: (current: number) => number) => setOperationNumberState((current) => { const next = updater(current); guardarOperacionNumero(next); return next })
   const [operationId, setOperationId] = useState<string>(
     () => sessionStorage.getItem(OPERACION_ID_KEY) ?? nuevoOperacionId(),
   )
-  const [hasSuspendedSale, setHasSuspendedSale] = useState(() => Boolean(localStorage.getItem('roari-suspended-sale')))
   const [customer, setCustomer] = useState<CartCustomer | null>(null)
   const selectCustomer = (next: CartCustomer | null) => setCustomer(next)
 
@@ -129,11 +142,31 @@ export function PosProvider({ children }: { children: ReactNode }) {
       : [...items, { ...product, cantidad: 1, precioAplicado: getPrice(product, channel), descuento: 0, ubicacion: 'Tienda' as const, observacion: '', motivoPrecio: '' }]
   })
 
+  // TAREA 7 (Tanda 3): verificado contra la base viva — el catálogo activo es 100%
+  // unidades discretas (unidad/UNIDAD/Unidad, RESMA, PLIEGO, PZC x 1; ninguna continua
+  // como metro o kilo). Math.floor es correcto hoy; si en algún momento se da de alta un
+  // producto con unidad_base continua, esto y ventaLineTotalCents necesitan revisarse
+  // juntos (ese redondeo es el que evita que registrar_venta rechace el cobro por
+  // descuadre de centavos) — no tocar sin correr los tests de ventaPricing.
   const updateQuantity = (id: number, quantity: number) => setCart((items) => items.map((item) => item.id === id ? { ...item, cantidad: Math.max(1, Math.floor(quantity)) } : item))
   const updateItem = (id: number, values: Partial<CartItem>) => setCart((items) => items.map((item) => item.id === id ? { ...item, ...values, cantidad: Math.max(1, Math.floor(values.cantidad ?? item.cantidad)), precioAplicado: Math.max(0, roundMoney(values.precioAplicado ?? item.precioAplicado)), descuento: Math.min(100, Math.max(0, values.descuento ?? item.descuento)) } : item))
   const removeItem = (id: number) => setCart((items) => items.filter((item) => item.id !== id))
   const clearCart = () => { setCart([]); setDiscount(0) }
-  const newOperation = () => { clearCart(); setChannelState('retail'); setCustomer(null); setOperationNumber((number) => number + 1); setOperationId(nuevoOperacionId()) }
+  // TAREA 5 (Tanda 3): newOperation reseteaba carrito/descuento/cliente pero no `mode`
+  // ni los campos de traslado — después de solicitar un traslado seguías en modo
+  // traslado sin darte cuenta, y el siguiente carrito se armaba para traslado en vez
+  // de venta. Vuelve siempre a modo venta con la dirección default (Almacén → Tienda).
+  const newOperation = () => {
+    clearCart()
+    setChannelState('retail')
+    setCustomer(null)
+    setOperationNumber((number) => number + 1)
+    setOperationId(nuevoOperacionId())
+    setMode('venta')
+    setTrasladoMotivoState('REPOSICION')
+    setTrasladoOrigenId(SUCURSAL_ALMACEN)
+    setTrasladoDestinoId(SUCURSAL_TIENDA)
+  }
   const totals = useMemo(() => {
     const subtotalCents = cart.reduce((sum, item) => sum + ventaLineTotalCents(item), 0)
     const discountCents = Math.min(subtotalCents, Math.max(0, moneyFromDecimal(discount).cents))
@@ -142,34 +175,21 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const subtotal = totals.subtotalDecimal
   const total = totals.totalDecimal
   const safeSetDiscount = (value: number) => setDiscount(roundMoney(Math.min(subtotal, Math.max(0, Number.isFinite(value) ? value : 0))))
-  const restoreSuspended = () => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('roari-suspended-sale') ?? '') as { channel: SalesChannel; cart: CartItem[]; discount: number }
-      if (!Array.isArray(saved.cart) || !saved.channel) return false
-      setChannelState(saved.channel)
-      setCart(saved.cart.map((item) => ({ ...item, cantidad: Math.max(1, Math.floor(item.cantidad)), precioAplicado: Math.max(0, roundMoney(item.precioAplicado)), descuento: Math.min(100, Math.max(0, item.descuento)) })))
-      setDiscount(Math.max(0, saved.discount || 0))
-      // Legacy single-slot suspended sale predates the customer picker (TAREA 4) and
-      // never carried a customer field — restoring one always resets to "Cliente de
-      // mostrador" rather than crashing on a field that was never there.
-      setCustomer(null)
-      localStorage.removeItem('roari-suspended-sale')
-      setHasSuspendedSale(false)
-      return true
-    } catch { return false }
-  }
   // TAREA 4 backward compatibility: `sale.customer` is absent on sales suspended before
   // this round (the v2 localStorage records didn't carry it yet). `?? null` mirrors the
   // same optional-field tolerance already established for CartItem's presentation fields
   // — a missing customer degrades to "Cliente de mostrador," never a crash.
+  // TAREA 5 (Tanda 3): también vuelve a modo venta — restaurar una venta suspendida
+  // mientras se estaba en modo traslado no debe dejar el modo a medio cambiar.
   const loadSuspendedSale = (sale: { channel: SalesChannel; cart: CartItem[]; discount: number; customer?: CartCustomer | null }) => {
+    setMode('venta')
     setChannelState(sale.channel)
     setCart(sale.cart)
     setDiscount(Math.max(0, sale.discount))
     setCustomer(sale.customer ?? null)
   }
 
-  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, restoreSuspended, hasSuspendedSale, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft }}>{children}</PosContext.Provider>
+  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {
