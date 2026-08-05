@@ -12,6 +12,7 @@ import { OrdersPage } from '../features/orders/OrdersPage'
 import { CustomersPage } from '../features/customers/CustomersPage'
 import { CashPage } from '../features/cash/CashPage'
 import { SuspendedSalesPage, type SuspendedSale } from '../features/suspended-sales/SuspendedSalesPage'
+import { removeSuspendedSale } from '../infrastructure/local/suspendedSales'
 import { ProductsPage } from '../features/products/ProductsPage'
 import { InventoryPage } from '../features/inventory/InventoryPage'
 import { TransfersPage, type PendingTransferRequest } from '../features/transfers/TransfersPage'
@@ -60,11 +61,21 @@ function PosContent() {
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2800) }
   const handleNew = () => { if (cart.length && !window.confirm('¿Crear una nueva operación y limpiar el carrito actual?')) return; newOperation(); setSearch(''); setCategory('Todos'); notify('Nueva operación lista') }
   useEffect(() => {
+    // TAREA 9 (Tanda 3): '/' solo secuestra el foco cuando NO se está escribiendo en un
+    // campo — antes solo excluía <input>, así que tipear "24/06" en el <textarea> de
+    // observación de una línea mandaba el foco al buscador. contentEditable cubre
+    // cualquier futuro campo enriquecido con el mismo problema.
+    const isEditableTarget = (target: EventTarget | null) =>
+      target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'F2' || (event.key === '/' && !(event.target instanceof HTMLInputElement))) { event.preventDefault(); document.querySelector<HTMLInputElement>('.global-search input')?.focus() }
+      // F2/F8/F9 no deben dispararse con un modal abierto (Cobrar, Anticipo, etc. ya
+      // atienden su propio teclado) — .modal-backdrop es el portal común a todos ellos.
+      const modalOpen = Boolean(document.querySelector('.modal-backdrop'))
+      if (event.key === 'F2' && !modalOpen) { event.preventDefault(); document.querySelector<HTMLInputElement>('.global-search input')?.focus() }
+      else if (event.key === '/' && !modalOpen && !isEditableTarget(event.target)) { event.preventDefault(); document.querySelector<HTMLInputElement>('.global-search input')?.focus() }
       if (event.ctrlKey && event.key.toLowerCase() === 'n') { event.preventDefault(); handleNew() }
-      if (event.key === 'F8') { event.preventDefault(); document.querySelector<HTMLButtonElement>('[data-pos-action="suspend"]')?.click() }
-      if (event.key === 'F9') { event.preventDefault(); document.querySelector<HTMLButtonElement>('[data-pos-action="pay"]')?.click() }
+      if (event.key === 'F8' && !modalOpen) { event.preventDefault(); document.querySelector<HTMLButtonElement>('[data-pos-action="suspend"]')?.click() }
+      if (event.key === 'F9' && !modalOpen) { event.preventDefault(); document.querySelector<HTMLButtonElement>('[data-pos-action="pay"]')?.click() }
       if (event.key === 'Enter' && event.target === document.querySelector('.global-search input')) {
         const normalized = search.trim().toLowerCase()
         if (featureFlags.supabase) {
@@ -121,7 +132,7 @@ function PosContent() {
       discount: sale.discount,
       customer: sale.customerId || sale.customerName ? { id: sale.customerId, name: sale.customerName ?? 'Cliente de mostrador', documento: sale.customerDocument } : null,
     })
-    localStorage.setItem('roari-suspended-sales-v2', JSON.stringify((JSON.parse(localStorage.getItem('roari-suspended-sales-v2') || '[]') as SuspendedSale[]).filter((item) => item.id !== sale.id)))
+    removeSuspendedSale(sale.id)
     setActiveModule('Venta')
   }
   const readOnly=session?.user.role==='auditor'||session?.user.role==='operario'

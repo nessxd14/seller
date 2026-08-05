@@ -20,7 +20,7 @@ const allMethods = [
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const posMethod = (id: string): 'cash' | 'qr' | 'transfer' => (id === 'qr' ? 'qr' : id === 'transferencia' ? 'transfer' : 'cash')
 
-export function PaymentModal({ onClose }: { onClose: () => void }) {
+export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => void; onCheckoutSuccess?: () => void }) {
   const { cart, discount, total, newOperation, customer, operationId } = usePos()
   const { sessionId } = useCashSession()
   // Crédito has no metodo_pago equivalent in the real backend; only shown in mock mode.
@@ -130,6 +130,10 @@ export function PaymentModal({ onClose }: { onClose: () => void }) {
       // posterior que nunca bloquea ni revierte una venta ya confirmada.
       setResult({ saleId: checkout.saleId, totalCents: checkout.totalCents, isRetry: checkout.isRetry === true })
       setDone(true)
+      // TAREA 4 (Tanda 3): el caché de stock de origen del carrito (CartPanel's originStock)
+      // no se invalidaba nunca — vendías 5 de 5 unidades, volvías a agregar el producto y
+      // seguía diciendo que había 5. Se invalida entero acá, apenas la venta se confirma.
+      onCheckoutSuccess?.()
       void syncHermesCargo(checkout.saleId, checkout.totalCents)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar la venta')

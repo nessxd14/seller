@@ -4,6 +4,10 @@ import type { CashSessionRecord } from '../../application/shared/models'
 import { NotFoundError } from '../../application/errors/AppError'
 import { centsToNumeric, methodToMetodoPago, metodoPagoToMethod, methodExtToMetodoPago, methodExtNotaExtra, numericToCents, tipoMovimientoToType, type MetodoPago, type PosPaymentMethodExt } from './mappers'
 
+// TAREA 10 (Tanda 3): el esquema es multi-caja (ver `caja`, ConfigPage lista todas), pero
+// hoy solo hay una caja habilitada operando este POS — simplificación deliberada, no un
+// olvido. El día que exista una segunda caja real, esto necesita un selector al abrir la
+// sesión (abrir_caja ya recibe p_caja_id) en vez de este valor fijo.
 const CAJA_ID = 1
 
 type EstadoSesionCaja = 'ABIERTA' | 'CERRADA'
@@ -180,7 +184,12 @@ export class SupabaseCashRepository implements CashRepository {
     const nota = methodExtNotaExtra(input.method)
     if (nota) {
       try {
-        await supabase.from('movimiento_caja').update({ nota }).eq('id', movementId)
+        // TAREA 11 (Tanda 3): esto ANTES reemplazaba la nota entera con `nota` (el extra
+        // de depósito/SIGEP/cheque), perdiendo la nota original que registrar_anticipo ya
+        // había escrito (p. ej. "Anticipo pedido #123"). Se concatena.
+        const { data: current } = await supabase.from('movimiento_caja').select('nota').eq('id', movementId).maybeSingle()
+        const notaFinal = current?.nota ? `${current.nota} · ${nota}` : nota
+        await supabase.from('movimiento_caja').update({ nota: notaFinal }).eq('id', movementId)
       } catch {
         // ver comentario arriba
       }

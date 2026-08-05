@@ -2,8 +2,6 @@ import type { Product } from '../types'
 import { moneyToDecimal } from '../domain/common/money'
 import { resolveMockChannelPrice } from '../domain/pricing/priceResolver'
 
-export const categories = ['Todos', 'Frecuentes', 'Escritura', 'Cuadernos', 'Papelería', 'Oficina', 'Papel', 'Archivo', 'Manualidades', 'Escolar']
-
 // precioMunicipal: no separate municipal price list exists in the legacy mock data,
 // so it defaults to the institutional price (same convenio-style pricing tier).
 export const products: Product[] = [

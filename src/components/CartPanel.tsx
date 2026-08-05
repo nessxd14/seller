@@ -20,10 +20,15 @@ import { useCashSession } from '../context/CashSessionContext'
 import { getStockByProduct } from '../infrastructure/services'
 import { aggregateStockBySucursal } from '../features/inventory/stockAggregation'
 import { isLineUnpriced } from '../domain/sales/priceCheck'
+import { AnticipoModal } from './AnticipoModal'
+import { addSuspendedSale, readSuspendedSales, removeSuspendedSale } from '../infrastructure/local/suspendedSales'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
 const fmtQty = (n: number) => n.toLocaleString('es-BO', { maximumFractionDigits: 2 })
+
+// TAREA 12 (Tanda 3): ver el comentario en el useBorrador de más abajo.
+const stripStockFields = (key: string, value: unknown): unknown => (key === 'stockTienda' || key === 'stockAlmacen' ? undefined : value)
 
 // Brief J — modo traslado: mismo carrito, cambia el destino. Estado persistido por
 // useBorrador difiere según el modo (ver justo abajo), así que es una unión, no un
@@ -33,7 +38,7 @@ type CartBorradorEstado =
   | { mode: 'traslado'; cart: CartItemType[]; trasladoMotivo: TransferMotivo; trasladoOrigenId: number; trasladoDestinoId: number }
 
 export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, onRequestTransfer }: { notify: (message: string) => void; onOpenDraftOrder: (draft: QuoteDraft) => void; onGoToCash: () => void; sellerName?: string; onRequestTransfer?: (request: PendingTransferRequest) => void }) {
-  const { channel, cart, subtotal, total, discount, setDiscount, operationNumber, clearCart, restoreSuspended, loadSuspendedSale, updateItem, customer, mode, setMode, trasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft } = usePos()
+  const { channel, cart, subtotal, total, discount, setDiscount, operationNumber, clearCart, loadSuspendedSale, updateItem, customer, mode, setMode, trasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft } = usePos()
   const { sessionId } = useCashSession()
   const cashClosed = channel === 'retail' && featureFlags.supabase && !sessionId
   const [editing, setEditing] = useState<CartItemType | null>(null)
@@ -60,7 +65,14 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   const borradorEstado: CartBorradorEstado = mode === 'traslado'
     ? { mode, cart, trasladoMotivo, trasladoOrigenId, trasladoDestinoId }
     : { mode, channel, cart, discount, customer }
-  const { borradorPendiente, descartar: descartarBorrador, limpiar: limpiarBorrador } = useBorrador(borradorKey(mode === 'traslado' ? 'traslado' : 'carrito', usuarioId), borradorEstado)
+  const { borradorPendiente, descartar: descartarBorrador, limpiar: limpiarBorrador } = useBorrador(
+    borradorKey(mode === 'traslado' ? 'traslado' : 'carrito', usuarioId),
+    borradorEstado,
+    // TAREA 12 (Tanda 3): en modo Supabase, stockTienda/stockAlmacen del carrito quedan
+    // siempre en 0 (rowToProduct nunca los llena ahí — el stock real vive en un batch
+    // aparte, ver Tanda 1) — persistirlos en el borrador guardaría un dato falso.
+    { replacer: featureFlags.supabase ? stripStockFields : undefined },
+  )
   // operationNumber solo avanza en newOperation() (checkout exitoso finalizado) — no en
   // suspender ni restaurar. Es la señal de "se envió con éxito, ya no ofrezcas este borrador".
   const prevOperationNumberRef = useRef(operationNumber)
@@ -97,6 +109,19 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     }))).then((entries) => setOriginStock((prev) => ({ ...prev, ...Object.fromEntries(entries) })))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart, channel, mode])
+  // TAREA 4 (Tanda 3): el caché de arriba se llenaba una vez y no se invalidaba nunca —
+  // vendías 5 de 5 unidades, volvías a agregar el producto y seguía diciendo que había 5
+  // (insufficientOrigin dejaba pasar una venta que la RPC iba a rechazar). Sin argumento
+  // limpia todo, que es lo correcto tras un checkout multi-línea; con productId limpia
+  // solo esa entrada.
+  const invalidateOriginStock = (productId?: number) => {
+    setOriginStock((prev) => {
+      if (productId == null) return {}
+      const next = { ...prev }
+      delete next[productId]
+      return next
+    })
+  }
   const insufficientOrigin = mode === 'venta' && channel === 'retail' && cart.some((item) => {
     const stock = originStock[item.id]
     if (!stock) return false
@@ -123,18 +148,19 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [ticketOpen, setTicketOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
+  const [anticipoOpen, setAnticipoOpen] = useState(false)
   const customerLabel = customer ? customer.name : 'Cliente de mostrador'
+  // TAREA 6 (Tanda 3): único mecanismo de venta suspendida (ver infrastructure/local/
+  // suspendedSales.ts) — el legado `roari-suspended-sale` de una sola ranura se borró.
+  const [hasSuspended, setHasSuspended] = useState(() => readSuspendedSales().length > 0)
   const suspend = () => {
     if (!cart.length) return
-    const date = new Date().toISOString()
-    const legacy = { channel, cart, discount, date }
-    localStorage.setItem('roari-suspended-sale', JSON.stringify(legacy))
-    const sales = JSON.parse(localStorage.getItem('roari-suspended-sales-v2') || '[]') as unknown[]
-    // TAREA 4: persist the selected customer alongside the rest of the suspended sale so
-    // restoring it later doesn't silently drop back to "Cliente de mostrador."
-    sales.unshift({
+    // TAREA 4/12: persist the selected customer alongside the rest of the suspended sale
+    // so restoring it later doesn't silently drop back to "Cliente de mostrador"; strip
+    // stockTienda/stockAlmacen in Supabase mode (ver stripStockFields arriba).
+    addSuspendedSale({
       id: crypto.randomUUID(),
-      date,
+      date: new Date().toISOString(),
       seller: sellerName || 'Usuario POS',
       channel,
       customer: customerLabel,
@@ -144,12 +170,27 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       customerId: customer?.id,
       customerName: customer?.name,
       customerDocument: customer?.documento,
-    })
-    localStorage.setItem('roari-suspended-sales-v2', JSON.stringify(sales))
+    }, featureFlags.supabase ? stripStockFields : undefined)
+    setHasSuspended(true)
     clearCart()
     notify('Venta suspendida y guardada localmente')
   }
-  const restore = () => notify(restoreSuspended() ? 'Venta suspendida restaurada' : 'No se pudo restaurar la venta')
+  // Restaura la más reciente (la lista está ordenada por unshift, la primera es la
+  // última suspendida) — SuspendedSalesPage sigue siendo el lugar para elegir una
+  // específica; este botón es el atajo rápido "seguir con lo último".
+  const restore = () => {
+    const [latest] = readSuspendedSales()
+    if (!latest) { notify('No se pudo restaurar la venta'); return }
+    loadSuspendedSale({
+      channel: latest.channel as SalesChannel,
+      cart: latest.cart,
+      discount: latest.discount,
+      customer: latest.customerId || latest.customerName ? { id: latest.customerId, name: latest.customerName ?? 'Cliente de mostrador', documento: latest.customerDocument } : null,
+    })
+    removeSuspendedSale(latest.id)
+    setHasSuspended(readSuspendedSales().length > 0)
+    notify('Venta suspendida restaurada')
+  }
   const openDraft = () => {
     if (!cart.length) return
     const lines: WorkflowLine[] = cart.map((item) => ({
@@ -160,7 +201,14 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       quantity: item.cantidad,
       unitPriceCents: Math.round(item.precioAplicado * 100),
       discountBasisPoints: Math.round(item.descuento * 100),
-      sourceLocation: 'Almacén',
+      // TAREA 3 (Tanda 3): antes hardcodeado a 'Almacén', ignorando item.ubicacion —
+      // se perdía el origen por línea, justo lo que el esquema soporta. Ídem
+      // presentacionId/factorUnidadBase: sin propagarlos, "3 × Caja(24)" pasaba al
+      // borrador como 3 unidades sueltas (el mismo bug que ya costó el descuadre de
+      // registrar_venta facturando 72×50 en vez de 3×50).
+      sourceLocation: item.ubicacion,
+      presentacionId: item.presentacionId,
+      factorUnidadBase: item.factorUnidadBase,
     }))
     onOpenDraftOrder({
       id: featureFlags.supabase ? '' : crypto.randomUUID(),
@@ -239,10 +287,18 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
         <small>Precios con impuestos incluidos según configuración</small>
       </div>
     )}
-    <div className="cart-actions">{mode === 'venta' && !cart.length && Boolean(localStorage.getItem('roari-suspended-sale')) && <button className="restore-button" onClick={restore}><RotateCcw /> Restaurar venta suspendida</button>}{mode === 'traslado' ? (
+    <div className="cart-actions">{mode === 'venta' && !cart.length && hasSuspended && <button className="restore-button" onClick={restore}><RotateCcw /> Restaurar venta suspendida</button>}{mode === 'traslado' ? (
       <button data-pos-action="solicitar-traslado" className="pay-button" disabled={!cart.length || solicitando} onClick={() => void solicitarTraslado()}><Truck /> {solicitando ? 'Solicitando…' : 'Solicitar traslado'}</button>
-    ) : channel === 'retail' ? <><div className="secondary-actions secondary-actions-3"><button data-pos-action="suspend" onClick={suspend} disabled={!cart.length}><Pause /> Suspender</button><button onClick={() => setTicketOpen(true)} disabled={!cart.length}><ReceiptText /> Ticket</button><button onClick={() => setReviewOpen(true)} disabled={!cart.length}><Sparkles /> Revisar</button></div>{cashClosed && <button className="cash-closed-notice" onClick={onGoToCash}>Caja cerrada — abrí la caja para poder cobrar</button>}{insufficientOrigin && <p className="cash-closed-notice">Hay líneas sin stock suficiente en la ubicación elegida — corrígelas para poder cobrar.</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || cashClosed || insufficientOrigin || unpricedLine} onClick={() => setPaymentOpen(true)}><HandCoins /> Cobrar <span>Bs {money(total)}</span></button></> : <><button className="draft-button" disabled={!cart.length} onClick={openDraft}><FileText /> Guardar borrador</button><div className="secondary-actions"><button disabled={!cart.length} onClick={openDraft}>Cotización</button><button disabled={!cart.length} onClick={openDraft}>Crear pedido</button></div>{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || (channel === 'mayoreo' && unpricedLine)} onClick={() => channel === 'mayoreo' ? setPaymentOpen(true) : notify('Anticipo creado en modo demostración')}><HandCoins /> {channel === 'mayoreo' ? 'Cobrar' : 'Registrar anticipo'} <span>Bs {money(total)}</span></button></>}</div>
-    {editing && <EditCartItemModal item={editing} onClose={() => setEditing(null)} />}{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} />}{ticketOpen && <TicketPreviewModal onClose={() => setTicketOpen(false)} />}
+    ) : channel === 'retail' ? <><div className="secondary-actions secondary-actions-3"><button data-pos-action="suspend" onClick={suspend} disabled={!cart.length}><Pause /> Suspender</button><button onClick={() => setTicketOpen(true)} disabled={!cart.length}><ReceiptText /> Ticket</button><button onClick={() => setReviewOpen(true)} disabled={!cart.length}><Sparkles /> Revisar</button></div>{cashClosed && <button className="cash-closed-notice" onClick={onGoToCash}>Caja cerrada — abrí la caja para poder cobrar</button>}{insufficientOrigin && <p className="cash-closed-notice">Hay líneas sin stock suficiente en la ubicación elegida — corrígelas para poder cobrar.</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || cashClosed || insufficientOrigin || unpricedLine} onClick={() => setPaymentOpen(true)}><HandCoins /> Cobrar <span>Bs {money(total)}</span></button></> : <>
+      {/* TAREA 3 (Tanda 3): "Cotización" y "Crear pedido" llamaban las dos a openDraft()
+          sin ningún argumento que las diferenciara — hacían exactamente lo mismo. Ambas
+          terminan abriendo el mismo editor de cotización (onOpenDraftOrder siempre navega
+          a Cotizaciones), así que "Crear pedido" prometía algo que no hacía. Se decidió
+          dejar un solo botón acá; convertir una cotización en pedido ya es un paso propio
+          del editor de Cotizaciones (convertir_cotizacion_a_pedido). */}
+      <button className="draft-button" disabled={!cart.length} onClick={openDraft}><FileText /> Guardar borrador</button><div className="secondary-actions"><button disabled={!cart.length} onClick={openDraft}>Cotización</button></div>{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || (channel === 'mayoreo' && unpricedLine)} onClick={() => channel === 'mayoreo' ? setPaymentOpen(true) : setAnticipoOpen(true)}><HandCoins /> {channel === 'mayoreo' ? 'Cobrar' : 'Registrar anticipo'} <span>Bs {money(total)}</span></button></>}</div>
+    {editing && <EditCartItemModal item={editing} onClose={() => setEditing(null)} />}{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} onCheckoutSuccess={() => invalidateOriginStock()} />}{ticketOpen && <TicketPreviewModal onClose={() => setTicketOpen(false)} />}
+    {anticipoOpen && <AnticipoModal onClose={() => setAnticipoOpen(false)} notify={notify} />}
     {reviewOpen && <CartReview items={cart} channel={channel} originStock={originStock} customer={customer} subtotal={subtotal} discount={discount} total={total} onClose={() => setReviewOpen(false)} onCheckout={() => { setReviewOpen(false); setPaymentOpen(true) }} />}
   </aside>
 }

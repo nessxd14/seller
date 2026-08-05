@@ -19,6 +19,7 @@ export const getStockBySucursalBatch = featureFlags.supabase ? supabaseServices.
 export const listPresentations = featureFlags.supabase ? supabaseServices.listPresentations : mockServices.listPresentations
 export const listLineIdentifiers = featureFlags.supabase ? supabaseServices.listLineIdentifiers : mockServices.listLineIdentifiers
 export const listBrands = featureFlags.supabase ? supabaseServices.listBrands : mockServices.listBrands
+export const listFrecuentes = featureFlags.supabase ? supabaseServices.listFrecuentes : mockServices.listFrecuentes
 
 // Idempotency dedupe is a client-side concern independent of the backend.
 export const sensitiveOperations = mockServices.sensitiveOperations
