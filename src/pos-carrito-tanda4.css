@@ -1,0 +1,118 @@
+/* ============================================================================
+ * pos-carrito-tanda4.css — Tanda 4: UX del carrito.
+ * Importar en src/main.tsx DESPUÉS de pos-ajustes-r4.css (gana la cascada sobre
+ * las reglas de .cart-presentacion/.qty-control que reemplaza o extiende).
+ * ========================================================================== */
+
+/* ── Tarea 2: ubicación → presentación → contador en una sola fila ─────────
+ * Antes eran tres bloques verticales separados (OriginPin suelto, .cart-presentacion
+ * en su propio div, .qty-control dentro de .cart-line-bottom junto con "Editar" y el
+ * total). Unificados acá; "Editar" y el total quedan solos en .cart-line-bottom.
+ */
+.cart-line-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+/* Selector de presentación: mismo look que antes (.cart-presentacion select en
+ * pos-ajustes-r2.css), pero ahora vive suelto dentro de .cart-line-controls en vez
+ * de en su propio wrapper — y se muestra SIEMPRE (antes, con una sola presentación,
+ * no se renderizaba nada, desalineando las líneas entre sí). Deshabilitado en vez
+ * de ausente cuando no hay nada que elegir.
+ */
+.cart-presentacion-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--line);
+  background: #fff;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2377746d' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  border-radius: 7px;
+  height: 27px;
+  padding: 0 26px 0 9px;
+  font: inherit;
+  font-size: 11px;
+  color: #4c4944;
+  cursor: pointer;
+  max-width: 132px;
+  text-overflow: ellipsis;
+  transition: border-color .12s, background-color .12s;
+}
+.cart-presentacion-select:hover:not(:disabled) { background-color: #faf9f6 }
+.cart-presentacion-select:focus-visible { outline: 0; border-color: var(--orange) }
+.cart-presentacion-select:disabled {
+  background-color: #f6f4f0;
+  color: #a9a59d;
+  cursor: default;
+  opacity: 1; /* button:disabled global rule sets .45 — este control se lee bien a opacidad completa */
+}
+
+.cart-line-controls .qty-control { margin-left: auto }
+
+/* ── Tareas 4/5: Subtotal/Descuento/Total al mismo borde derecho ───────────
+ * .cart-summary>div (styles.css) solo alcanza a los hijos DIRECTOS de .cart-summary
+ * — desde que existe el wrapper de colapso (.cart-summary-breakdown >
+ * .cart-summary-breakdown-inner), Subtotal y Descuento quedaron dos niveles más
+ * adentro sin ningún row layout propio: label y valor caían pegados, uno al lado
+ * del otro, sin espacio entre ellos. Acá se les da su propio flex/space-between, y
+ * una celda numérica de min-width compartida con .grand-total para que las tres
+ * columnas de dinero lean de un vistazo. El Total se diferencia por tamaño y peso
+ * (ya 20px/700 en styles.css) — sigue alineado al mismo borde, nunca centrado.
+ */
+.cart-summary-breakdown-inner > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-size: 12px;
+}
+.cart-summary-breakdown-inner > div:last-child { margin-bottom: 0 }
+.cart-summary-breakdown-inner > div > strong,
+.discount-line > span,
+.grand-total > strong {
+  min-width: 68px;
+  display: inline-flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px;
+  text-align: right;
+}
+.discount-line { align-items: center }
+.discount-line input { flex: 0 0 auto; width: 45px }
+
+/* ── Tarea 6b: dieta de cromo a 1366×768 (recupera ~90px para la lista) ────
+ * Con (a) la fila única de Tarea 2 (~50px por línea) más esto, la lista pasa de
+ * ~1,5 a ~4 líneas visibles sin scrollear a 1366×768. Ver el brief para el
+ * desglose de cada partida. Picture-in-Picture se evaluó y se descartó: la ventana
+ * PiP es más chica que el panel actual y tapa la grilla de productos con un solo
+ * monitor — mucha máquina para empeorar el problema real, que es de presupuesto
+ * vertical, no de falta de scroll.
+ */
+@media (max-height: 800px) {
+  /* Fecha y hora son decorativas (ya están en el ticket) — fuera. */
+  .operation-meta { display: none }
+
+  .customer-select { height: 38px; padding: 0 9px; gap: 7px }
+  .customer-select > svg:first-child { width: 17px }
+
+  .cart-summary-breakdown-inner > div { margin-bottom: 4px }
+  .cart-summary > small { display: none }
+
+  /* Suspender/Ticket/Revisar: fila de íconos, sin la etiqueta de texto. El nombre
+     sigue disponible para lectores de pantalla vía el propio texto del botón. */
+  .secondary-actions-3 button { height: 30px; gap: 0 }
+  .secondary-action-label {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}

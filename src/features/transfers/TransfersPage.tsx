@@ -6,6 +6,7 @@ import type { CartItem, Product } from '../../types'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
 import { usePos } from '../../context/PosContext'
+import { NumberField } from '../../components/NumberField'
 
 const motivoLabel: Record<TransferMotivo, string> = { VENTA_DIRECTA: 'Venta directa', REPOSICION: 'Reposición', DEVOLUCION: 'Devolución' }
 // Brief K: mismos ids que PosContext.tsx / TrasladoTargetPicker (1 = Almacén Central, 2 = Tienda).
@@ -243,9 +244,8 @@ function TransferDetailPanel({ transfer, onClose, onDispatch, onRevert, onRegist
           const short = canReceive && receivedBase < despachada
           const receivedInUnit = receivedBase / factor
           const despachadaInUnit = despachada / factor
-          const onChangeReceived = (raw: string) => {
-            const entered = Number(raw)
-            const nextBase = Number.isFinite(entered) ? Math.max(0, Math.min(despachada, entered * factor)) : 0
+          const onChangeReceived = (enteredUnit: number) => {
+            const nextBase = Math.max(0, Math.min(despachada, enteredUnit * factor))
             setReceivedByLine((prev) => ({ ...prev, [line.id]: nextBase }))
           }
           return <article key={line.id}>
@@ -254,7 +254,7 @@ function TransferDetailPanel({ transfer, onClose, onDispatch, onRevert, onRegist
             <span>{line.cantidadDespachada ?? '—'}</span>
             {canReceive ? (
               <div>
-                <input type="number" min="0" max={despachadaInUnit} step="any" value={receivedInUnit} onChange={(e) => onChangeReceived(e.target.value)} />
+                <NumberField min={0} max={despachadaInUnit} value={receivedInUnit} onCommit={onChangeReceived} />
                 {factor !== 1 && <small className="line-equivalence">{line.presentacionNombre} = {fmtQty(receivedBase)} u</small>}
                 {short && <small className="line-stock-error">La diferencia ({fmtQty(despachada - receivedBase)}) se registrará como faltante en Tienda</small>}
               </div>
@@ -355,7 +355,7 @@ function CreateTransferModal({ initialRequest, onClose, onCreated }: {
           return <div key={line.productId} className="draft-line-row presentation-line-row">
             <div className="draft-line-top">
               <span><strong>{line.name}</strong><small>{line.sku}</small></span>
-              <input aria-label={`Cantidad ${line.name}`} type="number" min="1" value={line.quantity} onChange={(e) => updateLine(line.productId, { quantity: Math.max(1, Number(e.target.value)) })} />
+              <NumberField ariaLabel={`Cantidad ${line.name}`} min={1} allowDecimals={false} value={line.quantity} onCommit={(quantity) => updateLine(line.productId, { quantity })} />
               {presentations.length > 0 && (
                 <select
                   aria-label={`Presentación ${line.name}`}

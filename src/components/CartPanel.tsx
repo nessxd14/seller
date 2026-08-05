@@ -21,6 +21,7 @@ import { getStockByProduct } from '../infrastructure/services'
 import { aggregateStockBySucursal } from '../features/inventory/stockAggregation'
 import { isLineUnpriced } from '../domain/sales/priceCheck'
 import { AnticipoModal } from './AnticipoModal'
+import { NumberField } from './NumberField'
 import { addSuspendedSale, readSuspendedSales, removeSuspendedSale } from '../infrastructure/local/suspendedSales'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -94,8 +95,11 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // Brief J: también alimenta el aviso de disponible en modo traslado, así que se
   // fetchea cuando cualquiera de los dos lo necesita, no solo channel==='retail'.
   const [originStock, setOriginStock] = useState<Record<number, { tienda: number; almacen: number }>>({})
+  // TAREA 1 (Tanda 4): antes solo se fetcheaba en retail-venta o traslado, dejando
+  // mayoreo/institucional/municipal sin selector de origen NI aviso de stock — el
+  // origen quedaba fijo en 'Tienda' pase lo que pase. Ahora se fetchea en cualquier
+  // canal, siempre que haya carrito (mode ya solo puede ser 'venta' o 'traslado').
   useEffect(() => {
-    if (channel !== 'retail' && mode !== 'traslado') return
     const missing = cart.filter((item) => !(item.id in originStock))
     if (!missing.length) return
     if (!featureFlags.supabase) {
@@ -122,7 +126,9 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       return next
     })
   }
-  const insufficientOrigin = mode === 'venta' && channel === 'retail' && cart.some((item) => {
+  // TAREA 1 (Tanda 4): ya no está atado a channel === 'retail' — el selector de origen
+  // (y por lo tanto esta validación) ahora existe en los cuatro canales.
+  const insufficientOrigin = mode === 'venta' && cart.some((item) => {
     const stock = originStock[item.id]
     if (!stock) return false
     return (item.ubicacion === 'Tienda' ? stock.tienda : stock.almacen) < item.cantidad
@@ -257,7 +263,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     {mode === 'traslado'
       ? <TrasladoTargetPicker origenId={trasladoOrigenId} destinoId={trasladoDestinoId} isAdmin={isAdmin} onInvertir={() => setTrasladoDireccion(trasladoDestinoId, trasladoOrigenId)} />
       : <>{<CustomerPicker channel={channel} notify={notify} />}{customer && <SaldoBadge clienteId={customer.id} />}</>}
-    <div className="cart-list-heading"><span>{mode === 'traslado' ? 'Detalle del traslado' : 'Detalle de venta'}</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b></div><div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={() => setEditing(item)} originStock={mode === 'venta' && channel === 'retail' ? originStock[item.id] : undefined} onSetOrigin={mode === 'venta' && channel === 'retail' ? (loc) => updateItem(item.id, { ubicacion: loc }) : undefined} onRequestTransfer={mode === 'venta' && channel === 'retail' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} trasladoDisponible={mode === 'traslado' ? trasladoDisponibleFor(item.id) : undefined} />) : <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar {mode === 'traslado' ? 'un traslado' : 'una venta'}.</p></div>}</div>
+    <div className="cart-list-heading"><span>{mode === 'traslado' ? 'Detalle del traslado' : 'Detalle de venta'}</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b></div><div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={() => setEditing(item)} originStock={mode === 'venta' ? originStock[item.id] : undefined} onSetOrigin={mode === 'venta' ? (loc) => updateItem(item.id, { ubicacion: loc, origenManual: true }) : undefined} onRequestTransfer={mode === 'venta' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} trasladoDisponible={mode === 'traslado' ? trasladoDisponibleFor(item.id) : undefined} />) : <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar {mode === 'traslado' ? 'un traslado' : 'una venta'}.</p></div>}</div>
     {mode === 'traslado' ? (
       <div className="cart-summary cart-summary-traslado">
         <div><span>Líneas</span><strong>{cart.length}</strong></div>
@@ -268,7 +274,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
         <div className={`cart-summary-breakdown ${summaryCollapsed ? 'collapsed' : ''}`}>
           <div className="cart-summary-breakdown-inner">
             <div><span>Subtotal</span><strong>Bs {money(subtotal)}</strong></div>
-            <div className="discount-line"><label>Descuento</label><span>Bs <input aria-label="Descuento general" type="number" min="0" max={subtotal} value={discount || ''} placeholder="0.00" onChange={(e) => setDiscount(Math.min(subtotal, Math.max(0, Number(e.target.value))))} /></span></div>
+            <div className="discount-line"><label>Descuento</label><span>Bs <NumberField ariaLabel="Descuento general" min={0} max={subtotal} placeholder="0.00" value={discount} onCommit={setDiscount} /></span></div>
           </div>
         </div>
         <div className="grand-total">
@@ -289,14 +295,14 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     )}
     <div className="cart-actions">{mode === 'venta' && !cart.length && hasSuspended && <button className="restore-button" onClick={restore}><RotateCcw /> Restaurar venta suspendida</button>}{mode === 'traslado' ? (
       <button data-pos-action="solicitar-traslado" className="pay-button" disabled={!cart.length || solicitando} onClick={() => void solicitarTraslado()}><Truck /> {solicitando ? 'Solicitando…' : 'Solicitar traslado'}</button>
-    ) : channel === 'retail' ? <><div className="secondary-actions secondary-actions-3"><button data-pos-action="suspend" onClick={suspend} disabled={!cart.length}><Pause /> Suspender</button><button onClick={() => setTicketOpen(true)} disabled={!cart.length}><ReceiptText /> Ticket</button><button onClick={() => setReviewOpen(true)} disabled={!cart.length}><Sparkles /> Revisar</button></div>{cashClosed && <button className="cash-closed-notice" onClick={onGoToCash}>Caja cerrada — abrí la caja para poder cobrar</button>}{insufficientOrigin && <p className="cash-closed-notice">Hay líneas sin stock suficiente en la ubicación elegida — corrígelas para poder cobrar.</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || cashClosed || insufficientOrigin || unpricedLine} onClick={() => setPaymentOpen(true)}><HandCoins /> Cobrar <span>Bs {money(total)}</span></button></> : <>
+    ) : channel === 'retail' ? <><div className="secondary-actions secondary-actions-3"><button data-pos-action="suspend" onClick={suspend} disabled={!cart.length}><Pause /> <span className="secondary-action-label">Suspender</span></button><button onClick={() => setTicketOpen(true)} disabled={!cart.length}><ReceiptText /> <span className="secondary-action-label">Ticket</span></button><button onClick={() => setReviewOpen(true)} disabled={!cart.length}><Sparkles /> <span className="secondary-action-label">Revisar</span></button></div>{cashClosed && <button className="cash-closed-notice" onClick={onGoToCash}>Caja cerrada — abrí la caja para poder cobrar</button>}{insufficientOrigin && <p className="cash-closed-notice">Hay líneas sin stock suficiente en la ubicación elegida — corrígelas para poder cobrar.</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || cashClosed || insufficientOrigin || unpricedLine} onClick={() => setPaymentOpen(true)}><HandCoins /> Cobrar <span>Bs {money(total)}</span></button></> : <>
       {/* TAREA 3 (Tanda 3): "Cotización" y "Crear pedido" llamaban las dos a openDraft()
           sin ningún argumento que las diferenciara — hacían exactamente lo mismo. Ambas
           terminan abriendo el mismo editor de cotización (onOpenDraftOrder siempre navega
           a Cotizaciones), así que "Crear pedido" prometía algo que no hacía. Se decidió
           dejar un solo botón acá; convertir una cotización en pedido ya es un paso propio
           del editor de Cotizaciones (convertir_cotizacion_a_pedido). */}
-      <button className="draft-button" disabled={!cart.length} onClick={openDraft}><FileText /> Guardar borrador</button><div className="secondary-actions"><button disabled={!cart.length} onClick={openDraft}>Cotización</button></div>{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || (channel === 'mayoreo' && unpricedLine)} onClick={() => channel === 'mayoreo' ? setPaymentOpen(true) : setAnticipoOpen(true)}><HandCoins /> {channel === 'mayoreo' ? 'Cobrar' : 'Registrar anticipo'} <span>Bs {money(total)}</span></button></>}</div>
+      <button className="draft-button" disabled={!cart.length} onClick={openDraft}><FileText /> Guardar borrador</button><div className="secondary-actions"><button disabled={!cart.length} onClick={openDraft}>Cotización</button></div>{channel === 'mayoreo' && insufficientOrigin && <p className="cash-closed-notice">Hay líneas sin stock suficiente en la ubicación elegida — corrígelas para poder cobrar.</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || (channel === 'mayoreo' && (unpricedLine || insufficientOrigin))} onClick={() => channel === 'mayoreo' ? setPaymentOpen(true) : setAnticipoOpen(true)}><HandCoins /> {channel === 'mayoreo' ? 'Cobrar' : 'Registrar anticipo'} <span>Bs {money(total)}</span></button></>}</div>
     {editing && <EditCartItemModal item={editing} onClose={() => setEditing(null)} />}{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} onCheckoutSuccess={() => invalidateOriginStock()} />}{ticketOpen && <TicketPreviewModal onClose={() => setTicketOpen(false)} />}
     {anticipoOpen && <AnticipoModal onClose={() => setAnticipoOpen(false)} notify={notify} />}
     {reviewOpen && <CartReview items={cart} channel={channel} originStock={originStock} customer={customer} subtotal={subtotal} discount={discount} total={total} onClose={() => setReviewOpen(false)} onCheckout={() => { setReviewOpen(false); setPaymentOpen(true) }} />}

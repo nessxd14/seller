@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Modal } from './Modal'
+import { NumberField } from './NumberField'
 import { customerService, orderService, cashService, authSessionProvider } from '../infrastructure/services'
 import { useCashSession } from '../context/CashSessionContext'
 import { featureFlags } from '../config/featureFlags'
@@ -166,7 +167,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
       </select>
       {customer && !orders.length && <small className="line-stock-error">Este cliente no tiene pedidos abiertos.</small>}
     </label>}
-    <label>Monto (Bs)<input autoFocus type="number" min="0" step="0.01" value={amount || ''} onChange={(e) => setAmount(Math.max(0, Number(e.target.value)))} /></label>
+    <label>Monto (Bs)<NumberField autoFocus min={0} step={0.01} value={amount} onCommit={setAmount} /></label>
     <label>Método de pago<select value={method} onChange={(e) => setMethod(e.target.value as PosPaymentMethodExt)}>
       {metodoOrder.map((m) => <option key={m} value={m}>{metodoLabels[m]}</option>)}
     </select></label>

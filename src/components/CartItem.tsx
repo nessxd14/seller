@@ -143,13 +143,26 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
         {isUnpriced && <small className="price-heredado-badge price-overridden-badge" title="Esta línea no tiene precio configurado en ningún canal. Escribí un precio para poder cobrarla.">sin precio</small>}
       </div>
     </div><button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button></div>
-    {onSetOrigin && <OriginPin value={item.ubicacion} options={buildOriginOptions(originStock)} onChange={onSetOrigin} ariaLabel={`Origen ${item.nombre}`} />}
-    {presentations.length > 1 && <div className="cart-presentacion"><select aria-label={`Presentación ${item.nombre}`} value={item.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id} onChange={(e) => { const chosen = presentations.find((p) => p.id === Number(e.target.value)); if (chosen) onPresentationChange(chosen) }}>
-      {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-    </select></div>}
+    {/* TAREA 2 (Tanda 4): ubicación → presentación → contador en una sola fila (antes
+        eran tres bloques separados, desalineando las líneas entre sí). El selector de
+        presentación se muestra siempre, deshabilitado cuando hay una sola — antes
+        directamente no se renderizaba, lo que también desalineaba la grilla. */}
+    <div className="cart-line-controls">
+      {onSetOrigin && <OriginPin value={item.ubicacion} options={buildOriginOptions(originStock)} onChange={onSetOrigin} ariaLabel={`Origen ${item.nombre}`} />}
+      <select
+        aria-label={`Presentación ${item.nombre}`}
+        className="cart-presentacion-select"
+        disabled={presentations.length <= 1}
+        value={item.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id ?? ''}
+        onChange={(e) => { const chosen = presentations.find((p) => p.id === Number(e.target.value)); if (chosen) onPresentationChange(chosen) }}
+      >
+        {presentations.length ? presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>) : <option value="">Unidad</option>}
+      </select>
+      <div className="qty-control"><button disabled={item.cantidad <= 1} onClick={() => updateQuantity(item.id, item.cantidad - 1)}><Minus /></button><strong>{item.cantidad}</strong><button onClick={() => updateQuantity(item.id, item.cantidad + 1)}><Plus /></button></div>
+    </div>
     {insufficient && <small className="line-stock-error">Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBase)} uds.{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
     {isUnpriced && <small className="line-stock-error">{item.nombre} no tiene precio. Escribilo en la línea para poder cobrar.</small>}
-    <div className="cart-line-bottom"><div className="qty-control"><button disabled={item.cantidad <= 1} onClick={() => updateQuantity(item.id, item.cantidad - 1)}><Minus /></button><strong>{item.cantidad}</strong><button onClick={() => updateQuantity(item.id, item.cantidad + 1)}><Plus /></button></div><button className="edit-link" onClick={onEdit}><Pencil /> Editar</button><strong className="line-total">Bs {money(lineTotal)}</strong></div>
+    <div className="cart-line-bottom"><button className="edit-link" onClick={onEdit}><Pencil /> Editar</button><strong className="line-total">Bs {money(lineTotal)}</strong></div>
     {factor !== 1 && <small className="line-equivalence">{fmtQty(item.cantidad)} {item.presentacionNombre} = {fmtQty(cantidadBase)} u</small>}
     </div></article>
 }
