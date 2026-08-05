@@ -13,13 +13,18 @@
 .cart-summary > .cart-summary-breakdown { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 200ms ease }
 .cart-summary > .cart-summary-breakdown.collapsed { grid-template-rows: 0fr }
 .cart-summary-breakdown-inner { overflow: hidden; min-height: 0 }
-.summary-collapse-toggle {
+/* Tanda 5 — TAREA C: este botón pasó de plegar solo el desglose a un colapso
+   más amplio (cliente + encabezado de lista + desglose) — mismo lugar, mismo
+   look, alcance más ancho. Clase renombrada de .summary-collapse-toggle a
+   .cart-chrome-toggle; el estado ahora es aria-pressed (es un toggle
+   binario, no un disclosure de un único bloque). */
+.cart-chrome-toggle {
   width: 26px; height: 26px; min-width: 26px;
   border: 1px solid #e3ded6; background: #fff; border-radius: 8px;
   display: grid; place-items: center; color: #77736c;
   margin-left: 8px;
   transition: background 150ms ease;
 }
-.summary-collapse-toggle:hover { background: #f5f2ed }
-.summary-collapse-toggle svg { width: 14px; transition: transform 160ms ease }
-.summary-collapse-toggle[aria-expanded="false"] svg { transform: rotate(180deg) }
+.cart-chrome-toggle:hover { background: #f5f2ed }
+.cart-chrome-toggle svg { width: 14px; transition: transform 160ms ease }
+.cart-chrome-toggle[aria-pressed="true"] svg { transform: rotate(180deg) }

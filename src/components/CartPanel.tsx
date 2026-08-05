@@ -1,4 +1,4 @@
-import { ChevronDown, FileText, HandCoins, Pause, ReceiptText, RotateCcw, ShoppingCart, Sparkles, Truck } from 'lucide-react'
+import { ChevronDown, CircleUserRound, FileText, HandCoins, Pause, ReceiptText, RotateCcw, ShoppingCart, Sparkles, Truck } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { usePos, type CartCustomer } from '../context/PosContext'
 import type { CartItem as CartItemType, SalesChannel } from '../types'
@@ -43,14 +43,19 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   const { sessionId } = useCashSession()
   const cashClosed = channel === 'retail' && featureFlags.supabase && !sessionId
   const [editing, setEditing] = useState<CartItemType | null>(null)
-  // TAREA 3: collapse state for the breakdown (subtotal/discount) rows — the total
-  // itself never hides. sessionStorage (not localStorage): "persiste entre ventas en
-  // la sesión" — survives navigating between sales within the same tab/session, but
-  // a fresh browser session (new tab/reload of the whole app after closing it) is
-  // fine to reset, unlike this codebase's roari-* localStorage keys which are truly
-  // persistent across reloads.
-  const [summaryCollapsed, setSummaryCollapsed] = useState(() => sessionStorage.getItem('roari-cart-summary-collapsed') === '1')
-  useEffect(() => { sessionStorage.setItem('roari-cart-summary-collapsed', summaryCollapsed ? '1' : '0') }, [summaryCollapsed])
+  // TAREA C (Tanda 5): colapso del cromo — cliente, encabezado de la lista y el
+  // desglose Subtotal/Descuento. Reemplaza el toggle más chico de "plegar
+  // resumen" de la Tanda 3 (mismo botón, alcance más amplio). localStorage (no
+  // sessionStorage): "que no haya que apretarlo cada venta" — sobrevive a un F5
+  // y a cerrar la pestaña, a diferencia del resto de las preferencias de UI de
+  // este panel.
+  const [chromeCollapsed, setChromeCollapsed] = useState(() => localStorage.getItem('roari-cart-chrome-collapsed') === '1')
+  useEffect(() => { localStorage.setItem('roari-cart-chrome-collapsed', chromeCollapsed ? '1' : '0') }, [chromeCollapsed])
+  // Regla que no se negocia: un campo con valor cargado nunca se oculta. Si hay
+  // descuento, el desglose se queda visible aunque el cromo esté colapsado —
+  // un descuento invisible que sigue aplicándose es el tipo de bug que nadie
+  // explica semanas después.
+  const breakdownCollapsed = chromeCollapsed && discount <= 0
 
   // Brief H — useBorrador: autosave del carrito. `usuarioId` por sesión (evita que en
   // un mostrador compartido a alguien le aparezca el borrador de otro); 'anon' solo
@@ -262,8 +267,13 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   return <aside className="cart-panel">{borradorPendiente && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}<div className="cart-header"><div><span>OPERACIÓN ACTUAL</span><h2>{mode === 'traslado' ? 'Traslado' : 'Venta'} <b>#{operationNumber}</b></h2></div><button type="button" className="modo-toggle" role="switch" aria-checked={mode === 'traslado'} onClick={toggleMode} title={mode === 'traslado' ? 'Volver a modo venta' : 'Cambiar a modo traslado'}>{mode === 'traslado' ? <Truck /> : <ShoppingCart />}<span>{mode === 'traslado' ? 'Traslado' : 'Venta'}</span></button>{mode === 'venta' && <span className="channel-badge">{channelNames[channel]}</span>}</div><div className="operation-meta"><span>{new Date().toLocaleDateString('es-BO', { day: '2-digit', month: 'short' })}</span><i /> <span>{new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</span></div>
     {mode === 'traslado'
       ? <TrasladoTargetPicker origenId={trasladoOrigenId} destinoId={trasladoDestinoId} isAdmin={isAdmin} onInvertir={() => setTrasladoDireccion(trasladoDestinoId, trasladoOrigenId)} />
-      : <>{<CustomerPicker channel={channel} notify={notify} />}{customer && <SaldoBadge clienteId={customer.id} />}</>}
-    <div className="cart-list-heading"><span>{mode === 'traslado' ? 'Detalle del traslado' : 'Detalle de venta'}</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b></div><div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={() => setEditing(item)} originStock={mode === 'venta' ? originStock[item.id] : undefined} onSetOrigin={mode === 'venta' ? (loc) => updateItem(item.id, { ubicacion: loc, origenManual: true }) : undefined} onRequestTransfer={mode === 'venta' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} trasladoDisponible={mode === 'traslado' ? trasladoDisponibleFor(item.id) : undefined} />) : <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar {mode === 'traslado' ? 'un traslado' : 'una venta'}.</p></div>}</div>
+      : chromeCollapsed
+        // TAREA C, regla 1: el cliente se COLAPSA, nunca se oculta — define el precio
+        // del canal y ahora también el origen por defecto (Tanda 4). Perderlo de vista
+        // factura al canal/precio equivocado sin que nadie lo note hasta auditar.
+        ? <div className="customer-select-collapsed"><CircleUserRound size={13} /><span>Cliente: <strong>{customerLabel}</strong></span></div>
+        : <>{<CustomerPicker channel={channel} notify={notify} />}{customer && <SaldoBadge clienteId={customer.id} />}</>}
+    {!chromeCollapsed && <div className="cart-list-heading"><span>{mode === 'traslado' ? 'Detalle del traslado' : 'Detalle de venta'}</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b></div>}<div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={() => setEditing(item)} originStock={mode === 'venta' ? originStock[item.id] : undefined} onSetOrigin={mode === 'venta' ? (loc) => updateItem(item.id, { ubicacion: loc, origenManual: true }) : undefined} onRequestTransfer={mode === 'venta' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} trasladoDisponible={mode === 'traslado' ? trasladoDisponibleFor(item.id) : undefined} />) : <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar {mode === 'traslado' ? 'un traslado' : 'una venta'}.</p></div>}</div>
     {mode === 'traslado' ? (
       <div className="cart-summary cart-summary-traslado">
         <div><span>Líneas</span><strong>{cart.length}</strong></div>
@@ -271,7 +281,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       </div>
     ) : (
       <div className="cart-summary">
-        <div className={`cart-summary-breakdown ${summaryCollapsed ? 'collapsed' : ''}`}>
+        <div className={`cart-summary-breakdown ${breakdownCollapsed ? 'collapsed' : ''}`}>
           <div className="cart-summary-breakdown-inner">
             <div><span>Subtotal</span><strong>Bs {money(subtotal)}</strong></div>
             <div className="discount-line"><label>Descuento</label><span>Bs <NumberField ariaLabel="Descuento general" min={0} max={subtotal} placeholder="0.00" value={discount} onCommit={setDiscount} /></span></div>
@@ -282,15 +292,15 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
           <strong>Bs {money(total)}</strong>
           <button
             type="button"
-            className="summary-collapse-toggle"
-            aria-label={summaryCollapsed ? 'Desplegar resumen' : 'Plegar resumen'}
-            aria-expanded={!summaryCollapsed}
-            onClick={() => setSummaryCollapsed((v) => !v)}
+            className="cart-chrome-toggle"
+            aria-label={chromeCollapsed ? 'Expandir cliente y resumen' : 'Colapsar cliente y resumen'}
+            aria-pressed={chromeCollapsed}
+            onClick={() => setChromeCollapsed((v) => !v)}
           >
-            <ChevronDown className={summaryCollapsed ? '' : 'chevron-open'} />
+            <ChevronDown />
           </button>
         </div>
-        <small>Precios con impuestos incluidos según configuración</small>
+        {!chromeCollapsed && <small>Precios con impuestos incluidos según configuración</small>}
       </div>
     )}
     <div className="cart-actions">{mode === 'venta' && !cart.length && hasSuspended && <button className="restore-button" onClick={restore}><RotateCcw /> Restaurar venta suspendida</button>}{mode === 'traslado' ? (

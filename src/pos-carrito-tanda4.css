@@ -1,13 +1,16 @@
 /* ============================================================================
- * pos-carrito-tanda4.css — Tanda 4: UX del carrito.
+ * pos-carrito-tanda4.css — Tanda 4 + Tanda 5: densidad del panel de venta.
  * Importar en src/main.tsx DESPUÉS de pos-ajustes-r4.css (gana la cascada sobre
  * las reglas de .cart-presentacion/.qty-control que reemplaza o extiende).
  * ========================================================================== */
 
-/* ── Tarea 2: ubicación → presentación → contador en una sola fila ─────────
+/* ── Tarea 2 (Tanda 4): ubicación → presentación → contador en una sola fila ─
  * Antes eran tres bloques verticales separados (OriginPin suelto, .cart-presentacion
  * en su propio div, .qty-control dentro de .cart-line-bottom junto con "Editar" y el
- * total). Unificados acá; "Editar" y el total quedan solos en .cart-line-bottom.
+ * total). Tanda 5 (Tarea B.2) suma "Editar" (solo ícono) y el total a esta misma
+ * fila, empujados al borde derecho con margin-left:auto (.line-total ya lo tenía
+ * en styles.css; se agrega la misma regla para .edit-link) — .cart-line-bottom
+ * como fila propia desaparece del todo.
  */
 .cart-line-controls {
   display: flex;
@@ -16,6 +19,11 @@
   margin-top: 6px;
   flex-wrap: wrap;
 }
+.cart-line-controls .edit-link { margin-left: auto; height: 27px }
+.cart-line-controls .line-total { flex: 0 0 auto }
+/* Cuando ya hay algo con margin-left:auto (Editar), el total no necesita el
+   suyo — evita que ambos compitan por el mismo espacio libre. */
+.cart-line-controls .edit-link + .line-total { margin-left: 0 }
 
 /* Selector de presentación: mismo look que antes (.cart-presentacion select en
  * pos-ajustes-r2.css), pero ahora vive suelto dentro de .cart-line-controls en vez
@@ -38,7 +46,7 @@
   font-size: 11px;
   color: #4c4944;
   cursor: pointer;
-  max-width: 132px;
+  max-width: 108px;
   text-overflow: ellipsis;
   transition: border-color .12s, background-color .12s;
 }
@@ -51,9 +59,39 @@
   opacity: 1; /* button:disabled global rule sets .45 — este control se lee bien a opacidad completa */
 }
 
-.cart-line-controls .qty-control { margin-left: auto }
+/* ── Tarea D (Tanda 5): cantidad editable por teclado ───────────────────────
+ * El número era un <strong>, ahora es un <button> (cerrado) o un NumberField
+ * (abierto) dentro del mismo .qty-control — .qty-control button (r2.css) le
+ * pondría un width:26px fijo a los tres botones por igual; acá se lo saca para
+ * los dos que muestran el número, dándoles ancho para 4 dígitos.
+ */
+.qty-control .qty-value {
+  width: auto;
+  min-width: 30px;
+  flex: 0 1 auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  padding: 0 3px;
+  background: transparent;
+}
+.qty-control .qty-value-input {
+  width: 34px;
+  min-width: 34px;
+  flex: 0 0 34px;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  text-align: center;
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  -moz-appearance: textfield;
+}
+.qty-control .qty-value-input::-webkit-inner-spin-button,
+.qty-control .qty-value-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0 }
+.qty-control .qty-value-input:focus { outline: 0 }
 
-/* ── Tareas 4/5: Subtotal/Descuento/Total al mismo borde derecho ───────────
+/* ── Tareas 4/5 (Tanda 4): Subtotal/Descuento/Total al mismo borde derecho ──
  * .cart-summary>div (styles.css) solo alcanza a los hijos DIRECTOS de .cart-summary
  * — desde que existe el wrapper de colapso (.cart-summary-breakdown >
  * .cart-summary-breakdown-inner), Subtotal y Descuento quedaron dos niveles más
@@ -85,34 +123,94 @@
 .discount-line { align-items: center }
 .discount-line input { flex: 0 0 auto; width: 45px }
 
-/* ── Tarea 6b: dieta de cromo a 1366×768 (recupera ~90px para la lista) ────
- * Con (a) la fila única de Tarea 2 (~50px por línea) más esto, la lista pasa de
- * ~1,5 a ~4 líneas visibles sin scrollear a 1366×768. Ver el brief para el
- * desglose de cada partida. Picture-in-Picture se evaluó y se descartó: la ventana
- * PiP es más chica que el panel actual y tapa la grilla de productos con un solo
- * monitor — mucha máquina para empeorar el problema real, que es de presupuesto
- * vertical, no de falta de scroll.
+/* ── Tarea A (Tanda 5): la dieta de cromo, SIEMPRE, no adentro de una media query ──
+ * Medimos mal la pantalla de un cajero dos veces (1366×768 primero, después una
+ * máquina real resultó ser 1536×864 con Windows al 125%) — @media(max-height:800px)
+ * nunca se disparó ahí y todo esto quedó muerto. Es un punto de venta, no un sitio
+ * de contenido: el espacio vertical es escaso en cualquier resolución realista, así
+ * que la compactación va siempre. Si algún día hace falta AFLOJAR en pantallas
+ * grandes, la media query correcta es @media(min-height:1000px) — apretar es lo
+ * normal, aflojar es la excepción.
  */
-@media (max-height: 800px) {
-  /* Fecha y hora son decorativas (ya están en el ticket) — fuera. */
-  .operation-meta { display: none }
+.operation-meta { display: none }
 
-  .customer-select { height: 38px; padding: 0 9px; gap: 7px }
-  .customer-select > svg:first-child { width: 17px }
+.customer-select { height: 38px; padding: 0 9px; gap: 7px }
+.customer-select > svg:first-child { width: 17px }
 
-  .cart-summary-breakdown-inner > div { margin-bottom: 4px }
-  .cart-summary > small { display: none }
+.cart-item { padding: 8px 0 }
+.product-visual.small { width: 36px; height: 36px; min-width: 36px }
+.product-visual.small svg { width: 19px; height: 19px }
 
-  /* Suspender/Ticket/Revisar: fila de íconos, sin la etiqueta de texto. El nombre
-     sigue disponible para lectores de pantalla vía el propio texto del botón. */
-  .secondary-actions-3 button { height: 30px; gap: 0 }
-  .secondary-action-label {
-    position: absolute;
-    width: 1px; height: 1px;
-    padding: 0; margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
+.cart-summary-breakdown-inner > div { margin-bottom: 4px }
+.cart-summary > small { display: none }
+
+/* Suspender/Ticket/Revisar: fila de íconos, sin la etiqueta de texto. El nombre
+   sigue disponible para lectores de pantalla vía el propio texto del botón. */
+.secondary-actions-3 button { height: 30px; gap: 0 }
+.secondary-action-label {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
+
+/* ── Tarea B (Tanda 5): dieta de línea — objetivo ~70px por línea ──────────
+ * El badge de precio heredado en texto completo ("precio heredado, no
+ * negociado") ocupaba una fila entera él solo y aparece en casi todas las
+ * líneas de mayoreo. Pasa a ícono con el mismo tooltip (title). "sin precio" se
+ * queda como texto visible en rojo a propósito — bloquea el cobro y tiene que
+ * gritar, no achicarse (ver price-overridden-badge, ya en rojo).
+ */
+.price-heredado-icon {
+  display: inline-flex;
+  color: #b3852f;
+  flex: 0 0 auto;
+  cursor: help;
+}
+.price-heredado-icon svg { width: 13px; height: 13px }
+
+/* Aviso de stock insuficiente compacto: ícono + texto corto, sin envolver. El
+   enlace "Solicitar a almacén" se queda — es una acción, no decoración. */
+.line-stock-error-compact {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.line-stock-error-compact .request-transfer-link { flex: 0 0 auto }
+.line-stock-error-compact svg { width: 11px; height: 11px; flex: 0 0 auto }
+
+/* Equivalencia (3 Caja = 72 u): texto chico DENTRO de la fila de controles en
+   vez de una fila propia — se queda con su tamaño de <small>, solo se reubica. */
+.cart-line-controls > .line-equivalence {
+  flex: 0 0 auto;
+  color: #a29e96;
+  white-space: nowrap;
+}
+
+/* ── Tarea C (Tanda 5): colapso del cromo ───────────────────────────────────
+ * El modo traslado ya demostraba que el panel funciona bien sin cromo alrededor.
+ * Reglas que no se negocian (ver CartPanel.tsx): el cliente se colapsa a una
+ * línea, nunca se oculta del todo; el resumen no se colapsa si hay descuento
+ * cargado (un valor invisible que sigue aplicándose es peor que ocupar espacio);
+ * la preferencia persiste en localStorage.
+ */
+/* Base box model en pos-resumen-carrito.css (import previo); acá solo el
+   estado activo, que ese archivo no cubre. */
+.cart-chrome-toggle[aria-pressed="true"] { background: #f1eee8; color: #4c4944 }
+
+.customer-select-collapsed {
+  margin: 0 20px 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #706d66;
+  padding: 0 2px;
+}
+.customer-select-collapsed strong { color: #24231f; font-weight: 600 }
