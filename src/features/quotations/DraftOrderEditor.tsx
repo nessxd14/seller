@@ -8,6 +8,7 @@ import { aggregateStockBySucursal } from '../inventory/stockAggregation'
 import { formatMoney, money } from '../../domain/common/money'
 import { Modal } from '../../components/Modal'
 import { SaldoBadge } from '../../components/SaldoBadge'
+import { NumberField } from '../../components/NumberField'
 import type { LineIdentifiers } from '../../components/LineIdentifiersRow'
 import { OriginPin, buildOriginOptions, type OriginLocation } from '../../components/OriginPin'
 import { cantidadBaseFor } from '../../domain/sales/stockCheck'
@@ -334,7 +335,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
           </label>
           <label>Vigencia<input type="date" disabled={readOnly} value={value.validUntil} onChange={(e) => setValue((v) => ({ ...v, validUntil: e.target.value }))} /></label>
           <label>Fecha<input type="date" disabled={readOnly} value={value.documentDate ?? ''} onChange={(e) => setValue((v) => ({ ...v, documentDate: e.target.value || undefined }))} /></label>
-          <label>Descuento general (Bs)<input type="number" min="0" disabled={readOnly} value={value.generalDiscountCents / 100} onChange={(e) => setValue((v) => ({ ...v, generalDiscountCents: Math.max(0, Math.round(Number(e.target.value) * 100)) }))} /></label>
+          <label>Descuento general (Bs)<NumberField min={0} disabled={readOnly} value={value.generalDiscountCents / 100} onCommit={(bs) => setValue((v) => ({ ...v, generalDiscountCents: Math.round(bs * 100) }))} /></label>
           <label>Condición de pago<select disabled={readOnly} value={value.conditionPago ?? ''} onChange={(e) => setValue((v) => ({ ...v, conditionPago: (e.target.value || undefined) as QuoteDraft['conditionPago'] }))}>
             <option value="">Sin especificar</option>
             <option value="CONTADO">Contado</option>
@@ -549,8 +550,8 @@ function CustomItemModal({ form, setForm, editing, addAnother, setAddAnother, co
       <div className="modal-body custom-item-modal">
         <div className="form-grid">
           <label className="full">Descripción<input ref={descripcionRef} autoFocus value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} /></label>
-          <label>Cantidad<input type="number" min="1" value={form.cantidad} onChange={(e) => setForm((f) => ({ ...f, cantidad: Math.max(1, Number(e.target.value)) }))} /></label>
-          <label>Precio unitario (Bs)<input type="number" min="0" value={form.precio} onChange={(e) => setForm((f) => ({ ...f, precio: Math.max(0, Number(e.target.value)) }))} /></label>
+          <label>Cantidad<NumberField min={1} allowDecimals={false} value={form.cantidad} onCommit={(cantidad) => setForm((f) => ({ ...f, cantidad }))} /></label>
+          <label>Precio unitario (Bs)<NumberField min={0} value={form.precio} onCommit={(precio) => setForm((f) => ({ ...f, precio }))} /></label>
           <label className="full">Nota<input placeholder="Ej. comprar a proveedor X" value={form.nota} onChange={(e) => setForm((f) => ({ ...f, nota: e.target.value }))} /></label>
         </div>
         {!editing && count > 0 && <p className="custom-modal-counter">{count} ítem{count > 1 ? 's' : ''} agregado{count > 1 ? 's' : ''}</p>}

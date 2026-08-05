@@ -38,6 +38,12 @@ export interface CartItem extends Product {
   presentacionId?: number
   presentacionNombre?: string
   factorUnidadBase?: number
+  // TAREA 1 (Tanda 4): true once the seller has manually picked an origin via OriginPin —
+  // freezes `ubicacion` against the automatic channel/cliente-acreedor recompute in
+  // PosContext (setChannel/selectCustomer) until the line is removed. Without this,
+  // picking the customer at the end of the sale would silently revert origins the
+  // cajero had already adjusted by hand.
+  origenManual?: boolean
   // TAREA B: true once the seller has manually committed a price for this line (via the
   // inline editor or EditCartItemModal) — freezes precioAplicado/descuento against the
   // automatic channel-switch recompute in PosContext's setChannel until cleared. Cleared

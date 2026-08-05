@@ -5,6 +5,7 @@ import { cashService, orderService, sensitiveOperations } from '../../infrastruc
 import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState, FeatureToolbar, statusChipClass, statusLabel } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
+import { NumberField } from '../../components/NumberField'
 import { DocumentoExportable } from '../../components/DocumentoExportable'
 import { featureFlags } from '../../config/featureFlags'
 import { useCashSession } from '../../context/CashSessionContext'
@@ -151,7 +152,7 @@ function AdvanceModal({onClose,onConfirm}:{onClose:()=>void;onConfirm:(amountCen
   const [method,setMethod]=useState<'cash'|'qr'|'transfer'>('cash')
   const valid = amount > 0
   return <Modal title="Registrar anticipo" onClose={onClose}><div className="modal-body form-grid">
-    <label className="full">Monto (Bs)<input autoFocus type="number" min="0" step="0.01" value={amount/100 || ''} onChange={(e)=>setAmount(Math.max(0,Math.round(Number(e.target.value)*100)))}/></label>
+    <label className="full">Monto (Bs)<NumberField autoFocus min={0} step={0.01} value={amount/100} onCommit={(bs)=>setAmount(Math.round(bs*100))}/></label>
     <label className="full">Método<select value={method} onChange={(e)=>setMethod(e.target.value as 'cash'|'qr'|'transfer')}><option value="cash">Efectivo</option><option value="qr">QR</option><option value="transfer">Transferencia</option></select></label>
   </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid} onClick={()=>onConfirm(amount,method)}>Confirmar</button></footer></Modal>
 }

@@ -1,9 +1,11 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getPrice } from '../data/products'
 import type { CartItem, Product, SalesChannel } from '../types'
 import { ventaLineTotalCents } from '../domain/sales/ventaPricing'
 import { moneyFromDecimal } from '../domain/common/money'
 import type { TransferMotivo } from '../application/shared/models'
+import { featureFlags } from '../config/featureFlags'
+import { consultarSaldos } from '../infrastructure/hermes/client'
 
 // Brief J: 1 = Almacén Central, 2 = Tienda (mismos ids que SUCURSAL_ALMACEN_ID/
 // SUCURSAL_TIENDA_ID en infrastructure/supabase/mappers.ts — no se importan de ahí
@@ -12,6 +14,17 @@ const SUCURSAL_ALMACEN = 1
 const SUCURSAL_TIENDA = 2
 
 export type PosMode = 'venta' | 'traslado'
+
+/**
+ * TAREA 1 (Tanda 4): default de origen por línea. Retail sugiere Tienda; mayoreo/
+ * institucional/municipal sugieren Almacén (son ventas grandes, y ahí es donde vive el
+ * volumen — ver el caso de Goma Eva Azul: 520 uds. en Almacén, 0 en Tienda). Un cliente
+ * ACREEDOR (cuenta corriente en Hermes) siempre sugiere Tienda sin importar el canal —
+ * es la ubicación desde la que efectivamente se le entrega. En todos los casos es una
+ * SUGERENCIA: el selector queda visible y editable, nunca un candado.
+ */
+const defaultOrigenFor = (channel: SalesChannel, esAcreedor: boolean): 'Tienda' | 'Almacén' =>
+  esAcreedor || channel === 'retail' ? 'Tienda' : 'Almacén'
 
 // Corrección Tanda 2 Tarea 1: operationNumber vive solo en memoria y vuelve a su valor
 // inicial en cada F5, así que no sirve como identidad de idempotencia (un cobro fallido
@@ -92,7 +105,36 @@ export function PosProvider({ children }: { children: ReactNode }) {
     () => sessionStorage.getItem(OPERACION_ID_KEY) ?? nuevoOperacionId(),
   )
   const [customer, setCustomer] = useState<CartCustomer | null>(null)
-  const selectCustomer = (next: CartCustomer | null) => setCustomer(next)
+  // TAREA 1 (Tanda 4): acreedor = tiene cuenta corriente en Hermes (aparece en la
+  // respuesta de consultar_saldos), sin mirar el monto — un acreedor con saldo 0 sigue
+  // siendo acreedor. Se consulta UNA vez al seleccionar el cliente (nunca por producto,
+  // nunca en cada addProduct) y se cachea acá. Si Hermes no responde, consultarSaldos
+  // devuelve null (no confundir con "sin cuenta", que es un Map sin esa entrada) — en
+  // ese caso se trata como no-acreedor y se aplica la regla de canal, sin bloquear nada.
+  const [esAcreedor, setEsAcreedor] = useState(false)
+  // Refs para no cerrar sobre un `channel`/`esAcreedor` obsoleto dentro del .then() de
+  // consultarSaldos, que resuelve después de que el componente ya pudo re-renderizar.
+  const channelRef = useRef(channel)
+  useEffect(() => { channelRef.current = channel }, [channel])
+  const recomputeOrigenes = (nextChannel: SalesChannel, nextEsAcreedor: boolean) => {
+    const origen = defaultOrigenFor(nextChannel, nextEsAcreedor)
+    // Solo las líneas que el cajero NO tocó a mano (origenManual) — ver el campo en types.ts.
+    setCart((items) => items.map((item) => item.origenManual ? item : { ...item, ubicacion: origen }))
+  }
+  const selectCustomer = (next: CartCustomer | null) => {
+    setCustomer(next)
+    const idNum = next?.id ? Number(next.id) : NaN
+    if (!featureFlags.supabase || !Number.isFinite(idNum)) {
+      setEsAcreedor(false)
+      recomputeOrigenes(channelRef.current, false)
+      return
+    }
+    void consultarSaldos([idNum]).then((mapa) => {
+      const acreedor = mapa ? mapa.has(idNum) : false
+      setEsAcreedor(acreedor)
+      recomputeOrigenes(channelRef.current, acreedor)
+    })
+  }
 
   const [mode, setMode] = useState<PosMode>('venta')
   const [trasladoMotivo, setTrasladoMotivoState] = useState<TransferMotivo>('REPOSICION')
@@ -129,9 +171,14 @@ export function PosProvider({ children }: { children: ReactNode }) {
     // "se respeta" applies to both the applied price and its discount, so neither is touched
     // by an automatic channel switch. Untouched lines keep the exact recompute above,
     // including the presentation-factor multiplication.
-    setCart((items) => items.map((item) => item.precioModificado
-      ? item
-      : { ...item, precioAplicado: roundMoney(getPrice(item, next) * (item.factorUnidadBase ?? 1)), descuento: 0 }))
+    setCart((items) => items.map((item) => {
+      const priced = item.precioModificado
+        ? item
+        : { ...item, precioAplicado: roundMoney(getPrice(item, next) * (item.factorUnidadBase ?? 1)), descuento: 0 }
+      // TAREA 1 (Tanda 4): recalcula el default de origen al cambiar de canal, pero
+      // solo en las líneas que el cajero no ajustó a mano (origenManual).
+      return priced.origenManual ? priced : { ...priced, ubicacion: defaultOrigenFor(next, esAcreedor) }
+    }))
     setDiscount(0)
   }
 
@@ -139,7 +186,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     const existing = items.find((item) => item.id === product.id)
     return existing
       ? items.map((item) => item.id === product.id ? { ...item, cantidad: item.cantidad + 1 } : item)
-      : [...items, { ...product, cantidad: 1, precioAplicado: getPrice(product, channel), descuento: 0, ubicacion: 'Tienda' as const, observacion: '', motivoPrecio: '' }]
+      : [...items, { ...product, cantidad: 1, precioAplicado: getPrice(product, channel), descuento: 0, ubicacion: defaultOrigenFor(channel, esAcreedor), origenManual: false, observacion: '', motivoPrecio: '' }]
   })
 
   // TAREA 7 (Tanda 3): verificado contra la base viva — el catálogo activo es 100%
@@ -160,6 +207,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     clearCart()
     setChannelState('retail')
     setCustomer(null)
+    setEsAcreedor(false)
     setOperationNumber((number) => number + 1)
     setOperationId(nuevoOperacionId())
     setMode('venta')
@@ -187,6 +235,10 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setCart(sale.cart)
     setDiscount(Math.max(0, sale.discount))
     setCustomer(sale.customer ?? null)
+    // Las líneas restauradas ya traen su propio `ubicacion`/`origenManual` de cuando se
+    // suspendieron — no hay que recalcular nada, solo evitar que quede pegado el
+    // `esAcreedor` de la sesión anterior.
+    setEsAcreedor(false)
   }
 
   return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft }}>{children}</PosContext.Provider>
