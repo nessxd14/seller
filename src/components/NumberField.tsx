@@ -14,6 +14,10 @@ export interface NumberFieldProps {
   autoFocus?: boolean
   disabled?: boolean
   id?: string
+  /** default false — selecciona el texto entero al enfocar (útil cuando el campo
+   * reemplaza a un valor que ya se venía mostrando, como el contador de cantidad
+   * del carrito: escribir de cero sin borrar primero). */
+  selectOnFocus?: boolean
 }
 
 const clamp = (n: number, min?: number, max?: number): number => {
@@ -52,7 +56,7 @@ export const resolveNumberFieldCommit = (
  *
  * Mismo criterio que el editor de precio en línea del carrito (CartItem.tsx).
  */
-export function NumberField({ value, onCommit, min, max, step, allowDecimals = true, placeholder, className, ariaLabel, autoFocus, disabled, id }: NumberFieldProps) {
+export function NumberField({ value, onCommit, min, max, step, allowDecimals = true, placeholder, className, ariaLabel, autoFocus, disabled, id, selectOnFocus = false }: NumberFieldProps) {
   const [text, setText] = useState(String(value))
   const [focused, setFocused] = useState(false)
 
@@ -94,7 +98,7 @@ export function NumberField({ value, onCommit, min, max, step, allowDecimals = t
       autoFocus={autoFocus}
       disabled={disabled}
       value={text}
-      onFocus={() => setFocused(true)}
+      onFocus={(e) => { setFocused(true); if (selectOnFocus) e.currentTarget.select() }}
       onChange={onChange}
       onBlur={onBlur}
       onKeyDown={onKeyDown}
