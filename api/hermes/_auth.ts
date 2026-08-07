@@ -19,7 +19,15 @@ export async function verificarSesionPos(
   const url = process.env.VITE_SUPABASE_URL
   const anonKey = process.env.VITE_SUPABASE_ANON_KEY
   if (!url || !anonKey || !token) return null
-  const supabase = createClient(url, anonKey)
+  // El token va en los headers globales, no solo en auth.getUser: sin esto la
+  // consulta a `perfil` sale por PostgREST como rol `anon`, y perfil tiene RLS
+  // con policies solo para `authenticated` (y anon ni siquiera tiene el GRANT).
+  // El resultado era una fila vacía indistinguible de "usuario sin perfil", y
+  // por lo tanto 401 en los cuatro endpoints de /api/hermes/*.
+  const supabase = createClient(url, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
   const { data, error } = await supabase.auth.getUser(token)
   if (error || !data.user) return null
   const { data: perfil, error: perfilError } = await supabase.from('perfil').select('rol,activo').eq('id', data.user.id).maybeSingle()
