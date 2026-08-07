@@ -90,9 +90,12 @@ export async function consultarSaldos(clienteIds: number[]): Promise<Map<number,
       if (!Number.isFinite(posClienteId)) continue
       map.set(posClienteId, {
         posClienteId,
-        saldoConfirmado: row.saldo_confirmado ?? row.saldoConfirmado ?? 0,
-        saldoProvisional: row.saldo_provisional ?? row.saldoProvisional ?? 0,
-        limiteCredito: row.limite_credito ?? row.limiteCredito ?? null,
+        // PostgREST serializa numeric como string ("922.40"). Sin Number() el
+        // === 0 de la UI nunca se cumple y un cliente al día se ve como deudor
+        // de Bs 0,00.
+        saldoConfirmado: Number(row.saldo_confirmado ?? row.saldoConfirmado ?? 0),
+        saldoProvisional: Number(row.saldo_provisional ?? row.saldoProvisional ?? 0),
+        limiteCredito: row.limite_credito != null ? Number(row.limite_credito) : null,
         situacion: row.situacion ?? 'AL_DIA',
       })
     }
