@@ -37,8 +37,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const row = Array.isArray(data) ? data[0] : data
     if (!row) { res.status(200).json({ sinCuenta: true }); return }
     res.status(200).json({
-      saldoConfirmado: row.saldo_confirmado ?? row.saldoConfirmado ?? 0,
-      saldoProvisional: row.saldo_provisional ?? row.saldoProvisional ?? 0,
+      // PostgREST serializa numeric como string ("922.40"). Sin Number() el
+      // === 0 del frontend nunca se cumple y un cliente al día se ve como deudor.
+      saldoConfirmado: Number(row.saldo_confirmado ?? row.saldoConfirmado ?? 0),
+      saldoProvisional: Number(row.saldo_provisional ?? row.saldoProvisional ?? 0),
       situacion: row.situacion ?? null,
     })
   } catch {
