@@ -78,6 +78,10 @@ interface PosState {
   operationNumber: number
   operationId: string
   newOperation: () => void
+  // Deja el POS listo para la próxima venta SIN avanzar operationNumber/operationId — la
+  // operación en curso no terminó, se guardó para después (suspender) o ya se resolvió por
+  // otra vía (solicitud de traslado creada). Ver CartPanel.suspend/solicitarTraslado.
+  clearOperation: () => void
   loadSuspendedSale: (sale: { channel: SalesChannel; cart: CartItem[]; discount: number; customer?: CartCustomer | null }) => void
   customer: CartCustomer | null
   selectCustomer: (customer: CartCustomer | null) => void
@@ -203,17 +207,24 @@ export function PosProvider({ children }: { children: ReactNode }) {
   // ni los campos de traslado — después de solicitar un traslado seguías en modo
   // traslado sin darte cuenta, y el siguiente carrito se armaba para traslado en vez
   // de venta. Vuelve siempre a modo venta con la dirección default (Almacén → Tienda).
-  const newOperation = () => {
+  // Brief S3: extraído de newOperation para que suspender (que no termina la operación,
+  // solo la guarda) también pueda soltar cliente/canal sin avanzar operationNumber/
+  // operationId — antes solo hacía clearCart(), y una venta suspendida con cliente
+  // institucional dejaba al próximo carrito pegado a ese cliente y canal.
+  const resetOperationState = () => {
     clearCart()
     setChannelState('retail')
     setCustomer(null)
     setEsAcreedor(false)
-    setOperationNumber((number) => number + 1)
-    setOperationId(nuevoOperacionId())
     setMode('venta')
     setTrasladoMotivoState('REPOSICION')
     setTrasladoOrigenId(SUCURSAL_ALMACEN)
     setTrasladoDestinoId(SUCURSAL_TIENDA)
+  }
+  const newOperation = () => {
+    resetOperationState()
+    setOperationNumber((number) => number + 1)
+    setOperationId(nuevoOperacionId())
   }
   const totals = useMemo(() => {
     const subtotalCents = cart.reduce((sum, item) => sum + ventaLineTotalCents(item), 0)
@@ -241,7 +252,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setEsAcreedor(false)
   }
 
-  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft }}>{children}</PosContext.Provider>
+  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {

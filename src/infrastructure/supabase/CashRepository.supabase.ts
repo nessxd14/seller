@@ -41,6 +41,15 @@ interface MovimientoCajaRow {
 
 const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
 
+// Brief S5, Parte D (migración pendiente, la aplica Ness — ver migracion-cation-idempotencia-
+// anticipo.sql): `registrar_anticipo` todavía no acepta `p_idempotencia`. PostgREST no
+// resuelve funciones por nombre con parámetros opcionales del lado del cliente — si se
+// manda un parámetro que la función no tiene, responde "no encontré una función con esta
+// firma" (PGRST202). Detectarlo acá para reintentar sin el parámetro, así el flujo sigue
+// funcionando exactamente igual que hoy hasta que la migración se aplique.
+const esFirmaDesconocida = (error: { code?: string; message?: string }): boolean =>
+  error.code === 'PGRST202' || (error.message ?? '').includes('Could not find the function')
+
 const rowToSession = (session: SesionCajaRow, movimientos: MovimientoCajaRow[]): CashSessionRecord & Versioned => ({
   id: String(session.id),
   register: session.caja?.nombre ?? 'Caja Tienda',
@@ -168,16 +177,20 @@ export class SupabaseCashRepository implements CashRepository {
   // "Registrar pago" del header: pago libre del cliente, sobre el total adeudado o sobre
   // un pedido específico — a diferencia de registerAdvance (siempre atado a un pedido),
   // acá el cliente es obligatorio y el pedido es opcional.
-  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: PosPaymentMethodExt; sessionId: string }, context: MutationContext): Promise<{ movementId: string }> {
+  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: PosPaymentMethodExt; sessionId: string }, context: MutationContext & { idempotencyKey: string }): Promise<{ movementId: string }> {
     const actor = context.actorId ?? 'pos'
-    const { data: movementId, error } = await supabase.rpc('registrar_anticipo', {
+    const rpcParams = {
       p_pedido_id: input.orderId ? Number(input.orderId) : null,
       p_cliente_id: Number(input.customerId),
       p_monto: centsToNumeric(input.amountCents),
       p_metodo: methodExtToMetodoPago(input.method),
       p_sesion_id: Number(input.sessionId),
       p_usuario: actor,
-    })
+    }
+    let { data: movementId, error } = await supabase.rpc('registrar_anticipo', { ...rpcParams, p_idempotencia: context.idempotencyKey })
+    if (error && esFirmaDesconocida(error)) {
+      ({ data: movementId, error } = await supabase.rpc('registrar_anticipo', rpcParams))
+    }
     if (error) throw error
     // El pago ya quedó registrado — si esta nota cosmética falla, no vale la pena
     // reportarlo como error al cajero.

@@ -4,13 +4,20 @@ import { supabase } from '../supabase/supabaseClient'
 // navegador — vive solo en api/hermes/*.ts, del lado del servidor de Vercel. Acá solo
 // se llama a esos dos endpoints propios, como a cualquier otro endpoint del POS.
 
-export interface SaldoCliente {
-  saldoConfirmado: number
-  saldoProvisional: number
-  situacion: string | null
-  /** true = el cliente no tiene cuenta corriente en Hermes (no está importado). */
-  sinCuenta?: boolean
-}
+/**
+ * Brief S4: antes `consultarSaldo` devolvía `SaldoCliente | null`, donde `null` cubría
+ * tres causas bien distintas (sesión vencida, Hermes caído, cliente sin cuenta) — el
+ * llamador no podía distinguir "no sé" de "sin cuenta". Ahora un resultado discriminado:
+ *   - 'ok'          → hay saldo. saldoConfirmado y saldoProvisional pueden diferir
+ *                      mientras el pago está PROPUESTO en Hermes, sin confirmar todavía.
+ *   - 'sin-cuenta'  → el cliente no tiene contraparte en Hermes (no es saldo cero).
+ *   - 'no-disponible' → sesión vencida, red caída, o Hermes sin configurar. Nunca se debe
+ *      mostrar como si fuera "al día" — la UI tiene que decirlo explícitamente.
+ */
+export type ResultadoSaldo =
+  | { estado: 'ok'; saldoConfirmado: number; saldoProvisional: number; situacion: string | null }
+  | { estado: 'sin-cuenta' }
+  | { estado: 'no-disponible' }
 
 export interface CargoRegistrado {
   movimientoId: string
@@ -49,21 +56,28 @@ const authHeaders = async (): Promise<HeadersInit> => {
   return token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : { 'Content-Type': 'application/json' }
 }
 
-/** Nunca lanza — un fallo de red, de auth, o un cliente no importado a Hermes son
- * indistinguibles acá a propósito: en los tres casos el resultado visual es "no hay
- * badge", nunca un error que el llamador tenga que manejar. */
-export async function consultarSaldo(clienteId: number): Promise<SaldoCliente | null> {
+/** Nunca lanza — pero a diferencia de antes, SÍ distingue "no sé" ('no-disponible': auth
+ * vencida, red caída, Hermes sin configurar) de "sin cuenta" (200 + sinCuenta) y de un
+ * saldo real. El llamador decide qué mostrar en cada caso; ver ResultadoSaldo. */
+export async function consultarSaldo(clienteId: number): Promise<ResultadoSaldo> {
   try {
     const response = await fetch('/api/hermes/consultar-saldo', {
       method: 'POST',
       headers: await authHeaders(),
       body: JSON.stringify({ clienteId }),
     })
-    if (!response.ok) return null
+    if (!response.ok) return { estado: 'no-disponible' }
     const data = await response.json()
-    return data ?? null
+    if (data?.sinCuenta) return { estado: 'sin-cuenta' }
+    if (!data) return { estado: 'no-disponible' }
+    return {
+      estado: 'ok',
+      saldoConfirmado: Number(data.saldoConfirmado ?? 0),
+      saldoProvisional: Number(data.saldoProvisional ?? 0),
+      situacion: data.situacion ?? null,
+    }
   } catch {
-    return null
+    return { estado: 'no-disponible' }
   }
 }
 
@@ -86,7 +100,10 @@ export async function consultarSaldos(clienteIds: number[]): Promise<Map<number,
     const rows = Array.isArray(data?.saldos) ? data.saldos : []
     const map = new Map<number, SaldoClienteLote>()
     for (const row of rows) {
-      const posClienteId = row.pos_cliente_id ?? row.posClienteId
+      // pos_cliente_id es bigint y hoy viene como número — envolver en Number() igual,
+      // defensivamente, como ya se hace con los montos (si PostgREST empezara a
+      // serializarlo como string, Number.isFinite de un string siempre da false).
+      const posClienteId = Number(row.pos_cliente_id ?? row.posClienteId)
       if (!Number.isFinite(posClienteId)) continue
       map.set(posClienteId, {
         posClienteId,

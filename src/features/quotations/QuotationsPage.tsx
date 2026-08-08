@@ -7,6 +7,7 @@ import { FeatureShell, FeatureState, FeatureToolbar, statusChipClass, statusLabe
 import { DraftOrderEditor } from './DraftOrderEditor'
 import { DocumentoExportable } from '../../components/DocumentoExportable'
 import { featureFlags } from '../../config/featureFlags'
+import { hoyLocal, sumarDiasIso } from '../../domain/common/fechas'
 
 type SortKey = 'number' | 'customerName' | 'status' | 'validUntil' | 'total' | 'createdAt'
 type SortDir = 'asc' | 'desc'
@@ -63,7 +64,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   // Supabase adapters use an empty id as the "not yet persisted" sentinel and mint
   // the real numeric id from crear_cotizacion's return value; the mock repository
   // still needs a client-generated id up front (it has no server round trip).
-  const create = () => { if(readOnly){notify('Modo solo lectura');return} setEditingIsExisting(false); setEditing({ id: featureFlags.supabase ? '' : crypto.randomUUID(), number: '', customerId: '', customerName: '', channel: 'mayoreo', status: 'draft', validUntil: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10), terms: 'Contado', notes: '', generalDiscountCents: 0, createdAt: new Date().toISOString(), lines: [] }) }
+  const create = () => { if(readOnly){notify('Modo solo lectura');return} setEditingIsExisting(false); setEditing({ id: featureFlags.supabase ? '' : crypto.randomUUID(), number: '', customerId: '', customerName: '', channel: 'mayoreo', status: 'draft', validUntil: sumarDiasIso(hoyLocal(), 15), terms: 'Contado', notes: '', generalDiscountCents: 0, createdAt: new Date().toISOString(), lines: [] }) }
   const save = async (quote: QuoteDraft) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.save(quote); setEditing(null); await load(); notify('Cotización guardada') }
   const duplicate = async (id: string) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.duplicate(id); await load(); notify('Cotización duplicada') }
   const createOrderDirect = async (quote: QuoteDraft) => {

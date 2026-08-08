@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { money } from '../common/money'
 import { resolveMockChannelPrice, resolvePrice } from '../pricing/priceResolver'
 import { calculateCartTotals } from '../sales/cartCalculator'
+import { isLineUnderstocked } from '../sales/stockCheck'
 
 describe('precios y carrito', () => {
   it('cambia precio por canal', () => {
@@ -21,5 +22,28 @@ describe('precios y carrito', () => {
     expect(totals.total.cents).toBe(4745)
   })
   it('rechaza cantidades inválidas', () => expect(() => calculateCartTotals([{ unitPrice: 10, quantity: 0, discountPercent: 0 }], 0)).toThrow())
+})
+
+describe('isLineUnderstocked — multiplica por factorUnidadBase antes de comparar', () => {
+  const stock = { tienda: 40, almacen: 100 }
+  it('factorUnidadBase 1 (sin presentación): compara cantidad cruda', () => {
+    expect(isLineUnderstocked({ cantidad: 40, ubicacion: 'Tienda' }, stock)).toBe(false)
+    expect(isLineUnderstocked({ cantidad: 41, ubicacion: 'Tienda' }, stock)).toBe(true)
+  })
+  it('factorUnidadBase 12 en Tienda: 3 × Caja(12) = 36 uds. base, hay 40 → alcanza', () => {
+    expect(isLineUnderstocked({ cantidad: 3, ubicacion: 'Tienda', factorUnidadBase: 12 }, stock)).toBe(false)
+  })
+  it('factorUnidadBase 24 en Tienda: 3 × Caja(24) = 72 uds. base, hay 40 → no alcanza', () => {
+    expect(isLineUnderstocked({ cantidad: 3, ubicacion: 'Tienda', factorUnidadBase: 24 }, stock)).toBe(true)
+  })
+  it('factorUnidadBase 24 en Almacén: 3 × Caja(24) = 72 uds. base, hay 100 → alcanza', () => {
+    expect(isLineUnderstocked({ cantidad: 3, ubicacion: 'Almacén', factorUnidadBase: 24 }, stock)).toBe(false)
+  })
+  it('borde exacto: disponible === cantidadBase no está understocked', () => {
+    expect(isLineUnderstocked({ cantidad: 2, ubicacion: 'Tienda', factorUnidadBase: 20 }, stock)).toBe(false)
+  })
+  it('sin stock cargado para el producto (originStock undefined): nunca bloquea', () => {
+    expect(isLineUnderstocked({ cantidad: 999, ubicacion: 'Tienda', factorUnidadBase: 24 }, undefined)).toBe(false)
+  })
 })
 

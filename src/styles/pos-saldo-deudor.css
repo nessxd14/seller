@@ -4,3 +4,7 @@
 .saldo-badge.saldo-badge-deudor { color: #b42318; border-color: #fda29b; background: #fef3f2; }
 .saldo-badge.saldo-badge-acreedor { color: #067647; border-color: #abefc6; background: #ecfdf3; }
 .saldo-badge.saldo-badge-sin-cuenta { color: #93370d; border-color: #fec84b; background: #fffaeb; }
+/* Brief S4: puente caído (gris, nunca igual a "al día") y pago en revisión (neutro,
+   nunca "Debe" — el cliente ya pagó y espera confirmación de Hermes). */
+.saldo-badge.saldo-badge-no-disponible { color: #667085; border-color: #d0d5dd; background: #f9fafb; }
+.saldo-badge.saldo-badge-en-revision { color: #667085; border-color: #d0d5dd; background: #f9fafb; }
