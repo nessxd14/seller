@@ -232,7 +232,15 @@ export class SupabaseQuoteRepository implements QuoteRepository {
     }
 
     const numericId = Number(value.id)
-    const { data: current, error: currentError } = await supabase.from('cotizacion').select('*').eq('id', numericId).maybeSingle()
+    // Chequeo previo liviano, de solo lectura: da un NotFoundError inmediato sin armar el
+    // payload de líneas si la cotización ya no existe. Todo lo que MUTA datos (borrar
+    // líneas viejas, insertar nuevas, actualizar el encabezado) va en una sola llamada a
+    // actualizar_cotizacion — antes eran tres llamadas HTTP separadas sin transacción que
+    // las uniera, y si la tercera (el update con control de versión) fallaba, el delete de
+    // las líneas viejas ya se había ejecutado y no había forma de deshacerlo desde acá.
+    // Ver Brief S7: cinco cotizaciones en producción quedaron con encabezado correcto y
+    // cero líneas por exactamente este motivo.
+    const { data: current, error: currentError } = await supabase.from('cotizacion').select('id, version, estado').eq('id', numericId).maybeSingle()
     if (currentError) throw currentError
     if (!current) throw new NotFoundError('Cotización no encontrada')
     if (context.expectedVersion !== undefined && current.version !== context.expectedVersion) {
@@ -242,71 +250,26 @@ export class SupabaseQuoteRepository implements QuoteRepository {
       throw new ConflictError('Solo una cotización en borrador puede editarse')
     }
 
-    const { error: deleteError } = await supabase.from('cotizacion_linea').delete().eq('cotizacion_id', numericId)
-    if (deleteError) throw deleteError
-
-    // Built directly from the raw WorkflowLines (not buildLineasJsonb) because the direct-table
-    // insert needs the true cantidad_base (quantity * factorUnidadBase when a presentation is
-    // set) while the subtotal is always priced per the line's quantity in ITS OWN unit
-    // (presentation unit when set, base unit otherwise) — matching crear_cotizacion's own math.
-    const lineRows = value.lines.map((line) => {
-      const base: Record<string, unknown> = { cotizacion_id: numericId, creado_en: new Date().toISOString() }
-      const precioUnitario = centsToNumeric(line.unitPriceCents)
-      const descuentoPct = bpToPct(line.discountBasisPoints)
-      const subtotal = Math.round(precioUnitario * line.quantity * (1 - descuentoPct / 100) * 100) / 100
-      if (line.isCustomItem) {
-        return { ...base, es_personalizado: true, descripcion: line.name, cantidad_base: line.quantity, precio_unitario: precioUnitario, descuento_pct: descuentoPct, nota: line.note ?? null, subtotal }
-      }
-      const factor = line.presentacionId != null ? (line.factorUnidadBase ?? 1) : 1
-      const cantidadBase = line.presentacionId != null ? line.quantity * factor : line.quantity
-      return {
-        ...base,
-        producto_id: Number(line.productId),
-        cantidad_base: cantidadBase,
-        sucursal_origen_id: line.sourceLocation ? locationToSucursalId(line.sourceLocation) : defaultSucursalForChannel(value.channel),
-        precio_lista: line.listPriceCents != null ? centsToNumeric(line.listPriceCents) : precioUnitario,
-        precio_unitario: precioUnitario,
-        descuento_pct: descuentoPct,
-        descripcion: line.maskName || null,
-        precio_modificado: line.priceOverridden ?? false,
-        modificado_por: line.priceOverridden ? (line.modifiedBy ?? actor) : null,
-        modificado_en: line.priceOverridden ? new Date().toISOString() : null,
-        subtotal,
-        ...(line.presentacionId != null ? { presentacion_id: line.presentacionId, cantidad_presentacion: line.quantity } : {}),
-      }
+    const { error: rpcError } = await supabase.rpc('actualizar_cotizacion', {
+      p_cotizacion_id: numericId,
+      p_version_actual: current.version,
+      p_categoria: channelToCategoria(value.channel),
+      p_lineas: buildLineasJsonb(value.lines, value.channel, actor),
+      p_cliente_id: value.customerId ? Number(value.customerId) : null,
+      p_referencia: value.number || null,
+      p_notas: value.notes || null,
+      p_descuento_general: centsToNumeric(value.generalDiscountCents),
+      p_vigencia_hasta: value.validUntil || null,
+      p_asunto: value.asunto || null,
+      p_condicion_pago: value.conditionPago || null,
+      p_fecha: value.documentDate || null,
+      p_usuario: actor,
     })
-    if (lineRows.length) {
-      const { error: insertError } = await supabase.from('cotizacion_linea').insert(lineRows)
-      if (insertError) throw insertError
-    }
-
-    const subtotal = lineRows.reduce((sum, row) => sum + (row.subtotal as number), 0)
-    const descuentoGeneral = centsToNumeric(value.generalDiscountCents)
-    const { data: updated, error: updateError } = await supabase
-      .from('cotizacion')
-      .update({
-        cliente_id: value.customerId ? Number(value.customerId) : null,
-        categoria: channelToCategoria(value.channel),
-        referencia: value.number || null,
-        notas: value.notes || null,
-        vigencia_hasta: value.validUntil || null,
-        asunto: value.asunto || null,
-        condicion_pago: value.conditionPago || null,
-        fecha: value.documentDate || null,
-        subtotal,
-        descuento_general: descuentoGeneral,
-        total: subtotal - descuentoGeneral,
-        version: current.version + 1,
-        actualizado_en: new Date().toISOString(),
-      })
-      .eq('id', numericId)
-      .eq('version', current.version)
-      .eq('estado', 'BORRADOR')
-      .select('id')
-
-    if (updateError) throw updateError
-    if (!updated || updated.length === 0) {
-      throw new ConflictError('La cotización fue modificada por otra sesión en el intervalo')
+    if (rpcError) {
+      if (rpcError.message.includes('no existe')) throw new NotFoundError('Cotización no encontrada')
+      if (rpcError.message.includes('modificada por otra sesión')) throw new ConflictError('La cotización fue modificada por otra sesión', { expected: current.version })
+      if (rpcError.message.includes('en borrador puede editarse')) throw new ConflictError('Solo una cotización en borrador puede editarse')
+      throw rpcError
     }
     const result = await fetchQuoteById(numericId)
     if (!result) throw new NotFoundError('No se pudo releer la cotización actualizada')
