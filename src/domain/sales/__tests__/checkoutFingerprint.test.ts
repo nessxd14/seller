@@ -9,6 +9,7 @@ const baseInput: CheckoutFingerprintInput = {
   discountCents: 100,
   customerId: 'c1',
   cashSessionId: 's1',
+  payments: [{ method: 'cash', amountCents: 2400 }],
 }
 
 describe('checkoutFingerprint', () => {
@@ -51,5 +52,16 @@ describe('checkoutFingerprint', () => {
   it('cambia si se agrega una línea', () => {
     const changed: CheckoutFingerprintInput = { ...baseInput, lines: [...baseInput.lines, { productId: '3', quantity: 1, unitPriceCents: 300 }] }
     expect(checkoutFingerprint(changed)).not.toBe(checkoutFingerprint(baseInput))
+  })
+
+  it('mismo carrito con distinto método de pago da una huella distinta', () => {
+    const changed: CheckoutFingerprintInput = { ...baseInput, payments: [{ method: 'qr', amountCents: 2400 }] }
+    expect(checkoutFingerprint(changed)).not.toBe(checkoutFingerprint(baseInput))
+  })
+
+  it('mismo carrito con los mismos pagos en distinto orden da la misma huella', () => {
+    const multiPago: CheckoutFingerprintInput = { ...baseInput, payments: [{ method: 'cash', amountCents: 1000 }, { method: 'qr', amountCents: 1400 }] }
+    const reordered: CheckoutFingerprintInput = { ...baseInput, payments: [{ method: 'qr', amountCents: 1400 }, { method: 'cash', amountCents: 1000 }] }
+    expect(checkoutFingerprint(multiPago)).toBe(checkoutFingerprint(reordered))
   })
 })

@@ -7,6 +7,7 @@ import type {
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { formatMoney, money } from '../../domain/common/money'
 import { buildCsv, downloadCsv, type CsvColumn } from '../../domain/common/csv'
+import { hoyLocal } from '../../domain/common/fechas'
 
 type ReportKind = 'ventas' | 'productos' | 'caja' | 'cotizaciones' | 'reorden' | 'valuacion'
 
@@ -26,15 +27,19 @@ const DATE_RANGED: ReportKind[] = ['ventas', 'productos', 'caja', 'cotizaciones'
 
 const PAGE_SIZE = 25
 
+// No tocar sin correr src/domain/common/__tests__/fechas.test.ts: construye la fecha en
+// hora LOCAL y UTC−4 la empuja hacia adelante dentro del mismo día, así que está bien
+// por casualidad, a diferencia de todayIso (ver brief S6). Por eso mismo se deja el
+// eslint-disable acá en vez de reescribirla.
+// eslint-disable-next-line no-restricted-syntax -- ver comentario arriba: correcta por casualidad, no tocar sin test
 const firstOfMonthIso = () => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10) }
-const todayIso = () => new Date().toISOString().slice(0, 10)
 const bs = (cents: number) => formatMoney(money(cents))
 const fecha = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString('es-BO')
 
 export function ReportsPage({ notify }: { notify: (message: string) => void }) {
   const [kind, setKind] = useState<ReportKind>('ventas')
   const [from, setFrom] = useState(firstOfMonthIso())
-  const [to, setTo] = useState(todayIso())
+  const [to, setTo] = useState(hoyLocal())
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [summary, setSummary] = useState<ReportSummary | null>(null)

@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient'
 import type { ProductRepository, Page, PageRequest } from '../../application/ports/repositories'
 import type { Product } from '../../types'
+import { hoyLocal, sumarDiasIso } from '../../domain/common/fechas'
 
 interface ProductoRow {
   id: number
@@ -316,7 +317,7 @@ export const listBrands = async (): Promise<BrandList> => {
  * si el rango de 30 días supera el tope de PostgREST.
  */
 export const listFrecuentes = async (limit = 12): Promise<Product[]> => {
-  const desde = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
+  const desde = sumarDiasIso(hoyLocal(), -30)
   // Frecuencia = en cuántas ventas distintas apareció el producto (una fila de
   // v_reporte_productos_vendidos por línea de venta), NO cuántas unidades se movieron.
   // Sin esto, una sola venta mayorista de miles de unidades domina el ranking un mes

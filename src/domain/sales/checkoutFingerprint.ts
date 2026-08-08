@@ -18,6 +18,11 @@ export interface CheckoutFingerprintInput {
   discountCents: number
   customerId?: string
   cashSessionId: string
+  // Brief S5: sin esto, un cobro fallido en efectivo + reintento del cliente pagando por
+  // QR reusaba la misma huella (mismo carrito, mismo descuento, mismo cliente) — si el
+  // primer intento SÍ había commiteado del lado del servidor, la venta quedaba registrada
+  // como efectivo aunque entró por QR, y el arqueo no cuadraba.
+  payments: Array<{ method: string; amountCents: number }>
 }
 
 // cyrb53: hash no criptográfico, 53 bits, síncrono. No hace falta crypto.subtle (que es
@@ -41,5 +46,12 @@ export const checkoutFingerprint = (input: CheckoutFingerprintInput): string => 
     .map((l) => [l.productId, l.quantity, l.unitPriceCents, l.presentacionId ?? '', l.sourceLocation ?? ''].join('|'))
     .sort()
     .join(';')
-  return cyrb53(`${input.cashSessionId}#${input.customerId ?? ''}#${input.discountCents}#${lineas}`)
+  // El orden de los métodos de pago no cambia lo que se cobra (mismo criterio que las
+  // líneas): se ordenan antes de concatenar para que reordenar los pagos no invente una
+  // huella distinta.
+  const pagos = input.payments
+    .map((p) => [p.method, p.amountCents].join('|'))
+    .sort()
+    .join(';')
+  return cyrb53(`${input.cashSessionId}#${input.customerId ?? ''}#${input.discountCents}#${lineas}#${pagos}`)
 }

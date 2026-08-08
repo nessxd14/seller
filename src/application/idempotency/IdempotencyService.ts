@@ -2,7 +2,12 @@ export type SensitiveOperation = 'confirm_sale'|'convert_quote'|'confirm_order'|
 
 export interface IdempotencyService {
   getOrCreate(operation: SensitiveOperation, aggregateId: string): string
-  complete(operation: SensitiveOperation, aggregateId: string): void
+  // Brief S5: `complete` existía pero SensitiveOperationExecutor.execute la llamaba
+  // e inmediatamente después llamaba `clear`, que borra lo que `complete` acababa de
+  // escribir — código muerto, nadie lo leía nunca. Se sacó de la interfaz en vez de
+  // dársele un uso real: `clear` ya es la limpieza que importa (el aggregateId de una
+  // operación exitosa no se vuelve a reutilizar — checkout, por ejemplo, avanza
+  // operationId después de cada venta confirmada).
   clear(operation: SensitiveOperation, aggregateId: string): void
 }
 
@@ -17,7 +22,6 @@ export class LocalIdempotencyService implements IdempotencyService {
     this.storage.setItem(key,value)
     return value
   }
-  complete(operation: SensitiveOperation, aggregateId: string) { this.storage.setItem(`${this.key(operation,aggregateId)}:completed`,'true') }
-  clear(operation: SensitiveOperation, aggregateId: string) { this.storage.removeItem(this.key(operation,aggregateId));this.storage.removeItem(`${this.key(operation,aggregateId)}:completed`) }
+  clear(operation: SensitiveOperation, aggregateId: string) { this.storage.removeItem(this.key(operation,aggregateId)) }
 }
 

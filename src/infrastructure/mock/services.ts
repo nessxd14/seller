@@ -75,7 +75,9 @@ export const cashService = {
   // Igual que registerAdvance: el mock no tiene una tabla movimiento_caja real, así que
   // depósito/SIGEP/cheque se registran como 'transfer' (el mock sólo distingue cash/qr/
   // transfer) con la nota indicando el método real. No hay puente a Hermes en modo mock.
-  registerPayment: async (input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string }) => {
+  // idempotencyKey: aceptado por forma compartida con el facade de Supabase — el mock no
+  // tiene protección de reintento real (no hay tabla movimiento_caja con clave única acá).
+  registerPayment: async (input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string; idempotencyKey?: string }) => {
     const session = (await rawCashService.list()).find((s) => s.id === input.sessionId)
     if (!session) throw new Error('Sesión de caja no encontrada')
     const mockMethod: 'cash' | 'qr' | 'transfer' = input.method === 'cash' || input.method === 'qr' ? input.method : 'transfer'

@@ -13,6 +13,7 @@ import { configRepository } from './ConfigRepository.supabase'
 import { reportsRepository } from './ReportsRepository.supabase'
 import { sensitiveOperations } from '../mock/services'
 import { checkoutFingerprint } from '../../domain/sales/checkoutFingerprint'
+import { expectedCash } from '../../application/cash/CashService'
 
 export const configService = configRepository
 export const reportsService = reportsRepository
@@ -134,15 +135,18 @@ export const cashService = {
     const actorId = await currentActorId()
     return cashRepository.registerAdvance({ orderId, amountCents, method, sessionId }, { actorId })
   },
-  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string }): Promise<{ movementId: string }> {
+  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string; idempotencyKey?: string }): Promise<{ movementId: string }> {
     const actorId = await currentActorId()
-    return cashRepository.registerPayment(input, { actorId })
+    // Brief S5: si el llamador (PagoModal, vía sensitiveOperations.ejecutarIdempotente) no
+    // manda una clave estable, se genera una al vuelo — mismo comportamiento que antes de
+    // este brief, un pago sin protección de reintento.
+    return cashRepository.registerPayment(input, { actorId, idempotencyKey: input.idempotencyKey ?? crypto.randomUUID() })
   },
   getAdvancesForOrder,
   // Backend truth is authoritative (esperado_efectivo comes from cerrar_caja's RPC
   // response); this client-side estimate is only used for the pre-close preview.
   expected(session: CashSessionRecord): number {
-    return session.openingCents + session.movements.reduce((sum, movement) => sum + (movement.type === 'income' ? movement.amountCents : -movement.amountCents), 0)
+    return expectedCash(session)
   },
 }
 
