@@ -185,6 +185,12 @@
 .line-stock-error-compact .request-transfer-link { flex: 0 0 auto }
 .line-stock-error-compact svg { width: 11px; height: 11px; flex: 0 0 auto }
 
+/* Brief S9 — aviso informativo (gris) para "falta stock, pero la sucursal está en modo
+   libre": mismo layout que .line-stock-error, tono deliberadamente distinto — no es un
+   error, es "todavía no se inventarió". Confundirlo con el rojo de un error real le
+   quita significado al aviso. Ver isLineBlocking en domain/sales/stockCheck. */
+.line-stock-info { display: block; color: #8c8880; font-size: 11px; margin-top: 3px; padding-left: 2px; font-weight: 600 }
+
 /* Equivalencia (3 Caja = 72 u): texto chico DENTRO de la fila de controles en
    vez de una fila propia — se queda con su tamaño de <small>, solo se reubica. */
 .cart-line-controls > .line-equivalence {

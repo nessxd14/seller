@@ -1,10 +1,10 @@
-import { AlertTriangle, Pencil } from 'lucide-react'
+import { AlertTriangle, Info, Pencil } from 'lucide-react'
 import { Modal } from './Modal'
 import type { CartItem, SalesChannel } from '../types'
 import type { CartCustomer } from '../context/PosContext'
 import { getPrice } from '../data/products'
 import { ventaLineTotalCents } from '../domain/sales/ventaPricing'
-import { cantidadBaseFor, isLineUnderstocked } from '../domain/sales/stockCheck'
+import { cantidadBaseFor, isLineBlocking, isLineUnderstocked, type StockControlInfo } from '../domain/sales/stockCheck'
 import { isLineUnpriced } from '../domain/sales/priceCheck'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -25,7 +25,7 @@ export function CartReview({
 }: {
   items: CartItem[]
   channel: SalesChannel
-  originStock: Record<number, { tienda: number; almacen: number }>
+  originStock: Record<number, StockControlInfo>
   customer: CartCustomer | null
   subtotal: number
   discount: number
@@ -59,10 +59,18 @@ export function CartReview({
               // below instead, never both, never neither.
               const isUnpriced = isLineUnpriced(item)
               const showInheritedBadge = isHeredado && priceMatchesSuggestion && !isUnpriced
+              // Brief S9: understocked (isLineUnderstocked) sigue marcando la línea, pero
+              // solo bloquea (blocking, isLineBlocking) si su origen exige stock estricto
+              // — en control libre, faltar stock es lo esperado hasta inventariar.
               const understocked = isLineUnderstocked(item, originStock[item.id])
+              const blocking = isLineBlocking(item, originStock[item.id])
               const lineTotal = ventaLineTotalCents(item) / 100
-              return <tr key={item.id} className={understocked || isUnpriced ? 'cart-review-flagged' : ''}>
-                <td>{item.nombre}{understocked && <small className="line-stock-error"><AlertTriangle /> Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBaseFor(item))} uds.</small>}{isUnpriced && <small className="line-stock-error"><AlertTriangle /> {item.nombre} no tiene precio.</small>}</td>
+              return <tr key={item.id} className={blocking || isUnpriced ? 'cart-review-flagged' : ''}>
+                <td>{item.nombre}
+                  {blocking && <small className="line-stock-error"><AlertTriangle /> Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBaseFor(item))} uds.</small>}
+                  {understocked && !blocking && <small className="line-stock-info"><Info /> Sin inventariar en {item.ubicacion}.</small>}
+                  {isUnpriced && <small className="line-stock-error"><AlertTriangle /> {item.nombre} no tiene precio.</small>}
+                </td>
                 <td>{item.presentacionNombre ?? 'Unidad'}</td>
                 <td>{fmtQty(item.cantidad)}</td>
                 <td className={isOverridden ? 'price-overridden' : ''}>Bs {money(item.precioAplicado)}{showInheritedBadge && <small className="price-heredado-badge" title="Este canal no tiene precio propio: se usa el precio de mostrador.">heredado</small>}{isUnpriced && <small className="price-heredado-badge price-overridden-badge" title="Esta línea no tiene precio configurado.">sin precio</small>}{isOverridden && !isUnpriced && <small className="price-heredado-badge price-overridden-badge" title={`Precio de lista: Bs ${money(channelListPrice)}`}>modificado</small>}</td>

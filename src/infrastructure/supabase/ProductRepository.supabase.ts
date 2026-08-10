@@ -188,34 +188,74 @@ export class SupabaseProductRepository implements ProductRepository {
 
 export const productRepository = new SupabaseProductRepository()
 
+// Brief S9: coalesce(ps.control_stock, s.control_stock_default) para las 2 filas de
+// `sucursal` — mismos valores que resuelve permite_sobregiro_sucursal() en Cation, sin
+// volver a pedirlas en cada llamada de getStockBySucursalBatch. `sucursal.control_stock_default`
+// puede cambiar (hoy Tienda=LIBRE, Almacén=ESTRICTO, pero eso es dato, no un id hardcodeado
+// — el día que Tienda termine de inventariarse pasa a ESTRICTO sin tocar este archivo),
+// así que el caché vive por sesión de página, no por request.
+let sucursalControlDefaultsCache: Promise<Map<number, string>> | null = null
+const getSucursalControlDefaults = (): Promise<Map<number, string>> => {
+  if (!sucursalControlDefaultsCache) {
+    sucursalControlDefaultsCache = (async () => {
+      const { data, error } = await supabase.from('sucursal').select('id,control_stock_default')
+      if (error) throw error
+      return new Map(((data ?? []) as Array<{ id: number; control_stock_default: string | null }>).map((row) => [row.id, row.control_stock_default ?? 'ESTRICTO']))
+    })()
+  }
+  return sucursalControlDefaultsCache
+}
+
 /**
  * Stock por sucursal para un LOTE de productos (una página de grilla, nunca el catálogo
  * entero). stock_actual tiene 1.284 filas totales y máx. 3 ubicaciones por producto, así
  * que una página de 60 productos son ~65 filas: muy lejos del tope de 1.000 de PostgREST.
  * Una sola ida y vuelta, no N+1.
+ *
+ * Brief S9: también trae si cada sucursal permite sobregiro (vender sin stock) para cada
+ * producto — tiendaLibre/almacenLibre. Se calcula del lado del cliente con la MISMA
+ * fórmula que permite_sobregiro_sucursal() (SQL, la única fuente de verdad — la consultan
+ * también registrar_venta y registrar_salida): coalesce(producto_sucursal.control_stock,
+ * sucursal.control_stock_default) = 'LIBRE'. Duplicación aceptada explícitamente por el
+ * brief (no hay forma de llamar una función SQL en batch desde PostgREST sin una vista);
+ * si esto diverge de permite_sobregiro_sucursal, el bug está acá, no allá. Alternativa
+ * evaluada y descartada por ahora: una vista v_producto_control_stock que eliminaría esta
+ * duplicación por completo — no se creó porque este brief es frontend-only y no toca el
+ * esquema; queda anotado para cuando se justifique la migración.
  */
 export const getStockBySucursalBatch = async (
   productIds: number[],
-): Promise<Map<number, { tienda: number; almacen: number }>> => {
+): Promise<Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>> => {
   const ids = [...new Set(productIds)].filter((id) => Number.isFinite(id))
-  const result = new Map<number, { tienda: number; almacen: number }>()
+  const result = new Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>()
   if (!ids.length) return result
-  const { data, error } = await supabase
-    .from('stock_actual')
-    .select('producto_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id)')
-    .in('producto_id', ids)
+  const [{ data, error }, sucursalDefaults, { data: overridesData, error: overridesError }] = await Promise.all([
+    supabase.from('stock_actual').select('producto_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id)').in('producto_id', ids),
+    getSucursalControlDefaults(),
+    supabase.from('producto_sucursal').select('producto_id,sucursal_id,control_stock').in('producto_id', ids),
+  ])
   if (error) throw error
+  if (overridesError) throw overridesError
+  const overrideByKey = new Map<string, string>()
+  for (const row of (overridesData ?? []) as Array<{ producto_id: number; sucursal_id: number; control_stock: string | null }>) {
+    if (row.control_stock) overrideByKey.set(`${row.producto_id}:${row.sucursal_id}`, row.control_stock)
+  }
+  // Sucursal 1 = Almacén Central, 2 = Tienda, 3 = Shopify (virtual, se ignora).
+  const esLibre = (productoId: number, sucursalId: number) =>
+    (overrideByKey.get(`${productoId}:${sucursalId}`) ?? sucursalDefaults.get(sucursalId)) === 'LIBRE'
+  for (const id of ids) {
+    result.set(id, { tienda: 0, almacen: 0, tiendaLibre: esLibre(id, 2), almacenLibre: esLibre(id, 1) })
+  }
   const rows = (data ?? []) as unknown as Array<{
     producto_id: number
     cantidad_base: number | string
     ubicacion?: { sucursal_id: number | null } | null
   }>
   for (const row of rows) {
-    const entry = result.get(row.producto_id) ?? { tienda: 0, almacen: 0 }
-    // Sucursal 1 = Almacén Central, 2 = Tienda, 3 = Shopify (virtual, se ignora).
+    const entry = result.get(row.producto_id)
+    if (!entry) continue
     if (row.ubicacion?.sucursal_id === 2) entry.tienda += num(row.cantidad_base)
     else if (row.ubicacion?.sucursal_id === 1) entry.almacen += num(row.cantidad_base)
-    result.set(row.producto_id, entry)
   }
   return result
 }
