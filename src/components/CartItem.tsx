@@ -6,7 +6,7 @@ import { ProductVisual } from './ProductVisual'
 import { ventaLineTotalCents } from '../domain/sales/ventaPricing'
 import { getPrice } from '../data/products'
 import { listPresentations } from '../infrastructure/services'
-import { isLineUnderstocked } from '../domain/sales/stockCheck'
+import { isLineBlocking, isLineUnderstocked, type StockControlInfo } from '../domain/sales/stockCheck'
 import { isLineUnpriced } from '../domain/sales/priceCheck'
 import { OriginPin, buildOriginOptions } from './OriginPin'
 import { NumberField } from './NumberField'
@@ -49,7 +49,7 @@ function QtyControl({ quantity, onChange }: { quantity: number; onChange: (next:
   </div>
 }
 
-export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTransfer, trasladoDisponible }: { item: CartItemType; onEdit: () => void; originStock?: { tienda: number; almacen: number }; onSetOrigin?: (location: 'Tienda' | 'Almacén') => void; onRequestTransfer?: (shortfall: number) => void; trasladoDisponible?: number }) {
+export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTransfer, trasladoDisponible }: { item: CartItemType; onEdit: () => void; originStock?: StockControlInfo; onSetOrigin?: (location: 'Tienda' | 'Almacén') => void; onRequestTransfer?: (shortfall: number) => void; trasladoDisponible?: number }) {
   const { channel, mode, updateQuantity, updateItem, removeItem } = usePos()
   const lineTotal = ventaLineTotalCents(item) / 100
 
@@ -100,7 +100,12 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
   const cancelEdit = () => setEditing(false)
 
   const tiendaAvailable = originStock?.tienda ?? 0
-  const insufficient = onSetOrigin ? isLineUnderstocked(item, originStock) : false
+  // Brief S9: "falta stock" (understocked) ya no es lo mismo que "esto bloquea la venta"
+  // (blocking) — en una sucursal en control LIBRE faltar stock es lo esperado hasta que
+  // se inventaríe, no un error. El aviso se queda visible en los dos casos, pero con tono
+  // distinto: rojo y bloqueante cuando `blocking`, gris e informativo cuando no.
+  const understocked = onSetOrigin ? isLineUnderstocked(item, originStock) : false
+  const insufficient = onSetOrigin ? isLineBlocking(item, originStock) : false
   // Item 1.2: only offer "Solicitar a almacén" when the shortfall is specifically against
   // Tienda's own stock (the case a transfer from Almacén can actually fix) — an Almacén-origin
   // shortfall is a different problem (no stock anywhere) that a Tienda-bound transfer can't solve.
@@ -200,6 +205,10 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
     </div>
     {/* TAREA B.4: ícono + texto corto, sin envolver — el enlace sigue siendo una acción. */}
     {insufficient && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />Stock insuficiente en {item.ubicacion}.{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
+    {/* Brief S9: mismo caso (falta stock) pero la sucursal está en control libre — no
+        bloquea, así que no puede llevar el mismo rojo que un error real o el aviso
+        pierde significado y se ignora. */}
+    {understocked && !insufficient && <small className="line-stock-info line-stock-error-compact"><Info aria-hidden />Sin inventariar en {item.ubicacion}.</small>}
     {isUnpriced && <small className="line-stock-error">{item.nombre} no tiene precio. Escribilo en la línea para poder cobrar.</small>}
     </div></article>
 }

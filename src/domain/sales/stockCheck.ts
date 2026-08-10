@@ -14,3 +14,23 @@ export const isLineUnderstocked = (line: StockCheckLine, originStock?: { tienda:
   const available = line.ubicacion === 'Tienda' ? originStock.tienda : originStock.almacen
   return available < cantidadBaseFor(line)
 }
+
+// Brief S9: control de stock por sucursal. Tienda puede estar en modo LIBRE (se vende sin
+// inventario porque todavía no se inventarió — registrar_venta lo permite y deja
+// stock_actual en negativo a propósito) mientras Almacén está en ESTRICTO. "Falta stock"
+// (isLineUnderstocked) y "esto bloquea la venta" dejan de ser la misma pregunta.
+export interface StockControlInfo {
+  tienda: number
+  almacen: number
+  tiendaLibre: boolean
+  almacenLibre: boolean
+}
+
+/** ¿Esta línea IMPIDE cobrar? Falta stock Y su origen exige stock estricto.
+ *  En una sucursal en control libre, faltar stock es lo esperado hasta que se
+ *  inventaríe — no es un error. Ver permite_sobregiro_sucursal() en Cation. */
+export const isLineBlocking = (line: StockCheckLine, stock?: StockControlInfo): boolean => {
+  if (!stock) return false
+  if (!isLineUnderstocked(line, stock)) return false
+  return line.ubicacion === 'Tienda' ? !stock.tiendaLibre : !stock.almacenLibre
+}

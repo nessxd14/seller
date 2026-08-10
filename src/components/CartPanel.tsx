@@ -17,10 +17,9 @@ import type { QuoteDraft, TransferMotivo, WorkflowLine } from '../application/sh
 import type { PendingTransferRequest } from '../features/transfers/TransfersPage'
 import { featureFlags } from '../config/featureFlags'
 import { useCashSession } from '../context/CashSessionContext'
-import { getStockByProduct } from '../infrastructure/services'
-import { aggregateStockBySucursal } from '../features/inventory/stockAggregation'
+import { getStockBySucursalBatch } from '../infrastructure/services'
 import { isLineUnpriced } from '../domain/sales/priceCheck'
-import { isLineUnderstocked, cantidadBaseFor } from '../domain/sales/stockCheck'
+import { isLineBlocking, cantidadBaseFor, type StockControlInfo } from '../domain/sales/stockCheck'
 import { hoyLocal, sumarDiasIso } from '../domain/common/fechas'
 import { AnticipoModal } from './AnticipoModal'
 import { NumberField } from './NumberField'
@@ -101,7 +100,11 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // cart panel's lifetime so switching items or re-rendering doesn't refetch repeatedly.
   // Brief J: también alimenta el aviso de disponible en modo traslado, así que se
   // fetchea cuando cualquiera de los dos lo necesita, no solo channel==='retail'.
-  const [originStock, setOriginStock] = useState<Record<number, { tienda: number; almacen: number }>>({})
+  // Brief S9: getStockBySucursalBatch (un solo pedido para todo el carrito, en vez de un
+  // getStockByProduct por línea) trae también tiendaLibre/almacenLibre — necesarios para
+  // que isLineBlocking distinga "no hay stock" de "no hay stock, pero la sucursal está en
+  // modo libre y todavía no se inventaría".
+  const [originStock, setOriginStock] = useState<Record<number, StockControlInfo>>({})
   // TAREA 1 (Tanda 4): antes solo se fetcheaba en retail-venta o traslado, dejando
   // mayoreo/institucional/municipal sin selector de origen NI aviso de stock — el
   // origen quedaba fijo en 'Tienda' pase lo que pase. Ahora se fetchea en cualquier
@@ -111,13 +114,16 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     if (!missing.length) return
     if (!featureFlags.supabase) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- mock mode reads stock straight off the already-loaded Product fields, no async fetch to defer to a callback
-      setOriginStock((prev) => { const next = { ...prev }; missing.forEach((item) => { next[item.id] = { tienda: item.stockTienda, almacen: item.stockAlmacen } }); return next })
+      setOriginStock((prev) => { const next = { ...prev }; missing.forEach((item) => { next[item.id] = { tienda: item.stockTienda, almacen: item.stockAlmacen, tiendaLibre: false, almacenLibre: false } }); return next })
       return
     }
-    void Promise.all(missing.map((item) => getStockByProduct(item.id).then((result) => {
-      const agg = aggregateStockBySucursal(result.onHand)
-      return [item.id, { tienda: agg.tienda, almacen: agg.almacen }] as const
-    }))).then((entries) => setOriginStock((prev) => ({ ...prev, ...Object.fromEntries(entries) })))
+    void getStockBySucursalBatch(missing.map((item) => item.id)).then((batch) =>
+      setOriginStock((prev) => {
+        const next = { ...prev }
+        missing.forEach((item) => { next[item.id] = batch.get(item.id) ?? { tienda: 0, almacen: 0, tiendaLibre: false, almacenLibre: false } })
+        return next
+      }),
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart, channel, mode])
   // TAREA 4 (Tanda 3): el caché de arriba se llenaba una vez y no se invalidaba nunca —
@@ -135,14 +141,17 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   }
   // TAREA 1 (Tanda 4): ya no está atado a channel === 'retail' — el selector de origen
   // (y por lo tanto esta validación) ahora existe en los cuatro canales.
-  // Brief S2: usa el mismo predicado que CartItem/CartReview (isLineUnderstocked), que
-  // multiplica por factorUnidadBase — comparar contra item.cantidad crudo dejaba pasar
-  // líneas en presentación (ej. "3 × Caja(24)" = 72 uds. base) con el botón Cobrar habilitado.
-  const understockedItems = mode === 'venta' ? cart.filter((item) => isLineUnderstocked(item, originStock[item.id])) : []
-  const insufficientOrigin = understockedItems.length > 0
-  const insufficientOriginBannerText = understockedItems.length
+  // Brief S2: usa el mismo predicado que CartItem/CartReview, que multiplica por
+  // factorUnidadBase — comparar contra item.cantidad crudo dejaba pasar líneas en
+  // presentación (ej. "3 × Caja(24)" = 72 uds. base) con el botón Cobrar habilitado.
+  // Brief S9: "falta stock" (isLineUnderstocked) ya no es lo mismo que "esto bloquea la
+  // venta" (isLineBlocking) — una sucursal en control LIBRE permite vender sin stock a
+  // propósito (registrar_venta ya lo acepta; el navegador no tiene que frenar antes).
+  const blockingItems = mode === 'venta' ? cart.filter((item) => isLineBlocking(item, originStock[item.id])) : []
+  const insufficientOrigin = blockingItems.length > 0
+  const insufficientOriginBannerText = blockingItems.length
     ? (() => {
-        const item = understockedItems[0]
+        const item = blockingItems[0]
         const stock = originStock[item.id]!
         const disponible = item.ubicacion === 'Tienda' ? stock.tienda : stock.almacen
         return `${item.nombre} necesita ${fmtQty(cantidadBaseFor(item))} uds. en ${item.ubicacion} y hay ${fmtQty(disponible)}. Cambiá el origen o la cantidad.`

@@ -39,13 +39,17 @@ export const getStockByProduct = async (productId: number): Promise<{ onHand: Ar
 
 // Mock mode: derive the batch stock map straight from each mock product's own
 // stockTienda/stockAlmacen fields — no separate stock_actual table to query.
+// Brief S9: el mock no modela producto_sucursal/sucursal.control_stock_default (no hay
+// concepto de "control por sucursal" en el backend mock) — tiendaLibre/almacenLibre
+// quedan en false (control estricto) para no cambiar el comportamiento de bloqueo que
+// el modo mock ya tenía antes de este brief.
 export const getStockBySucursalBatch = async (
   productIds: number[],
-): Promise<Map<number, { tienda: number; almacen: number }>> => {
-  const result = new Map<number, { tienda: number; almacen: number }>()
+): Promise<Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>> => {
+  const result = new Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>()
   productIds.forEach((id) => {
     const product = products.find((item) => item.id === id)
-    if (product) result.set(id, { tienda: product.stockTienda, almacen: product.stockAlmacen })
+    if (product) result.set(id, { tienda: product.stockTienda, almacen: product.stockAlmacen, tiendaLibre: false, almacenLibre: false })
   })
   return result
 }
