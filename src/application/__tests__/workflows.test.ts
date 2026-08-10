@@ -52,6 +52,7 @@ describe('flujos frontend mock', () => {
     expect(printLabels['ticket-58']).toContain('58 mm')
     expect(printLabels['ticket-80']).toContain('80 mm')
     expect(printLabels['quote-a4']).toContain('A4')
+    expect(printLabels['traslado-a4']).toContain('A4')
   })
 })
 

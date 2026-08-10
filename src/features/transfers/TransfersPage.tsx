@@ -1,4 +1,4 @@
-import { ArrowRight, ChevronDown, ChevronUp, Clock, PackageCheck, Plus, RotateCcw, Truck, Undo2, X } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronUp, Clock, PackageCheck, Plus, Printer, RotateCcw, Truck, Undo2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { TransferEstado, TransferMotivo, TransferRecord } from '../../application/shared/models'
 import { transferService, productRepository, listPresentations } from '../../infrastructure/services'
@@ -7,12 +7,14 @@ import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
 import { usePos } from '../../context/PosContext'
 import { NumberField } from '../../components/NumberField'
+import { TrasladoExportable } from '../../components/TrasladoExportable'
 
-const motivoLabel: Record<TransferMotivo, string> = { VENTA_DIRECTA: 'Venta directa', REPOSICION: 'Reposición', DEVOLUCION: 'Devolución' }
+// Exportados (Brief S8): TrasladoExportable los reusa tal cual — no duplicarlos ahí.
+export const motivoLabel: Record<TransferMotivo, string> = { VENTA_DIRECTA: 'Venta directa', REPOSICION: 'Reposición', DEVOLUCION: 'Devolución' }
 // Brief K: mismos ids que PosContext.tsx / TrasladoTargetPicker (1 = Almacén Central, 2 = Tienda).
-const sucursalLabel: Record<number, string> = { 1: 'Almacén Central', 2: 'Tienda' }
-const fmtQty = (n: number) => n.toLocaleString('es-BO', { maximumFractionDigits: 2 })
-const fechaFmt = (iso?: string) => iso ? new Date(iso).toLocaleString('es-BO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
+export const sucursalLabel: Record<number, string> = { 1: 'Almacén Central', 2: 'Tienda' }
+export const fmtQty = (n: number) => n.toLocaleString('es-BO', { maximumFractionDigits: 2 })
+export const fechaFmt = (iso?: string) => iso ? new Date(iso).toLocaleString('es-BO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
 // Brief K: "reusar el helper mmss(ms) que ya existe en PedidosApp.jsx" (WMS) — mismo
 // gesto, puerto TS. m:ss, sin ceros a la izquierda en los minutos.
 const mmss = (ms: number) => {
@@ -212,6 +214,7 @@ function TransferDetailPanel({ transfer, onClose, onDispatch, onRevert, onRegist
   const [receivedByLine, setReceivedByLine] = useState<Record<string, number>>(() =>
     Object.fromEntries(transfer.lines.map((line) => [line.id, line.cantidadDespachada ?? line.cantidadBase])))
   const [now, setNow] = useState(() => Date.now())
+  const [printing, setPrinting] = useState(false)
   const canDispatch = transfer.estado === 'SOLICITADO'
   const canReceive = transfer.estado === 'EN_TRANSITO'
   const restanteMs = transfer.reversibleHasta ? new Date(transfer.reversibleHasta).getTime() - now : 0
@@ -226,7 +229,7 @@ function TransferDetailPanel({ transfer, onClose, onDispatch, onRevert, onRegist
     const changed = transfer.lines.filter((line) => (receivedByLine[line.id] ?? 0) !== (line.cantidadDespachada ?? line.cantidadBase))
     onReceive(changed.length ? changed.map((line) => ({ lineaId: line.id, cantidadBase: receivedByLine[line.id] })) : null)
   }
-  return <Modal title={transfer.referencia || `Traslado #${transfer.id}`} subtitle={motivoLabel[transfer.motivo]} onClose={onClose} side wide>
+  return <Modal title={transfer.referencia || `Traslado #${transfer.id}`} subtitle={motivoLabel[transfer.motivo]} onClose={onClose} side wide escapeToClose={!printing}>
     <div className="modal-body transfer-detail">
       <div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong><EstadoBadge estado={transfer.estado} /></strong></div></div>
       <p><b>Dirección:</b> {sucursalLabel[transfer.sucursalOrigenId] ?? `Sucursal ${transfer.sucursalOrigenId}`} <ArrowRight size={11} /> {sucursalLabel[transfer.sucursalDestinoId] ?? `Sucursal ${transfer.sucursalDestinoId}`}</p>
@@ -264,12 +267,14 @@ function TransferDetailPanel({ transfer, onClose, onDispatch, onRevert, onRegist
       </div>
     </div>
     <footer className="modal-actions">
+      <button className="secondary-button" onClick={() => setPrinting(true)}><Printer /> Imprimir</button>
       {canDispatch && <button className="primary-button" onClick={onDispatch}><Truck /> Despachar</button>}
       {dentroDeVentana && <button className="danger-button" onClick={onRevert}><Undo2 /> Revertir <Clock size={11} /> {mmss(restanteMs)}</button>}
       {fueraDeVentana && <button className="danger-button" onClick={onRegistrarDevolucion}><RotateCcw /> Registrar devolución</button>}
       {transfer.estado === 'RECIBIDO' && <button className="danger-button" onClick={onRegistrarDevolucion}><RotateCcw /> Registrar devolución</button>}
       {canReceive && <button className="primary-button" onClick={confirmReceive}><PackageCheck /> Confirmar recepción</button>}
     </footer>
+    {printing && <TrasladoExportable transfer={transfer} onClose={() => setPrinting(false)} />}
   </Modal>
 }
 
