@@ -2,3 +2,20 @@
    imprimir (no es CSS del documento, no se puede eliminar de forma confiable
    con @page{margin:0} — se documenta para el usuario en su lugar). */
 .print-header-footer-hint { margin: 12px 22px 0; font-size: 11px; color: #96928a }
+
+/* Brief S8 — impresión de traslados: checkbox impreso para la hoja de picking, cantidad
+   grande (se lee caminando, no sentado), fila marcada cuando el despacho fue incompleto,
+   columna Dif. resaltada en la constancia, banda de estado para documentos anulados
+   (para que un papel viejo no se confunda con uno vigente), y las líneas de firma al pie
+   de la guía/constancia. */
+.print-checkbox { display: inline-block; width: 14px; height: 14px; border: 1.5px solid #292724 }
+.doc-picking-qty { font-size: 20px; font-weight: 700 }
+.doc-line-incompleta { background: #fff6f0 }
+.doc-diff-flag { font-weight: 700; color: #a74739; background: #fbeae7 }
+.doc-watermark { background: #a74739; color: #fff; text-align: center; font-weight: 700; letter-spacing: 2px; padding: 6px; margin: -28px -28px 18px; font-size: 13px }
+.doc-footer-note-alert { margin-top: 10px; font-size: 11px; color: #a74739; font-weight: 600 }
+.doc-signatures { display: flex; justify-content: space-between; gap: 24px; margin-top: 40px }
+.doc-signatures > div { flex: 1; text-align: center; border-top: 1px solid #292724; padding-top: 6px }
+.doc-signatures span { display: block; font-size: 11px; color: #77736c }
+.doc-signatures strong { display: block; font-size: 12px; margin-top: 2px }
+.doc-signatures small { display: block; font-size: 10px; color: #96928a; margin-top: 2px }
