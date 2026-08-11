@@ -142,6 +142,21 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
             {doc.conditionPago && <span>Condición de pago: {conditionPagoLabel[doc.conditionPago] ?? doc.conditionPago}</span>}
           </div>
         )}
+        {/* Brief S11 Bloque A: sello y firma superpuestos (el sello pisa un poco la
+            firma), como en un documento real. Sin firma cargada se muestra una línea en
+            blanco para firmar a mano — nunca el hueco vacío. Sin sello, nada (no hay
+            fallback razonable para un sello). Mismo onError que el logo del encabezado. */}
+        <div className="doc-signoff">
+          <div className="doc-signoff-stamp">
+            {empresa.firmaUrl
+              ? <img src={empresa.firmaUrl} alt="Firma" className="doc-firma-img" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+              : <div className="doc-firma-blank" />}
+            {empresa.selloUrl && <img src={empresa.selloUrl} alt="Sello" className="doc-sello-img" onError={(e) => { e.currentTarget.style.display = 'none' }} />}
+          </div>
+          {(empresa.firmaNombre || empresa.firmaCargo) && (
+            <p className="doc-signoff-name">{[empresa.firmaNombre, empresa.firmaCargo].filter(Boolean).join(' · ')}</p>
+          )}
+        </div>
       </div>
       <p className="print-header-footer-hint">Si el PDF sale con fecha y URL arriba/abajo, es el encabezado que agrega el navegador — desactivalo en el diálogo de impresión, en "Más ajustes" → "Encabezados y pies de página".</p>
       <footer className="modal-actions">

@@ -59,10 +59,13 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
   // product added to the cart, not on every re-render.
   const [presentations, setPresentations] = useState<Presentation[]>([])
   useEffect(() => {
+    // Brief S11 Bloque C: un ítem personalizado no tiene producto de catálogo — no hay
+    // presentaciones que pedirle.
+    if (item.isCustomItem) return
     let cancelled = false
     void listPresentations(item.id).then((list) => { if (!cancelled) setPresentations(list) })
     return () => { cancelled = true }
-  }, [item.id])
+  }, [item.id, item.isCustomItem])
 
   const factor = item.factorUnidadBase ?? 1
   // Base-unit quantity — the ONLY thing ever compared against stock (loose units, always).
@@ -158,6 +161,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
 
   return <article className="cart-item"><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} /><div className="cart-item-main"><div className="cart-title"><div>
       <h4 title={item.nombre}>{item.nombre}</h4>
+      {item.isCustomItem && <span className="custom-item-badge">Personalizado — solo cotización</span>}
       <div className="cart-price-row">
         {editing
           ? <input
@@ -193,8 +197,11 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
         "Editar" (ahora solo ícono) se mudan acá desde su propia fila — .line-total lleva
         margin-left:auto en el CSS para quedar pegado al borde derecho. */}
     <div className="cart-line-controls">
-      {onSetOrigin && <OriginPin value={item.ubicacion} options={buildOriginOptions(originStock)} onChange={onSetOrigin} ariaLabel={`Origen ${item.nombre}`} />}
-      <select
+      {/* Brief S11 Bloque C: sin origen ni presentación — un ítem personalizado no está
+          en el catálogo, no tiene sentido elegir sucursal ni unidad de venta para algo
+          que no existe ahí. */}
+      {!item.isCustomItem && onSetOrigin && <OriginPin value={item.ubicacion} options={buildOriginOptions(originStock)} onChange={onSetOrigin} ariaLabel={`Origen ${item.nombre}`} />}
+      {!item.isCustomItem && <select
         aria-label={`Presentación ${item.nombre}`}
         className="cart-presentacion-select"
         disabled={presentations.length <= 1}
@@ -202,21 +209,22 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
         onChange={(e) => { const chosen = presentations.find((p) => p.id === Number(e.target.value)); if (chosen) onPresentationChange(chosen) }}
       >
         {presentations.length ? presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>) : <option value="">Unidad</option>}
-      </select>
+      </select>}
       <QtyControl quantity={item.cantidad} onChange={onQuantityChange} />
-      {factor !== 1 && <small className="line-equivalence">{fmtQty(item.cantidad)} {item.presentacionNombre} = {fmtQty(cantidadBase)} u</small>}
+      {!item.isCustomItem && factor !== 1 && <small className="line-equivalence">{fmtQty(item.cantidad)} {item.presentacionNombre} = {fmtQty(cantidadBase)} u</small>}
       <button className="edit-link" onClick={onEdit} aria-label={`Editar ${item.nombre}`} title="Editar"><Pencil /></button>
       <strong className="line-total">Bs {money(lineTotal)}</strong>
     </div>
     {/* TAREA B.4: ícono + texto corto, sin envolver — el enlace sigue siendo una acción.
         Brief S10: si el bloqueo es por reserva, decirlo y nombrar el pedido — "sin stock"
-        a secas con la mercadería en la mano frente al cliente parece un sistema roto. */}
-    {insufficient && reservado > 0 && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />Quedan {fmtQty(reservadoVendible)} disponibles. Otras {fmtQty(reservado)} reservadas{reservadoMotivo ? ` para "${reservadoMotivo}"` : ''}.</small>}
-    {insufficient && reservado === 0 && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />Stock insuficiente en {item.ubicacion}.{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
+        a secas con la mercadería en la mano frente al cliente parece un sistema roto.
+        Brief S11: nada de esto aplica a un ítem personalizado — no tiene stock que validar. */}
+    {!item.isCustomItem && insufficient && reservado > 0 && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />Quedan {fmtQty(reservadoVendible)} disponibles. Otras {fmtQty(reservado)} reservadas{reservadoMotivo ? ` para "${reservadoMotivo}"` : ''}.</small>}
+    {!item.isCustomItem && insufficient && reservado === 0 && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />Stock insuficiente en {item.ubicacion}.{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
     {/* Brief S9: mismo caso (falta stock) pero la sucursal está en control libre — no
         bloquea, así que no puede llevar el mismo rojo que un error real o el aviso
         pierde significado y se ignora. */}
-    {understocked && !insufficient && <small className="line-stock-info line-stock-error-compact"><Info aria-hidden />Sin inventariar en {item.ubicacion}.</small>}
+    {!item.isCustomItem && understocked && !insufficient && <small className="line-stock-info line-stock-error-compact"><Info aria-hidden />Sin inventariar en {item.ubicacion}.</small>}
     {isUnpriced && <small className="line-stock-error">{item.nombre} no tiene precio. Escribilo en la línea para poder cobrar.</small>}
     </div></article>
 }

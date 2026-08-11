@@ -82,6 +82,34 @@ export async function consultarSaldo(clienteId: number): Promise<ResultadoSaldo>
 }
 
 /**
+ * Brief S11 Bloque B4: paso 2 de "eliminar cliente" — hay que saber si el cliente existe
+ * en Hermes antes de borrarlo de Cation. Mismo criterio de tres estados que ResultadoSaldo,
+ * pero acá 'no-disponible' importa distinto: el llamador (eliminar cliente) lo trata como
+ * BLOQUEO, no como "no hay badge" — decisión explícita de Ness, más seguro no borrar que
+ * borrar algo que estaba en Hermes.
+ */
+export type ResultadoVerificarCliente =
+  | { estado: 'existe' }
+  | { estado: 'no-existe' }
+  | { estado: 'no-disponible' }
+
+export async function verificarClienteEnHermes(clienteId: number): Promise<ResultadoVerificarCliente> {
+  try {
+    const response = await fetch('/api/hermes/verificar-cliente', {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify({ clienteId }),
+    })
+    if (!response.ok) return { estado: 'no-disponible' }
+    const data = await response.json()
+    if (typeof data?.existe !== 'boolean') return { estado: 'no-disponible' }
+    return { estado: data.existe ? 'existe' : 'no-existe' }
+  } catch {
+    return { estado: 'no-disponible' }
+  }
+}
+
+/**
  * Saldos de varios clientes en una sola llamada.
  * Los ids que NO vengan en el resultado son clientes sin cuenta corriente en
  * Hermes — no son saldo cero. Devuelve un Map para que el consumidor pueda

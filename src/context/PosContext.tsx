@@ -67,6 +67,7 @@ interface PosState {
   setChannel: (channel: SalesChannel) => void
   cart: CartItem[]
   addProduct: (product: Product) => void
+  addCustomItem: (input: { descripcion: string; cantidad: number; precio: number }) => void
   updateQuantity: (id: number, quantity: number) => void
   updateItem: (id: number, values: Partial<CartItem>) => void
   removeItem: (id: number) => void
@@ -193,6 +194,27 @@ export function PosProvider({ children }: { children: ReactNode }) {
       : [...items, { ...product, cantidad: 1, precioAplicado: getPrice(product, channel), descuento: 0, ubicacion: defaultOrigenFor(channel, esAcreedor), origenManual: false, observacion: '', motivoPrecio: '' }]
   })
 
+  // Brief S11 Bloque C: ítem sin producto de catálogo — sin SKU, sin stock, sin origen
+  // (no tiene sentido validar stock de algo que no está en el catálogo). id negativo y
+  // único por Date.now(), para que nunca choque con un id de producto real (siempre
+  // positivo) y el resto del código que indexa el carrito por item.id (Maps de stock,
+  // updateItem, removeItem) siga funcionando sin ramas nuevas. No se puede vender por
+  // registrar_venta (no tiene producto_id) — CartPanel deshabilita Cobrar cuando hay uno;
+  // sí se puede cotizar (crear_cotizacion/crear_pedido ya soportan es_personalizado).
+  const addCustomItem = (input: { descripcion: string; cantidad: number; precio: number }) => {
+    const id = -(Date.now() + Math.floor(Math.random() * 1000))
+    const item: CartItem = {
+      id, sku: '', codigoBarra: '', codigoFabrica: '', nombre: input.descripcion, descripcion: input.descripcion,
+      categoria: '', imagen: '', color: '',
+      precioRetail: input.precio, precioMayoreo: input.precio, precioInstitucional: input.precio, precioMunicipal: input.precio,
+      stockTienda: 0, stockAlmacen: 0,
+      cantidad: Math.max(1, Math.floor(input.cantidad)), precioAplicado: Math.max(0, input.precio), descuento: 0,
+      ubicacion: 'Tienda', observacion: '', motivoPrecio: '', origenManual: true, precioModificado: true,
+      isCustomItem: true,
+    }
+    setCart((items) => [...items, item])
+  }
+
   // TAREA 7 (Tanda 3): verificado contra la base viva — el catálogo activo es 100%
   // unidades discretas (unidad/UNIDAD/Unidad, RESMA, PLIEGO, PZC x 1; ninguna continua
   // como metro o kilo). Math.floor es correcto hoy; si en algún momento se da de alta un
@@ -252,7 +274,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setEsAcreedor(false)
   }
 
-  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft }}>{children}</PosContext.Provider>
+  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, addCustomItem, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {

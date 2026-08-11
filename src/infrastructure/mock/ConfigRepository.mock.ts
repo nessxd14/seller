@@ -21,6 +21,12 @@ const readEmpresa = (): EmpresaConfig => {
     telefono: empresaFallback.celular,
     email: empresaFallback.correo,
     pieDocumento: '',
+    // Brief S11 Bloque A: el mock no tiene Storage — sello/firma quedan vacíos, la
+    // impresión en modo mock no lleva rúbrica (ver DocumentoExportable).
+    selloUrl: '',
+    firmaUrl: '',
+    firmaNombre: '',
+    firmaCargo: '',
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded))
   return seeded

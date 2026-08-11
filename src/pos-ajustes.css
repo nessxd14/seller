@@ -68,3 +68,49 @@
 .cart-review-table .line-stock-error svg{width:11px}
 .price-overridden-badge{border-color:var(--orange)!important;color:var(--orange)!important;margin-left:4px}
 .cart-review-totals{justify-self:end;min-width:220px}
+
+/* Brief S11 Bloque A — subida de sello/firma en ConfigPage. */
+.image-upload-row{display:flex;align-items:center;gap:12px;margin-top:6px}
+.image-upload-row img{max-width:120px;max-height:80px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}
+.image-upload-empty{font-size:11px;color:#96928a;border:1px dashed var(--line);border-radius:8px;padding:10px 14px}
+.image-upload-field small{display:block;color:#96928a;margin-top:4px}
+
+/* Brief S11 Bloque A — sello y firma al pie de cotización/pedido/nota de entrega,
+   superpuestos como en un documento real (el sello pisa un poco la firma). */
+.doc-signoff{margin-top:26px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.doc-signoff-stamp{position:relative;display:flex;align-items:center;justify-content:center;min-height:70px}
+.doc-firma-img{max-height:55px;max-width:180px;object-fit:contain}
+.doc-firma-blank{width:180px;border-bottom:1px solid #292724;height:55px}
+.doc-sello-img{position:absolute;left:50%;top:50%;transform:translate(-38%,-55%) rotate(-6deg);max-height:85px;max-width:85px;object-fit:contain;opacity:.92}
+.doc-signoff-name{font-size:var(--fs-body);color:#4c4944;margin:2px 0 0;border-top:1px solid #ddd;padding-top:4px;min-width:200px;text-align:center}
+
+/* Brief S11 Bloque B — pedidos anulados (opacos, X) y editados (amarillo, lápiz)
+   resaltados en la grilla, para que salten a la vista sin abrir cada uno. */
+.orders-table>article{position:relative}
+.order-row-deleted{opacity:.55}
+.order-row-edited{background:#fffbe6}
+.order-row-flag{position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center}
+.order-row-flag svg{width:11px;height:11px}
+.order-row-flag-deleted{background:#fae8e5;color:#ad4b3c}
+.order-row-flag-edited{background:#fff2c2;color:#a76a19}
+
+/* Brief S11 Bloque B2 — navegador de versiones del pedido. */
+.version-nav{display:flex;align-items:center;gap:10px;background:#f5f2ed;border-radius:10px;padding:9px 12px;margin-bottom:10px}
+.version-nav button{border:1px solid #ddd8cf;background:#fff;border-radius:7px;width:28px;height:28px;display:grid;place-items:center}
+.version-nav button:disabled{opacity:.4}
+.version-nav button svg{width:13px;height:13px}
+.version-nav span{font-weight:700;font-size:12px}
+.version-nav small{color:#8a867f;font-size:11px}
+.version-readonly-banner{background:#fff2de;color:#a76a19;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:600;margin-bottom:10px}
+.version-readonly-banner button{margin-left:8px;border:0;background:transparent;color:#a76a19;text-decoration:underline;font-weight:700;font-size:12px;padding:0;cursor:pointer}
+.version-lines{display:grid;gap:8px}
+.version-line{border:1px solid #e5e0d8;border-radius:10px;padding:10px 12px}
+.version-line header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.version-line span{display:block;font-size:12px;color:#57544e;margin-top:4px}
+.version-line-added{background:#e7f6eb;border-color:#b7e4c3}
+.version-line-changed{background:#fff2de;border-color:#f0d19e}
+.version-line-removed{background:#fae8e5;border-color:#f0bdb5;opacity:.75}
+.version-line-badge{font-size:10px;font-weight:700;padding:3px 7px;border-radius:8px;white-space:nowrap}
+.version-line-badge-added{background:#3d8750;color:#fff}
+.version-line-badge-changed{background:#a76a19;color:#fff}
+.version-line-badge-removed{background:#ad4b3c;color:#fff}

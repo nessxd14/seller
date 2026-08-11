@@ -124,7 +124,9 @@ const rowToQuoteDraft = (header: CotizacionRow, lines: CotizacionLineaRow[]): Qu
   documentDate: header.fecha ?? undefined,
 })
 
-const buildLineasJsonb = (lines: WorkflowLine[], channel: QuoteDraft['channel'], actor: string) =>
+// Exportado para test directo (Brief S11: serialización carrito → buildLineasJsonb con
+// ítem personalizado). Sigue siendo puro — nada de I/O acá.
+export const buildLineasJsonb = (lines: WorkflowLine[], channel: QuoteDraft['channel'], actor: string) =>
   lines.map((line) => {
     if (line.isCustomItem) {
       return {

@@ -204,6 +204,11 @@ export class SupabaseOrderRepository implements OrderRepository {
         p_usuario: actor,
       })
       if (error) throw error
+      // Brief S11 Bloque B1: versión 1 al crear, para que haya algo que navegar/comparar
+      // el día que el pedido se edite (desde acá o desde el WMS — pedido_version es
+      // compartida). Best-effort a propósito: nunca puede tumbar la creación, que ya
+      // ocurrió; si falla, el pedido queda sin historial hasta la próxima edición exitosa.
+      await guardarVersionPedidoSilencioso(newId as number, 'Pedido creado desde cotización', actor)
       const created = await fetchOrderById(newId as number)
       if (!created) throw new NotFoundError('No se pudo releer el pedido recién convertido')
       return created
@@ -217,9 +222,18 @@ export class SupabaseOrderRepository implements OrderRepository {
       p_descuento_general: centsToNumeric(value.generalDiscountCents ?? 0),
     })
     if (error) throw error
+    await guardarVersionPedidoSilencioso(newId as number, 'Pedido creado', actor)
     const created = await fetchOrderById(newId as number)
     if (!created) throw new NotFoundError('No se pudo releer el pedido recién creado')
     return created
+  }
+}
+
+const guardarVersionPedidoSilencioso = async (pedidoId: number, motivo: string, usuario: string): Promise<void> => {
+  try {
+    await supabase.rpc('guardar_version_pedido', { p_pedido_id: pedidoId, p_motivo: motivo, p_usuario: usuario })
+  } catch {
+    // Ver comentario en el call site: nunca bloquea la creación del pedido.
   }
 }
 

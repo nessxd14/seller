@@ -23,6 +23,12 @@ export const empresaStore: {
   nit: string
   pieDocumento: string
   readonly logoSrc: string
+  // Brief S11 Bloque A: sello y firma de la empresa, para el pie de cotización/pedido/
+  // nota de entrega. Vacío = no cargado (DocumentoExportable decide qué mostrar en ese caso).
+  selloUrl: string
+  firmaUrl: string
+  firmaNombre: string
+  firmaCargo: string
 } = {
   razonSocial: empresaFallback.razonSocial,
   direccion: empresaFallback.direccion,
@@ -34,6 +40,10 @@ export const empresaStore: {
   // logoSrc is never sourced from config_empresa (no such column) — always the
   // imported asset, kept readonly here so nothing accidentally overwrites it.
   logoSrc: empresaFallback.logoSrc,
+  selloUrl: '',
+  firmaUrl: '',
+  firmaNombre: '',
+  firmaCargo: '',
 }
 
 export async function loadEmpresaConfig(): Promise<void> {
@@ -46,6 +56,10 @@ export async function loadEmpresaConfig(): Promise<void> {
     empresaStore.correo = config.email || empresaFallback.correo
     empresaStore.nit = config.nit || empresaFallback.nit
     empresaStore.pieDocumento = config.pieDocumento || ''
+    empresaStore.selloUrl = config.selloUrl || ''
+    empresaStore.firmaUrl = config.firmaUrl || ''
+    empresaStore.firmaNombre = config.firmaNombre || ''
+    empresaStore.firmaCargo = config.firmaCargo || ''
   } catch {
     // Fetch failed: keep whatever values are currently in the store (fallback on
     // first load, or the last successfully loaded values on a later refresh).
