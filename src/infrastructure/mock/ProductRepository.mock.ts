@@ -43,13 +43,16 @@ export const getStockByProduct = async (productId: number): Promise<{ onHand: Ar
 // concepto de "control por sucursal" en el backend mock) — tiendaLibre/almacenLibre
 // quedan en false (control estricto) para no cambiar el comportamiento de bloqueo que
 // el modo mock ya tenía antes de este brief.
+// Brief S10: tampoco hay reserva/FIFO en el mock (no hay v_pedido_linea_reserva ni
+// saldo_vendible equivalentes) — vendible queda igual al físico y reservado en 0, así
+// que isLineBlocking se comporta en mock exactamente como antes de este brief.
 export const getStockBySucursalBatch = async (
   productIds: number[],
-): Promise<Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>> => {
-  const result = new Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>()
+): Promise<Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean; tiendaVendible: number; almacenVendible: number; tiendaReservado: number; almacenReservado: number; tiendaMotivo: string | null; almacenMotivo: string | null }>> => {
+  const result = new Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean; tiendaVendible: number; almacenVendible: number; tiendaReservado: number; almacenReservado: number; tiendaMotivo: string | null; almacenMotivo: string | null }>()
   productIds.forEach((id) => {
     const product = products.find((item) => item.id === id)
-    if (product) result.set(id, { tienda: product.stockTienda, almacen: product.stockAlmacen, tiendaLibre: false, almacenLibre: false })
+    if (product) result.set(id, { tienda: product.stockTienda, almacen: product.stockAlmacen, tiendaLibre: false, almacenLibre: false, tiendaVendible: product.stockTienda, almacenVendible: product.stockAlmacen, tiendaReservado: 0, almacenReservado: 0, tiendaMotivo: null, almacenMotivo: null })
   })
   return result
 }

@@ -64,10 +64,17 @@ export function CartReview({
               // — en control libre, faltar stock es lo esperado hasta inventariar.
               const understocked = isLineUnderstocked(item, originStock[item.id])
               const blocking = isLineBlocking(item, originStock[item.id])
+              const stockInfo = originStock[item.id]
+              // Brief S10: "el mensaje es la mitad del trabajo" — nunca "sin stock" a
+              // secas cuando la causa real es una reserva de otro pedido.
+              const reservado = stockInfo ? (item.ubicacion === 'Tienda' ? stockInfo.tiendaReservado : stockInfo.almacenReservado) : 0
+              const reservadoVendible = stockInfo ? (item.ubicacion === 'Tienda' ? stockInfo.tiendaVendible : stockInfo.almacenVendible) : 0
+              const reservadoMotivo = stockInfo ? (item.ubicacion === 'Tienda' ? stockInfo.tiendaMotivo : stockInfo.almacenMotivo) : null
               const lineTotal = ventaLineTotalCents(item) / 100
               return <tr key={item.id} className={blocking || isUnpriced ? 'cart-review-flagged' : ''}>
                 <td>{item.nombre}
-                  {blocking && <small className="line-stock-error"><AlertTriangle /> Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBaseFor(item))} uds.</small>}
+                  {blocking && reservado > 0 && <small className="line-stock-error"><AlertTriangle /> Quedan {fmtQty(reservadoVendible)} disponibles en {item.ubicacion}. Otras {fmtQty(reservado)} reservadas{reservadoMotivo ? ` para "${reservadoMotivo}"` : ''}.</small>}
+                  {blocking && reservado === 0 && <small className="line-stock-error"><AlertTriangle /> Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBaseFor(item))} uds.</small>}
                   {understocked && !blocking && <small className="line-stock-info"><Info /> Sin inventariar en {item.ubicacion}.</small>}
                   {isUnpriced && <small className="line-stock-error"><AlertTriangle /> {item.nombre} no tiene precio.</small>}
                 </td>
