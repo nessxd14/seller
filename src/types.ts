@@ -50,4 +50,9 @@ export interface CartItem extends Product {
   // again on a presentation change, since that recompute is itself a fresh, deliberate
   // baseline the seller just triggered.
   precioModificado?: boolean
+  // Brief S11 Bloque C: ítem sin producto de catálogo — se agrega directo con
+  // descripción/cantidad/precio desde CartPanel (ver PosContext.addCustomItem). No tiene
+  // SKU/stock real (los campos de Product, incluida descripcion, quedan en placeholders
+  // vacíos/cero); no se puede vender por registrar_venta (no tiene producto_id), solo cotizar.
+  isCustomItem?: boolean
 }

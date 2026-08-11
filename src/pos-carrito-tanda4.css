@@ -191,6 +191,11 @@
    quita significado al aviso. Ver isLineBlocking en domain/sales/stockCheck. */
 .line-stock-info { display: block; color: #8c8880; font-size: 11px; margin-top: 3px; padding-left: 2px; font-weight: 600 }
 
+/* Brief S11 Bloque C — ítem personalizado en el carrito: badge junto al nombre, y el
+   enlace "+ Ítem personalizado" en el encabezado de la lista. */
+.custom-item-badge { display: inline-block; color: var(--orange-dark); font-size: 10px; font-weight: 700; border: 1px solid var(--orange-dark); border-radius: 6px; padding: 1px 6px; margin-top: 2px }
+.custom-item-add-link { margin-left: auto; border: 0; background: transparent; color: var(--orange); font-weight: 700; font-size: 11px; padding: 0; cursor: pointer }
+
 /* Equivalencia (3 Caja = 72 u): texto chico DENTRO de la fila de controles en
    vez de una fila propia — se queda con su tamaño de <small>, solo se reubica. */
 .cart-line-controls > .line-equivalence {

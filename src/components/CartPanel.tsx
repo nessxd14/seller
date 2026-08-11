@@ -6,6 +6,7 @@ import { useBorrador, borradorKey } from '../hooks/useBorrador'
 import { BorradorBanner } from './BorradorBanner'
 import { authSessionProvider, transferService } from '../infrastructure/services'
 import { CartItem } from './CartItem'
+import { Modal } from './Modal'
 import { EditCartItemModal } from './EditCartItemModal'
 import { PaymentModal } from './PaymentModal'
 import { TicketPreviewModal } from './TicketPreviewModal'
@@ -40,10 +41,11 @@ type CartBorradorEstado =
   | { mode: 'traslado'; cart: CartItemType[]; trasladoMotivo: TransferMotivo; trasladoOrigenId: number; trasladoDestinoId: number }
 
 export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, onRequestTransfer }: { notify: (message: string) => void; onOpenDraftOrder: (draft: QuoteDraft) => void; onGoToCash: () => void; sellerName?: string; onRequestTransfer?: (request: PendingTransferRequest) => void }) {
-  const { channel, cart, subtotal, total, discount, setDiscount, operationNumber, clearOperation, loadSuspendedSale, updateItem, customer, mode, setMode, trasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft } = usePos()
+  const { channel, cart, subtotal, total, discount, setDiscount, operationNumber, clearOperation, loadSuspendedSale, updateItem, addCustomItem, customer, mode, setMode, trasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft } = usePos()
   const { sessionId } = useCashSession()
   const cashClosed = channel === 'retail' && featureFlags.supabase && !sessionId
   const [editing, setEditing] = useState<CartItemType | null>(null)
+  const [customItemOpen, setCustomItemOpen] = useState(false)
   // TAREA C (Tanda 5): colapso del cromo — cliente, encabezado de la lista y el
   // desglose Subtotal/Descuento. Reemplaza el toggle más chico de "plegar
   // resumen" de la Tanda 3 (mismo botón, alcance más amplio). localStorage (no
@@ -110,7 +112,9 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // origen quedaba fijo en 'Tienda' pase lo que pase. Ahora se fetchea en cualquier
   // canal, siempre que haya carrito (mode ya solo puede ser 'venta' o 'traslado').
   useEffect(() => {
-    const missing = cart.filter((item) => !(item.id in originStock))
+    // Brief S11 Bloque C: un ítem personalizado no está en el catálogo — no tiene
+    // sentido pedirle stock/control por sucursal a un producto que no existe ahí.
+    const missing = cart.filter((item) => !item.isCustomItem && !(item.id in originStock))
     if (!missing.length) return
     if (!featureFlags.supabase) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- mock mode reads stock straight off the already-loaded Product fields, no async fetch to defer to a callback
@@ -185,6 +189,11 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   const unpricedBannerText = unpricedItems.length
     ? `${unpricedItems[0].nombre} no tiene precio. Escribilo en la línea para poder cobrar.${unpricedItems.length > 1 ? ` (y ${unpricedItems.length - 1} línea${unpricedItems.length > 2 ? 's' : ''} más sin precio)` : ''}`
     : ''
+  // Brief S11 Bloque C: un ítem personalizado no tiene producto_id ni presentación base —
+  // registrar_venta no lo puede vender. Solo bloquea "Cobrar" (venta directa); Guardar
+  // borrador/Cotización siguen habilitados, es exactamente el camino que sí lo soporta.
+  const hasCustomItem = cart.some((item) => item.isCustomItem)
+  const customItemBannerText = 'Los ítems personalizados solo se pueden cotizar, no vender directamente.'
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [ticketOpen, setTicketOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
@@ -238,26 +247,33 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     if (!cart.length) return
     const lines: WorkflowLine[] = cart.map((item) => ({
       id: crypto.randomUUID(),
-      productId: String(item.id),
+      // Brief S11 Bloque C: un ítem personalizado no tiene productId real — crear_cotizacion
+      // ya distingue por es_personalizado (isCustomItem), no por este campo, pero mandar un
+      // productId inventado sería un dato falso que nadie necesita.
+      productId: item.isCustomItem ? '' : String(item.id),
       name: item.nombre,
       sku: item.sku,
       quantity: item.cantidad,
       unitPriceCents: Math.round(item.precioAplicado * 100),
       discountBasisPoints: Math.round(item.descuento * 100),
+      isCustomItem: item.isCustomItem,
       // TAREA 3 (Tanda 3): antes hardcodeado a 'Almacén', ignorando item.ubicacion —
       // se perdía el origen por línea, justo lo que el esquema soporta. Ídem
       // presentacionId/factorUnidadBase: sin propagarlos, "3 × Caja(24)" pasaba al
       // borrador como 3 unidades sueltas (el mismo bug que ya costó el descuadre de
       // registrar_venta facturando 72×50 en vez de 3×50).
-      sourceLocation: item.ubicacion,
+      sourceLocation: item.isCustomItem ? undefined : item.ubicacion,
       presentacionId: item.presentacionId,
       factorUnidadBase: item.factorUnidadBase,
     }))
     onOpenDraftOrder({
       id: featureFlags.supabase ? '' : crypto.randomUUID(),
       number: '',
-      customerId: '',
-      customerName: '',
+      // Brief S11 Bloque C1: el cliente ya seleccionado en el carrito viaja al borrador de
+      // cotización — antes se perdía y había que volver a buscarlo. Sin cliente en el
+      // carrito, el formulario abre vacío como siempre.
+      customerId: customer?.id ?? '',
+      customerName: customer?.name ?? '',
       channel: channel as QuoteDraft['channel'],
       status: 'draft',
       validUntil: sumarDiasIso(hoyLocal(), 15),
@@ -307,7 +323,8 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
         // factura al canal/precio equivocado sin que nadie lo note hasta auditar.
         ? <div className="customer-select-collapsed"><CircleUserRound size={13} /><span>Cliente: <strong>{customerLabel}</strong></span></div>
         : <>{<CustomerPicker channel={channel} notify={notify} />}{customer && <SaldoBadge clienteId={customer.id} />}</>}
-    {!chromeCollapsed && <div className="cart-list-heading"><span>{mode === 'traslado' ? 'Detalle del traslado' : 'Detalle de venta'}</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b></div>}<div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={() => setEditing(item)} originStock={mode === 'venta' ? originStock[item.id] : undefined} onSetOrigin={mode === 'venta' ? (loc) => updateItem(item.id, { ubicacion: loc, origenManual: true }) : undefined} onRequestTransfer={mode === 'venta' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} trasladoDisponible={mode === 'traslado' ? trasladoDisponibleFor(item.id) : undefined} />) : <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar {mode === 'traslado' ? 'un traslado' : 'una venta'}.</p></div>}</div>
+    {!chromeCollapsed && <div className="cart-list-heading"><span>{mode === 'traslado' ? 'Detalle del traslado' : 'Detalle de venta'}</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b>{mode === 'venta' && <button type="button" className="custom-item-add-link" onClick={() => setCustomItemOpen(true)}>+ Ítem personalizado</button>}</div>}<div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={() => setEditing(item)} originStock={mode === 'venta' ? originStock[item.id] : undefined} onSetOrigin={mode === 'venta' ? (loc) => updateItem(item.id, { ubicacion: loc, origenManual: true }) : undefined} onRequestTransfer={mode === 'venta' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} trasladoDisponible={mode === 'traslado' ? trasladoDisponibleFor(item.id) : undefined} />) : <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar {mode === 'traslado' ? 'un traslado' : 'una venta'}.</p></div>}</div>
+    {customItemOpen && <CustomItemModal onClose={() => setCustomItemOpen(false)} onAdd={(input) => { addCustomItem(input); setCustomItemOpen(false) }} />}
     {mode === 'traslado' ? (
       <div className="cart-summary cart-summary-traslado">
         <div><span>Líneas</span><strong>{cart.length}</strong></div>
@@ -339,16 +356,32 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     )}
     <div className="cart-actions">{mode === 'venta' && !cart.length && hasSuspended && <button className="restore-button" onClick={restore}><RotateCcw /> Restaurar venta suspendida</button>}{mode === 'traslado' ? (
       <button data-pos-action="solicitar-traslado" className="pay-button" disabled={!cart.length || solicitando} onClick={() => void solicitarTraslado()}><Truck /> {solicitando ? 'Solicitando…' : 'Solicitar traslado'}</button>
-    ) : channel === 'retail' ? <><div className="secondary-actions secondary-actions-3"><button data-pos-action="suspend" onClick={suspend} disabled={!cart.length}><Pause /> <span className="secondary-action-label">Suspender</span></button><button onClick={() => setTicketOpen(true)} disabled={!cart.length}><ReceiptText /> <span className="secondary-action-label">Ticket</span></button><button onClick={() => setReviewOpen(true)} disabled={!cart.length}><Sparkles /> <span className="secondary-action-label">Revisar</span></button></div>{cashClosed && <button className="cash-closed-notice" onClick={onGoToCash}>Caja cerrada — abrí la caja para poder cobrar</button>}{insufficientOrigin && <p className="cash-closed-notice">{insufficientOriginBannerText}</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || cashClosed || insufficientOrigin || unpricedLine} onClick={() => setPaymentOpen(true)}><HandCoins /> Cobrar <span>Bs {money(total)}</span></button></> : <>
+    ) : channel === 'retail' ? <><div className="secondary-actions secondary-actions-3"><button data-pos-action="suspend" onClick={suspend} disabled={!cart.length}><Pause /> <span className="secondary-action-label">Suspender</span></button><button onClick={() => setTicketOpen(true)} disabled={!cart.length}><ReceiptText /> <span className="secondary-action-label">Ticket</span></button><button onClick={() => setReviewOpen(true)} disabled={!cart.length}><Sparkles /> <span className="secondary-action-label">Revisar</span></button></div>{cashClosed && <button className="cash-closed-notice" onClick={onGoToCash}>Caja cerrada — abrí la caja para poder cobrar</button>}{insufficientOrigin && <p className="cash-closed-notice">{insufficientOriginBannerText}</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}{hasCustomItem && <p className="cash-closed-notice">{customItemBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || cashClosed || insufficientOrigin || unpricedLine || hasCustomItem} onClick={() => setPaymentOpen(true)}><HandCoins /> Cobrar <span>Bs {money(total)}</span></button></> : <>
       {/* TAREA 3 (Tanda 3): "Cotización" y "Crear pedido" llamaban las dos a openDraft()
           sin ningún argumento que las diferenciara — hacían exactamente lo mismo. Ambas
           terminan abriendo el mismo editor de cotización (onOpenDraftOrder siempre navega
           a Cotizaciones), así que "Crear pedido" prometía algo que no hacía. Se decidió
           dejar un solo botón acá; convertir una cotización en pedido ya es un paso propio
           del editor de Cotizaciones (convertir_cotizacion_a_pedido). */}
-      <button className="draft-button" disabled={!cart.length} onClick={openDraft}><FileText /> Guardar borrador</button><div className="secondary-actions"><button disabled={!cart.length} onClick={openDraft}>Cotización</button></div>{channel === 'mayoreo' && insufficientOrigin && <p className="cash-closed-notice">Hay líneas sin stock suficiente en la ubicación elegida — corrígelas para poder cobrar.</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || (channel === 'mayoreo' && (unpricedLine || insufficientOrigin))} onClick={() => channel === 'mayoreo' ? setPaymentOpen(true) : setAnticipoOpen(true)}><HandCoins /> {channel === 'mayoreo' ? 'Cobrar' : 'Registrar anticipo'} <span>Bs {money(total)}</span></button></>}</div>
+      <button className="draft-button" disabled={!cart.length} onClick={openDraft}><FileText /> Guardar borrador</button><div className="secondary-actions"><button disabled={!cart.length} onClick={openDraft}>Cotización</button></div>{channel === 'mayoreo' && insufficientOrigin && <p className="cash-closed-notice">Hay líneas sin stock suficiente en la ubicación elegida — corrígelas para poder cobrar.</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}{channel === 'mayoreo' && hasCustomItem && <p className="cash-closed-notice">{customItemBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || (channel === 'mayoreo' && (unpricedLine || insufficientOrigin || hasCustomItem))} onClick={() => channel === 'mayoreo' ? setPaymentOpen(true) : setAnticipoOpen(true)}><HandCoins /> {channel === 'mayoreo' ? 'Cobrar' : 'Registrar anticipo'} <span>Bs {money(total)}</span></button></>}</div>
     {editing && <EditCartItemModal item={editing} onClose={() => setEditing(null)} />}{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} onCheckoutSuccess={() => invalidateOriginStock()} />}{ticketOpen && <TicketPreviewModal onClose={() => setTicketOpen(false)} />}
     {anticipoOpen && <AnticipoModal onClose={() => setAnticipoOpen(false)} notify={notify} />}
     {reviewOpen && <CartReview items={cart} channel={channel} originStock={originStock} customer={customer} subtotal={subtotal} discount={discount} total={total} onClose={() => setReviewOpen(false)} onCheckout={() => { setReviewOpen(false); setPaymentOpen(true) }} />}
   </aside>
+}
+
+// Brief S11 Bloque C: sin producto de catálogo — solo descripción, cantidad y precio.
+function CustomItemModal({ onClose, onAdd }: { onClose: () => void; onAdd: (input: { descripcion: string; cantidad: number; precio: number }) => void }) {
+  const [descripcion, setDescripcion] = useState('')
+  const [cantidad, setCantidad] = useState(1)
+  const [precio, setPrecio] = useState(0)
+  const valid = descripcion.trim().length > 0 && cantidad > 0 && precio > 0
+  return <Modal title="Agregar ítem personalizado" subtitle="Sin producto de catálogo — solo se puede cotizar, no vender directamente" onClose={onClose}>
+    <div className="modal-body form-grid">
+      <label className="full">Descripción<input autoFocus value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Ej. Sello de goma a medida" /></label>
+      <label>Cantidad<NumberField min={1} allowDecimals={false} value={cantidad} onCommit={setCantidad} /></label>
+      <label>Precio unitario (Bs)<NumberField min={0} step={0.01} value={precio} onCommit={setPrecio} /></label>
+    </div>
+    <footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid} onClick={() => onAdd({ descripcion: descripcion.trim(), cantidad, precio })}>Agregar al carrito</button></footer>
+  </Modal>
 }

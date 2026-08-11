@@ -11,6 +11,11 @@ export interface EmpresaConfig {
   telefono: string
   email: string
   pieDocumento: string
+  // Brief S11 Bloque A: rutas en Storage (bucket documentos-empresa), no el binario.
+  selloUrl: string
+  firmaUrl: string
+  firmaNombre: string
+  firmaCargo: string
 }
 
 export interface UserSummary {

@@ -10,6 +10,10 @@ interface ConfigEmpresaRow {
   telefono: string | null
   email: string | null
   pie_documento: string | null
+  sello_url: string | null
+  firma_url: string | null
+  firma_nombre: string | null
+  firma_cargo: string | null
 }
 
 const rowToEmpresaConfig = (row: ConfigEmpresaRow): EmpresaConfig => ({
@@ -20,6 +24,10 @@ const rowToEmpresaConfig = (row: ConfigEmpresaRow): EmpresaConfig => ({
   telefono: row.telefono ?? '',
   email: row.email ?? '',
   pieDocumento: row.pie_documento ?? '',
+  selloUrl: row.sello_url ?? '',
+  firmaUrl: row.firma_url ?? '',
+  firmaNombre: row.firma_nombre ?? '',
+  firmaCargo: row.firma_cargo ?? '',
 })
 
 export class SupabaseConfigRepository implements ConfigRepository {
@@ -41,6 +49,10 @@ export class SupabaseConfigRepository implements ConfigRepository {
     if (patch.telefono !== undefined) payload.telefono = patch.telefono || null
     if (patch.email !== undefined) payload.email = patch.email || null
     if (patch.pieDocumento !== undefined) payload.pie_documento = patch.pieDocumento || null
+    if (patch.selloUrl !== undefined) payload.sello_url = patch.selloUrl || null
+    if (patch.firmaUrl !== undefined) payload.firma_url = patch.firmaUrl || null
+    if (patch.firmaNombre !== undefined) payload.firma_nombre = patch.firmaNombre || null
+    if (patch.firmaCargo !== undefined) payload.firma_cargo = patch.firmaCargo || null
     const { data, error } = await supabase.from('config_empresa').update(payload).eq('id', 1).select('*').single()
     if (error) throw error
     return rowToEmpresaConfig(data as ConfigEmpresaRow)

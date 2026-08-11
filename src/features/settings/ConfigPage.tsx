@@ -9,8 +9,9 @@ import { featureFlags } from '../../config/featureFlags'
 import { pendienteSyncHermesRepository, type PendienteSyncHermes } from '../../infrastructure/supabase/PendienteSyncHermesRepository'
 import { pendienteSyncHermesPagoRepository, type PendienteSyncHermesPago } from '../../infrastructure/supabase/PendienteSyncHermesPagoRepository'
 import { registrarCargoSaldo, registrarPago } from '../../infrastructure/hermes/client'
+import { uploadDocumentoEmpresa } from '../../infrastructure/supabase/DocumentosEmpresaStorage'
 
-const emptyEmpresa: EmpresaConfig = { razonSocial: '', nit: '', direccion: '', ciudad: '', telefono: '', email: '', pieDocumento: '' }
+const emptyEmpresa: EmpresaConfig = { razonSocial: '', nit: '', direccion: '', ciudad: '', telefono: '', email: '', pieDocumento: '', selloUrl: '', firmaUrl: '', firmaNombre: '', firmaCargo: '' }
 const moneyBs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export function ConfigPage({ notify, canEdit }: { notify: (message: string) => void; canEdit: boolean }) {
@@ -62,6 +63,26 @@ export function ConfigPage({ notify, canEdit }: { notify: (message: string) => v
           <label>Email<input type="email" disabled={!canEdit} value={empresa.email} onChange={(e) => setEmpresa({ ...empresa, email: e.target.value })} /></label>
           <label className="full">Pie de documento<textarea disabled={!canEdit} value={empresa.pieDocumento} onChange={(e) => setEmpresa({ ...empresa, pieDocumento: e.target.value })} /></label>
         </div>
+        {featureFlags.supabase && <div className="modal-body form-grid">
+          <label>Nombre de quien firma<input disabled={!canEdit} value={empresa.firmaNombre} placeholder="Ej. Rony Argana" onChange={(e) => setEmpresa({ ...empresa, firmaNombre: e.target.value })} /></label>
+          <label>Cargo<input disabled={!canEdit} value={empresa.firmaCargo} placeholder="Ej. Gerente Comercial" onChange={(e) => setEmpresa({ ...empresa, firmaCargo: e.target.value })} /></label>
+          <ImageUploadField
+            label="Sello"
+            hint="PNG con fondo transparente — un JPG con fondo blanco tapa el texto del documento."
+            url={empresa.selloUrl}
+            disabled={!canEdit}
+            onUploaded={(url) => setEmpresa({ ...empresa, selloUrl: url })}
+            notify={notify}
+          />
+          <ImageUploadField
+            label="Firma"
+            hint="PNG con fondo transparente, igual que el sello."
+            url={empresa.firmaUrl}
+            disabled={!canEdit}
+            onUploaded={(url) => setEmpresa({ ...empresa, firmaUrl: url })}
+            notify={notify}
+          />
+        </div>}
         {canEdit && <div className="settings-actions"><button className="primary-button" disabled={saving || !empresa.razonSocial.trim()} onClick={() => void saveEmpresa()}>{saving ? 'Guardando...' : 'Guardar cambios'}</button></div>}
       </>}
     </section>
@@ -195,4 +216,32 @@ function HermesPagosSyncSection({ notify, canEdit }: { notify: (message: string)
       </div>)}
     </div>}
   </section>
+}
+
+// Brief S11 Bloque A: sube al bucket `documentos-empresa` (escritura solo admin, ver
+// política RLS) y devuelve la ruta pública — el llamador la guarda con saveEmpresaConfig
+// en el siguiente "Guardar cambios", no acá (subir no es lo mismo que confirmar).
+function ImageUploadField({ label, hint, url, disabled, onUploaded, notify }: { label: string; hint: string; url: string; disabled: boolean; onUploaded: (url: string) => void; notify: (message: string) => void }) {
+  const [uploading, setUploading] = useState(false)
+  const onFile = async (file: File | undefined) => {
+    if (!file) return
+    setUploading(true)
+    try {
+      const uploaded = await uploadDocumentoEmpresa(file, label === 'Sello' ? 'sello' : 'firma')
+      onUploaded(uploaded)
+      notify(`${label} actualizado — guardá los cambios para confirmar`)
+    } catch {
+      notify(`No se pudo subir ${label.toLowerCase()}`)
+    } finally {
+      setUploading(false)
+    }
+  }
+  return <label className="full image-upload-field">
+    {label}
+    <div className="image-upload-row">
+      {url ? <img src={url} alt={label} onError={(e) => { e.currentTarget.style.display = 'none' }} /> : <span className="image-upload-empty">Sin {label.toLowerCase()}</span>}
+      <input type="file" accept="image/png,image/*" disabled={disabled || uploading} onChange={(e) => void onFile(e.target.files?.[0])} />
+    </div>
+    <small>{hint}</small>
+  </label>
 }

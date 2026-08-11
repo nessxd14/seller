@@ -85,3 +85,10 @@ describe('isLineBlocking — S10: la reserva gana sobre el control libre de W3',
     expect(isLineBlocking(line, s)).toBe(false)
   })
 })
+
+describe('isLineBlocking — S11: ítem personalizado (carrito → cotización)', () => {
+  it('un ítem personalizado nunca tiene originStock (no está en el catálogo) → no bloquea', () => {
+    const line = { cantidad: 5, ubicacion: 'Tienda' as const }
+    expect(isLineBlocking(line, undefined)).toBe(false)
+  })
+})
