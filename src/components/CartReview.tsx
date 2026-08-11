@@ -65,9 +65,15 @@ export function CartReview({
               const understocked = isLineUnderstocked(item, originStock[item.id])
               const blocking = isLineBlocking(item, originStock[item.id])
               const lineTotal = ventaLineTotalCents(item) / 100
+              const stockInfo = originStock[item.id]
               return <tr key={item.id} className={blocking || isUnpriced ? 'cart-review-flagged' : ''}>
                 <td>{item.nombre}
-                  {blocking && <small className="line-stock-error"><AlertTriangle /> Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBaseFor(item))} uds.</small>}
+                  {/* Brief S10: mismo criterio que CartItem — nombrar el pedido que
+                      reserva en vez de un "sin stock" genérico. */}
+                  {blocking && (stockInfo?.reservado ?? 0) > 0 && (
+                    <small className="line-stock-error"><AlertTriangle /> Quedan {fmtQty(item.ubicacion === 'Tienda' ? stockInfo!.tienda : stockInfo!.almacen)} disponibles en {item.ubicacion}. Otras {fmtQty(stockInfo!.reservado)} reservadas para &quot;{stockInfo!.motivo ?? 'otro pedido'}&quot;.</small>
+                  )}
+                  {blocking && !((stockInfo?.reservado ?? 0) > 0) && <small className="line-stock-error"><AlertTriangle /> Stock insuficiente en {item.ubicacion} para {fmtQty(cantidadBaseFor(item))} uds.</small>}
                   {understocked && !blocking && <small className="line-stock-info"><Info /> Sin inventariar en {item.ubicacion}.</small>}
                   {isUnpriced && <small className="line-stock-error"><AlertTriangle /> {item.nombre} no tiene precio.</small>}
                 </td>

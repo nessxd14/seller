@@ -45,11 +45,13 @@ export const getStockByProduct = async (productId: number): Promise<{ onHand: Ar
 // el modo mock ya tenía antes de este brief.
 export const getStockBySucursalBatch = async (
   productIds: number[],
-): Promise<Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>> => {
-  const result = new Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>()
+): Promise<Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean; reservado: number; motivo: string | null }>> => {
+  const result = new Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean; reservado: number; motivo: string | null }>()
   productIds.forEach((id) => {
     const product = products.find((item) => item.id === id)
-    if (product) result.set(id, { tienda: product.stockTienda, almacen: product.stockAlmacen, tiendaLibre: false, almacenLibre: false })
+    // Brief S10: el mock no modela reservas (no hay pedido_linea/v_pedido_linea_reserva
+    // en el backend mock) — reservado queda en 0, mismo criterio que tiendaLibre arriba.
+    if (product) result.set(id, { tienda: product.stockTienda, almacen: product.stockAlmacen, tiendaLibre: false, almacenLibre: false, reservado: 0, motivo: null })
   })
   return result
 }

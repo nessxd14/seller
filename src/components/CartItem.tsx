@@ -203,8 +203,10 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
       <button className="edit-link" onClick={onEdit} aria-label={`Editar ${item.nombre}`} title="Editar"><Pencil /></button>
       <strong className="line-total">Bs {money(lineTotal)}</strong>
     </div>
-    {/* TAREA B.4: ícono + texto corto, sin envolver — el enlace sigue siendo una acción. */}
-    {insufficient && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />Stock insuficiente en {item.ubicacion}.{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
+    {/* TAREA B.4: ícono + texto corto, sin envolver — el enlace sigue siendo una acción.
+        Brief S10: si el bloqueo es por reserva, nombrar el pedido en vez de decir "sin
+        stock" a secas — el cajero necesita poder explicarle al cliente qué pasa. */}
+    {insufficient && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />{(originStock?.reservado ?? 0) > 0 ? <>Quedan {fmtQty(item.ubicacion === 'Tienda' ? tiendaAvailable : originStock!.almacen)} disponibles. Otras {fmtQty(originStock!.reservado)} reservadas para &quot;{originStock!.motivo ?? 'otro pedido'}&quot;.</> : <>Stock insuficiente en {item.ubicacion}.</>}{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
     {/* Brief S9: mismo caso (falta stock) pero la sucursal está en control libre — no
         bloquea, así que no puede llevar el mismo rojo que un error real o el aviso
         pierde significado y se ignora. */}

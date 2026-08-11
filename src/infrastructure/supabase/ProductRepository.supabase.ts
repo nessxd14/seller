@@ -223,18 +223,34 @@ const getSucursalControlDefaults = (): Promise<Map<number, string>> => {
  * duplicación por completo — no se creó porque este brief es frontend-only y no toca el
  * esquema; queda anotado para cuando se justifique la migración.
  */
+// Brief S10 — la compuerta de reserva: tienda/almacen ya NO son stock físico crudo, son
+// vendible (saldo_vendible), neto de lo comprometido por otros pedidos (reserva de
+// clientes vía v_pedido_linea_reserva, Cation). reservado/motivo vienen de la misma RPC —
+// motivo trae los nombres de los pedidos que reservan, para que isLineBlocking pueda
+// explicarle al cajero por qué, no solo decir "sin stock". Dos llamadas (una por
+// sucursal) porque saldo_vendible toma un solo p_sucursal_id; reservado es el mismo
+// número en las dos (la reserva es contra el producto, no contra una sucursal).
 export const getStockBySucursalBatch = async (
   productIds: number[],
-): Promise<Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>> => {
+): Promise<Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean; reservado: number; motivo: string | null }>> => {
   const ids = [...new Set(productIds)].filter((id) => Number.isFinite(id))
-  const result = new Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>()
+  const result = new Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean; reservado: number; motivo: string | null }>()
   if (!ids.length) return result
-  const [{ data, error }, sucursalDefaults, { data: overridesData, error: overridesError }] = await Promise.all([
-    supabase.from('stock_actual').select('producto_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id)').in('producto_id', ids),
+  const SUCURSAL_TIENDA_ID = 2
+  const SUCURSAL_ALMACEN_ID = 1
+  const [
+    { data: tiendaData, error: tiendaError },
+    { data: almacenData, error: almacenError },
+    sucursalDefaults,
+    { data: overridesData, error: overridesError },
+  ] = await Promise.all([
+    supabase.rpc('saldo_vendible', { p_producto_ids: ids, p_sucursal_id: SUCURSAL_TIENDA_ID }),
+    supabase.rpc('saldo_vendible', { p_producto_ids: ids, p_sucursal_id: SUCURSAL_ALMACEN_ID }),
     getSucursalControlDefaults(),
     supabase.from('producto_sucursal').select('producto_id,sucursal_id,control_stock').in('producto_id', ids),
   ])
-  if (error) throw error
+  if (tiendaError) throw tiendaError
+  if (almacenError) throw almacenError
   if (overridesError) throw overridesError
   const overrideByKey = new Map<string, string>()
   for (const row of (overridesData ?? []) as Array<{ producto_id: number; sucursal_id: number; control_stock: string | null }>) {
@@ -244,18 +260,23 @@ export const getStockBySucursalBatch = async (
   const esLibre = (productoId: number, sucursalId: number) =>
     (overrideByKey.get(`${productoId}:${sucursalId}`) ?? sucursalDefaults.get(sucursalId)) === 'LIBRE'
   for (const id of ids) {
-    result.set(id, { tienda: 0, almacen: 0, tiendaLibre: esLibre(id, 2), almacenLibre: esLibre(id, 1) })
+    result.set(id, { tienda: 0, almacen: 0, tiendaLibre: esLibre(id, SUCURSAL_TIENDA_ID), almacenLibre: esLibre(id, SUCURSAL_ALMACEN_ID), reservado: 0, motivo: null })
   }
-  const rows = (data ?? []) as unknown as Array<{
-    producto_id: number
-    cantidad_base: number | string
-    ubicacion?: { sucursal_id: number | null } | null
-  }>
-  for (const row of rows) {
+  type SaldoVendibleRow = { producto_id: number; vendible: number | string; reservado: number | string; motivo: string | null }
+  for (const row of (tiendaData ?? []) as SaldoVendibleRow[]) {
     const entry = result.get(row.producto_id)
     if (!entry) continue
-    if (row.ubicacion?.sucursal_id === 2) entry.tienda += num(row.cantidad_base)
-    else if (row.ubicacion?.sucursal_id === 1) entry.almacen += num(row.cantidad_base)
+    entry.tienda = num(row.vendible)
+    entry.reservado = num(row.reservado)
+    entry.motivo = row.motivo
+  }
+  for (const row of (almacenData ?? []) as SaldoVendibleRow[]) {
+    const entry = result.get(row.producto_id)
+    if (!entry) continue
+    entry.almacen = num(row.vendible)
+    // reservado/motivo son el mismo dato en ambas llamadas — si por lo que sea difieren
+    // (no debería), se queda con el de Tienda, ya asignado arriba.
+    if (!entry.motivo && row.motivo) { entry.reservado = num(row.reservado); entry.motivo = row.motivo }
   }
   return result
 }

@@ -114,13 +114,13 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     if (!missing.length) return
     if (!featureFlags.supabase) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- mock mode reads stock straight off the already-loaded Product fields, no async fetch to defer to a callback
-      setOriginStock((prev) => { const next = { ...prev }; missing.forEach((item) => { next[item.id] = { tienda: item.stockTienda, almacen: item.stockAlmacen, tiendaLibre: false, almacenLibre: false } }); return next })
+      setOriginStock((prev) => { const next = { ...prev }; missing.forEach((item) => { next[item.id] = { tienda: item.stockTienda, almacen: item.stockAlmacen, tiendaLibre: false, almacenLibre: false, reservado: 0, motivo: null } }); return next })
       return
     }
     void getStockBySucursalBatch(missing.map((item) => item.id)).then((batch) =>
       setOriginStock((prev) => {
         const next = { ...prev }
-        missing.forEach((item) => { next[item.id] = batch.get(item.id) ?? { tienda: 0, almacen: 0, tiendaLibre: false, almacenLibre: false } })
+        missing.forEach((item) => { next[item.id] = batch.get(item.id) ?? { tienda: 0, almacen: 0, tiendaLibre: false, almacenLibre: false, reservado: 0, motivo: null } })
         return next
       }),
     )
@@ -154,6 +154,12 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
         const item = blockingItems[0]
         const stock = originStock[item.id]!
         const disponible = item.ubicacion === 'Tienda' ? stock.tienda : stock.almacen
+        // Brief S10: nunca "sin stock" a secas cuando la causa es una reserva — un
+        // cajero con la mercadería en la mano necesita poder explicarle al cliente
+        // qué pasa, y "sin stock" con el producto a la vista lee como sistema roto.
+        if (stock.reservado > 0) {
+          return `${item.nombre}: quedan ${fmtQty(disponible)} disponibles. Otras ${fmtQty(stock.reservado)} están reservadas para "${stock.motivo ?? 'otro pedido'}".`
+        }
         return `${item.nombre} necesita ${fmtQty(cantidadBaseFor(item))} uds. en ${item.ubicacion} y hay ${fmtQty(disponible)}. Cambiá el origen o la cantidad.`
       })()
     : ''
