@@ -114,13 +114,13 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     if (!missing.length) return
     if (!featureFlags.supabase) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- mock mode reads stock straight off the already-loaded Product fields, no async fetch to defer to a callback
-      setOriginStock((prev) => { const next = { ...prev }; missing.forEach((item) => { next[item.id] = { tienda: item.stockTienda, almacen: item.stockAlmacen, tiendaLibre: false, almacenLibre: false } }); return next })
+      setOriginStock((prev) => { const next = { ...prev }; missing.forEach((item) => { next[item.id] = { tienda: item.stockTienda, almacen: item.stockAlmacen, tiendaLibre: false, almacenLibre: false, tiendaVendible: item.stockTienda, almacenVendible: item.stockAlmacen, tiendaReservado: 0, almacenReservado: 0, tiendaMotivo: null, almacenMotivo: null } }); return next })
       return
     }
     void getStockBySucursalBatch(missing.map((item) => item.id)).then((batch) =>
       setOriginStock((prev) => {
         const next = { ...prev }
-        missing.forEach((item) => { next[item.id] = batch.get(item.id) ?? { tienda: 0, almacen: 0, tiendaLibre: false, almacenLibre: false } })
+        missing.forEach((item) => { next[item.id] = batch.get(item.id) ?? { tienda: 0, almacen: 0, tiendaLibre: false, almacenLibre: false, tiendaVendible: 0, almacenVendible: 0, tiendaReservado: 0, almacenReservado: 0, tiendaMotivo: null, almacenMotivo: null } })
         return next
       }),
     )
@@ -149,10 +149,20 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // propósito (registrar_venta ya lo acepta; el navegador no tiene que frenar antes).
   const blockingItems = mode === 'venta' ? cart.filter((item) => isLineBlocking(item, originStock[item.id])) : []
   const insufficientOrigin = blockingItems.length > 0
+  // Brief S10: "el mensaje es la mitad del trabajo" — nunca "sin stock" a secas. Si el
+  // bloqueo es por reserva (otro pedido tiene turno sobre estas unidades), decirlo y
+  // nombrar el pedido — un cajero que ve "sin stock" con la mercadería en la mano frente
+  // al cliente va a asumir que el sistema está roto, y con razón.
   const insufficientOriginBannerText = blockingItems.length
     ? (() => {
         const item = blockingItems[0]
         const stock = originStock[item.id]!
+        const reservado = item.ubicacion === 'Tienda' ? stock.tiendaReservado : stock.almacenReservado
+        const vendible = item.ubicacion === 'Tienda' ? stock.tiendaVendible : stock.almacenVendible
+        const motivo = item.ubicacion === 'Tienda' ? stock.tiendaMotivo : stock.almacenMotivo
+        if (reservado > 0) {
+          return `${item.nombre}: quedan ${fmtQty(vendible)} disponibles en ${item.ubicacion}. Otras ${fmtQty(reservado)} están reservadas${motivo ? ` para "${motivo}"` : ''}.`
+        }
         const disponible = item.ubicacion === 'Tienda' ? stock.tienda : stock.almacen
         return `${item.nombre} necesita ${fmtQty(cantidadBaseFor(item))} uds. en ${item.ubicacion} y hay ${fmtQty(disponible)}. Cambiá el origen o la cantidad.`
       })()

@@ -206,6 +206,10 @@ const getSucursalControlDefaults = (): Promise<Map<number, string>> => {
   return sucursalControlDefaultsCache
 }
 
+type StockBatchEntry = { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean; tiendaVendible: number; almacenVendible: number; tiendaReservado: number; almacenReservado: number; tiendaMotivo: string | null; almacenMotivo: string | null }
+
+interface SaldoVendibleRow { producto_id: number; vendible: number | string | null; reservado: number | string | null; motivo: string | null }
+
 /**
  * Stock por sucursal para un LOTE de productos (una página de grilla, nunca el catálogo
  * entero). stock_actual tiene 1.284 filas totales y máx. 3 ubicaciones por producto, así
@@ -222,20 +226,31 @@ const getSucursalControlDefaults = (): Promise<Map<number, string>> => {
  * evaluada y descartada por ahora: una vista v_producto_control_stock que eliminaría esta
  * duplicación por completo — no se creó porque este brief es frontend-only y no toca el
  * esquema; queda anotado para cuando se justifique la migración.
+ *
+ * Brief S10 (reserva de stock): tienda/almacen siguen siendo stock_actual crudo (el
+ * físico, para isLineUnderstocked y los avisos informativos). tiendaVendible/almacenVendible/
+ * *Reservado/*Motivo salen de saldo_vendible(producto_ids, sucursal_id) — la RPC que
+ * calcula lo realmente disponible para vender, FIFO por antigüedad contra otros pedidos.
+ * No se reimplementa ese cálculo acá (misma regla que W3): dos llamadas, una por sucursal,
+ * porque saldo_vendible toma un solo sucursal_id a la vez.
  */
 export const getStockBySucursalBatch = async (
   productIds: number[],
-): Promise<Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>> => {
+): Promise<Map<number, StockBatchEntry>> => {
   const ids = [...new Set(productIds)].filter((id) => Number.isFinite(id))
-  const result = new Map<number, { tienda: number; almacen: number; tiendaLibre: boolean; almacenLibre: boolean }>()
+  const result = new Map<number, StockBatchEntry>()
   if (!ids.length) return result
-  const [{ data, error }, sucursalDefaults, { data: overridesData, error: overridesError }] = await Promise.all([
+  const [{ data, error }, sucursalDefaults, { data: overridesData, error: overridesError }, { data: vendibleTiendaData, error: vendibleTiendaError }, { data: vendibleAlmacenData, error: vendibleAlmacenError }] = await Promise.all([
     supabase.from('stock_actual').select('producto_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id)').in('producto_id', ids),
     getSucursalControlDefaults(),
     supabase.from('producto_sucursal').select('producto_id,sucursal_id,control_stock').in('producto_id', ids),
+    supabase.rpc('saldo_vendible', { p_producto_ids: ids, p_sucursal_id: 2 }),
+    supabase.rpc('saldo_vendible', { p_producto_ids: ids, p_sucursal_id: 1 }),
   ])
   if (error) throw error
   if (overridesError) throw overridesError
+  if (vendibleTiendaError) throw vendibleTiendaError
+  if (vendibleAlmacenError) throw vendibleAlmacenError
   const overrideByKey = new Map<string, string>()
   for (const row of (overridesData ?? []) as Array<{ producto_id: number; sucursal_id: number; control_stock: string | null }>) {
     if (row.control_stock) overrideByKey.set(`${row.producto_id}:${row.sucursal_id}`, row.control_stock)
@@ -243,8 +258,23 @@ export const getStockBySucursalBatch = async (
   // Sucursal 1 = Almacén Central, 2 = Tienda, 3 = Shopify (virtual, se ignora).
   const esLibre = (productoId: number, sucursalId: number) =>
     (overrideByKey.get(`${productoId}:${sucursalId}`) ?? sucursalDefaults.get(sucursalId)) === 'LIBRE'
+  const vendibleTiendaByProduct = new Map(((vendibleTiendaData ?? []) as SaldoVendibleRow[]).map((row) => [row.producto_id, row]))
+  const vendibleAlmacenByProduct = new Map(((vendibleAlmacenData ?? []) as SaldoVendibleRow[]).map((row) => [row.producto_id, row]))
   for (const id of ids) {
-    result.set(id, { tienda: 0, almacen: 0, tiendaLibre: esLibre(id, 2), almacenLibre: esLibre(id, 1) })
+    const vt = vendibleTiendaByProduct.get(id)
+    const va = vendibleAlmacenByProduct.get(id)
+    result.set(id, {
+      tienda: 0,
+      almacen: 0,
+      tiendaLibre: esLibre(id, 2),
+      almacenLibre: esLibre(id, 1),
+      tiendaVendible: num(vt?.vendible),
+      almacenVendible: num(va?.vendible),
+      tiendaReservado: num(vt?.reservado),
+      almacenReservado: num(va?.reservado),
+      tiendaMotivo: vt?.motivo ?? null,
+      almacenMotivo: va?.motivo ?? null,
+    })
   }
   const rows = (data ?? []) as unknown as Array<{
     producto_id: number

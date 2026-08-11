@@ -1,13 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { isLineBlocking, type StockControlInfo } from '../stockCheck'
 
-const stock = (overrides: Partial<StockControlInfo> = {}): StockControlInfo => ({
-  tienda: 0,
-  almacen: 0,
-  tiendaLibre: false,
-  almacenLibre: false,
-  ...overrides,
-})
+// Por default vendible = físico y reservado = 0 (sin reserva de por medio), para que los
+// tests de S9 (control por sucursal, sin reserva) sigan expresando exactamente lo mismo
+// que antes de S10 — que compara contra vendible en vez de físico.
+const stock = (overrides: Partial<StockControlInfo> = {}): StockControlInfo => {
+  const tienda = overrides.tienda ?? 0
+  const almacen = overrides.almacen ?? 0
+  return {
+    tienda,
+    almacen,
+    tiendaLibre: false,
+    almacenLibre: false,
+    tiendaVendible: tienda,
+    almacenVendible: almacen,
+    tiendaReservado: 0,
+    almacenReservado: 0,
+    tiendaMotivo: null,
+    almacenMotivo: null,
+    ...overrides,
+  }
+}
 
 describe('isLineBlocking — "falta stock" y "esto bloquea la venta" son preguntas distintas', () => {
   it('falta stock en Tienda, Tienda en control libre → no bloquea', () => {
@@ -44,5 +57,31 @@ describe('isLineBlocking — "falta stock" y "esto bloquea la venta" son pregunt
   it('stock ausente → no bloquea (el backend es la autoridad final, no se bloquea por falta de datos)', () => {
     const line = { cantidad: 5, ubicacion: 'Tienda' as const }
     expect(isLineBlocking(line, undefined)).toBe(false)
+  })
+})
+
+describe('isLineBlocking — S10: la reserva gana sobre el control libre de W3', () => {
+  it('100 físicas, 80 reservadas → vendible 20; pedir más de 20 bloquea', () => {
+    const line = { cantidad: 30, ubicacion: 'Tienda' as const }
+    const s = stock({ tienda: 100, tiendaVendible: 20, tiendaReservado: 80, tiendaMotivo: 'Cotización #22', tiendaLibre: true })
+    expect(isLineBlocking(line, s)).toBe(true)
+  })
+
+  it('pedir hasta lo vendible (20) no bloquea', () => {
+    const line = { cantidad: 20, ubicacion: 'Tienda' as const }
+    const s = stock({ tienda: 100, tiendaVendible: 20, tiendaReservado: 80, tiendaMotivo: 'Cotización #22', tiendaLibre: true })
+    expect(isLineBlocking(line, s)).toBe(false)
+  })
+
+  it('en Tienda LIBRE, un producto CON reserva no se puede vender por encima de lo vendible, aunque el control libre lo permitiría', () => {
+    const line = { cantidad: 5, ubicacion: 'Tienda' as const }
+    const s = stock({ tienda: 3, tiendaVendible: 0, tiendaReservado: 3, tiendaMotivo: 'Pedido #10', tiendaLibre: true })
+    expect(isLineBlocking(line, s)).toBe(true)
+  })
+
+  it('sin ninguna reserva de por medio (reservado 0), el control libre sigue salvando el faltante', () => {
+    const line = { cantidad: 5, ubicacion: 'Tienda' as const }
+    const s = stock({ tienda: 0, tiendaVendible: 0, tiendaReservado: 0, tiendaLibre: true })
+    expect(isLineBlocking(line, s)).toBe(false)
   })
 })

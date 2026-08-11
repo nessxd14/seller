@@ -110,6 +110,11 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
   // Tienda's own stock (the case a transfer from Almacén can actually fix) — an Almacén-origin
   // shortfall is a different problem (no stock anywhere) that a Tienda-bound transfer can't solve.
   const tiendaShortfall = item.ubicacion === 'Tienda' && originStock ? Math.max(0, cantidadBase - tiendaAvailable) : 0
+  // Brief S10: "el mensaje es la mitad del trabajo" — nunca "sin stock" a secas cuando la
+  // causa real es una reserva de otro pedido.
+  const reservado = originStock ? (item.ubicacion === 'Tienda' ? originStock.tiendaReservado : originStock.almacenReservado) : 0
+  const reservadoVendible = originStock ? (item.ubicacion === 'Tienda' ? originStock.tiendaVendible : originStock.almacenVendible) : 0
+  const reservadoMotivo = originStock ? (item.ubicacion === 'Tienda' ? originStock.tiendaMotivo : originStock.almacenMotivo) : null
 
   const onPresentationChange = (chosen: Presentation) => {
     const isBase = chosen.esBase || chosen.factorUnidadBase === 1
@@ -203,8 +208,11 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
       <button className="edit-link" onClick={onEdit} aria-label={`Editar ${item.nombre}`} title="Editar"><Pencil /></button>
       <strong className="line-total">Bs {money(lineTotal)}</strong>
     </div>
-    {/* TAREA B.4: ícono + texto corto, sin envolver — el enlace sigue siendo una acción. */}
-    {insufficient && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />Stock insuficiente en {item.ubicacion}.{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
+    {/* TAREA B.4: ícono + texto corto, sin envolver — el enlace sigue siendo una acción.
+        Brief S10: si el bloqueo es por reserva, decirlo y nombrar el pedido — "sin stock"
+        a secas con la mercadería en la mano frente al cliente parece un sistema roto. */}
+    {insufficient && reservado > 0 && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />Quedan {fmtQty(reservadoVendible)} disponibles. Otras {fmtQty(reservado)} reservadas{reservadoMotivo ? ` para "${reservadoMotivo}"` : ''}.</small>}
+    {insufficient && reservado === 0 && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />Stock insuficiente en {item.ubicacion}.{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
     {/* Brief S9: mismo caso (falta stock) pero la sucursal está en control libre — no
         bloquea, así que no puede llevar el mismo rojo que un error real o el aviso
         pierde significado y se ignora. */}
