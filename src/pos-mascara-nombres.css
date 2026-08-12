@@ -1,28 +1,5 @@
-/* Ronda 10 — TAREA 1: máscara de nombres (nombre para el cliente) en el
-   editor de líneas de catálogo. Ícono chico + popover, sin agrandar la fila —
-   ver brief. Clases nuevas, sin choque de especificidad con nada existente. */
-.mask-pin-root { position: relative; flex: 0 0 auto }
-
-.mask-pin-trigger {
-  display: grid; place-items: center;
-  width: 24px; height: 24px;
-  border: 1px solid var(--line); background: #fff; border-radius: 7px;
-  color: #8a867e;
-}
-.mask-pin-trigger svg { width: 12px }
-.mask-pin-trigger:hover { background: #f5f2ed }
-.mask-pin-trigger.active { border-color: var(--orange); color: var(--orange); background: #fff3ee }
-
-.mask-pin-popover {
-  position: absolute; z-index: 6;
-  top: calc(100% + 4px); left: 0;
-  background: #fff; border: 1px solid var(--line); border-radius: 10px;
-  box-shadow: 0 8px 20px #28251d1a;
-  padding: 10px; width: 240px;
-}
-.mask-pin-popover label { display: block; font-size: 11px; color: #706d66; font-weight: 600 }
-.mask-pin-popover input { display: block; width: 100%; border: 1px solid #ddd8cf; border-radius: 7px; margin-top: 5px; padding: 7px 8px; font-size: 12px }
-
-/* Texto de aviso en el renglón gris — el nombre real de catálogo (arriba) nunca
-   desaparece; esto solo avisa qué se va a imprimir en su lugar. */
+/* Ronda 10 — TAREA 1: máscara de nombres (nombre para el cliente).
+   T1: el trigger/popover (.mask-pin-*) se borró — la edición pasó al modal de
+   línea (EditQuoteLineModal, ver pos-editor-linea-modal.css). Este texto de
+   aviso en el renglón sigue en uso, sin tocar. */
 .dl-mask-note { color: var(--orange); font-weight: 600 }

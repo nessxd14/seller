@@ -6,6 +6,7 @@ import { formatMoney, money } from '../domain/common/money'
 import { Modal } from './Modal'
 import { empresaStore as empresa } from '../config/empresaStore'
 import { LineIdentifiersRow, type LineIdentifiers } from './LineIdentifiersRow'
+import { nombreArchivoDocumento } from '../domain/documents/nombreArchivoDocumento'
 
 export interface ExportableDoc {
   number: string
@@ -58,6 +59,16 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
     if (!ids.length) return
     void listLineIdentifiers(ids).then(setIdentifiersByProduct)
   }, [doc.lines])
+
+  // TAREA 5 (T1): window.print() no tiene otra forma de nombrar el archivo que sugiere
+  // Chrome al "Guardar como PDF" — solo document.title en el momento de imprimir. Se
+  // restaura en el cleanup para que no quede pegado si el modal se desmonta con el
+  // diálogo de impresión todavía abierto.
+  useEffect(() => {
+    const previousTitle = document.title
+    document.title = nombreArchivoDocumento(doc.number, doc.customerName)
+    return () => { document.title = previousTitle }
+  }, [doc.number, doc.customerName])
 
   const catalogLines = doc.lines.filter((line) => !line.isCustomItem)
   const customLines = doc.lines.filter((line) => line.isCustomItem)

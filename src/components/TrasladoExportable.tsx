@@ -6,6 +6,7 @@ import { Modal } from './Modal'
 import { empresaStore as empresa } from '../config/empresaStore'
 import { LineIdentifiersRow, type LineIdentifiers } from './LineIdentifiersRow'
 import { fechaFmt, fmtQty, motivoLabel, sucursalLabel } from '../features/transfers/TransfersPage'
+import { nombreArchivoDocumento } from '../domain/documents/nombreArchivoDocumento'
 
 // Brief S8: un componente nuevo, no un cuarto modo de DocumentoExportable — un traslado
 // no tiene cliente, canal ni precios, tiene origen→destino y tres cantidades por línea.
@@ -50,6 +51,14 @@ export function TrasladoExportable({ transfer, onClose }: { transfer: TransferRe
   const title = titleFor[mode]
   const numero = transfer.referencia || `Traslado #${transfer.id}`
   const anulado = transfer.estado === 'CANCELADO' || transfer.estado === 'RECHAZADO'
+
+  // TAREA 5 (T1): mismo mecanismo que DocumentoExportable — un traslado no tiene
+  // cliente, así que el nombre de archivo es solo el número.
+  useEffect(() => {
+    const previousTitle = document.title
+    document.title = nombreArchivoDocumento(numero)
+    return () => { document.title = previousTitle }
+  }, [numero])
   const lineasIncompletas = mode === 'guia' && transfer.lines.some((line) => (line.cantidadDespachada ?? line.cantidadBase) < line.cantidadBase)
 
   return (

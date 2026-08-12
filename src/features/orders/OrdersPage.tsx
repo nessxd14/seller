@@ -171,7 +171,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
         return <article key={order.id} className={`clickable-row ${deleted ? 'order-row-deleted' : edited ? 'order-row-edited' : ''}`} onClick={() => setSelected(order)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') setSelected(order) }}>
           {deleted && <span className="order-row-flag order-row-flag-deleted" title="Anulado"><XCircle size={12} /></span>}
           {edited && <span className="order-row-flag order-row-flag-edited" title="Editado"><Pencil size={12} /></span>}
-          <strong>{order.number}</strong>
+          <strong className="doc-number-cell">{order.number}</strong>
           <span>{order.customerName}</span>
           <span className="channel-chip">{channelNames[order.channel] ?? order.channel}</span>
           <span className={`status-chip ${statusChipClass(order.status)}`}>{statusLabel[order.status]}</span>
