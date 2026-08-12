@@ -1,0 +1,29 @@
+/* Brief T2 — identidad de cliente: documento obligatorio (Tarea 1) y panel de cliente
+   parecido (Tarea 2). Mismo ámbar de "requerido" que ya usa .customer-select.required
+   (pos-ajustes.css / styles.css), sin inventar un token de color nuevo. */
+
+.field-required-mark { color: #c84f44; font-weight: 700 }
+.field-required-empty { border-color: #f4b18e !important; background: #fff9f5 !important }
+.field-required-hint { color: #a76a19; font-size: 11px; margin: -6px 0 0 }
+
+.field-error { background: #fdf3f1; border-radius: 9px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: #a74739 }
+.field-error p { margin: 0 }
+.field-error-link, .duplicate-customer-detail-toggle { border: 0; background: transparent; color: var(--orange); font-weight: 700; font-size: 11px; text-decoration: underline; padding: 0; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 2px }
+
+.duplicate-customer-panel { margin: 10px 0; border: 1px solid #f4b18e; background: #fff9f5; border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px }
+.duplicate-customer-panel-title { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; font-weight: 700; color: #a76a19 }
+.duplicate-customer-panel-title svg { width: 13px; height: 13px }
+
+.duplicate-customer-card { border-top: 1px solid #f0ddc8; padding-top: 8px }
+.duplicate-customer-card:first-of-type { border-top: 0; padding-top: 0 }
+.duplicate-customer-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px }
+.duplicate-customer-info { display: grid; gap: 2px; min-width: 0 }
+.duplicate-customer-info strong { font-size: 12px }
+.duplicate-customer-info small { color: #8a867e; font-size: 11px }
+.duplicate-customer-badge-inactivo { display: inline-block; background: #eceae4; color: #77746d; font-size: 10px; font-weight: 700; border-radius: 999px; padding: 1px 7px; margin-left: 6px }
+.duplicate-customer-saldo { color: #706d66 !important; font-weight: 600 }
+
+.duplicate-customer-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: 0 0 auto }
+.duplicate-customer-actions .secondary-button { height: 30px; padding: 0 10px; font-size: 11px }
+
+.duplicate-customer-detail { margin-top: 6px; background: #fff; border-radius: 7px; padding: 7px 9px; display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #77746d }

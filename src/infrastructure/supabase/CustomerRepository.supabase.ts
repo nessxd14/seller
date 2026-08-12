@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient'
 import type { CustomerRepository, MutationContext, Page, PageRequest, Versioned } from '../../application/ports/repositories'
 import type { CustomerRecord } from '../../application/shared/models'
 import { customerTypeToTipoPrecio, tipoPrecioToCustomerType, type TipoPrecioCliente } from './mappers'
+import { coincideBusqueda } from '../../domain/customers/textSearch'
 
 interface ClienteRow {
   id: number
@@ -49,19 +50,26 @@ const rowToCustomer = (row: ClienteRow): CustomerRecord & Versioned => ({
 export class SupabaseCustomerRepository implements CustomerRepository {
   async list(input: { query?: string; type?: CustomerRecord['type']; page: PageRequest }): Promise<Page<CustomerRecord & Versioned>> {
     const { query, type, page } = input
-    const from = (page.page - 1) * page.pageSize
-    const to = from + page.pageSize - 1
-    let builder = supabase.from('cliente').select('*', { count: 'exact' })
-    if (query && query.trim()) {
-      // Dentro de un or=(...) de PostgREST, la coma separa condiciones y el paréntesis
-      // cierra el grupo: sin escapar, cualquiera de los dos rompe el filtro (400).
-      const escaped = query.trim().replace(/[%,()]/g, '')
-      builder = builder.or(`nombre.ilike.%${escaped}%,documento.ilike.%${escaped}%,email.ilike.%${escaped}%`)
-    }
+    const trimmedQuery = query?.trim()
+    let builder = supabase.from('cliente').select('*', { count: trimmedQuery ? undefined : 'exact' })
     if (type) builder = builder.eq('tipo_precio', customerTypeToTipoPrecio(type))
-    const { data, error, count } = await builder.order('id', { ascending: false }).range(from, to)
+    if (!trimmedQuery) {
+      const from = (page.page - 1) * page.pageSize
+      const to = from + page.pageSize - 1
+      const { data, error, count } = await builder.order('id', { ascending: false }).range(from, to)
+      if (error) throw error
+      return { items: (data ?? []).map((row) => rowToCustomer(row as ClienteRow)), page: page.page, pageSize: page.pageSize, total: count ?? 0 }
+    }
+    // Brief T2 Tarea 3: `ilike` es case-insensitive pero no ignora acentos ("jose perez" no
+    // matchea "José Pérez" en la base) — se trae el candidato completo (padrón chico, <100
+    // clientes hoy) y se filtra/pagina en JS con la misma normalización que usa el resto del
+    // buscador, en vez de un filtro ilike server-side que se queda corto con datos acentuados.
+    const { data, error } = await builder.order('id', { ascending: false })
     if (error) throw error
-    return { items: (data ?? []).map((row) => rowToCustomer(row as ClienteRow)), page: page.page, pageSize: page.pageSize, total: count ?? 0 }
+    const all = (data ?? []).map((row) => rowToCustomer(row as ClienteRow))
+    const matched = all.filter((c) => coincideBusqueda(`${c.name} ${c.document} ${c.businessName ?? ''} ${c.email}`, trimmedQuery))
+    const from = (page.page - 1) * page.pageSize
+    return { items: matched.slice(from, from + page.pageSize), page: page.page, pageSize: page.pageSize, total: matched.length }
   }
 
   async getById(id: string): Promise<(CustomerRecord & Versioned) | null> {
