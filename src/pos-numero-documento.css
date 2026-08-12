@@ -1,0 +1,8 @@
+/* Brief T1 — Tarea 4: número de documento (cotización/pedido) monoespaciado
+   y con tabular-nums en la primera columna de sus grillas — no se confunde
+   con el resto del texto en negrita, y los dígitos no bailan entre filas. */
+.doc-number {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+}

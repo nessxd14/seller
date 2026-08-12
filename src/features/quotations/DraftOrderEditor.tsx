@@ -1,4 +1,4 @@
-import { Building2, Landmark, Minus, Pencil, Plus, Tag, Warehouse, X } from 'lucide-react'
+import { Building2, Landmark, Minus, Pencil, Plus, Warehouse, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { QuoteDraft, WorkflowLine } from '../../application/shared/models'
 import type { CustomerRecord } from '../../application/shared/models'
@@ -10,8 +10,8 @@ import { Modal } from '../../components/Modal'
 import { SaldoBadge } from '../../components/SaldoBadge'
 import { NumberField } from '../../components/NumberField'
 import type { LineIdentifiers } from '../../components/LineIdentifiersRow'
-import { OriginPin, buildOriginOptions, type OriginLocation } from '../../components/OriginPin'
-import { cantidadBaseFor } from '../../domain/sales/stockCheck'
+import type { OriginLocation } from '../../components/OriginPin'
+import { EditQuoteLineModal } from './EditQuoteLineModal'
 import type { Product } from '../../types'
 import { useBorrador, borradorKey } from '../../hooks/useBorrador'
 import { BorradorBanner } from '../../components/BorradorBanner'
@@ -60,10 +60,10 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const [productQuery, setProductQuery] = useState('')
   const [productResults, setProductResults] = useState<Product[]>([])
   const [scanSku, setScanSku] = useState('')
-  const [priceEditorLineId, setPriceEditorLineId] = useState<string | null>(null)
-  // Ronda 10 — TAREA 1: máscara de nombres. Popover chico en vez de un input
-  // permanente por fila (20 líneas con un input vacío cada una es ruido).
-  const [maskEditorLineId, setMaskEditorLineId] = useState<string | null>(null)
+  // Brief T1 — Tarea 1: un solo modal de edición de línea reemplaza los popovers de
+  // precio, máscara y origen (se recortaban contra el overflow:auto del modal en
+  // cotizaciones largas — ver EditQuoteLineModal.tsx).
+  const [editingLineId, setEditingLineId] = useState<string | null>(null)
   const [actorId, setActorId] = useState('pos')
   const [saving, setSaving] = useState(false)
   // Brief H — useBorrador: autosave de la cotización. Desactivado en solo-lectura (nada
@@ -76,7 +76,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const [stockByProduct, setStockByProduct] = useState<Record<string, LineStock>>({})
   const [presentationsByProduct, setPresentationsByProduct] = useState<Record<string, LinePresentation[]>>({})
   // Base (per-base-unit) price captured at add-time, used to suggest a price when the
-  // presentation changes; keyed by line id so overrides via PricePopover aren't disturbed.
+  // presentation changes; keyed by line id so overrides via EditQuoteLineModal aren't disturbed.
   const [basePriceCentsByLine, setBasePriceCentsByLine] = useState<Record<string, number>>({})
   // Item 2.2: barra/fábrica/marca, batch-fetched per productId set so a multi-line
   // quote/order doesn't trigger an identifier lookup per line render.
@@ -296,7 +296,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   }
 
   return (
-    <Modal title={value.id ? `Cotización ${value.number || value.id}` : 'Nueva cotización'} subtitle={readOnly ? 'Solo lectura — esta cotización ya no está en borrador' : 'Editor tipo borrador de pedido'} onClose={onClose} wide escapeToClose={!customModalOpen}>
+    <Modal title={value.id ? `Cotización ${value.number || value.id}` : 'Nueva cotización'} subtitle={readOnly ? 'Solo lectura — esta cotización ya no está en borrador' : 'Editor tipo borrador de pedido'} onClose={onClose} wide escapeToClose={!customModalOpen && !editingLineId}>
       <div className="modal-body quote-editor draft-order-editor">
         {borradorPendiente && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}
         <div className="channel-tabs draft-order-tabs">
@@ -379,47 +379,35 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         <div className="editor-lines draft-lines">
           <header><strong>Productos</strong></header>
           {catalogLines.map((line) => {
-            const stock = stockByProduct[line.productId]
             const presentations = presentationsByProduct[line.productId] ?? []
             const origin: OriginLocation = line.sourceLocation ?? 'Almacén'
             const stockError = lineErrors[line.id]
             const factor = line.factorUnidadBase ?? 1
             const showEquivalence = factor !== 1
             const identifiers = identifiersByProduct[line.productId]
-            // TAREA 5 — Almacén-default-with-conditional-Tienda-unlock: Tienda is only
-            // selectable here when Almacén's stock does NOT cover this line's requested
-            // quantity in base units (a strict "<" comparison, not "=== 0" — see brief).
-            // Undetermined stock (not yet loaded) never disables anything, mirroring the
-            // existing lineErrors guard above.
-            const almacenCovers = stock ? stock.almacen >= cantidadBaseFor({ cantidad: line.quantity, ubicacion: origin, factorUnidadBase: line.factorUnidadBase }) : false
-            const originOptions = buildOriginOptions(stock, almacenCovers ? { Tienda: 'Almacén cubre esta línea' } : undefined)
             return (
-              <div key={line.id} className={`draft-line-row presentation-line-row ${stockError ? 'has-stock-error' : ''}`}>
+              <div
+                key={line.id}
+                className={`draft-line-row presentation-line-row ${stockError ? 'has-stock-error' : ''}`}
+                onClick={readOnly ? undefined : () => setEditingLineId(line.id)}
+                role={readOnly ? undefined : 'button'}
+                tabIndex={readOnly ? undefined : 0}
+                onKeyDown={readOnly ? undefined : (e) => { if (e.key === 'Enter') setEditingLineId(line.id) }}
+              >
                 <div className="draft-line-top">
                   <div className="dl-r1">
                     <span className="dl-nombre" title={line.name}>{line.name}</span>
-                    <div className="mask-pin-root">
-                      <button
-                        type="button"
-                        className={`mask-pin-trigger ${line.maskName ? 'active' : ''}`}
-                        title={line.maskName ? `Nombre para el cliente: ${line.maskName}` : 'Poner nombre para el cliente'}
-                        aria-label={line.maskName ? `Editar nombre para el cliente de ${line.name}` : `Agregar nombre para el cliente para ${line.name}`}
-                        disabled={readOnly}
-                        onClick={() => setMaskEditorLineId(maskEditorLineId === line.id ? null : line.id)}
-                      >
-                        <Tag />
-                      </button>
-                      {maskEditorLineId === line.id && (
-                        <MaskPopover
-                          line={line}
-                          onClose={() => setMaskEditorLineId(null)}
-                          onApply={(mask) => { updateLine(line.id, { maskName: mask || undefined }); setMaskEditorLineId(null) }}
-                        />
-                      )}
-                    </div>
-                    <div className="qty-control">
+                    <div className="qty-control" onClick={(e) => e.stopPropagation()}>
                       <button type="button" aria-label={`Restar cantidad ${line.name}`} disabled={readOnly || line.quantity <= 1} onClick={() => updateLine(line.id, { quantity: Math.max(1, line.quantity - 1) })}><Minus /></button>
-                      <strong>{line.quantity}</strong>
+                      <NumberField
+                        className="qty-value-input"
+                        ariaLabel={`Cantidad ${line.name}`}
+                        value={line.quantity}
+                        min={1}
+                        allowDecimals={false}
+                        disabled={readOnly}
+                        onCommit={(quantity) => updateLine(line.id, { quantity })}
+                      />
                       <button type="button" aria-label={`Sumar cantidad ${line.name}`} disabled={readOnly} onClick={() => updateLine(line.id, { quantity: line.quantity + 1 })}><Plus /></button>
                     </div>
                     {presentations.length > 0 && (
@@ -427,6 +415,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                         className="select-skin"
                         aria-label={`Presentación ${line.name}`}
                         disabled={readOnly}
+                        onClick={(e) => e.stopPropagation()}
                         value={line.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id}
                         onChange={(e) => {
                           const chosen = presentations.find((p) => p.id === Number(e.target.value))
@@ -442,21 +431,15 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                       {line.maskName && <span className="dl-mask-note">Imprime: {line.maskName} · </span>}
                       {[line.sku, identifiers?.barra].filter(Boolean).join(' · ')}
                       {' · '}
-                      <button type="button" className="price-cell" disabled={readOnly} onClick={() => setPriceEditorLineId(priceEditorLineId === line.id ? null : line.id)}>
+                      <span className="price-cell">
                         Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u{line.discountBasisPoints > 0 && ` −${(line.discountBasisPoints / 100).toFixed(1)}%`}{line.priceOverridden && <small className="overridden-badge">editado</small>}
-                      </button>
-                      {priceEditorLineId === line.id && (
-                        <PricePopover
-                          line={line}
-                          onClose={() => setPriceEditorLineId(null)}
-                          onApply={(patch) => { updateLine(line.id, { ...patch, priceOverridden: true, modifiedBy: actorId, modifiedAt: new Date().toISOString() }); setPriceEditorLineId(null) }}
-                        />
-                      )}
+                      </span>
+                      {' · Origen: '}{origin}
                       {showEquivalence && <> · <span className="dl-equiv">{fmtQty(line.quantity * factor)} u</span></>}
                     </span>
-                    <div className="dl-origen"><OriginPin value={origin} options={originOptions} onChange={(loc) => updateLine(line.id, { sourceLocation: loc })} ariaLabel={`Origen ${line.name}`} /></div>
                     <strong className="dl-total">{formatMoney(money(lineTotalCents(line)))}</strong>
-                    {!readOnly && <button type="button" aria-label={`Quitar ${line.name}`} onClick={() => removeLine(line.id)}><X /></button>}
+                    {!readOnly && <button type="button" className="edit-link" aria-label={`Editar ${line.name}`} onClick={(e) => { e.stopPropagation(); setEditingLineId(line.id) }}><Pencil /></button>}
+                    {!readOnly && <button type="button" aria-label={`Quitar ${line.name}`} onClick={(e) => { e.stopPropagation(); removeLine(line.id) }}><X /></button>}
                   </div>
                 </div>
                 {stockError && <small className="line-stock-error">{stockError}</small>}
@@ -493,11 +476,15 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
           <div><span>Descuento general</span><strong>-{formatMoney(money(value.generalDiscountCents))}</strong></div>
           <div className="total"><span>Total</span><strong>{formatMoney(money(totalCents))}</strong></div>
         </div>
-        {hasStockErrors && <div className="stock-block-notice">Hay líneas sin stock suficiente en la sucursal elegida — corrígelas para poder guardar.</div>}
+        {/* Brief T1 — Tarea 3: una cotización es un borrador de trabajo, puede tener
+            líneas sin stock (se asume que la mercadería se compra para surtirlas) — el
+            aviso pasa de bloqueante a informativo. Sigue bloqueando "Convertir a
+            pedido"/"Crear pedido" más abajo, eso no cambia en este brief. */}
+        {hasStockErrors && <div className="stock-block-notice">{Object.keys(lineErrors).length} línea{Object.keys(lineErrors).length === 1 ? '' : 's'} sin stock suficiente. Se pueden cotizar; para convertir a pedido hay que resolverlas.</div>}
       </div>
       <footer className="modal-actions">
         <button className="secondary-button" onClick={onClose}>Cancelar</button>
-        {!readOnly && <button className="secondary-button" disabled={!value.lines.length || saving || hasStockErrors || missingCustomer} title={missingCustomer ? 'Elegí un cliente para guardar' : undefined} onClick={() => void runAction(onSave)}>Guardar como cotización</button>}
+        {!readOnly && <button className="secondary-button" disabled={!value.lines.length || saving || missingCustomer} title={missingCustomer ? 'Elegí un cliente para guardar' : undefined} onClick={() => void runAction(onSave)}>Guardar como cotización</button>}
         {/* Ronda 5 — TAREA 1: which conversion action shows depends on WHERE this editor
             was opened from, not on the form's current state. Editing an existing
             cotización (isExistingQuote) → only "Convertir a pedido" is offered, since
@@ -525,6 +512,21 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
           onConfirm={confirmCustomModal}
         />
       )}
+      {editingLineId && (() => {
+        const line = catalogLines.find((l) => l.id === editingLineId)
+        if (!line) return null
+        return (
+          <EditQuoteLineModal
+            line={line}
+            stock={stockByProduct[line.productId]}
+            presentations={presentationsByProduct[line.productId] ?? []}
+            identifiers={identifiersByProduct[line.productId]}
+            basePriceCents={basePriceCentsByLine[line.id] ?? line.unitPriceCents}
+            onClose={() => setEditingLineId(null)}
+            onSave={(patch) => updateLine(line.id, patch.priceOverridden ? { ...patch, modifiedBy: actorId, modifiedAt: new Date().toISOString() } : patch)}
+          />
+        )
+      })()}
     </Modal>
   )
 }
@@ -566,42 +568,5 @@ function CustomItemModal({ form, setForm, editing, addAnother, setAddAnother, co
         <button className="primary-button" disabled={!form.descripcion.trim()} onClick={onConfirm}>{editing ? 'Guardar cambios' : 'Agregar'}</button>
       </footer>
     </Modal>
-  )
-}
-
-// Ronda 10 — TAREA 1: el nombre real de catálogo (line.name) nunca desaparece de la
-// fila; esto solo captura la máscara aparte, que es lo que imprimen cotización/pedido
-// (nota de entrega y picking siguen mostrando el nombre real, sin tocar esta pieza).
-function MaskPopover({ line, onApply, onClose }: { line: WorkflowLine; onApply: (mask: string) => void; onClose: () => void }) {
-  const [value, setValue] = useState(line.maskName ?? '')
-  return (
-    <div className="mask-pin-popover" role="dialog" aria-label="Nombre para el cliente">
-      <label>Nombre para el cliente (opcional)<input value={value} placeholder={line.name} autoFocus onChange={(e) => setValue(e.target.value)} /></label>
-      <div className="price-popover-actions">
-        <button type="button" className="secondary-button" onClick={onClose}>Cancelar</button>
-        <button type="button" className="primary-button" onClick={() => onApply(value.trim())}>Guardar</button>
-      </div>
-    </div>
-  )
-}
-
-function PricePopover({ line, onApply, onClose }: { line: WorkflowLine; onApply: (patch: Partial<WorkflowLine>) => void; onClose: () => void }) {
-  const [mode, setMode] = useState<'price' | 'discount'>('price')
-  const [priceInput, setPriceInput] = useState(String(line.unitPriceCents / 100))
-  const [discountInput, setDiscountInput] = useState(String(line.discountBasisPoints / 100))
-  return (
-    <div className="price-popover" role="dialog" aria-label="Editar precio">
-      <div className="price-popover-tabs">
-        <button type="button" className={mode === 'price' ? 'active' : ''} onClick={() => setMode('price')}>Precio unitario</button>
-        <button type="button" className={mode === 'discount' ? 'active' : ''} onClick={() => setMode('discount')}>Descuento %</button>
-      </div>
-      {mode === 'price'
-        ? <input type="number" min="0" value={priceInput} onChange={(e) => setPriceInput(e.target.value)} autoFocus />
-        : <input type="number" min="0" max="100" value={discountInput} onChange={(e) => setDiscountInput(e.target.value)} autoFocus />}
-      <div className="price-popover-actions">
-        <button type="button" className="secondary-button" onClick={onClose}>Cancelar</button>
-        <button type="button" className="primary-button" onClick={() => onApply(mode === 'price' ? { unitPriceCents: Math.max(0, Math.round(Number(priceInput) * 100)) } : { discountBasisPoints: Math.min(10_000, Math.max(0, Math.round(Number(discountInput) * 100))) })}>Aplicar</button>
-      </div>
-    </div>
   )
 }

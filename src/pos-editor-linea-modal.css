@@ -1,0 +1,60 @@
+/* Brief T1 — Tarea 1: modal de edición de línea de cotización
+   (EditQuoteLineModal.tsx), reemplaza los popovers de precio/máscara/origen
+   que se recortaban contra el overflow:auto del modal padre en cotizaciones
+   largas. Usa .modal-body.form-grid ya existente (Modal.tsx/styles.css) —
+   acá solo el bloque informativo de solo lectura, propio de este modal. */
+.edit-quote-line-readonly {
+  margin-top: 4px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  background: #f6f4ef;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.edit-quote-line-readonly p {
+  margin: 0;
+  font-size: 12px;
+  color: #706d66;
+}
+.edit-quote-line-readonly p span {
+  display: block;
+  font-size: 11px;
+  color: #97938b;
+  font-weight: 600;
+}
+.edit-quote-line-readonly p strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: #24231f;
+  font-variant-numeric: tabular-nums;
+}
+.edit-quote-line-readonly .edit-quote-line-total {
+  grid-column: 1/-1;
+  border-top: 1px dashed #ddd8cf;
+  padding-top: 8px;
+}
+.edit-quote-line-readonly .edit-quote-line-total strong {
+  font-size: 16px;
+}
+
+/* Brief T1 — Tarea 1: fila entera clickeable para abrir el modal (además del
+   lápiz explícito). El botón de lápiz reusa `.edit-link` (styles.css) pero es
+   también hijo directo de `.dl-r2`, que en pos-ajustes-r4.css le pinta un
+   hover rojo pensado para el botón de quitar — un lápiz de "editar" con hover
+   rojo lee como una acción destructiva que no es. Mismo criterio de
+   especificidad que el resto de pos-ajustes-r4.css: sin !important, igualando
+   la cadena de selectores. */
+.draft-lines .presentation-line-row .draft-line-top .dl-r2 > button.edit-link {
+  color: #8a867e;
+  width: auto;
+  height: auto;
+}
+.draft-lines .presentation-line-row .draft-line-top .dl-r2 > button.edit-link:hover {
+  background: transparent;
+  color: var(--orange);
+}
+.draft-line-row[role="button"] {
+  cursor: pointer;
+}

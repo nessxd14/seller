@@ -22,6 +22,8 @@ import './styles/pos-saldo-hermes.css'
 import './styles/pos-saldo-deudor.css'
 import './styles/pos-clientes-saldo.css'
 import './pos-carrito-tanda4.css'
+import './pos-editor-linea-modal.css'
+import './pos-numero-documento.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

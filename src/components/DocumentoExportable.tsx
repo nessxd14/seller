@@ -6,6 +6,7 @@ import { formatMoney, money } from '../domain/common/money'
 import { Modal } from './Modal'
 import { empresaStore as empresa } from '../config/empresaStore'
 import { LineIdentifiersRow, type LineIdentifiers } from './LineIdentifiersRow'
+import { nombreArchivoDocumento } from '../domain/documents/nombreArchivoDocumento'
 
 export interface ExportableDoc {
   number: string
@@ -43,6 +44,18 @@ const lineTotalCents = (line: WorkflowLine) => Math.round(line.unitPriceCents * 
  */
 export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc; mode: 'cotizacion' | 'nota-entrega' | 'pedido'; onClose: () => void }) {
   const [customerDoc, setCustomerDoc] = useState('')
+
+  // Brief T1 — Tarea 5: window.print() → "Guardar como PDF" usa document.title como
+  // nombre de archivo, no hay otra palanca con este mecanismo. Se setea al montar (no
+  // recién al hacer clic en Imprimir) para que también valga si el usuario dispara la
+  // impresión desde el menú del navegador. El cleanup restaura el título aunque el
+  // componente se desmonte con el diálogo de impresión todavía abierto.
+  useEffect(() => {
+    const previo = document.title
+    document.title = nombreArchivoDocumento(doc.number, doc.customerName)
+    return () => { document.title = previo }
+  }, [doc.number, doc.customerName])
+
   useEffect(() => {
     void customerService.list().then((customers) => {
       const match = doc.customerId ? customers.find((c) => c.id === doc.customerId) : customers.find((c) => c.name === doc.customerName)

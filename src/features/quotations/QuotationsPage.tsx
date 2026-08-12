@@ -120,7 +120,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
         const days = daysUntil(quote.validUntil)
         const nearExpiry = days <= 7 && !['expired', 'rejected', 'converted'].includes(quote.status)
         return <article key={quote.id}>
-          <div><strong>{quote.number}</strong><small>{new Date(quote.createdAt).toLocaleDateString('es-BO')}</small></div>
+          <div><strong className="doc-number">{quote.number}</strong><small>{new Date(quote.createdAt).toLocaleDateString('es-BO')}</small></div>
           <div><strong>{quote.customerName}</strong><small className="channel-chip">{quote.channel}</small></div>
           <span>{quote.asunto || '—'}</span>
           <span className={`status-chip ${statusChipClass(quote.status)}`}>{statusLabel[quote.status]}</span>
