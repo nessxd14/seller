@@ -1,0 +1,43 @@
+/* Brief T1 — Tarea 1/2/3: reemplaza los popovers recortados por overflow:auto del
+   .modal (mask-pin y price-popover, ver pos-mascara-nombres.css y workflows.css) por
+   un modal de línea completo, cantidad tipeable en la fila, y el aviso de stock pasa
+   de bloqueante (rojo) a informativo (ámbar) — mismo ámbar ya usado para pedidos
+   editados en S11 (pos-ajustes.css .order-row-flag-edited), sin inventar un token de
+   color nuevo. */
+
+.draft-lines .presentation-line-row { cursor: pointer }
+.draft-lines .presentation-line-row:hover { background: #f8f6f1 }
+.draft-lines .presentation-line-row:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px }
+
+.qty-control { display: flex; align-items: center; gap: 4px }
+.qty-field { width: 56px; text-align: center; padding: 6px 2px !important }
+
+.price-cell { cursor: default }
+.dl-origen-label { color: #706d66 }
+
+.edit-line-trigger { color: #8a867e }
+.edit-line-trigger:hover { color: var(--orange) }
+.edit-line-trigger svg { width: 13px }
+
+.edit-quote-line-modal .edit-quote-line-info {
+  margin-top: 6px;
+  background: #f5f2ed;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+}
+.edit-quote-line-info div { display: flex; justify-content: space-between; font-size: 12px; gap: 8px }
+.edit-quote-line-info span { color: #96928a }
+.edit-quote-line-info .total { grid-column: 1 / -1; border-top: 1px solid #e2ddd2; padding-top: 8px; margin-top: 2px; font-size: 13px }
+
+/* Tarea 3: el aviso de stock insuficiente en cotización deja de ser un bloqueo (rojo)
+   y pasa a ser informativo (ámbar) — guardar como cotización ya no lo exige. */
+.stock-block-notice { background: #fff2c2 !important; color: #a76a19 !important }
+.draft-lines .presentation-line-row.has-stock-error { background: #fff8e1 !important }
+.draft-lines .presentation-line-row.has-stock-error .line-stock-error { color: #a76a19 !important }
+
+/* Tarea 4: número de documento como primera columna de las grillas — monoespaciado,
+   dígitos de ancho fijo para que la columna no "baile" fila a fila. */
+.doc-number-cell { font-variant-numeric: tabular-nums; font-family: monospace }
