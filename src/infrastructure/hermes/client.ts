@@ -150,6 +150,53 @@ export async function consultarSaldos(clienteIds: number[]): Promise<Map<number,
   }
 }
 
+export interface SaldoSimilar {
+  posClienteId: number
+  hermesClienteId: number | null
+  saldoConfirmado: number
+  montoEnRevision: number
+  saldoProvisional: number
+  situacion: string | null
+  partidasAbiertas: number
+}
+
+/**
+ * Brief T2 Tarea 2: saldo de los candidatos del panel de "cliente parecido", en una sola
+ * llamada con todos los ids (no una por candidato). Mismo criterio "nunca lanza" que
+ * consultarSaldos — acá la caída de Hermes NO puede bloquear el alta del cliente (a
+ * diferencia del borrado), así que null significa "no disponible", nunca un error que
+ * frene el formulario.
+ */
+export async function consultarSaldosSimilares(posIds: number[]): Promise<Map<number, SaldoSimilar> | null> {
+  try {
+    const response = await fetch('/api/hermes/consultar-saldos-similares', {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify({ posIds }),
+    })
+    if (!response.ok) return null
+    const data = await response.json()
+    const rows = Array.isArray(data?.saldos) ? data.saldos : []
+    const map = new Map<number, SaldoSimilar>()
+    for (const row of rows) {
+      const posClienteId = Number(row.pos_cliente_id ?? row.posClienteId)
+      if (!Number.isFinite(posClienteId)) continue
+      map.set(posClienteId, {
+        posClienteId,
+        hermesClienteId: row.hermes_cliente_id != null ? Number(row.hermes_cliente_id) : null,
+        saldoConfirmado: Number(row.saldo_confirmado ?? row.saldoConfirmado ?? 0),
+        montoEnRevision: Number(row.monto_en_revision ?? row.montoEnRevision ?? 0),
+        saldoProvisional: Number(row.saldo_provisional ?? row.saldoProvisional ?? 0),
+        situacion: row.situacion ?? null,
+        partidasAbiertas: Number(row.partidas_abiertas ?? row.partidasAbiertas ?? 0),
+      })
+    }
+    return map
+  } catch {
+    return null
+  }
+}
+
 /** A diferencia de consultarSaldo, esta SÍ lanza en caso de fallo — el llamador
  * (registro del cargo al confirmar una venta) necesita saber que falló para encolar el
  * reintento en pendiente_sync_hermes. Una respuesta exitosa es siempre éxito, sea la

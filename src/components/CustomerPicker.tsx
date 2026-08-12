@@ -4,6 +4,9 @@ import { customerService } from '../infrastructure/services'
 import { featureFlags } from '../config/featureFlags'
 import type { CustomerRecord } from '../application/shared/models'
 import { usePos } from '../context/PosContext'
+import { requiereConfirmacion } from '../domain/customers/duplicateWarning'
+import type { ClienteSimilar } from '../infrastructure/supabase/CustomerSimilarity.supabase'
+import { DuplicateCustomerPanel } from './DuplicateCustomerPanel'
 
 const emptyForm = { name: '', businessName: '', document: '', phone: '', email: '' }
 
@@ -32,9 +35,11 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
   const [editingBase, setEditingBase] = useState<CustomerRecord | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [duplicadoDoc, setDuplicadoDoc] = useState<CustomerRecord | null>(null)
+  const [candidatosSimilares, setCandidatosSimilares] = useState<ClienteSimilar[]>([])
   const rootRef = useRef<HTMLDivElement>(null)
 
-  const closeAll = () => { setExpanded(false); setCreating(null); setEditingBase(null); setQuery(''); setError('') }
+  const closeAll = () => { setExpanded(false); setCreating(null); setEditingBase(null); setQuery(''); setError(''); setDuplicadoDoc(null); setCandidatosSimilares([]) }
 
   useEffect(() => {
     if (!expanded) return
@@ -86,10 +91,21 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
     })
   }
 
+  // Brief T2 Tarea 1: `!creating.id` es la señal correcta de "es alta nueva" — no el
+  // formato del id (ver comentario de más abajo sobre el sentinel vacío/UUID). startNew()
+  // nunca setea id; startEdit() siempre lo setea (del registro existente o de customer.id),
+  // incluso en el caso borde donde editingBase queda null porque la búsqueda no lo encontró.
+  const isNewCustomer = !creating?.id
+  const documentoFaltante = !creating?.document.trim()
+  const bloqueaPorDocumento = isNewCustomer && documentoFaltante
+
   const confirmCreate = async () => {
     if (!creating || !creating.name.trim()) { setError('El nombre es obligatorio'); return }
+    if (bloqueaPorDocumento) { setError('El documento es obligatorio para clientes nuevos'); return }
+    if (isNewCustomer && requiereConfirmacion(candidatosSimilares) && !confirm('Se encontraron clientes parecidos. ¿Crear uno nuevo de todos modos?')) return
     setSaving(true)
     setError('')
+    setDuplicadoDoc(null)
     try {
       // Editing an existing customer: merge onto the record we read back, preserving
       // fields this small form doesn't expose (type, address, etc.) instead of
@@ -107,7 +123,8 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
             // pestaña Institucional se da de alta como Corporativo (empresa privada);
             // parado en Municipal, como Institución/gobierno.
             type: channel === 'mayoreo' ? 'wholesale' : channel === 'institucional' ? 'corporate' : channel === 'municipal' ? 'institutional' : 'retail',
-            // NIT queda opcional en todo el flujo: nunca se bloquea el guardado por esto.
+            // Brief T2 Tarea 1: NIT obligatorio solo para altas nuevas (ver isNewCustomer
+            // más arriba) — editar un cliente viejo sin documento sigue sin bloquear.
             document: creating.document.trim(),
             phone: creating.phone.trim(),
             email: creating.email.trim(),
@@ -122,7 +139,16 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
       selectCustomer({ id: saved.id, name: saved.name, documento: saved.document || undefined })
       closeAll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar el cliente')
+      const pgError = err as { code?: string; message?: string }
+      if (pgError?.code === '23505' && featureFlags.supabase) {
+        const doc = creating.document.trim()
+        const matches = await customerService.list({ query: doc, page: { page: 1, pageSize: 5 } })
+        const existing = matches.find((c) => c.id !== editingBase?.id && c.document.trim().toUpperCase() === doc.toUpperCase())
+        setDuplicadoDoc(existing ?? null)
+        setError('Ya existe un cliente con ese documento')
+      } else {
+        setError(err instanceof Error ? err.message : 'No se pudo guardar el cliente')
+      }
     } finally {
       setSaving(false)
     }
@@ -140,14 +166,20 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
         <div className="form-grid">
           <label>Nombre<input value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value })} autoFocus /></label>
           <label>Razón social<input value={creating.businessName} onChange={(e) => setCreating({ ...creating, businessName: e.target.value })} /></label>
-          <label>NIT / Documento (opcional)<input value={creating.document} onChange={(e) => setCreating({ ...creating, document: e.target.value })} /></label>
+          <label>NIT / Documento{isNewCustomer ? <span className="field-required-mark"> *</span> : ' (opcional)'}<input className={bloqueaPorDocumento ? 'field-required-empty' : ''} value={creating.document} onChange={(e) => setCreating({ ...creating, document: e.target.value })} /></label>
           <label>Teléfono<input value={creating.phone} onChange={(e) => setCreating({ ...creating, phone: e.target.value })} /></label>
           <label className="full">Email<input value={creating.email} onChange={(e) => setCreating({ ...creating, email: e.target.value })} /></label>
         </div>
-        {error && <p className="mock-note payment-error">{error}</p>}
+        {isNewCustomer && featureFlags.supabase && (
+          <DuplicateCustomerPanel nombre={creating.name} documento={creating.document} onCandidatesChange={setCandidatosSimilares} onUseCustomer={(candidate) => { selectCustomer({ id: String(candidate.id), name: candidate.nombre, documento: candidate.documento ?? undefined }); closeAll() }} />
+        )}
+        {error && <div className="mock-note payment-error">
+          <p>{error}</p>
+          {duplicadoDoc && <button type="button" className="field-error-link" onClick={() => { selectCustomer({ id: duplicadoDoc.id, name: duplicadoDoc.name, documento: duplicadoDoc.document || undefined }); closeAll() }}>Usar a {duplicadoDoc.name}</button>}
+        </div>}
         <div className="customer-picker-actions">
           <button type="button" className="secondary-button" onClick={() => setCreating(null)}>Cancelar</button>
-          <button type="button" className="primary-button" disabled={saving} onClick={() => void confirmCreate()}>{saving ? 'Guardando…' : 'Guardar cliente'}</button>
+          <button type="button" className="primary-button" disabled={saving || bloqueaPorDocumento} onClick={() => void confirmCreate()}>{saving ? 'Guardando…' : 'Guardar cliente'}</button>
         </div>
       </div> : <>
         <div className="customer-search-box"><Search /><input placeholder="Buscar por nombre o NIT…" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus /></div>

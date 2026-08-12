@@ -16,6 +16,7 @@ import type { Product } from '../../types'
 import { useBorrador, borradorKey } from '../../hooks/useBorrador'
 import { BorradorBanner } from '../../components/BorradorBanner'
 import { EditQuoteLineModal } from './EditQuoteLineModal'
+import { coincideBusqueda } from '../../domain/customers/textSearch'
 
 type EditableChannel = QuoteDraft['channel']
 
@@ -104,8 +105,10 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     return () => { cancelled = true; clearTimeout(handle) }
   }, [productQuery])
 
+  // Brief T2 Tarea 3 (único cambio permitido acá al buscador de clientes): normalización
+  // sin acentos/mayúsculas — "jose perez" tiene que encontrar "José Pérez".
   const filteredCustomers = useMemo(
-    () => customers.filter((c) => `${c.name} ${c.document} ${c.email}`.toLowerCase().includes(customerQuery.toLowerCase())).slice(0, 8),
+    () => customers.filter((c) => coincideBusqueda(`${c.name} ${c.document} ${c.email}`, customerQuery)).slice(0, 8),
     [customers, customerQuery]
   )
 
