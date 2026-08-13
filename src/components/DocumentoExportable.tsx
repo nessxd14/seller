@@ -20,6 +20,9 @@ export interface ExportableDoc {
   documentDate?: string
   /** Descuento general del encabezado, en centavos. Ausente = sin descuento. */
   generalDiscountCents?: number
+  // Brief T3: número real (COT-2026-XXXXX) de la cotización de origen, cuando el pedido
+  // nació de una conversión. Se imprime debajo del número principal, más chico.
+  sourceQuoteNumber?: string
 }
 
 const conditionPagoLabel: Record<string, string> = {
@@ -90,7 +93,11 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
               {empresa.nit && <span>NIT: {empresa.nit}</span>}
             </div>
           </div>
-          <div><strong>{title}</strong><span>{doc.number}</span></div>
+          <div className="doc-id-block">
+            <strong>{title}</strong>
+            <span className="doc-number-mono">{doc.number}</span>
+            {doc.sourceQuoteNumber && <small className="doc-number-origin">origen {doc.sourceQuoteNumber}</small>}
+          </div>
         </header>
         <section className="doc-meta">
           <p><b>Cliente:</b> {doc.customerName}{customerDoc && ` · ${customerDoc}`}</p>

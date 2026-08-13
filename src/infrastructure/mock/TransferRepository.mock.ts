@@ -28,6 +28,7 @@ const daysAgo = (days: number) => new Date(Date.now() - days * 86400000).toISOSt
 const transferSeeds: TransferRecord[] = [
   {
     id: 'transfer-seed-1',
+    numero: 'TRA-2026-00001',
     motivo: 'VENTA_DIRECTA',
     estado: 'SOLICITADO',
     sucursalOrigenId: SUCURSAL_ALMACEN_ID,
@@ -40,6 +41,7 @@ const transferSeeds: TransferRecord[] = [
   },
   {
     id: 'transfer-seed-2',
+    numero: 'TRA-2026-00002',
     motivo: 'REPOSICION',
     estado: 'EN_TRANSITO',
     sucursalOrigenId: SUCURSAL_ALMACEN_ID,
@@ -54,6 +56,7 @@ const transferSeeds: TransferRecord[] = [
   },
   {
     id: 'transfer-seed-3',
+    numero: 'TRA-2026-00003',
     motivo: 'VENTA_DIRECTA',
     estado: 'RECIBIDO',
     sucursalOrigenId: SUCURSAL_ALMACEN_ID,
@@ -70,6 +73,7 @@ const transferSeeds: TransferRecord[] = [
   },
   {
     id: 'transfer-seed-4',
+    numero: 'TRA-2026-00004',
     motivo: 'REPOSICION',
     estado: 'CANCELADO',
     sucursalOrigenId: SUCURSAL_ALMACEN_ID,
@@ -113,6 +117,8 @@ export const transferService = {
   async create(input: CreateTransferInput, actor: string): Promise<TransferRecord> {
     const record: TransferRecord = {
       id: crypto.randomUUID(),
+      // Modo mock: no hay trigger de base que numere — se simula uno correlativo simple.
+      numero: `TRA-2026-${String((await store.list()).length + 1).padStart(5, '0')}`,
       motivo: input.motivo,
       estado: 'SOLICITADO',
       sucursalOrigenId: input.sucursalOrigenId ?? SUCURSAL_ALMACEN_ID,

@@ -20,6 +20,7 @@ const estadoPedidoToStatus = (estado: EstadoPedido): OrderWorkflowStatus => {
 
 interface PedidoRow {
   id: number
+  numero: string
   categoria: 'TIENDA' | 'MAYOR' | 'INSTITUCIONAL' | 'MUNICIPAL'
   referencia: string | null
   estado: EstadoPedido
@@ -75,6 +76,13 @@ const eventoRowToEvent = (row: PedidoEventoRow) => ({
 
 const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
 
+// convertir_cotizacion_a_pedido escribe 'Cotización #<id>[ — <referencia de la cotización>]'
+// en pedido.referencia — texto automático, no algo que el vendedor tipeó. No mostrarlo como
+// asunto (Tarea 1: "hoy se usa la referencia como si fuera el identificador; eso sale") ni
+// como si fuera el número del pedido — de ahí se saca únicamente el id de la cotización de
+// origen, para resolver su número real (sourceQuoteNumber) en fetchOrderById/list.
+const CONVERTED_FROM_QUOTE_RE = /^Cotizaci[oó]n #(\d+)/
+
 type OrderLine = WorkflowLine & { prepared: number; allocations: { location: 'Tienda' | 'Almacén'; quantity: number }[] }
 
 const lineaRowToOrderLine = (row: PedidoLineaRow): OrderLine => {
@@ -108,24 +116,43 @@ const lineaRowToOrderLine = (row: PedidoLineaRow): OrderLine => {
 // local alias to avoid importing pctToBp under a name collision with bpToPct import above
 const bpToPctSafe = (pct: number) => Math.round(pct * 100)
 
-const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[], eventos: PedidoEventoRow[]): OrderView & Versioned => ({
-  id: String(header.id),
-  number: header.referencia ?? `PED-${header.id}`,
-  customerId: header.cliente_id != null ? String(header.cliente_id) : undefined,
-  customerName: header.cliente?.nombre ?? '',
-  channel: categoriaToChannel(header.categoria) as OrderView['channel'],
-  status: estadoPedidoToStatus(header.estado),
-  createdAt: header.creado_en,
-  lines: lines.map(lineaRowToOrderLine),
-  events: eventos.map(eventoRowToEvent),
-  subtotalCents: header.subtotal != null ? numericToCents(num(header.subtotal)) : undefined,
-  generalDiscountCents: header.descuento_general != null ? numericToCents(num(header.descuento_general)) : undefined,
-  totalCents: header.total != null ? numericToCents(num(header.total)) : undefined,
-  // pedido has no version column: orders are created/converted/dispatched, not
-  // optimistically edited, so we synthesize a constant version.
-  version: 1,
-  updatedAt: header.creado_en,
-})
+const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[], eventos: PedidoEventoRow[]): OrderView & Versioned => {
+  const convertedMatch = header.referencia?.match(CONVERTED_FROM_QUOTE_RE)
+  return {
+    id: String(header.id),
+    // Brief T3: `number` es el correlativo real de pedido.numero — asignado por trigger,
+    // inmutable. El viejo fallback `PED-${id}` desaparece: si numero llega vacío es un bug
+    // que hay que ver, no algo que disimular.
+    number: header.numero,
+    customerId: header.cliente_id != null ? String(header.cliente_id) : undefined,
+    customerName: header.cliente?.nombre ?? '',
+    channel: categoriaToChannel(header.categoria) as OrderView['channel'],
+    status: estadoPedidoToStatus(header.estado),
+    createdAt: header.creado_en,
+    lines: lines.map(lineaRowToOrderLine),
+    events: eventos.map(eventoRowToEvent),
+    subtotalCents: header.subtotal != null ? numericToCents(num(header.subtotal)) : undefined,
+    generalDiscountCents: header.descuento_general != null ? numericToCents(num(header.descuento_general)) : undefined,
+    totalCents: header.total != null ? numericToCents(num(header.total)) : undefined,
+    // pedido has no version column: orders are created/converted/dispatched, not
+    // optimistically edited, so we synthesize a constant version.
+    version: 1,
+    updatedAt: header.creado_en,
+    sourceQuoteId: convertedMatch ? convertedMatch[1] : undefined,
+    asunto: convertedMatch ? undefined : (header.referencia ?? undefined),
+  }
+}
+
+// Batch-resuelve numero de cotizacion para los pedidos convertidos de una página/detalle —
+// un solo roundtrip por lista, no uno por fila.
+const resolveSourceQuoteNumeros = async (orders: Array<OrderView & Versioned>): Promise<Array<OrderView & Versioned>> => {
+  const ids = Array.from(new Set(orders.map((o) => o.sourceQuoteId).filter((id): id is string => !!id).map(Number)))
+  if (!ids.length) return orders
+  const { data, error } = await supabase.from('cotizacion').select('id, numero').in('id', ids)
+  if (error) throw error
+  const numeroById = new Map((data ?? []).map((row) => [String((row as { id: number }).id), (row as { numero: string }).numero]))
+  return orders.map((order) => order.sourceQuoteId ? { ...order, sourceQuoteNumber: numeroById.get(order.sourceQuoteId) } : order)
+}
 
 const fetchOrderById = async (id: number): Promise<(OrderView & Versioned) | null> => {
   const { data: header, error: headerError } = await supabase.from('pedido').select('*, cliente(nombre)').eq('id', id).maybeSingle()
@@ -137,7 +164,8 @@ const fetchOrderById = async (id: number): Promise<(OrderView & Versioned) | nul
   // pedido_evento is created by TAREA 2's migration — not applied yet, so a missing-table
   // error here shouldn't break order loading; just show no history until it lands.
   const eventRows = eventosError ? [] : ((eventos ?? []) as PedidoEventoRow[])
-  return rowToOrderView(header as PedidoRow, (lines ?? []) as PedidoLineaRow[], eventRows)
+  const [view] = await resolveSourceQuoteNumeros([rowToOrderView(header as PedidoRow, (lines ?? []) as PedidoLineaRow[], eventRows)])
+  return view
 }
 
 const buildLineasJsonb = (lines: WorkflowLine[], channel: OrderView['channel']) =>
@@ -186,7 +214,7 @@ export class SupabaseOrderRepository implements OrderRepository {
     if (linesError) throw linesError
     // List rows don't need the bitácora — only the detail panel does — so events stay
     // empty here rather than fetching pedido_evento for every row on every page load.
-    const items = headers.map((header) => rowToOrderView(header, (allLines ?? []).filter((l) => l.pedido_id === header.id) as PedidoLineaRow[], []))
+    const items = await resolveSourceQuoteNumeros(headers.map((header) => rowToOrderView(header, (allLines ?? []).filter((l) => l.pedido_id === header.id) as PedidoLineaRow[], [])))
     return { items, page: page.page, pageSize: page.pageSize, total: count ?? 0 }
   }
 
@@ -215,7 +243,9 @@ export class SupabaseOrderRepository implements OrderRepository {
     }
     const { data: newId, error } = await supabase.rpc('crear_pedido', {
       p_categoria: channelToCategoria(value.channel),
-      p_referencia: value.number || null,
+      // Nunca el número acá: pedido.numero lo asigna la base sola y es inmutable.
+      // p_referencia es el asunto libre del vendedor.
+      p_referencia: value.asunto || null,
       p_lineas: buildLineasJsonb(value.lines, value.channel),
       p_usuario: actor,
       p_cliente_id: value.customerId ? Number(value.customerId) : null,

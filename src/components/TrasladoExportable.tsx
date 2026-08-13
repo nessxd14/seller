@@ -49,7 +49,9 @@ export function TrasladoExportable({ transfer, onClose }: { transfer: TransferRe
 
   const mode = modeFor(transfer.estado)
   const title = titleFor[mode]
-  const numero = transfer.referencia || `Traslado #${transfer.id}`
+  // Brief T3: el identificador es el correlativo real (numero) — referencia es el asunto
+  // libre y se muestra aparte, nunca como si fuera el número.
+  const numero = transfer.numero
   const anulado = transfer.estado === 'CANCELADO' || transfer.estado === 'RECHAZADO'
 
   // TAREA 5 (T1): mismo mecanismo que DocumentoExportable — un traslado no tiene
@@ -76,11 +78,12 @@ export function TrasladoExportable({ transfer, onClose }: { transfer: TransferRe
               {empresa.nit && <span>NIT: {empresa.nit}</span>}
             </div>
           </div>
-          <div><strong>{title}</strong><span>{numero}</span></div>
+          <div className="doc-id-block"><strong>{title}</strong><span className="doc-number-mono">{numero}</span></div>
         </header>
         <section className="doc-meta">
           <p><b>Origen:</b> {sucursalLabel[transfer.sucursalOrigenId] ?? `Sucursal ${transfer.sucursalOrigenId}`} <b>→ Destino:</b> {sucursalLabel[transfer.sucursalDestinoId] ?? `Sucursal ${transfer.sucursalDestinoId}`}</p>
           <p><b>Motivo:</b> {motivoLabel[transfer.motivo]}</p>
+          {transfer.referencia && <p><b>Asunto:</b> {transfer.referencia}</p>}
           <p><b>Solicitado por:</b> {transfer.solicitadoPor} · {fechaFmt(transfer.solicitadoEn)}</p>
           {transfer.nota && <p><b>Nota:</b> {transfer.nota}</p>}
         </section>

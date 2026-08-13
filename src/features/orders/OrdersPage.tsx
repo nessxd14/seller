@@ -12,6 +12,7 @@ import { useCashSession } from '../../context/CashSessionContext'
 import { contarVersionesPedidos, eliminarPedido, listVersionesPedido, puedeEliminarsePedido, type PedidoVersion, type PuedeEliminarsePedido } from '../../infrastructure/supabase/OrderAdmin.supabase'
 import { diffVersionLines } from '../../domain/orders/versionDiff'
 import { decidirEliminacionPedido } from '../../domain/orders/deletionDecision'
+import { matchesNumero } from '../../domain/documents/matchesNumero'
 
 type SortKey = 'number' | 'customerName' | 'channel' | 'status' | 'lines' | 'total' | 'createdAt'
 type SortDir = 'asc' | 'desc'
@@ -36,7 +37,9 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | OrderWorkflowStatus>('all')
   const [channelFilter, setChannelFilter] = useState('all')
-  const [sortKey, setSortKey] = useState<SortKey>('createdAt')
+  // Brief T3 Tarea 3: orden natural "lo último primero" — coincide con el cronológico
+  // porque la numeración se asignó por fecha de creación.
+  const [sortKey, setSortKey] = useState<SortKey>('number')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [selected, setSelected] = useState<OrderView | null>(null)
@@ -116,7 +119,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     const list = orders.filter((order) =>
       (filter === 'all' || order.status === filter) &&
       (channelFilter === 'all' || order.channel === channelFilter) &&
-      `${order.number} ${order.customerName}`.toLowerCase().includes(query.toLowerCase())
+      (matchesNumero(order.number, query) || order.customerName.toLowerCase().includes(query.toLowerCase()))
     )
     const dir = sortDir === 'asc' ? 1 : -1
     const withStats = list.map((order) => ({
@@ -161,7 +164,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}><option value="all">Todos los canales</option>{Object.entries(channelNames).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
     </FeatureToolbar>
     {status === 'loading' ? <FeatureState type="skeleton" text="Cargando pedidos" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.length ? <FeatureState type={orders.length ? 'no-results' : 'empty'} text="No hay pedidos" /> : <div className="feature-table orders-table sticky-head">
-      <div className="table-head"><SortTh label="Nº" sortkey="number" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Cliente" sortkey="customerName" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Canal" sortkey="channel" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Estado" sortkey="status" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Líneas" sortkey="lines" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Total" sortkey="total" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Fecha" sortkey="createdAt" activeKey={sortKey} onToggle={toggleSort} /></div>
+      <div className="table-head"><SortTh label="Nº" sortkey="number" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Cliente" sortkey="customerName" activeKey={sortKey} onToggle={toggleSort} /><span>Asunto</span><SortTh label="Canal" sortkey="channel" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Estado" sortkey="status" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Líneas" sortkey="lines" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Total" sortkey="total" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Fecha" sortkey="createdAt" activeKey={sortKey} onToggle={toggleSort} /></div>
       {filtered.map(({ order, requested, prepared, total }) => {
         // Nota del usuario (no es parte del brief original): resaltar pedidos anulados
         // (opacos, con X) y editados — más de una versión guardada — (amarillo, con lápiz)
@@ -173,6 +176,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
           {edited && <span className="order-row-flag order-row-flag-edited" title="Editado"><Pencil size={12} /></span>}
           <strong className="doc-number-cell">{order.number}</strong>
           <span>{order.customerName}</span>
+          <span>{order.asunto || (order.sourceQuoteNumber ? `origen ${order.sourceQuoteNumber}` : '—')}</span>
           <span className="channel-chip">{channelNames[order.channel] ?? order.channel}</span>
           <span className={`status-chip ${statusChipClass(order.status)}`}>{statusLabel[order.status]}</span>
           <div><div className="progress"><span style={{ width: `${requested ? prepared / requested * 100 : 0}%` }} /></div><small>{prepared}/{requested}</small></div>
@@ -228,8 +232,8 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     </div><footer className="modal-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}>Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}>Nota de entrega A4</button>{selected.status === 'cancelled' ? <button className="primary-button" onClick={() => setReasonModal({ action: 'restore', order: selected })}><RotateCcw /> Restaurar</button> : <button className="danger-button" disabled={hasDispatchedLines(selected)} title={hasDispatchedLines(selected) ? 'No se puede anular: tiene líneas despachadas' : undefined} onClick={() => setReasonModal({ action: 'cancel', order: selected })}><XCircle /> Anular pedido</button>}{!featureFlags.supabase && <button className="primary-button" disabled={!['preparing','ready'].includes(selected.status)} onClick={() => dispatch(selected)}><Truck /> Despacho parcial</button>}{featureFlags.supabase && <button className="danger-button" onClick={() => void openDeleteCheck(selected)}><Trash2 /> Eliminar pedido</button>}</footer></Modal>}
     {advanceOpen && selected && <AdvanceModal onClose={()=>setAdvanceOpen(false)} onConfirm={registerAdvance}/>}
     {reasonModal && <ReasonModal action={reasonModal.action} orderNumber={reasonModal.order.number} onClose={()=>setReasonModal(null)} onConfirm={confirmReason}/>}
-    {deliveryNote && <DocumentoExportable mode="nota-entrega" doc={{ number: deliveryNote.number, customerName: deliveryNote.customerName, channel: deliveryNote.channel, lines: deliveryNote.lines, generalDiscountCents: deliveryNote.generalDiscountCents }} onClose={()=>setDeliveryNote(null)} />}
-    {orderDoc && <DocumentoExportable mode="pedido" doc={{ number: orderDoc.number, customerName: orderDoc.customerName, channel: orderDoc.channel, lines: orderDoc.lines, generalDiscountCents: orderDoc.generalDiscountCents }} onClose={()=>setOrderDoc(null)} />}
+    {deliveryNote && <DocumentoExportable mode="nota-entrega" doc={{ number: deliveryNote.number, customerName: deliveryNote.customerName, channel: deliveryNote.channel, lines: deliveryNote.lines, generalDiscountCents: deliveryNote.generalDiscountCents, asunto: deliveryNote.asunto, sourceQuoteNumber: deliveryNote.sourceQuoteNumber }} onClose={()=>setDeliveryNote(null)} />}
+    {orderDoc && <DocumentoExportable mode="pedido" doc={{ number: orderDoc.number, customerName: orderDoc.customerName, channel: orderDoc.channel, lines: orderDoc.lines, generalDiscountCents: orderDoc.generalDiscountCents, asunto: orderDoc.asunto, sourceQuoteNumber: orderDoc.sourceQuoteNumber }} onClose={()=>setOrderDoc(null)} />}
     {deleteModalOpen && selected && <DeletePedidoModal orderNumber={selected.number} check={deleteCheck} onClose={() => setDeleteModalOpen(false)} onConfirm={confirmDelete} />}
   </FeatureShell>
 }

@@ -39,6 +39,7 @@ type CondicionPago = 'CONTADO' | 'PAGO_PARCIAL' | 'SIGEP' | 'TRANSFERENCIA_BANCA
 
 interface CotizacionRow {
   id: number
+  numero: string
   cliente_id: number | null
   categoria: 'TIENDA' | 'MAYOR' | 'INSTITUCIONAL' | 'MUNICIPAL'
   referencia: string | null
@@ -106,7 +107,10 @@ const lineaRowToWorkflowLine = (row: CotizacionLineaRow): WorkflowLine => ({
 
 const rowToQuoteDraft = (header: CotizacionRow, lines: CotizacionLineaRow[]): QuoteDraft & Versioned => ({
   id: String(header.id),
-  number: header.referencia ?? `COT-${header.id}`,
+  // Brief T3: `number` es el correlativo real de cotizacion.numero — asignado por trigger,
+  // inmutable, nunca lo que había acá antes (header.referencia, que es un campo vestigial
+  // y hoy siempre null; el asunto libre del vendedor ya vive aparte en `asunto`).
+  number: header.numero,
   customerId: header.cliente_id != null ? String(header.cliente_id) : '',
   customerName: header.cliente?.nombre ?? '',
   channel: categoriaToChannel(header.categoria) as QuoteDraft['channel'],
@@ -219,7 +223,10 @@ export class SupabaseQuoteRepository implements QuoteRepository {
         p_categoria: channelToCategoria(value.channel),
         p_lineas: buildLineasJsonb(value.lines, value.channel, actor),
         p_cliente_id: value.customerId ? Number(value.customerId) : null,
-        p_referencia: value.number || null,
+        // Nunca mandar el número acá: cotizacion.numero lo asigna la base sola y es
+        // inmutable. p_referencia es un campo vestigial distinto del asunto (que va en
+        // p_asunto); no hay nada del vendedor que mandarle.
+        p_referencia: null,
         p_descuento_general: centsToNumeric(value.generalDiscountCents),
         p_vigencia_hasta: value.validUntil || null,
         p_usuario: actor,
@@ -258,7 +265,7 @@ export class SupabaseQuoteRepository implements QuoteRepository {
       p_categoria: channelToCategoria(value.channel),
       p_lineas: buildLineasJsonb(value.lines, value.channel, actor),
       p_cliente_id: value.customerId ? Number(value.customerId) : null,
-      p_referencia: value.number || null,
+      p_referencia: null,
       p_notas: value.notes || null,
       p_descuento_general: centsToNumeric(value.generalDiscountCents),
       p_vigencia_hasta: value.validUntil || null,

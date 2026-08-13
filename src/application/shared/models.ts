@@ -79,6 +79,15 @@ export interface OrderView {
   subtotalCents?: number
   generalDiscountCents?: number
   totalCents?: number
+  // Brief T3: pedido.referencia es el asunto libre del vendedor (no el número — ese es
+  // `number`, respaldado por pedido.numero). Ausente cuando el pedido nació de una
+  // conversión de cotización — ahí referencia trae el texto automático "Cotización #<id>"
+  // que no es asunto de nadie, y se resuelve en su lugar en sourceQuoteNumber.
+  asunto?: string
+  // Número real (COT-2026-XXXXX) de la cotización de origen, resuelto server-side a partir
+  // del texto "Cotización #<id>" que crea_pedido — vía convertir_cotizacion_a_pedido — deja
+  // en referencia. Ausente si el pedido no vino de una cotización.
+  sourceQuoteNumber?: string
 }
 
 export interface CustomerRecord {
@@ -132,6 +141,10 @@ export interface TransferRecord {
   estado: TransferEstado
   sucursalOrigenId: number
   sucursalDestinoId: number
+  // Número correlativo real (TRA-2026-XXXXX), respaldado por solicitud_traslado.numero —
+  // asignado por trigger al insertar, inmutable. Distinto de `referencia` (el asunto libre
+  // del vendedor): nunca usar uno como identificador del otro.
+  numero: string
   referencia?: string
   nota?: string
   solicitadoPor: string

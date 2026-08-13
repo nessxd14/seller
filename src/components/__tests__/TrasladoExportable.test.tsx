@@ -16,6 +16,7 @@ afterEach(cleanup)
 
 const baseTransfer: TransferRecord = {
   id: '7',
+  numero: 'TRA-2026-00007',
   motivo: 'REPOSICION',
   estado: 'SOLICITADO',
   sucursalOrigenId: 1,
