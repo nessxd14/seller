@@ -3,11 +3,12 @@ import { useEffect, useMemo, useState } from 'react'
 import type { TransferEstado, TransferMotivo, TransferRecord } from '../../application/shared/models'
 import { transferService, productRepository, listPresentations } from '../../infrastructure/services'
 import type { CartItem, Product } from '../../types'
-import { FeatureShell, FeatureState } from '../shared/FeatureShell'
+import { FeatureShell, FeatureState, FeatureToolbar } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
 import { usePos } from '../../context/PosContext'
 import { NumberField } from '../../components/NumberField'
 import { TrasladoExportable } from '../../components/TrasladoExportable'
+import { matchesNumero } from '../../domain/documents/matchesNumero'
 
 // Exportados (Brief S8): TrasladoExportable los reusa tal cual — no duplicarlos ahí.
 export const motivoLabel: Record<TransferMotivo, string> = { VENTA_DIRECTA: 'Venta directa', REPOSICION: 'Reposición', DEVOLUCION: 'Devolución' }
@@ -42,6 +43,7 @@ export function TransfersPage({ notify, initialRequest = null, onInitialRequestC
   const { loadTrasladoDraft } = usePos()
   const [transfers, setTransfers] = useState<TransferRecord[]>([])
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<TransferRecord | null>(null)
   const [creating, setCreating] = useState(false)
   const [cerradosAbierto, setCerradosAbierto] = useState(false)
@@ -74,28 +76,34 @@ export function TransfersPage({ notify, initialRequest = null, onInitialRequestC
 
   // Brief K: la bandeja reemplaza al armador de una línea a la vez — tres grupos, en el
   // orden en que se trabaja.
-  const porDespachar = useMemo(() => transfers.filter((t) => t.estado === 'SOLICITADO'), [transfers])
-  const enTransito = useMemo(() => transfers.filter((t) => t.estado === 'EN_TRANSITO'), [transfers])
-  const cerrados = useMemo(() => transfers.filter((t) => t.estado === 'RECIBIDO' || t.estado === 'CANCELADO' || t.estado === 'RECHAZADO'), [transfers])
+  // Brief T3 Tarea 4: mismo criterio de búsqueda por número (completo o sufijo) que
+  // Cotizaciones/Pedidos, más el asunto libre como fallback de texto.
+  const filteredTransfers = useMemo(
+    () => transfers.filter((t) => matchesNumero(t.numero, query) || (t.referencia ?? '').toLowerCase().includes(query.trim().toLowerCase())),
+    [transfers, query]
+  )
+  const porDespachar = useMemo(() => filteredTransfers.filter((t) => t.estado === 'SOLICITADO'), [filteredTransfers])
+  const enTransito = useMemo(() => filteredTransfers.filter((t) => t.estado === 'EN_TRANSITO'), [filteredTransfers])
+  const cerrados = useMemo(() => filteredTransfers.filter((t) => t.estado === 'RECIBIDO' || t.estado === 'CANCELADO' || t.estado === 'RECHAZADO'), [filteredTransfers])
 
   const dispatchTransfer = async (transfer: TransferRecord) => {
     try {
       const updated = await transferService.dispatch(transfer.id)
       setSelected(updated)
       await load()
-      notify(`Traslado #${updated.id} despachado`)
+      notify(`${updated.numero} despachado`)
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo despachar el traslado')
     }
   }
 
   const revertTransfer = async (transfer: TransferRecord) => {
-    if (!confirm(`¿Revertir el traslado #${transfer.id}? El stock vuelve a su ubicación de origen.`)) return
+    if (!confirm(`¿Revertir ${transfer.numero}? El stock vuelve a su ubicación de origen.`)) return
     try {
       const updated = await transferService.revert(transfer.id)
       setSelected(updated)
       await load()
-      notify(`Traslado #${updated.id} revertido`)
+      notify(`${updated.numero} revertido`)
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo revertir el traslado')
     }
@@ -138,7 +146,8 @@ export function TransfersPage({ notify, initialRequest = null, onInitialRequestC
   }
 
   return <FeatureShell eyebrow="LOGÍSTICA" title="Traslados" subtitle="Bandeja: despachar, recibir y revertir traslados Almacén ↔ Tienda" action={<button className="primary-button" onClick={() => setCreating(true)}><Plus /> Nueva solicitud</button>}>
-    {status === 'loading' ? <FeatureState type="skeleton" text="Cargando traslados" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !transfers.length ? <FeatureState type="empty" text="No hay solicitudes de traslado" /> : <div className="traslados-bandeja">
+    {!!transfers.length && <FeatureToolbar query={query} onQuery={setQuery} placeholder="Buscar por número o asunto..." />}
+    {status === 'loading' ? <FeatureState type="skeleton" text="Cargando traslados" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !transfers.length ? <FeatureState type="empty" text="No hay solicitudes de traslado" /> : !filteredTransfers.length ? <FeatureState type="no-results" text="No hay traslados que coincidan con la búsqueda" /> : <div className="traslados-bandeja">
       <TrasladoGrupo titulo="Por despachar" items={porDespachar} onSelect={setSelected} now={now} />
       <TrasladoGrupo titulo="En tránsito" items={enTransito} onSelect={setSelected} now={now} />
       <div className="traslados-grupo">
@@ -193,11 +202,12 @@ function TrasladoCard({ transfer, onSelect, now }: { transfer: TransferRecord; o
   const vigente = transfer.estado === 'EN_TRANSITO' && restanteMs > 0
   return <button type="button" className="traslado-card" onClick={() => onSelect(transfer)}>
     <div className="traslado-card-top">
-      <strong>{transfer.referencia || `Traslado #${transfer.id}`}</strong>
+      <strong className="doc-number-mono">{transfer.numero}</strong>
       <EstadoBadge estado={transfer.estado} />
     </div>
     <p className="traslado-card-direccion">{sucursalLabel[transfer.sucursalOrigenId] ?? `Sucursal ${transfer.sucursalOrigenId}`} <ArrowRight size={11} /> {sucursalLabel[transfer.sucursalDestinoId] ?? `Sucursal ${transfer.sucursalDestinoId}`}</p>
     <p className="traslado-card-meta">{motivoLabel[transfer.motivo]} · {transfer.lines.length} línea{transfer.lines.length === 1 ? '' : 's'}</p>
+    {transfer.referencia && <p className="traslado-card-meta">{transfer.referencia}</p>}
     <p className="traslado-card-meta">{transfer.solicitadoPor} · {fechaFmt(transfer.solicitadoEn)}</p>
     {vigente && <p className="traslado-card-countdown"><Clock size={11} /> {mmss(restanteMs)} para revertir</p>}
   </button>
@@ -229,10 +239,11 @@ function TransferDetailPanel({ transfer, onClose, onDispatch, onRevert, onRegist
     const changed = transfer.lines.filter((line) => (receivedByLine[line.id] ?? 0) !== (line.cantidadDespachada ?? line.cantidadBase))
     onReceive(changed.length ? changed.map((line) => ({ lineaId: line.id, cantidadBase: receivedByLine[line.id] })) : null)
   }
-  return <Modal title={transfer.referencia || `Traslado #${transfer.id}`} subtitle={motivoLabel[transfer.motivo]} onClose={onClose} side wide escapeToClose={!printing}>
+  return <Modal title={transfer.numero} subtitle={motivoLabel[transfer.motivo]} onClose={onClose} side wide escapeToClose={!printing}>
     <div className="modal-body transfer-detail">
       <div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong><EstadoBadge estado={transfer.estado} /></strong></div></div>
       <p><b>Dirección:</b> {sucursalLabel[transfer.sucursalOrigenId] ?? `Sucursal ${transfer.sucursalOrigenId}`} <ArrowRight size={11} /> {sucursalLabel[transfer.sucursalDestinoId] ?? `Sucursal ${transfer.sucursalDestinoId}`}</p>
+      {transfer.referencia && <p><b>Asunto:</b> {transfer.referencia}</p>}
       <p><b>Solicitado por:</b> {transfer.solicitadoPor} · {fechaFmt(transfer.solicitadoEn)}</p>
       {transfer.despachadoPor && <p><b>Despachado por:</b> {transfer.despachadoPor} · {fechaFmt(transfer.despachadoEn)}</p>}
       {transfer.recibidoPor && <p><b>Recibido por:</b> {transfer.recibidoPor} · {fechaFmt(transfer.recibidoEn)}</p>}

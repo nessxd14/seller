@@ -24,6 +24,7 @@ import './styles/pos-clientes-saldo.css'
 import './pos-carrito-tanda4.css'
 import './pos-editor-linea-modal.css'
 import './pos-cliente-duplicados.css'
+import './pos-numero-documentos.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

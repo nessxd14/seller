@@ -5,6 +5,7 @@ import { SUCURSAL_ALMACEN_ID, SUCURSAL_TIENDA_ID } from './mappers'
 
 interface SolicitudTrasladoRow {
   id: number
+  numero: string
   motivo: TransferMotivo
   estado: TransferEstado
   sucursal_origen_id: number
@@ -53,6 +54,9 @@ const lineaRowToTransferLine = (row: SolicitudTrasladoLineaRow): TransferLine =>
 
 const rowToTransferRecord = (header: SolicitudTrasladoRow, lines: SolicitudTrasladoLineaRow[]): TransferRecord => ({
   id: String(header.id),
+  // Brief T3: numero es el correlativo real (TRA-2026-XXXXX), asignado por trigger,
+  // inmutable. referencia sigue siendo el asunto libre — nunca usarlo como identificador.
+  numero: header.numero,
   motivo: header.motivo,
   estado: header.estado,
   sucursalOrigenId: header.sucursal_origen_id,

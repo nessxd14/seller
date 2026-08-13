@@ -8,6 +8,7 @@ import { DraftOrderEditor } from './DraftOrderEditor'
 import { DocumentoExportable } from '../../components/DocumentoExportable'
 import { featureFlags } from '../../config/featureFlags'
 import { hoyLocal, sumarDiasIso } from '../../domain/common/fechas'
+import { matchesNumero } from '../../domain/documents/matchesNumero'
 
 type SortKey = 'number' | 'customerName' | 'status' | 'validUntil' | 'total' | 'createdAt'
 type SortDir = 'asc' | 'desc'
@@ -27,7 +28,9 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | QuoteWorkflowStatus>('all')
-  const [sortKey, setSortKey] = useState<SortKey>('createdAt')
+  // Brief T3 Tarea 3: orden natural "lo último primero" — coincide con el cronológico
+  // porque la numeración se asignó por fecha de creación.
+  const [sortKey, setSortKey] = useState<SortKey>('number')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [editing, setEditing] = useState<QuoteDraft | null>(null)
   // Ronda 5 — TAREA 1: tracks whether `editing` came from an existing row in this table
@@ -48,7 +51,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   }, [initialDraft])
   const toggleSort = (key: SortKey) => { if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setSortDir('asc') } }
   const filtered = useMemo(() => {
-    const list = quotes.filter((quote) => (filter === 'all' || quote.status === filter) && `${quote.number} ${quote.customerName} ${quote.status}`.toLowerCase().includes(query.toLowerCase()))
+    const list = quotes.filter((quote) => (filter === 'all' || quote.status === filter) && (matchesNumero(quote.number, query) || `${quote.customerName} ${quote.status}`.toLowerCase().includes(query.toLowerCase())))
     const dir = sortDir === 'asc' ? 1 : -1
     return [...list].sort((a, b) => {
       switch (sortKey) {

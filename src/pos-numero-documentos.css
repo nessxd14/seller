@@ -1,0 +1,12 @@
+/* Brief T3: el número correlativo (COT/PED/TRA-2026-XXXXX) es el identificador principal
+   de los documentos impresos — monoespaciado, para que se lea de un vistazo y no se
+   confunda con el asunto libre del vendedor, que ahora siempre se muestra aparte. */
+.doc-id-block { display: grid; justify-items: end; gap: 2px }
+.doc-number-mono { font-family: monospace; font-variant-numeric: tabular-nums; font-size: 15px; letter-spacing: .5px }
+.doc-number-origin { font-family: monospace; font-variant-numeric: tabular-nums; color: #8a867f; font-size: 11px }
+
+/* Pedidos: columna Asunto nueva junto a Nº/Cliente/Canal/Estado/Líneas/Total/Fecha. */
+.orders-table .table-head, .orders-table > article { grid-template-columns: .8fr 1.2fr 1fr .9fr 1fr 1.1fr 1fr .9fr }
+
+/* Traslados: el número (ahora numero, no referencia) va monoespaciado en la bandeja. */
+.traslado-card-top .doc-number-mono { font-size: 13px }
