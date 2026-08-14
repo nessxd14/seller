@@ -4,11 +4,13 @@ import { NumberField } from './NumberField'
 import { customerService, orderService, cashService, authSessionProvider, sensitiveOperations } from '../infrastructure/services'
 import { useCashSession } from '../context/CashSessionContext'
 import { featureFlags } from '../config/featureFlags'
-import { consultarSaldo, registrarPago, type ResultadoSaldo } from '../infrastructure/hermes/client'
+import { consultarSaldo, registrarPago, imputarPago, type ResultadoSaldo } from '../infrastructure/hermes/client'
 import { pendienteSyncHermesPagoRepository } from '../infrastructure/supabase/PendienteSyncHermesPagoRepository'
 import { methodExtToMedioHermes, type PosPaymentMethodExt } from '../infrastructure/supabase/mappers'
 import { formatMoney, money, moneyFromDecimal } from '../domain/common/money'
 import type { CustomerRecord, OrderView } from '../application/shared/models'
+import { RepartoPagoPanel } from './RepartoPagoPanel'
+import type { FilaRepartoEditable } from '../domain/hermes/repartoPago'
 
 const metodoLabels: Record<PosPaymentMethodExt, string> = { cash: 'Efectivo', qr: 'QR', deposit: 'Depósito', transfer: 'Transferencia', sigep: 'SIGEP', check: 'Cheque' }
 const metodoOrder: PosPaymentMethodExt[] = ['cash', 'qr', 'deposit', 'transfer', 'sigep', 'check']
@@ -38,12 +40,16 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
   const [method, setMethod] = useState<PosPaymentMethodExt>('cash')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [done, setDone] = useState<{ amountCents: number; customerName: string } | null>(null)
+  const [done, setDone] = useState<{ amountCents: number; customerName: string; repartoWarning?: string } | null>(null)
   // Brief S4: antes solo se guardaba sinCuenta y se descartaba el saldo — el cajero
   // registraba un pago a ciegas, sin ver cuánto debía el cliente. Ahora se muestra el
   // resultado completo (los mismos cuatro estados de SaldoBadge) y se usa para precargar
   // el monto con lo que el cliente normalmente viene a pagar.
   const [saldo, setSaldo] = useState<ResultadoSaldo | null>(null)
+  // Brief T4 Tarea 2: solo aplica cuando tipo === 'total' (un cobro que no corresponde a
+  // un solo pedido) — el vendedor puede editar el reparto propuesto antes de confirmar.
+  const [repartoFilas, setRepartoFilas] = useState<FilaRepartoEditable[]>([])
+  const [repartoError, setRepartoError] = useState<string | null>(null)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the previous customer's saldo/monto immediately when customer changes, before the new fetch resolves
@@ -91,7 +97,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
 
   const pickCustomer = (record: CustomerRecord) => { setCustomer(record); setShowCustomerPicker(false); setCustomerQuery('') }
 
-  const valid = !!customer && displayAmount > 0 && !!sessionId && (tipo === 'total' || !!orderId)
+  const valid = !!customer && displayAmount > 0 && !!sessionId && (tipo === 'total' || !!orderId) && (tipo === 'pedido' || !repartoError)
   // No bloqueante: pagar de más es legítimo (queda saldo a favor), así que esto es un
   // aviso, no una condición de `valid`.
   const superaSaldo = saldo?.estado === 'ok' && saldo.saldoConfirmado > 0 && displayAmount > saldo.saldoConfirmado
@@ -99,9 +105,10 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
     : 0
 
   // Puente hacia Hermes: siempre en segundo plano, best-effort. El pago del POS ya quedó
-  // confirmado antes de que esto corra — un fallo acá solo encola un reintento.
-  const syncHermesPago = async (movimientoCajaId: string, clienteId: string, amountCents: number, metodo: PosPaymentMethodExt, pedidoId: string | undefined) => {
-    if (!featureFlags.supabase) return
+  // confirmado antes de que esto corra — un fallo acá solo encola un reintento. Devuelve el
+  // pagoId cuando se pudo proponer — el llamador lo necesita para, opcionalmente, guardar
+  // un reparto editado con imputar_pago (Tarea 2); si no hay pagoId no hay nada que imputar.
+  const syncHermesPago = async (movimientoCajaId: string, clienteId: string, amountCents: number, metodo: PosPaymentMethodExt, pedidoId: string | undefined): Promise<{ pagoId?: string; usuarioPos: string }> => {
     let usuarioPos = 'pos'
     try {
       const session = await authSessionProvider.getSession()
@@ -109,9 +116,11 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
     } catch {
       // sin sesión disponible, se usa el fallback
     }
+    if (!featureFlags.supabase) return { usuarioPos }
     const medio = methodExtToMedioHermes(metodo)
     try {
-      await registrarPago({ clienteId: Number(clienteId), monto: amountCents / 100, medio, pedidoId, movimientoCajaId, usuarioPos })
+      const { pagoId } = await registrarPago({ clienteId: Number(clienteId), monto: amountCents / 100, medio, pedidoId, movimientoCajaId, usuarioPos })
+      return { pagoId: String(pagoId), usuarioPos }
     } catch (err) {
       try {
         await pendienteSyncHermesPagoRepository.registrarFallo({
@@ -127,6 +136,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
         // si ni siquiera se pudo encolar el reintento, no hay más que hacer acá — el pago
         // ya está confirmado en el POS y es lo que importa
       }
+      return { usuarioPos }
     }
   }
 
@@ -156,7 +166,27 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
         }),
       )
       setDone({ amountCents, customerName: customer.name })
-      void syncHermesPago(movementId, customer.id, amountCents, method, orderIdForPayment)
+      // Brief T4 Tarea 2: solo hay reparto que guardar cuando tipo === 'total' (sin pedido
+      // — proponer_pago no pudo aplicar nada solo) y el vendedor dejó al menos una fila con
+      // monto asignado. Ahí sí hace falta esperar el pagoId real de Hermes antes de poder
+      // llamar a imputar_pago; en cualquier otro caso el sync sigue siendo fire-and-forget,
+      // sin bloquear la confirmación del pago en el POS.
+      const aplicacionesEditadas = repartoFilas.filter((f) => f.aplica > 0).map((f) => ({ partidaId: f.partidaId, monto: f.aplica }))
+      if (tipo === 'total' && aplicacionesEditadas.length) {
+        const { pagoId, usuarioPos } = await syncHermesPago(movementId, customer.id, amountCents, method, orderIdForPayment)
+        if (pagoId) {
+          try {
+            await imputarPago(pagoId, aplicacionesEditadas, usuarioPos)
+          } catch (err) {
+            // El pago y el anticipo en Hermes ya quedaron registrados — solo el reparto
+            // editado no se pudo guardar. confirmar_pago hace FIFO automático si nadie
+            // imputó nada, así que esto no bloquea nada, solo se avisa.
+            setDone((prev) => prev && ({ ...prev, repartoWarning: `No se pudo guardar el reparto editado: ${err instanceof Error ? err.message : 'error desconocido'}. Se va a repartir por FIFO automático al confirmar.` }))
+          }
+        }
+      } else {
+        void syncHermesPago(movementId, customer.id, amountCents, method, orderIdForPayment)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar el pago')
     } finally {
@@ -168,6 +198,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
     <span>✓</span>
     <h3>{formatMoney(money(done.amountCents))}</h3>
     <p>Pago registrado. {formatMoney(money(done.amountCents))} anotado en la cuenta de {done.customerName}.</p>
+    {done.repartoWarning && <p className="mock-note payment-error">{done.repartoWarning}</p>}
   </div><footer className="modal-actions"><button className="primary-button full-button" onClick={onClose}>Cerrar</button></footer></Modal>
 
   return <Modal title="Registrar pago" subtitle="Pago de un cliente sobre su cuenta" onClose={onClose} wide><div className="modal-body form-grid">
@@ -206,6 +237,12 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
     </label>}
     {customer && featureFlags.supabase && saldo && <SaldoResumen saldo={saldo} />}
     <label>Monto (Bs)<NumberField autoFocus min={0} step={0.01} value={displayAmount} onCommit={setAmount} /></label>
+    {/* Brief T4 Tarea 2: solo un pago "sobre el total" puede corresponder a más de una
+        partida — un pago atado a un pedido específico ya se resuelve solo (proponer_pago
+        le aplica el monto entero a esa partida). */}
+    {tipo === 'total' && customer && featureFlags.supabase && displayAmount > 0 && (
+      <RepartoPagoPanel clienteId={Number(customer.id)} monto={displayAmount} onFilasChange={(filas, err) => { setRepartoFilas(filas); setRepartoError(err) }} />
+    )}
     <label>Método de pago<select value={method} onChange={(e) => setMethod(e.target.value as PosPaymentMethodExt)}>
       {metodoOrder.map((m) => <option key={m} value={m}>{metodoLabels[m]}</option>)}
     </select></label>

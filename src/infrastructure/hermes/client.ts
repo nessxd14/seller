@@ -227,3 +227,61 @@ export async function registrarPago(input: { clienteId: number; monto: number; m
   if (!response.ok) throw new HermesHttpError((data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) || 'No se pudo registrar el pago en Hermes', response.status)
   return data as PagoRegistrado
 }
+
+// Brief T4 Tarea 2: una fila por partida abierta del cliente, propuesta por FIFO —
+// o_referencia ya viene como PED-2026-XXXXX (Tarea 3: nunca mostrar el id interno).
+export interface FilaReparto {
+  partidaId: number
+  referencia: string
+  total: number
+  pendiente: number
+  aplica: number
+  restante: number
+}
+
+/** SÍ lanza — el llamador (RepartoPagoPanel) necesita distinguir "no se pudo calcular"
+ * de "no hay partidas abiertas" (array vacío, no es un error). */
+export async function calcularRepartoFifo(clienteId: number, monto: number): Promise<FilaReparto[]> {
+  const response = await fetch('/api/hermes/calcular-reparto', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ clienteId, monto }),
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok) throw new HermesHttpError((data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) || 'No se pudo calcular el reparto', response.status)
+  const filas = Array.isArray(data?.filas) ? data.filas : []
+  return filas.map((f: Record<string, unknown>) => ({
+    partidaId: Number(f.partidaId),
+    referencia: String(f.referencia ?? ''),
+    total: Number(f.total ?? 0),
+    pendiente: Number(f.pendiente ?? 0),
+    aplica: Number(f.aplica ?? 0),
+    restante: Number(f.restante ?? 0),
+  }))
+}
+
+export interface ImputacionGuardada {
+  pagoId: number
+  aplicaciones: number
+  imputado: number
+  excedente: number
+}
+
+/** SÍ lanza, con el mensaje literal de imputar_pago (montos inválidos, partida ajena,
+ * pago ya confirmado, etc.) — nunca reemplazarlo por un genérico, la RPC ya lo redacta
+ * para mostrarse tal cual. */
+export async function imputarPago(pagoId: string | number, aplicaciones: Array<{ partidaId: number; monto: number }>, usuarioPos: string): Promise<ImputacionGuardada> {
+  const response = await fetch('/api/hermes/imputar-pago', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ pagoId, aplicaciones, usuarioPos }),
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok) throw new HermesHttpError((data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) || 'No se pudo guardar el reparto', response.status)
+  return {
+    pagoId: Number(data?.pagoId),
+    aplicaciones: Number(data?.aplicaciones ?? 0),
+    imputado: Number(data?.imputado ?? 0),
+    excedente: Number(data?.excedente ?? 0),
+  }
+}
