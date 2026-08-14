@@ -1,0 +1,5 @@
+/* Brief T4 Tarea 2: pantalla de reparto de un pago "sobre el total" contra las partidas
+   abiertas del cliente — vive en PagoModal, vía RepartoPagoPanel. */
+.reparto-pago-panel { display: grid; gap: 8px }
+.reparto-pago-table .table-head, .reparto-pago-table > article { grid-template-columns: 1.4fr 1fr 1fr 1fr }
+.reparto-pago-table input { width: 100%; border: 1px solid #ddd8cf; border-radius: 7px; padding: 6px 8px; font-size: 12px }

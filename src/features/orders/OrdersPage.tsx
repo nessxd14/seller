@@ -13,6 +13,9 @@ import { contarVersionesPedidos, eliminarPedido, listVersionesPedido, puedeElimi
 import { diffVersionLines } from '../../domain/orders/versionDiff'
 import { decidirEliminacionPedido } from '../../domain/orders/deletionDecision'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
+import { registrarPago } from '../../infrastructure/hermes/client'
+import { pendienteSyncHermesPagoRepository } from '../../infrastructure/supabase/PendienteSyncHermesPagoRepository'
+import { methodExtToMedioHermes } from '../../infrastructure/supabase/mappers'
 
 type SortKey = 'number' | 'customerName' | 'channel' | 'status' | 'lines' | 'total' | 'createdAt'
 type SortDir = 'asc' | 'desc'
@@ -107,9 +110,44 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       notify(error instanceof Error ? error.message : 'No se pudo eliminar el pedido')
     }
   }
+  // Brief T4 Tarea 1 (la más importante): "Registrar anticipo" es el caso normal de "cobro
+  // contra un pedido concreto" — y hasta ahora nunca llegaba a Hermes, así que
+  // pago_aplicacion se quedaba vacía por más que la pantalla dijera que todo salió bien.
+  // Mismo patrón fire-and-forget que PagoModal.syncHermesPago: el anticipo ya quedó
+  // confirmado en Cation antes de que esto corra, un fallo acá solo encola un reintento.
+  const syncAnticipoHermes = async (movementId: string, clienteId: string, amountCents: number, metodo: 'cash' | 'qr' | 'transfer', pedidoId: string) => {
+    if (!featureFlags.supabase) return
+    let usuarioPos = 'pos'
+    try {
+      const session = await authSessionProvider.getSession()
+      usuarioPos = session?.user.email ?? session?.user.id ?? usuarioPos
+    } catch {
+      // sin sesión disponible, se usa el fallback
+    }
+    const medio = methodExtToMedioHermes(metodo)
+    try {
+      await registrarPago({ clienteId: Number(clienteId), monto: amountCents / 100, medio, pedidoId, movimientoCajaId: movementId, usuarioPos })
+    } catch (err) {
+      try {
+        await pendienteSyncHermesPagoRepository.registrarFallo({
+          movimientoCajaId: movementId,
+          clienteId,
+          pedidoId,
+          monto: amountCents / 100,
+          metodo: medio,
+          usuarioPos,
+          error: err instanceof Error ? err.message : 'No se pudo registrar el pago en Hermes',
+        })
+      } catch {
+        // si ni siquiera se pudo encolar el reintento, no hay más que hacer acá — el
+        // anticipo ya está confirmado en Cation y es lo que importa
+      }
+    }
+  }
   const registerAdvance = async (amountCents: number, method: 'cash' | 'qr' | 'transfer') => {
     if (!selected || !sessionId) return
-    await cashService.registerAdvance(selected.id, amountCents, method, sessionId)
+    const { movementId } = await cashService.registerAdvance(selected.id, amountCents, method, sessionId)
+    if (selected.customerId) void syncAnticipoHermes(movementId, selected.customerId, amountCents, method, selected.id)
     setAdvanceOpen(false)
     notify('Anticipo registrado')
     setAdvances(await cashService.getAdvancesForOrder(selected.id))
