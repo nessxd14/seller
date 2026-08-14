@@ -217,7 +217,7 @@ export async function registrarCargoSaldo(input: { clienteId: number; monto: num
  * (PagoModal) necesita saberlo para encolar el reintento en pendiente_sync_hermes_pago.
  * El PROPUESTO/confirmación en Hermes es cosa de supervisores en otra app: acá no hay
  * nada que interpretar sobre ese estado, solo éxito (se pudo proponer) o fallo (se encola). */
-export async function registrarPago(input: { clienteId: number; monto: number; medio: string; pedidoId?: string | number; movimientoCajaId: string | number; usuarioPos: string }): Promise<PagoRegistrado> {
+export async function registrarPago(input: { clienteId: number; monto: number; medio: string; pedidoId?: string | number; movimientoCajaId: string | number; usuarioPos: string; noImputar?: boolean }): Promise<PagoRegistrado> {
   const response = await fetch('/api/hermes/registrar-pago', {
     method: 'POST',
     headers: await authHeaders(),

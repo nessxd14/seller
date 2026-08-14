@@ -50,6 +50,9 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
   // un solo pedido) — el vendedor puede editar el reparto propuesto antes de confirmar.
   const [repartoFilas, setRepartoFilas] = useState<FilaRepartoEditable[]>([])
   const [repartoError, setRepartoError] = useState<string | null>(null)
+  // Brief T7 Tarea 4: excluyente con el reparto — el vendedor decide reservar el pago como
+  // anticipo en vez de dejar que el FIFO se lo coma contra deuda vieja.
+  const [noImputar, setNoImputar] = useState(false)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the previous customer's saldo/monto immediately when customer changes, before the new fetch resolves
@@ -108,7 +111,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
   // confirmado antes de que esto corra — un fallo acá solo encola un reintento. Devuelve el
   // pagoId cuando se pudo proponer — el llamador lo necesita para, opcionalmente, guardar
   // un reparto editado con imputar_pago (Tarea 2); si no hay pagoId no hay nada que imputar.
-  const syncHermesPago = async (movimientoCajaId: string, clienteId: string, amountCents: number, metodo: PosPaymentMethodExt, pedidoId: string | undefined): Promise<{ pagoId?: string; usuarioPos: string }> => {
+  const syncHermesPago = async (movimientoCajaId: string, clienteId: string, amountCents: number, metodo: PosPaymentMethodExt, pedidoId: string | undefined, noImputarFlag: boolean): Promise<{ pagoId?: string; usuarioPos: string }> => {
     let usuarioPos = 'pos'
     try {
       const session = await authSessionProvider.getSession()
@@ -119,7 +122,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
     if (!featureFlags.supabase) return { usuarioPos }
     const medio = methodExtToMedioHermes(metodo)
     try {
-      const { pagoId } = await registrarPago({ clienteId: Number(clienteId), monto: amountCents / 100, medio, pedidoId, movimientoCajaId, usuarioPos })
+      const { pagoId } = await registrarPago({ clienteId: Number(clienteId), monto: amountCents / 100, medio, pedidoId, movimientoCajaId, usuarioPos, noImputar: noImputarFlag })
       return { pagoId: String(pagoId), usuarioPos }
     } catch (err) {
       try {
@@ -171,9 +174,11 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
       // monto asignado. Ahí sí hace falta esperar el pagoId real de Hermes antes de poder
       // llamar a imputar_pago; en cualquier otro caso el sync sigue siendo fire-and-forget,
       // sin bloquear la confirmación del pago en el POS.
-      const aplicacionesEditadas = repartoFilas.filter((f) => f.aplica > 0).map((f) => ({ partidaId: f.partidaId, monto: f.aplica }))
+      // Brief T7 Tarea 4: "no imputar" y el reparto son excluyentes — imputar_pago rechaza
+      // la combinación del lado servidor, así que acá directamente no se intenta.
+      const aplicacionesEditadas = noImputar ? [] : repartoFilas.filter((f) => f.aplica > 0).map((f) => ({ partidaId: f.partidaId, monto: f.aplica }))
       if (tipo === 'total' && aplicacionesEditadas.length) {
-        const { pagoId, usuarioPos } = await syncHermesPago(movementId, customer.id, amountCents, method, orderIdForPayment)
+        const { pagoId, usuarioPos } = await syncHermesPago(movementId, customer.id, amountCents, method, orderIdForPayment, noImputar)
         if (pagoId) {
           try {
             await imputarPago(pagoId, aplicacionesEditadas, usuarioPos)
@@ -185,7 +190,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
           }
         }
       } else {
-        void syncHermesPago(movementId, customer.id, amountCents, method, orderIdForPayment)
+        void syncHermesPago(movementId, customer.id, amountCents, method, orderIdForPayment, noImputar)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar el pago')
@@ -237,10 +242,25 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
     </label>}
     {customer && featureFlags.supabase && saldo && <SaldoResumen saldo={saldo} />}
     <label>Monto (Bs)<NumberField autoFocus min={0} step={0.01} value={displayAmount} onCommit={setAmount} /></label>
+    {/* Brief T7 Tarea 4: excluyente con el reparto de abajo — imputar_pago rechaza la
+        combinación del lado servidor, así que acá se apagan mutuamente en la UI. */}
+    {tipo === 'total' && customer && featureFlags.supabase && (
+      <label className="full custom-modal-add-another">
+        <input
+          type="checkbox"
+          checked={noImputar}
+          onChange={(e) => { setNoImputar(e.target.checked); if (e.target.checked) { setRepartoFilas([]); setRepartoError(null) } }}
+        />
+        Dejar como anticipo a favor del cliente (no imputar a deudas)
+      </label>
+    )}
+    {noImputar && (
+      <p className="mock-note full">El pago no se descontará de partidas abiertas. Queda disponible para imputarlo manualmente después.</p>
+    )}
     {/* Brief T4 Tarea 2: solo un pago "sobre el total" puede corresponder a más de una
         partida — un pago atado a un pedido específico ya se resuelve solo (proponer_pago
         le aplica el monto entero a esa partida). */}
-    {tipo === 'total' && customer && featureFlags.supabase && displayAmount > 0 && (
+    {tipo === 'total' && customer && featureFlags.supabase && displayAmount > 0 && !noImputar && (
       <RepartoPagoPanel clienteId={Number(customer.id)} monto={displayAmount} onFilasChange={(filas, err) => { setRepartoFilas(filas); setRepartoError(err) }} />
     )}
     <label>Método de pago<select value={method} onChange={(e) => setMethod(e.target.value as PosPaymentMethodExt)}>
