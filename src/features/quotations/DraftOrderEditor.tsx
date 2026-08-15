@@ -17,6 +17,7 @@ import { useBorrador, borradorKey } from '../../hooks/useBorrador'
 import { BorradorBanner } from '../../components/BorradorBanner'
 import { EditQuoteLineModal } from './EditQuoteLineModal'
 import { coincideBusqueda } from '../../domain/customers/textSearch'
+import { requiereCotizacionOrigen } from '../../domain/quotations/requiereCotizacionOrigen'
 
 type EditableChannel = QuoteDraft['channel']
 
@@ -67,6 +68,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const [editLineModalId, setEditLineModalId] = useState<string | null>(null)
   const [actorId, setActorId] = useState('pos')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   // Brief H — useBorrador: autosave de la cotización. Desactivado en solo-lectura (nada
   // que autoguardar ahí); si queda un borrador viejo de otra cotización nueva sin
   // terminar, igual se ofrece — el banner es por tipo de formulario, no por registro.
@@ -281,9 +283,26 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // guardado, no la carga).
   const missingCustomer = !value.customerId
 
+  // Brief T7 Tarea 5: la base rechaza crear un pedido directo (sin cotización de origen)
+  // para clientes institucion/corporativo/mayorista — mejor prevenirlo que solo mostrar el
+  // error después. "Cliente de mostrador" (customerId vacío) nunca lo requiere: el trigger
+  // ya deja pasar cliente_id null.
+  const selectedCustomer = customers.find((c) => c.id === value.customerId)
+  const requiereCotizacion = requiereCotizacionOrigen(selectedCustomer?.type)
+
   const runAction = async (action: (q: QuoteDraft) => void | Promise<void>) => {
     setSaving(true)
-    try { await action(value); limpiarBorrador() } finally { setSaving(false) }
+    setSaveError('')
+    try {
+      await action(value)
+      limpiarBorrador()
+    } catch (err) {
+      // TAREA 5: el mensaje del trigger ("Los pedidos de clientes X requieren...") se
+      // muestra tal cual, nunca reemplazado por uno genérico.
+      setSaveError(err instanceof Error ? err.message : 'No se pudo completar la acción')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const onPresentationChange = (line: WorkflowLine, presentation: LinePresentation) => {
@@ -514,6 +533,14 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             bloquea, solo informa; el bloqueo real sigue en "Convertir a pedido"/"Crear
             pedido", que sí necesitan stock real antes de reservarlo. */}
         {hasStockErrors && <div className="stock-block-notice">{Object.keys(lineErrors).length} línea{Object.keys(lineErrors).length === 1 ? '' : 's'} sin stock suficiente. Se pueden cotizar; para convertir a pedido hay que resolverlas.</div>}
+        {/* TAREA 5: si el cliente elegido requiere cotización de origen, mejor prevenirlo
+            que solo mostrar el error después de que la base lo rechace. */}
+        {requiereCotizacion && !isExistingQuote && (
+          <div className="stock-block-notice">
+            {selectedCustomer?.name} requiere una cotización de origen para tener pedido — guardá esto como cotización y convertila después, no se puede crear el pedido directo.
+          </div>
+        )}
+        {saveError && <div className="field-error"><p>{saveError}</p></div>}
       </div>
       <footer className="modal-actions">
         <button className="secondary-button" onClick={onClose}>Cancelar</button>
@@ -529,7 +556,16 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             CONVERTIDA/VENCIDA/ANULADA correctly show neither (this guard already
             existed and was verified to already block reconversion of a CONVERTIDA
             quote, not a new restriction added here). */}
-        {!readOnly && !isExistingQuote && onCreateOrder && <button className="primary-button" disabled={!value.lines.length || saving || hasStockErrors} onClick={() => void runAction(onCreateOrder)}>Crear pedido</button>}
+        {!readOnly && !isExistingQuote && onCreateOrder && (
+          <button
+            className="primary-button"
+            disabled={!value.lines.length || saving || hasStockErrors || requiereCotizacion}
+            title={requiereCotizacion ? `${selectedCustomer?.name} requiere una cotización de origen — usá "Guardar como cotización"` : undefined}
+            onClick={() => void runAction(onCreateOrder)}
+          >
+            Crear pedido
+          </button>
+        )}
         {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors || missingCustomer} title={missingCustomer ? 'Elegí un cliente para convertir' : undefined} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
       </footer>
       {customModalOpen && (

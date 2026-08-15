@@ -18,8 +18,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!sesion) { res.status(401).json({ error: 'No autenticado' }); return }
   if (!puedeMoverSaldo(sesion)) { res.status(403).json({ error: 'Tu rol no permite registrar movimientos de saldo' }); return }
 
-  const { clienteId, monto, medio, pedidoId, movimientoCajaId, usuarioPos } = (req.body ?? {}) as {
-    clienteId?: unknown; monto?: unknown; medio?: unknown; pedidoId?: unknown; movimientoCajaId?: unknown; usuarioPos?: unknown
+  const { clienteId, monto, medio, pedidoId, movimientoCajaId, usuarioPos, noImputar } = (req.body ?? {}) as {
+    clienteId?: unknown; monto?: unknown; medio?: unknown; pedidoId?: unknown; movimientoCajaId?: unknown; usuarioPos?: unknown; noImputar?: unknown
   }
   const clienteIdNum = Number(clienteId)
   const montoNum = Number(monto)
@@ -56,8 +56,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
     const row = Array.isArray(data) ? data[0] : data
+    const pagoId = row?.pago_id ?? row?.pagoId
+
+    // Brief T7 Tarea 4: proponer_pago no tiene parámetro para esto — se marca aparte con
+    // un PATCH directo a la fila recién creada, vía service_role (que además bypassea la
+    // RLS de `pago`, que hoy no tiene política de UPDATE para nadie más). Va después de
+    // que el pago ya existe: si esto falla, el pago igual quedó registrado, pero el
+    // cajero tiene que saber que la marca "no imputar" no se guardó.
+    if (noImputar === true && pagoId != null) {
+      const patchResponse = await fetch(`${hermesUrl}/rest/v1/pago?id=eq.${pagoId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, Prefer: 'return=minimal' },
+        body: JSON.stringify({ no_imputar: true }),
+      })
+      if (!patchResponse.ok) {
+        const patchData = await patchResponse.json().catch(() => null)
+        const patchMessage = (patchData && typeof patchData === 'object' && 'message' in patchData && typeof patchData.message === 'string')
+          ? patchData.message
+          : `Hermes respondió ${patchResponse.status}`
+        res.status(502).json({ error: `El pago se registró (#${pagoId}), pero no se pudo marcar como anticipo (no imputar): ${patchMessage}` })
+        return
+      }
+    }
+
     res.status(200).json({
-      pagoId: row?.pago_id ?? row?.pagoId,
+      pagoId,
       saldoProvisional: row?.saldo_provisional ?? row?.saldoProvisional,
     })
   } catch (err) {
