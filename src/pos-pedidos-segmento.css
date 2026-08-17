@@ -1,0 +1,22 @@
+/* Brief P1: selector de segmento (Retail / Wholesale / Todos) en la pestaña de Pedidos.
+   Archivo nuevo — no pisa ninguna hoja de rondas anteriores. */
+.pedidos-segmento-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.pedidos-segmento-tabs button {
+  border: 1px solid #e3ded6;
+  background: #fff;
+  color: #6e6a63;
+  border-radius: 20px;
+  height: 34px;
+  padding: 0 16px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.pedidos-segmento-tabs button.active {
+  background: #fff3ee;
+  color: var(--orange);
+  border-color: var(--orange);
+}

@@ -14,6 +14,7 @@ import { reportsRepository } from './ReportsRepository.supabase'
 import { sensitiveOperations } from '../mock/services'
 import { checkoutFingerprint } from '../../domain/sales/checkoutFingerprint'
 import { expectedCash } from '../../application/cash/CashService'
+import type { CategoriaPedido } from './mappers'
 
 export const configService = configRepository
 export const reportsService = reportsRepository
@@ -24,6 +25,9 @@ const currentActorId = async (): Promise<string> => {
 }
 
 const bigPage = { page: 1, pageSize: 200 }
+// Brief P1: 320 pedidos hoy, ya sobre los 200 de bigPage — el tope real es el hard cap de
+// PostgREST (1000 filas por request), no un número elegido a mano.
+const bigPageOrders = { page: 1, pageSize: 1000 }
 
 export const quoteService = {
   async list(): Promise<QuoteDraft[]> {
@@ -54,8 +58,11 @@ export const quoteService = {
 }
 
 export const orderService = {
-  async list(): Promise<OrderView[]> {
-    const { items } = await orderRepository.list({ page: bigPage })
+  // Brief P1: categorias filtra pedido.categoria del lado del servidor (segmento
+  // Retail/Wholesale) — bigPageOrders cubre hasta el tope duro de PostgREST (1000 filas),
+  // así que "Todos" (320 hoy) no queda truncado como con el bigPage genérico de 200.
+  async list(input?: { categorias?: CategoriaPedido[] }): Promise<OrderView[]> {
+    const { items } = await orderRepository.list({ categorias: input?.categorias, page: bigPageOrders })
     return items
   },
   async save(order: OrderView): Promise<OrderView> {

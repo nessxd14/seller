@@ -15,7 +15,8 @@ import { decidirEliminacionPedido } from '../../domain/orders/deletionDecision'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
 import { registrarPago } from '../../infrastructure/hermes/client'
 import { pendienteSyncHermesPagoRepository } from '../../infrastructure/supabase/PendienteSyncHermesPagoRepository'
-import { methodExtToMedioHermes } from '../../infrastructure/supabase/mappers'
+import { methodExtToMedioHermes, channelToCategoria } from '../../infrastructure/supabase/mappers'
+import { categoriasDeSegmento, SEGMENTOS_PEDIDO, type CategoriaPedido, type SegmentoPedido } from '../../domain/orders/segmentoPedido'
 
 type SortKey = 'number' | 'customerName' | 'channel' | 'status' | 'lines' | 'total' | 'createdAt'
 type SortDir = 'asc' | 'desc'
@@ -31,12 +32,33 @@ const orderTotal = (order: OrderView) =>
   )
 const channelNames: Record<string, string> = { mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
 
+// Brief P1 Tarea 4: persiste durante la sesión (sessionStorage, mismo patrón que
+// PosContext), nunca entre sesiones.
+const SEGMENTO_PEDIDO_KEY = 'roari-pedidos-segmento-v1'
+const segmentoValido = (raw: string | null): SegmentoPedido =>
+  raw === 'retail' || raw === 'wholesale' || raw === 'todos' ? raw : 'todos'
+const segmentoLabel: Record<SegmentoPedido, string> = { retail: 'Retail', wholesale: 'Wholesale', todos: 'Todos' }
+
+type ConteosSegmento = { retail: number; wholesale: number; todos: number }
+
+const contarPorSegmento = (items: OrderView[]): ConteosSegmento => {
+  const porCategoria: Record<CategoriaPedido, number> = { TIENDA: 0, MAYOR: 0, INSTITUCIONAL: 0, MUNICIPAL: 0 }
+  for (const order of items) porCategoria[channelToCategoria(order.channel)]++
+  const sumar = (categorias: CategoriaPedido[]) => categorias.reduce((sum, c) => sum + porCategoria[c], 0)
+  return { retail: sumar(SEGMENTOS_PEDIDO.retail), wholesale: sumar(SEGMENTOS_PEDIDO.wholesale), todos: items.length }
+}
+
 function SortTh({ label, sortkey, activeKey, onToggle }: { label: string; sortkey: SortKey; activeKey: SortKey; onToggle: (key: SortKey) => void }) {
   return <button className={`sortable-th ${activeKey === sortkey ? 'active' : ''}`} onClick={() => onToggle(sortkey)}>{label}<ArrowUpDown size={11} /></button>
 }
 
 export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { notify: (message: string) => void; canDispatch?: boolean; readOnly?: boolean }) {
   const [orders, setOrders] = useState<OrderView[]>([])
+  // Brief P1: Retail/Wholesale/Todos — filtra por pedido.categoria del lado del servidor
+  // (nunca por prefijo de numero: los 221 retail históricos son PED-, no TKT-). Default
+  // 'todos' — no cambia el comportamiento conocido sin que el usuario lo pida.
+  const [segmento, setSegmento] = useState<SegmentoPedido>(() => segmentoValido(sessionStorage.getItem(SEGMENTO_PEDIDO_KEY)))
+  const [conteosSegmento, setConteosSegmento] = useState<ConteosSegmento | null>(null)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | OrderWorkflowStatus>('all')
   const [channelFilter, setChannelFilter] = useState('all')
@@ -60,10 +82,30 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   const [deleteCheck, setDeleteCheck] = useState<PuedeEliminarsePedido | null>(null)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const { sessionId } = useCashSession()
-  const load = () => { setStatus('loading'); return orderService.list().then((items) => { setOrders(items); setStatus('ready') }).catch(() => setStatus('error')) }
+  // Brief P1 Tarea 6: el contador por segmento sale de una lista completa (sin filtro de
+  // categoria) ya cargada — nunca una consulta aparte solo para el contador. Eso pasa
+  // naturalmente al ver "Todos"; si la sesión arranca en Retail/Wholesale (segmento
+  // restaurado de sessionStorage), se carga la lista completa una vez además, en paralelo,
+  // porque en ese caso ninguna carga en curso trae el universo completo para contar.
+  const cargarPedidos = (seg: SegmentoPedido) => {
+    setStatus('loading')
+    return orderService.list({ categorias: categoriasDeSegmento(seg) }).then((items) => {
+      setOrders(items)
+      setStatus('ready')
+      if (seg === 'todos') setConteosSegmento(contarPorSegmento(items))
+    }).catch(() => setStatus('error'))
+  }
+  const load = () => cargarPedidos(segmento)
+  const cambiarSegmento = (seg: SegmentoPedido) => {
+    setSegmento(seg)
+    sessionStorage.setItem(SEGMENTO_PEDIDO_KEY, seg)
+    void cargarPedidos(seg)
+  }
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch on mount, not a derived-state sync
     void load()
+    if (segmento !== 'todos') void orderService.list().then((items) => setConteosSegmento(contarPorSegmento(items)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar; cambiar de segmento pasa por cambiarSegmento, no por este efecto
   }, [])
   useEffect(() => { void (selected ? cashService.getAdvancesForOrder(selected.id) : Promise.resolve([])).then(setAdvances) }, [selected])
   useEffect(() => {
@@ -197,6 +239,20 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     }
   }
   return <FeatureShell eyebrow="OPERACIONES" title="Pedidos" subtitle={featureFlags.supabase ? "Pedidos confirmados desde el POS — despacho y estado se gestionan en el WMS" : "Reserva, preparación y despacho simulado"}>
+    {/* Brief P1: filtro de presentación por pedido.categoria — se compone con los filtros
+        de abajo (estado/canal/búsqueda), no los reemplaza. */}
+    <div className="pedidos-segmento-tabs">
+      {(['todos', 'retail', 'wholesale'] as SegmentoPedido[]).map((seg) => (
+        <button
+          key={seg}
+          type="button"
+          className={segmento === seg ? 'active' : ''}
+          onClick={() => cambiarSegmento(seg)}
+        >
+          {segmentoLabel[seg]}{conteosSegmento ? ` (${conteosSegmento[seg]})` : ''}
+        </button>
+      ))}
+    </div>
     <FeatureToolbar query={query} onQuery={setQuery} placeholder="Buscar por pedido o cliente...">
       <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}><option value="all">Todos los estados</option>{['draft','confirmed','awaiting_stock','reserved','preparing','ready','dispatched','delivered','cancelled'].map((value) => <option key={value} value={value}>{statusLabel[value]}</option>)}</select>
       <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}><option value="all">Todos los canales</option>{Object.entries(channelNames).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>

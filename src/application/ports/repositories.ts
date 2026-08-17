@@ -1,5 +1,6 @@
 import type { CashSessionRecord, CustomerRecord, OrderView, QuoteDraft } from '../shared/models'
 import type { Product } from '../../types'
+import type { CategoriaPedido } from '../../domain/orders/segmentoPedido'
 
 export interface PageRequest { page:number; pageSize:number }
 export interface Page<T> { items:T[]; page:number; pageSize:number; total:number }
@@ -40,7 +41,9 @@ export interface QuoteRepository {
   duplicate(id:string,context:MutationContext):Promise<QuoteDraft & Versioned>
 }
 export interface OrderRepository {
-  list(input:{query?:string;status?:OrderView['status'];channel?:OrderView['channel'];dates?:DateRange;page:PageRequest}):Promise<Page<OrderView & Versioned>>
+  // Brief P1: categorias filtra por pedido.categoria del lado del servidor (segmento
+  // Retail/Wholesale de la pantalla de Pedidos) — undefined/omitido = sin filtro.
+  list(input:{query?:string;status?:OrderView['status'];channel?:OrderView['channel'];categorias?:CategoriaPedido[];dates?:DateRange;page:PageRequest}):Promise<Page<OrderView & Versioned>>
   getById(id:string):Promise<(OrderView & Versioned)|null>
   save(value:OrderView & Partial<Versioned>,context:MutationContext):Promise<OrderView & Versioned>
 }
