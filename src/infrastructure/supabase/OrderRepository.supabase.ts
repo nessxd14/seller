@@ -4,7 +4,7 @@ import type { OrderView, OrderWorkflowStatus, WorkflowLine } from '../../applica
 import { NotFoundError } from '../../application/errors/AppError'
 import {
   bpToPct, categoriaToChannel, centsToNumeric, channelToCategoria, defaultSucursalForChannel,
-  locationToSucursalId, numericToCents, sucursalIdToLocation,
+  locationToSucursalId, numericToCents, sucursalIdToLocation, type CategoriaPedido,
 } from './mappers'
 
 type EstadoPedido = 'ABIERTO' | 'COMPLETADO' | 'CANCELADO'
@@ -193,8 +193,8 @@ const buildLineasJsonb = (lines: WorkflowLine[], channel: OrderView['channel']) 
   })
 
 export class SupabaseOrderRepository implements OrderRepository {
-  async list(input: { query?: string; status?: OrderView['status']; channel?: OrderView['channel']; dates?: DateRange; page: PageRequest }): Promise<Page<OrderView & Versioned>> {
-    const { status, channel, dates, page } = input
+  async list(input: { query?: string; status?: OrderView['status']; channel?: OrderView['channel']; categorias?: CategoriaPedido[]; dates?: DateRange; page: PageRequest }): Promise<Page<OrderView & Versioned>> {
+    const { status, channel, categorias, dates, page } = input
     const from = (page.page - 1) * page.pageSize
     const to = from + page.pageSize - 1
     let builder = supabase.from('pedido').select('*, cliente(nombre)', { count: 'exact' })
@@ -202,6 +202,9 @@ export class SupabaseOrderRepository implements OrderRepository {
     else if (status === 'delivered') builder = builder.eq('estado', 'COMPLETADO')
     else if (status === 'cancelled') builder = builder.eq('estado', 'CANCELADO')
     if (channel) builder = builder.eq('categoria', channelToCategoria(channel))
+    // Brief P1: segmento Retail/Wholesale — filtra por categoria del lado del servidor,
+    // nunca por prefijo de numero (los 221 retail históricos son PED-, no TKT-).
+    if (categorias?.length) builder = builder.in('categoria', categorias)
     if (dates?.from) builder = builder.gte('creado_en', dates.from)
     if (dates?.to) builder = builder.lte('creado_en', dates.to)
     const { data, error, count } = await builder.order('id', { ascending: false }).range(from, to)

@@ -3,8 +3,12 @@
 // No supabase client import here so this module stays trivially unit-testable.
 import type { SalesChannel } from '../../domain/common/types'
 import type { CustomerRecord } from '../../application/shared/models'
+import type { CategoriaPedido } from '../../domain/orders/segmentoPedido'
 
-export type CategoriaPedido = 'TIENDA' | 'MAYOR' | 'INSTITUCIONAL' | 'MUNICIPAL'
+// Brief P1: el tipo vive en domain/orders/segmentoPedido.ts (única fuente de verdad,
+// compartida por el filtro de segmento) — se reexporta acá para no romper los imports
+// existentes desde este módulo.
+export type { CategoriaPedido }
 // Brief M: institucion (DB) -> corporativo (DB, empresas privadas), municipal (DB) ->
 // institucion (DB, gobierno/instituciones públicas). Migración aparte, ya validada.
 export type TipoPrecioCliente = 'retail' | 'mayorista' | 'corporativo' | 'institucion'

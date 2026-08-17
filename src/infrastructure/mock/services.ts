@@ -12,6 +12,7 @@ import { mockAuthSessionProvider } from './MockAuthSessionProvider'
 import type { TransferEstado, TransferRecord } from '../../application/shared/models'
 import { configRepository } from './ConfigRepository.mock'
 import { reportsRepository } from './ReportsRepository.mock'
+import { channelToCategoria, type CategoriaPedido } from '../supabase/mappers'
 
 export const configService = configRepository
 export const reportsService = reportsRepository
@@ -23,7 +24,14 @@ const currentMockActorId = async (): Promise<string> => {
   return session?.user.email ?? session?.user.name ?? 'pos'
 }
 export const orderService = {
-  list: () => rawOrderService.list(),
+  // Brief P1: mismo shape que el facade de Supabase — filtra por categoria (derivada de
+  // channel acá, ya que el mock no tiene una columna categoria propia). El mock no tiene
+  // volumen real para que esto importe en la práctica, pero mantiene los dos backends
+  // intercambiables sin condicionales en el llamador.
+  list: (input?: { categorias?: CategoriaPedido[] }) =>
+    rawOrderService.list().then((items) =>
+      input?.categorias?.length ? items.filter((o) => input.categorias!.includes(channelToCategoria(o.channel))) : items
+    ),
   save: (order: OrderView) => rawOrderService.save(order),
   partialDispatch: (id: string) => rawOrderService.partialDispatch(id),
   cancel: async (id: string, motivo: string) => rawOrderService.cancel(id, motivo, await currentMockActorId()),
