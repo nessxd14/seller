@@ -1,0 +1,64 @@
+/* Brief VTD — modo "Venta directa de almacén" en el carrito: mismo patrón de acento que
+   pos-modo-traslado.css (Brief J), verde para distinguirlo a simple vista del naranja
+   (venta) y el azul (traslado). Archivo nuevo, no toca los anteriores. */
+
+.pos-root[data-modo="ventaDirecta"] {
+  --pos-acento: #1F9254;
+  --pos-acento-suave: #E4F5EA;
+  --pos-acento-texto: #0B3D22;
+}
+
+/* ── Selector de modo (Venta / Traslado / Venta directa) ─────────────────── */
+.modo-group {
+  display: flex; gap: 4px; margin-left: 8px;
+  border: 1px solid var(--line); border-radius: 16px; padding: 2px; background: #fff;
+}
+.modo-group button {
+  display: grid; place-items: center;
+  width: 28px; height: 26px; border: 0; background: transparent; border-radius: 13px; color: #98958e;
+}
+.modo-group button svg { width: 13px }
+.modo-group button.active {
+  background: var(--pos-acento-suave); color: var(--pos-acento-texto);
+}
+.pos-root[data-modo="ventaDirecta"] .pay-button {
+  background: var(--pos-acento);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--pos-acento) 24%, transparent);
+}
+
+/* ── Modo de cobro (Postcobrado / Precobrado) ──────────────────────────────── */
+.vtd-modo-cobro {
+  margin: 0 20px 13px; display: flex; gap: 6px;
+  background: #f4f1eb; border-radius: 10px; padding: 3px;
+}
+.vtd-modo-cobro button {
+  flex: 1; border: 0; background: transparent; border-radius: 8px; height: 32px;
+  font-size: 11px; font-weight: 700; color: #77746d;
+}
+.vtd-modo-cobro button.active {
+  background: var(--pos-acento); color: #fff;
+}
+
+/* ── Selector de ubicación de origen ───────────────────────────────────────── */
+.vtd-ubicacion-picker {
+  margin: 0 20px 13px;
+  border: 1px solid var(--pos-acento);
+  background: var(--pos-acento-suave);
+  border-radius: 10px;
+  height: 47px;
+  display: flex; align-items: center; gap: 9px;
+  padding: 0 11px;
+}
+.vtd-ubicacion-picker > svg { width: 20px; color: var(--pos-acento) }
+.vtd-ubicacion-picker label { flex: 1; min-width: 0 }
+.vtd-ubicacion-picker small { display: block; font-size: 11px; letter-spacing: 1px; color: var(--pos-acento-texto); opacity: .75 }
+.vtd-ubicacion-picker select {
+  display: block; width: 100%; border: 0; background: transparent; outline: 0;
+  font-size: 12px; font-weight: 700; color: var(--pos-acento-texto); padding: 2px 0 0;
+}
+.vtd-ubicacion-loading, .vtd-ubicacion-empty { color: #8d8a84; font-size: 11px }
+
+.vtd-retail-error-link {
+  border: 0; background: transparent; color: inherit; text-decoration: underline;
+  font-weight: 700; font-size: inherit; padding: 0; margin-left: 4px;
+}

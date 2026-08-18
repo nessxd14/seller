@@ -161,6 +161,48 @@ export interface TransferRecord {
   lines: TransferLine[]
 }
 
+// Venta Directa de Almacén (VTD) — Brief VTD. Una `venta` (no un `pedido`, ver B2 del
+// brief): abrir_venta la crea ABIERTA sin tocar el Kardex; completar_venta la cierra
+// (recién ahí baja stock); ajustar_venta_abierta solo reduce cantidades; anular_venta la
+// cancela devolviendo lo cobrado. `modo` lo resuelve el backend según haya pagos o no —
+// nunca recalcularlo en el cliente (brief 2.2).
+export type VtdModo = 'PRECOBRADO' | 'POSTCOBRADO'
+export type VtdEstado = 'ABIERTA' | 'COMPLETADA' | 'ANULADA'
+
+export interface VtdLine {
+  id: string
+  productId: string
+  name: string
+  sku: string
+  presentacionId?: number
+  presentacionNombre?: string
+  // Siempre en unidad de PRESENTACIÓN (bultos) — el almacenero cuenta bultos, nunca
+  // unidades base (brief 2.3, el mismo bug que ya costó un descuadre en completar_venta).
+  cantidadPresentacion: number
+  precioUnitarioCents: number
+}
+
+export interface VentaDirectaRecord {
+  id: string
+  // B1: serie propia VTD-2026-NNNNN (venta.numero), asignada por abrir_venta. venta.id
+  // crudo nunca se muestra como identificador — es justamente lo que B1 resolvió.
+  numero: string
+  estado: VtdEstado
+  modo: VtdModo
+  ubicacionId: number
+  sesionCajaId: string
+  customerId?: string
+  customerName?: string
+  subtotalCents: number
+  discountCents: number
+  totalCents: number
+  paidCents: number
+  creadoPor?: string
+  creadoEn: string
+  completadoEn?: string
+  lines: VtdLine[]
+}
+
 export interface CashSessionRecord {
   id: string
   register: string

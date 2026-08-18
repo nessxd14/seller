@@ -1,7 +1,7 @@
 import { ArrowDownLeft, ArrowUpRight, Calculator, LockKeyhole, WalletCards } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { CashSessionRecord } from '../../application/shared/models'
-import { cashService, sensitiveOperations } from '../../infrastructure/services'
+import { cashService, sensitiveOperations, ventaDirectaService } from '../../infrastructure/services'
 import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
@@ -29,16 +29,31 @@ export function CashPage({ notify, canCloseCash = true }: { notify: (message: st
   }
   const close = async (counted: number) => {
     if (!closing) return
-    const result = await sensitiveOperations.execute('close_cash',closing.id,()=>cashService.close(closing.id, counted))
-    setClosing(null)
-    await load()
-    await refreshCashSession()
-    if (featureFlags.supabase && result.differenceCents != null) {
-      const diff = result.differenceCents
-      notify(diff === 0 ? 'Caja cerrada — cuadrada' : diff > 0 ? `Caja cerrada — sobrante de ${formatMoney(money(diff))}` : `Caja cerrada — faltante de ${formatMoney(money(Math.abs(diff)))}`)
-    } else {
-      notify('Cierre guardado en historial local')
+    try {
+      const result = await sensitiveOperations.execute('close_cash',closing.id,()=>cashService.close(closing.id, counted))
+      setClosing(null)
+      await load()
+      await refreshCashSession()
+      if (featureFlags.supabase && result.differenceCents != null) {
+        const diff = result.differenceCents
+        notify(diff === 0 ? 'Caja cerrada — cuadrada' : diff > 0 ? `Caja cerrada — sobrante de ${formatMoney(money(diff))}` : `Caja cerrada — faltante de ${formatMoney(money(Math.abs(diff)))}`)
+      } else {
+        notify('Cierre guardado en historial local')
+      }
+    } catch (error) {
+      // Brief VTD: "no se puede cerrar caja con VTD abiertos" — cerrar_caja lo rechaza
+      // del lado del servidor (ver abrirCierre abajo, que ya chequea antes de llegar
+      // acá); esto solo cubre la carrera de un VTD abierto entre el chequeo y el click.
+      notify(error instanceof Error ? error.message : 'No se pudo cerrar la caja')
     }
+  }
+  // Brief VTD 2.4: "bloquear el cierre y obligar a resolverlos uno por uno" — chequeo
+  // proactivo antes de abrir el modal de cierre, para no dejar que el cajero llegue
+  // hasta confirmar y recién ahí se entere.
+  const abrirCierre = async (session: CashSessionRecord) => {
+    const abiertas = await ventaDirectaService.listAbiertas(session.id)
+    if (abiertas.length) { notify(`No se puede cerrar caja: hay ${abiertas.length} venta${abiertas.length > 1 ? 's' : ''} directa${abiertas.length > 1 ? 's' : ''} de almacén abierta${abiertas.length > 1 ? 's' : ''}. Resolvelas en Venta Directa antes de cerrar.`); return }
+    setClosing(session)
   }
   const movement = async (type: 'income' | 'expense', amountCents: number, method: 'cash' | 'qr' | 'transfer', note: string) => {
     if (!active) return
@@ -47,7 +62,7 @@ export function CashPage({ notify, canCloseCash = true }: { notify: (message: st
     await load()
     notify(`${type==='income'?'Ingreso':'Egreso'} registrado`)
   }
-  return <FeatureShell eyebrow="CONTROL DE CAJA" title="Caja" subtitle={featureFlags.supabase ? "Apertura, movimientos y cierre reales — Caja Tienda" : "Apertura, movimientos y cierre exclusivamente simulados"}>{active ? <div className="cash-layout"><section className="cash-hero"><div><span>SESIÓN ACTIVA</span><h2>{active.register}</h2><p>Abierta {new Date(active.openedAt).toLocaleString('es-BO')}</p></div><WalletCards /><footer><span>Efectivo esperado</span><strong>{formatMoney(money(expected))}</strong></footer></section><section className="cash-methods"><h3>Resumen por método</h3>{[['cash','Efectivo'],['qr','QR'],['transfer','Transferencia']].map(([key,label])=><div key={key}><span>{label}</span><strong>{formatMoney(money(byMethod[key] || 0))}</strong></div>)}</section><section className="cash-movements"><header><h3>Movimientos</h3><div><button onClick={()=>setMovementOpen('income')}><ArrowDownLeft /> Ingreso</button><button onClick={()=>setMovementOpen('expense')}><ArrowUpRight /> Egreso</button></div></header>{active.movements.length ? active.movements.map((movement)=><div key={movement.id}><span>{movement.note}</span><b>{movement.type==='expense'?'− ':''}{formatMoney(money(movement.amountCents))}</b></div>) : <FeatureState type="empty" text="Sin movimientos en esta sesión" />}</section><button className="close-cash-button" disabled={!canCloseCash} title={canCloseCash?undefined:'Solo un administrador puede cerrar caja'} onClick={()=>setClosing(active)}><LockKeyhole /> Cerrar caja</button></div> : <div className="cash-empty"><div><WalletCards /></div><h2>No hay una sesión activa</h2><p>Selecciona una caja e ingresa el fondo inicial para comenzar.</p><button className="primary-button" onClick={()=>setOpening(true)}>Abrir Caja Tienda</button></div>}{opening && <OpenCashModal onClose={()=>setOpening(false)} onOpen={open}/>} {closing && <CloseCashModal session={closing} expected={cashService.expected(closing)} byMethod={byMethod} onClose={()=>setClosing(null)} onConfirm={close}/>}{movementOpen && <MovementModal type={movementOpen} onClose={()=>setMovementOpen(null)} onConfirm={(amount,method,note)=>movement(movementOpen,amount,method,note)}/>}<section className="cash-history"><h3>Historial</h3>{sessions.filter((s)=>s.status==='closed').map((session)=><div key={session.id}><span>{session.register}<small>{new Date(session.closedAt!).toLocaleString('es-BO')}</small></span><b>{formatMoney(money(session.countedCents || 0))}</b></div>)}</section></FeatureShell>
+  return <FeatureShell eyebrow="CONTROL DE CAJA" title="Caja" subtitle={featureFlags.supabase ? "Apertura, movimientos y cierre reales — Caja Tienda" : "Apertura, movimientos y cierre exclusivamente simulados"}>{active ? <div className="cash-layout"><section className="cash-hero"><div><span>SESIÓN ACTIVA</span><h2>{active.register}</h2><p>Abierta {new Date(active.openedAt).toLocaleString('es-BO')}</p></div><WalletCards /><footer><span>Efectivo esperado</span><strong>{formatMoney(money(expected))}</strong></footer></section><section className="cash-methods"><h3>Resumen por método</h3>{[['cash','Efectivo'],['qr','QR'],['transfer','Transferencia']].map(([key,label])=><div key={key}><span>{label}</span><strong>{formatMoney(money(byMethod[key] || 0))}</strong></div>)}</section><section className="cash-movements"><header><h3>Movimientos</h3><div><button onClick={()=>setMovementOpen('income')}><ArrowDownLeft /> Ingreso</button><button onClick={()=>setMovementOpen('expense')}><ArrowUpRight /> Egreso</button></div></header>{active.movements.length ? active.movements.map((movement)=><div key={movement.id}><span>{movement.note}</span><b>{movement.type==='expense'?'− ':''}{formatMoney(money(movement.amountCents))}</b></div>) : <FeatureState type="empty" text="Sin movimientos en esta sesión" />}</section><button className="close-cash-button" disabled={!canCloseCash} title={canCloseCash?undefined:'Solo un administrador puede cerrar caja'} onClick={()=>void abrirCierre(active)}><LockKeyhole /> Cerrar caja</button></div> : <div className="cash-empty"><div><WalletCards /></div><h2>No hay una sesión activa</h2><p>Selecciona una caja e ingresa el fondo inicial para comenzar.</p><button className="primary-button" onClick={()=>setOpening(true)}>Abrir Caja Tienda</button></div>}{opening && <OpenCashModal onClose={()=>setOpening(false)} onOpen={open}/>} {closing && <CloseCashModal session={closing} expected={cashService.expected(closing)} byMethod={byMethod} onClose={()=>setClosing(null)} onConfirm={close}/>}{movementOpen && <MovementModal type={movementOpen} onClose={()=>setMovementOpen(null)} onConfirm={(amount,method,note)=>movement(movementOpen,amount,method,note)}/>}<section className="cash-history"><h3>Historial</h3>{sessions.filter((s)=>s.status==='closed').map((session)=><div key={session.id}><span>{session.register}<small>{new Date(session.closedAt!).toLocaleString('es-BO')}</small></span><b>{formatMoney(money(session.countedCents || 0))}</b></div>)}</section></FeatureShell>
 }
 
 function OpenCashModal({onClose,onOpen}:{onClose:()=>void;onOpen:(amount:number)=>void}) { const [amount,setAmount]=useState(50000); return <Modal title="Abrir caja" subtitle={featureFlags.supabase ? undefined : "No se registrará dinero real"} onClose={onClose}><div className="modal-body form-grid"><label className="full">Caja<select><option>{featureFlags.supabase ? 'Caja Tienda' : 'Caja 01 · Sucursal Central'}</option></select></label><label className="full">Monto inicial (Bs)<NumberField autoFocus min={0} value={amount/100} onCommit={(bs)=>setAmount(Math.round(bs*100))}/></label></div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" onClick={()=>onOpen(amount)}>Confirmar apertura</button></footer></Modal> }

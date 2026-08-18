@@ -1,8 +1,12 @@
-import { ArrowLeftRight, BarChart3, Boxes, ClipboardList, FileText, LayoutGrid, PackageSearch, PauseCircle, Settings, ShoppingBag, Users, WalletCards } from 'lucide-react'
+import { ArrowLeftRight, BarChart3, Boxes, ClipboardList, FileText, LayoutGrid, PackageSearch, PauseCircle, Settings, ShoppingBag, Users, WalletCards, Warehouse } from 'lucide-react'
 import { empresaStore as empresa } from '../config/empresaStore'
 
 const nav = [
-  ['Venta', ShoppingBag], ['Suspendidas', PauseCircle], ['Cotizaciones', FileText], ['Pedidos', ClipboardList], ['Clientes', Users], ['Productos', LayoutGrid],
+  ['Venta', ShoppingBag], ['Suspendidas', PauseCircle], ['Cotizaciones', FileText], ['Pedidos', ClipboardList],
+  // Brief VTD, B2: pestaña propia dentro de Ventas — un VTD es una `venta`, no un
+  // `pedido`, y el selector Retail/Wholesale de Pedidos no la va a mostrar.
+  ['Venta Directa', Warehouse],
+  ['Clientes', Users], ['Productos', LayoutGrid],
   ['Inventario', Boxes], ['Traslados', ArrowLeftRight], ['Caja', WalletCards], ['Reportes', BarChart3], ['Configuración', Settings],
 ] as const
 

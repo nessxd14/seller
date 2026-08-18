@@ -16,6 +16,7 @@ import { removeSuspendedSale } from '../infrastructure/local/suspendedSales'
 import { ProductsPage } from '../features/products/ProductsPage'
 import { InventoryPage } from '../features/inventory/InventoryPage'
 import { TransfersPage, type PendingTransferRequest } from '../features/transfers/TransfersPage'
+import { VentaDirectaPage } from '../features/venta-directa/VentaDirectaPage'
 import { ConfigPage } from '../features/settings/ConfigPage'
 import { ReportsPage } from '../features/reports/ReportsPage'
 import { featureFlags } from '../config/featureFlags'
@@ -43,6 +44,9 @@ const PERMISOS_MODULO: Record<string, (s: AuthSession | null) => boolean> = {
   'Pedidos': (s) => hasPermission(s, 'orders_view'),
   'Caja': (s) => hasPermission(s, 'cash_own') || hasPermission(s, 'cash_supervise'),
   'Traslados': (s) => hasPermission(s, 'orders_dispatch') || hasPermission(s, 'retail_sale'),
+  // Brief VTD: la venta directa es retail-only (abrir_venta la rechaza para institución/
+  // corporativo/mayorista) — mismo permiso que la venta de mostrador.
+  'Venta Directa': (s) => hasPermission(s, 'retail_sale'),
   'Configuración': (s) => hasPermission(s, 'admin'),
 }
 
@@ -119,7 +123,7 @@ function PosContent() {
     return () => { cancelled = true; unsubscribe() }
   }, [])
   const navigate = (name: string) => {
-    const enabled = name === 'Venta' || name === 'Suspendidas' || (name === 'Cotizaciones' && featureFlags.quotations) || (name === 'Pedidos' && featureFlags.orders) || name === 'Clientes' || (name === 'Caja' && featureFlags.cash) || name === 'Productos' || name === 'Inventario' || name === 'Traslados' || name === 'Reportes' || name === 'Configuración'
+    const enabled = name === 'Venta' || name === 'Suspendidas' || (name === 'Cotizaciones' && featureFlags.quotations) || (name === 'Pedidos' && featureFlags.orders) || (name === 'Venta Directa' && featureFlags.ventaDirectaAlmacen) || name === 'Clientes' || (name === 'Caja' && featureFlags.cash) || name === 'Productos' || name === 'Inventario' || name === 'Traslados' || name === 'Reportes' || name === 'Configuración'
     const permission = (PERMISOS_MODULO[name] ?? (() => true))(session)
     if (enabled && permission) setActiveModule(name)
     else if(enabled) notify('Tu rol no permite abrir este módulo')
@@ -136,7 +140,7 @@ function PosContent() {
     setActiveModule('Venta')
   }
   const readOnly=session?.user.role==='auditor'||session?.user.role==='operario'
-  const page = activeModule === 'Cotizaciones' ? <QuotationsPage notify={notify} readOnly={readOnly} onOrderCreated={() => setActiveModule('Pedidos')} initialDraft={pendingDraft} onInitialDraftConsumed={() => setPendingDraft(null)} /> : activeModule === 'Pedidos' ? <OrdersPage notify={notify} readOnly={readOnly} canDispatch={hasPermission(session,'orders_dispatch')} /> : activeModule === 'Clientes' ? <CustomersPage notify={notify} /> : activeModule === 'Caja' ? <CashPage notify={notify} canCloseCash={!featureFlags.supabase || session?.user.role === 'admin'} /> : activeModule === 'Suspendidas' ? <SuspendedSalesPage hasCurrentCart={Boolean(cart.length)} onRestore={restoreSale} onOpenCotizaciones={() => setActiveModule('Cotizaciones')} notify={notify} /> : activeModule === 'Productos' ? <ProductsPage notify={notify} /> : activeModule === 'Inventario' ? <InventoryPage notify={notify} /> : activeModule === 'Traslados' ? <TransfersPage notify={notify} initialRequest={pendingTransfer} onInitialRequestConsumed={() => setPendingTransfer(null)} onRegistrarDevolucion={() => setActiveModule('Venta')} /> : activeModule === 'Reportes' ? <ReportsPage notify={notify} /> : activeModule === 'Configuración' ? <ConfigPage notify={notify} canEdit={!featureFlags.supabase || hasPermission(session, 'admin')} /> : <main className="catalog"><div className="catalog-title"><div><span className="eyebrow">PUNTO DE VENTA</span><h1>¿Qué vamos a vender hoy?</h1></div><p>{capitalize(new Date().toLocaleDateString('es-BO', { weekday: 'long', day: 'numeric', month: 'long' }))}</p></div><SalesChannelTabs /><ProductCatalog search={search} category={category} setCategory={setCategory} /></main>
+  const page = activeModule === 'Cotizaciones' ? <QuotationsPage notify={notify} readOnly={readOnly} onOrderCreated={() => setActiveModule('Pedidos')} initialDraft={pendingDraft} onInitialDraftConsumed={() => setPendingDraft(null)} /> : activeModule === 'Pedidos' ? <OrdersPage notify={notify} readOnly={readOnly} canDispatch={hasPermission(session,'orders_dispatch')} /> : activeModule === 'Venta Directa' ? <VentaDirectaPage notify={notify} /> : activeModule === 'Clientes' ? <CustomersPage notify={notify} /> : activeModule === 'Caja' ? <CashPage notify={notify} canCloseCash={!featureFlags.supabase || session?.user.role === 'admin'} /> : activeModule === 'Suspendidas' ? <SuspendedSalesPage hasCurrentCart={Boolean(cart.length)} onRestore={restoreSale} onOpenCotizaciones={() => setActiveModule('Cotizaciones')} notify={notify} /> : activeModule === 'Productos' ? <ProductsPage notify={notify} /> : activeModule === 'Inventario' ? <InventoryPage notify={notify} /> : activeModule === 'Traslados' ? <TransfersPage notify={notify} initialRequest={pendingTransfer} onInitialRequestConsumed={() => setPendingTransfer(null)} onRegistrarDevolucion={() => setActiveModule('Venta')} /> : activeModule === 'Reportes' ? <ReportsPage notify={notify} /> : activeModule === 'Configuración' ? <ConfigPage notify={notify} canEdit={!featureFlags.supabase || hasPermission(session, 'admin')} /> : <main className="catalog"><div className="catalog-title"><div><span className="eyebrow">PUNTO DE VENTA</span><h1>¿Qué vamos a vender hoy?</h1></div><p>{capitalize(new Date().toLocaleDateString('es-BO', { weekday: 'long', day: 'numeric', month: 'long' }))}</p></div><SalesChannelTabs /><ProductCatalog search={search} category={category} setCategory={setCategory} /></main>
   const blockKind = !session || session.user.hasProfile === false
     ? 'unauthorized'
     : !session.user.active

@@ -1,0 +1,29 @@
+/* Brief VTD — bandeja de Venta Directa. Mismo lenguaje visual que
+   pos-traslados-bandeja.css (Brief K), acento verde (ver pos-modo-venta-directa.css). */
+
+.vtd-bandeja-cards {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+}
+@media (max-width: 1500px) { .vtd-bandeja-cards { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+
+.vtd-card {
+  background: #fff; border: 0.5px solid var(--line); border-radius: 12px; padding: 13px 14px;
+}
+.vtd-card-vieja { border-color: #f4b18e; background: #fffaf5 }
+.vtd-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px }
+.vtd-card-top strong { font-size: 13px; color: #24231f }
+.vtd-modo-tag { font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 8px; letter-spacing: .5px }
+.vtd-modo-tag.pagado { background: #E4F5EA; color: #0B3D22 }
+.vtd-modo-tag.por-cobrar { background: #FAEEDA; color: #412402 }
+.vtd-card-aviso { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #a75b1f; font-weight: 600; margin: 0 0 6px }
+.vtd-card-lines { list-style: none; margin: 0 0 8px; padding: 0; font-size: 11px; color: #4c4944; display: grid; gap: 2px }
+.vtd-card-total { display: flex; justify-content: space-between; border-top: 1px dashed var(--line); padding-top: 7px; margin-bottom: 9px; font-size: 12px }
+.vtd-card-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px }
+.vtd-card-actions button { border: 1px solid #dfdad1; background: #fff; border-radius: 8px; height: 30px; font-size: 11px; font-weight: 600; color: #67645e; display: flex; align-items: center; justify-content: center; gap: 4px }
+.vtd-card-completar { border-color: #1F9254 !important; color: #0B3D22 !important; background: #E4F5EA !important }
+.vtd-card-actions .danger-button { grid-column: span 1 }
+
+.vtd-ajuste-lines { display: grid; gap: 10px }
+.vtd-ajuste-line { display: flex; align-items: center; gap: 10px; font-size: 12px }
+.vtd-ajuste-line > span { flex: 1; min-width: 0 }
+.vtd-ajuste-line small { color: #96928a; font-size: 11px }
