@@ -203,6 +203,28 @@ export interface VentaDirectaRecord {
   lines: VtdLine[]
 }
 
+// Brief S1 — borrador_operacion. Guardado explícito ("tipo Instagram"), distinto del
+// autosave silencioso de useBorrador.ts y de la suspensión de venta retail
+// (infrastructure/local/suspendedSales.ts): este vive en el servidor (sobrevive a un F5
+// y es visible solo para su autor vía RLS), tiene una bandeja navegable propia, y expira
+// a las 24 h de renovadas — el backend ya resuelve renovación (trigger trg_borrador_touch)
+// y barrido (7 días); el cliente NUNCA calcula expira_en.
+export type BorradorOperacionTipo = 'VENTA' | 'VENTA_DIRECTA' | 'TRASLADO' | 'COTIZACION'
+
+export interface BorradorOperacionRecord {
+  id: string
+  tipo: BorradorOperacionTipo
+  sucursalId?: number
+  titulo?: string
+  // Foto del momento de guardar — sin normalizar, sin validar. Su forma depende de
+  // `tipo` (ver domain/sales/borradorContenido.ts) y hay que revalidarla contra la base
+  // al retomar (productos borrados, precios cambiados), nunca restaurarla a ciegas.
+  contenido: unknown
+  creadoEn: string
+  actualizadoEn: string
+  expiraEn: string
+}
+
 export interface CashSessionRecord {
   id: string
   register: string

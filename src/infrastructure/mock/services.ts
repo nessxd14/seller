@@ -9,7 +9,8 @@ import { LocalIdempotencyService } from '../../application/idempotency/Idempoten
 import { SensitiveOperationExecutor } from '../../application/idempotency/SensitiveOperationExecutor'
 import { transferService as rawTransferService, type CreateTransferInput } from './TransferRepository.mock'
 import { ventaDirectaMockRepository, type UbicacionOption } from './VentaDirectaRepository.mock'
-import type { VentaDirectaRecord } from '../../application/shared/models'
+import type { BorradorOperacionTipo, VentaDirectaRecord } from '../../application/shared/models'
+import { borradorOperacionMockRepository } from './BorradorOperacionRepository.mock'
 import { mockAuthSessionProvider } from './MockAuthSessionProvider'
 import type { TransferEstado, TransferRecord } from '../../application/shared/models'
 import { configRepository } from './ConfigRepository.mock'
@@ -154,6 +155,19 @@ export const transferService = {
     const actor = await currentMockActor()
     return rawTransferService.cancel(id, actor, nota)
   },
+}
+
+export const borradorOperacionService = {
+  async list() {
+    const session = await mockAuthSessionProvider.getSession()
+    return borradorOperacionMockRepository.list(session?.user.id ?? 'anon')
+  },
+  getById: (id: string) => borradorOperacionMockRepository.getById(id),
+  async save(input: { id?: string; tipo: BorradorOperacionTipo; sucursalId?: number; titulo?: string; contenido: unknown }) {
+    const session = await mockAuthSessionProvider.getSession()
+    return borradorOperacionMockRepository.save(input, session?.user.id ?? 'anon')
+  },
+  remove: (id: string) => borradorOperacionMockRepository.remove(id),
 }
 
 export const ventaDirectaService = {

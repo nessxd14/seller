@@ -1,4 +1,4 @@
-import type { CashSessionRecord, CustomerRecord, OrderView, QuoteDraft, VentaDirectaRecord } from '../shared/models'
+import type { BorradorOperacionRecord, BorradorOperacionTipo, CashSessionRecord, CustomerRecord, OrderView, QuoteDraft, VentaDirectaRecord } from '../shared/models'
 import type { Product } from '../../types'
 import type { CategoriaPedido } from '../../domain/orders/segmentoPedido'
 
@@ -88,6 +88,16 @@ export interface VentaDirectaRepository {
   // ajustes: solo reduce (nunca sube) — la RPC rechaza subir; ver brief 2.5.
   ajustar(id:string,ajustes:Array<{lineaId:string;cantidadPresentacion:number}>,cashSessionId:string|undefined,context:MutationContext):Promise<VentaDirectaRecord>
   anular(id:string,cashSessionId:string|undefined,context:MutationContext):Promise<VentaDirectaRecord>
+}
+
+// Brief S1 — borrador_operacion: guardado explícito y cross-device, distinto de
+// SuspendedSaleRepository (retail-only, localStorage). save() sin `id` inserta; con `id`
+// actualiza (el backend renueva expira_en/actualizado_en por trigger, nunca acá).
+export interface BorradorOperacionRepository {
+  list():Promise<BorradorOperacionRecord[]>
+  getById(id:string):Promise<BorradorOperacionRecord|null>
+  save(input:{id?:string;tipo:BorradorOperacionTipo;sucursalId?:number;titulo?:string;contenido:unknown},context:MutationContext):Promise<BorradorOperacionRecord>
+  remove(id:string,context:MutationContext):Promise<void>
 }
 
 export interface SuspendedSaleRepository<T extends {id:string}> {

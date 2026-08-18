@@ -1,0 +1,33 @@
+/* Brief S1 — borrador_operacion: guardado explícito y bandeja cross-device. Archivo
+   nuevo, distinto de pos-borrador.css (que estiliza BorradorBanner, el autosave
+   silencioso de useBorrador.ts — otra cosa). */
+
+.guardar-borrador-button {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; margin-left: 6px;
+  border: 1px solid var(--line); background: #fff; border-radius: 9px; color: #68655e;
+}
+.guardar-borrador-button:hover { border-color: var(--orange); color: var(--orange) }
+.guardar-borrador-button svg { width: 14px }
+
+.borradores-cards {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+}
+@media (max-width: 1500px) { .borradores-cards { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+
+.borrador-card {
+  background: #fff; border: 0.5px solid var(--line); border-radius: 12px; padding: 13px 14px;
+}
+.borrador-card-vencido { border-color: #e5b6ae; background: #fff9f8 }
+.borrador-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px }
+.borrador-card-tipo { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: #67645e; background: #f1eee8; border-radius: 8px; padding: 3px 8px }
+.borrador-card-expira { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #96928a }
+.borrador-card-vencido-tag { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: #b94c3d }
+.borrador-card-titulo { display: block; font-size: 13px; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.borrador-card-fecha { display: block; color: #96928a; font-size: 11px; margin-bottom: 10px }
+.borrador-card-actions { display: flex; gap: 6px }
+.borrador-card-actions .primary-button { flex: 1; height: 32px; font-size: 11px }
+.borrador-card-actions .danger-button { width: 32px; height: 32px; padding: 0; justify-content: center }
+
+.borrador-cambios-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 12px }
+.borrador-cambios-list li { background: #fff6e6; color: #6b4a12; border-radius: 8px; padding: 8px 10px }
