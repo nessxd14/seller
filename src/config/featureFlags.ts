@@ -14,5 +14,9 @@ export const featureFlags = {
   // No volver a encender esto sin definir primero la venta a crédito de punta a
   // punta (método de pago, condición, y qué contrapartida se registra).
   hermesCargoVenta: false,
+  // Brief VTD: venta directa de almacén (abrir_venta/completar_venta/ajustar_venta_abierta/
+  // anular_venta ya están desplegadas en Supabase — ver migración 2026-08-17). B1/B2
+  // resueltos: numeración propia VTD-2026-NNNNN y bandeja como pestaña propia en Ventas.
+  ventaDirectaAlmacen: true,
 } as const
 

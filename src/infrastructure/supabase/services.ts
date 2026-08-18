@@ -15,6 +15,10 @@ import { sensitiveOperations } from '../mock/services'
 import { checkoutFingerprint } from '../../domain/sales/checkoutFingerprint'
 import { expectedCash } from '../../application/cash/CashService'
 import type { CategoriaPedido } from './mappers'
+import { ventaDirectaRepository, listUbicacionesAlmacen, type UbicacionOption } from './VentaDirectaRepository.supabase'
+import type { VentaDirectaAbrirLine, SaleCheckoutPayment } from '../../application/ports/repositories'
+import type { VentaDirectaRecord } from '../../application/shared/models'
+import { SUCURSAL_ALMACEN_ID } from './mappers'
 
 export const configService = configRepository
 export const reportsService = reportsRepository
@@ -181,6 +185,46 @@ export const saleService = {
       if (k?.startsWith(`roari-idempotency:checkout:${input.operationId}:`)) localStorage.removeItem(k)
     }
     return result
+  },
+}
+
+export const ventaDirectaService = {
+  listUbicaciones(): Promise<UbicacionOption[]> {
+    return listUbicacionesAlmacen(SUCURSAL_ALMACEN_ID)
+  },
+  async listAbiertas(sesionCajaId: string): Promise<VentaDirectaRecord[]> {
+    return ventaDirectaRepository.listAbiertas(sesionCajaId)
+  },
+  /**
+   * Mismo criterio que saleService.checkout: la huella del contenido (checkoutFingerprint)
+   * combinada con operationId es lo que hace que un doble clic en "Abrir venta directa"
+   * reutilice la clave de idempotencia (reintento legítimo) en vez de abrir dos ventas —
+   * brief 2.2, criterio de aceptación "doble clic en cobrar no duplica la venta".
+   */
+  async abrir(input: { lines: VentaDirectaAbrirLine[]; ubicacionId: number; cashSessionId: string; payments?: SaleCheckoutPayment[]; customerId?: string; discountCents?: number; operationId: string }): Promise<VentaDirectaRecord & { isRetry?: boolean }> {
+    const actorId = await currentActorId()
+    const aggregateId = `${input.operationId}:${checkoutFingerprint({
+      lines: input.lines.map((l) => ({ productId: l.productId, quantity: l.cantidadPresentacion, unitPriceCents: l.unitPriceCents, presentacionId: l.presentacionId })),
+      discountCents: input.discountCents ?? 0,
+      customerId: input.customerId,
+      cashSessionId: input.cashSessionId,
+      payments: (input.payments ?? []).map((p) => ({ method: p.method, amountCents: p.amountCents })),
+    })}`
+    return sensitiveOperations.execute('abrir_venta_directa', aggregateId, (idempotencyKey) =>
+      ventaDirectaRepository.abrir(input, { actorId, idempotencyKey }),
+    )
+  },
+  async completar(id: string): Promise<VentaDirectaRecord> {
+    const actorId = await currentActorId()
+    return ventaDirectaRepository.completar(id, { actorId })
+  },
+  async ajustar(id: string, ajustes: Array<{ lineaId: string; cantidadPresentacion: number }>, cashSessionId: string | undefined): Promise<VentaDirectaRecord> {
+    const actorId = await currentActorId()
+    return ventaDirectaRepository.ajustar(id, ajustes, cashSessionId, { actorId })
+  },
+  async anular(id: string, cashSessionId: string | undefined): Promise<VentaDirectaRecord> {
+    const actorId = await currentActorId()
+    return ventaDirectaRepository.anular(id, cashSessionId, { actorId })
   },
 }
 

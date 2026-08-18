@@ -8,6 +8,8 @@ import { cashSeeds, customerSeeds, orderSeeds, quoteSeeds } from './seeds'
 import { LocalIdempotencyService } from '../../application/idempotency/IdempotencyService'
 import { SensitiveOperationExecutor } from '../../application/idempotency/SensitiveOperationExecutor'
 import { transferService as rawTransferService, type CreateTransferInput } from './TransferRepository.mock'
+import { ventaDirectaMockRepository, type UbicacionOption } from './VentaDirectaRepository.mock'
+import type { VentaDirectaRecord } from '../../application/shared/models'
 import { mockAuthSessionProvider } from './MockAuthSessionProvider'
 import type { TransferEstado, TransferRecord } from '../../application/shared/models'
 import { configRepository } from './ConfigRepository.mock'
@@ -151,5 +153,28 @@ export const transferService = {
   async cancel(id: string, nota?: string): Promise<TransferRecord> {
     const actor = await currentMockActor()
     return rawTransferService.cancel(id, actor, nota)
+  },
+}
+
+export const ventaDirectaService = {
+  listUbicaciones(): Promise<UbicacionOption[]> {
+    return ventaDirectaMockRepository.listUbicaciones()
+  },
+  listAbiertas(sesionCajaId: string): Promise<VentaDirectaRecord[]> {
+    return ventaDirectaMockRepository.listAbiertas(sesionCajaId)
+  },
+  async abrir(input: Parameters<typeof ventaDirectaMockRepository.abrir>[0] & { operationId?: string }): Promise<VentaDirectaRecord & { isRetry?: boolean }> {
+    const actor = await currentMockActor()
+    const created = await ventaDirectaMockRepository.abrir(input, actor)
+    return { ...created, isRetry: false }
+  },
+  completar(id: string): Promise<VentaDirectaRecord> {
+    return ventaDirectaMockRepository.completar(id)
+  },
+  ajustar(id: string, ajustes: Array<{ lineaId: string; cantidadPresentacion: number }>): Promise<VentaDirectaRecord> {
+    return ventaDirectaMockRepository.ajustar(id, ajustes)
+  },
+  anular(id: string): Promise<VentaDirectaRecord> {
+    return ventaDirectaMockRepository.anular(id)
   },
 }

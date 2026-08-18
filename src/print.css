@@ -1,1 +1,8 @@
 .print-options{display:flex;justify-content:space-between;align-items:center;margin:14px 22px 0;padding:9px 11px;background:#f4f1eb;border-radius:9px;font-size:9px}.print-options select{border:1px solid #ddd8cf;border-radius:7px;padding:6px;background:#fff;font-size:9px}.print-options label{display:flex;align-items:center;gap:5px}.ticket.ticket-58{width:220px}.ticket.ticket-80{width:300px}.reprint-mark{text-align:center;border:2px solid #333;padding:4px;letter-spacing:2px;font-weight:700;margin-bottom:10px}
+.vtd-badge{text-align:center;border:2px solid #000;padding:5px;letter-spacing:2px;font-weight:700;margin-bottom:10px;font-size:13px}
+.vtd-modo-pill{text-align:center;font-weight:700;padding:6px;border-radius:4px;margin:8px 0;letter-spacing:1px;font-size:12px}
+.vtd-modo-pill.pagado{background:#000;color:#fff}
+.vtd-modo-pill.por-cobrar{border:2px dashed #000;color:#000}
+.vtd-barcode-wrap{margin-top:12px;text-align:center}
+.vtd-barcode-wrap small{display:block;letter-spacing:2px;margin-top:3px}
+

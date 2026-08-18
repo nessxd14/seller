@@ -13,7 +13,10 @@ import { consultarSaldos } from '../infrastructure/hermes/client'
 const SUCURSAL_ALMACEN = 1
 const SUCURSAL_TIENDA = 2
 
-export type PosMode = 'venta' | 'traslado'
+// Brief VTD: mismo carrito/motor que 'traslado' — solo cambia el destino (abrir_venta vs
+// registrar_venta/crear_solicitud_traslado) y qué se muestra (ver 2.1 del brief: "junto a
+// la opción de traslado que ya existe").
+export type PosMode = 'venta' | 'traslado' | 'ventaDirecta'
 
 /**
  * TAREA 1 (Tanda 4): default de origen por línea. Retail sugiere Tienda; mayoreo/
@@ -96,6 +99,14 @@ interface PosState {
   trasladoDestinoId: number
   setTrasladoDireccion: (origenId: number, destinoId: number) => void
   loadTrasladoDraft: (draft: { cart: CartItem[]; trasladoMotivo: TransferMotivo; trasladoOrigenId: number; trasladoDestinoId: number }) => void
+  // Brief VTD 2.1: ubicación de origen (obligatoria, sin default hardcodeado — el cajero
+  // elige cuando Almacén Central tiene más de una) y modo de cobro (precobrado envía
+  // p_pagos, postcobrado envía null — ver 2.2).
+  vtdUbicacionId: number | null
+  setVtdUbicacionId: (id: number | null) => void
+  vtdPrecobrado: boolean
+  setVtdPrecobrado: (value: boolean) => void
+  loadVtdDraft: (draft: { cart: CartItem[]; vtdUbicacionId: number | null; vtdPrecobrado: boolean }) => void
 }
 
 const PosContext = createContext<PosState | null>(null)
@@ -154,6 +165,14 @@ export function PosProvider({ children }: { children: ReactNode }) {
     else { setTrasladoOrigenId(SUCURSAL_ALMACEN); setTrasladoDestinoId(SUCURSAL_TIENDA) }
   }
   const setTrasladoDireccion = (origenId: number, destinoId: number) => { setTrasladoOrigenId(origenId); setTrasladoDestinoId(destinoId) }
+  const [vtdUbicacionId, setVtdUbicacionId] = useState<number | null>(null)
+  const [vtdPrecobrado, setVtdPrecobrado] = useState(false)
+  const loadVtdDraft = (draft: { cart: CartItem[]; vtdUbicacionId: number | null; vtdPrecobrado: boolean }) => {
+    setMode('ventaDirecta')
+    setCart(draft.cart)
+    setVtdUbicacionId(draft.vtdUbicacionId)
+    setVtdPrecobrado(draft.vtdPrecobrado)
+  }
   const loadTrasladoDraft = (draft: { cart: CartItem[]; trasladoMotivo: TransferMotivo; trasladoOrigenId: number; trasladoDestinoId: number }) => {
     setMode('traslado')
     setCart(draft.cart)
@@ -242,6 +261,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setTrasladoMotivoState('REPOSICION')
     setTrasladoOrigenId(SUCURSAL_ALMACEN)
     setTrasladoDestinoId(SUCURSAL_TIENDA)
+    setVtdUbicacionId(null)
+    setVtdPrecobrado(false)
   }
   const newOperation = () => {
     resetOperationState()
@@ -274,7 +295,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setEsAcreedor(false)
   }
 
-  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, addCustomItem, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft }}>{children}</PosContext.Provider>
+  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, addCustomItem, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {

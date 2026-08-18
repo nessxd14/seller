@@ -1,4 +1,4 @@
-import type { CashSessionRecord, CustomerRecord, OrderView, QuoteDraft } from '../shared/models'
+import type { CashSessionRecord, CustomerRecord, OrderView, QuoteDraft, VentaDirectaRecord } from '../shared/models'
 import type { Product } from '../../types'
 import type { CategoriaPedido } from '../../domain/orders/segmentoPedido'
 
@@ -75,6 +75,21 @@ export interface CashRepository {
   registerAdvance(input:{orderId:string;amountCents:number;method:'cash'|'qr'|'transfer';sessionId:string},context:MutationContext&{idempotencyKey:string}):Promise<{movementId:string}>
   registerPayment(input:{customerId:string;orderId?:string;amountCents:number;method:'cash'|'qr'|'transfer'|'deposit'|'sigep'|'check';sessionId:string},context:MutationContext&{idempotencyKey:string}):Promise<{movementId:string}>
 }
+// Brief VTD: abrir_venta/completar_venta/ajustar_venta_abierta/anular_venta — deliberadamente
+// separado de SaleRepository (registrar_venta es atómico crea+cobra; acá el punto entero es
+// que abrir deja la venta ABIERTA sin tocar Kardex, ver 2.5 del brief). listAbiertas acota a
+// una sesión de caja: "vida útil = el turno" (brief 2.4) — no hay bandeja global de VTD.
+export interface VentaDirectaAbrirLine { productId:string; presentacionId?:number; cantidadPresentacion:number; unitPriceCents:number; listPriceCents?:number }
+export interface VentaDirectaRepository {
+  listAbiertas(sesionCajaId:string):Promise<VentaDirectaRecord[]>
+  getById(id:string):Promise<VentaDirectaRecord|null>
+  abrir(input:{lines:VentaDirectaAbrirLine[];ubicacionId:number;cashSessionId:string;payments?:SaleCheckoutPayment[];customerId?:string;discountCents?:number},context:MutationContext&{idempotencyKey:string}):Promise<VentaDirectaRecord&{isRetry?:boolean}>
+  completar(id:string,context:MutationContext):Promise<VentaDirectaRecord>
+  // ajustes: solo reduce (nunca sube) — la RPC rechaza subir; ver brief 2.5.
+  ajustar(id:string,ajustes:Array<{lineaId:string;cantidadPresentacion:number}>,cashSessionId:string|undefined,context:MutationContext):Promise<VentaDirectaRecord>
+  anular(id:string,cashSessionId:string|undefined,context:MutationContext):Promise<VentaDirectaRecord>
+}
+
 export interface SuspendedSaleRepository<T extends {id:string}> {
   list(input:{query?:string;page:PageRequest}):Promise<Page<T & Versioned>>
   save(value:T & Partial<Versioned>,context:MutationContext):Promise<T & Versioned>
