@@ -53,6 +53,9 @@ export interface QuoteDraft {
   asunto?: string
   conditionPago?: 'CONTADO' | 'PAGO_PARCIAL' | 'SIGEP' | 'TRANSFERENCIA_BANCARIA' | 'QR'
   documentDate?: string
+  // Brief S3 — cotizacion.creado_por (email). Resolver contra `perfil` para un nombre
+  // legible; el email es el respaldo si no hay perfil (ver PerfilRepository.supabase.ts).
+  creadoPor?: string
 }
 
 export interface OrderView {
@@ -88,6 +91,10 @@ export interface OrderView {
   // del texto "Cotización #<id>" que crea_pedido — vía convertir_cotizacion_a_pedido — deja
   // en referencia. Ausente si el pedido no vino de una cotización.
   sourceQuoteNumber?: string
+  // Brief S3 — pedido.creado_por (email, quién lo creó). Cuando sourceQuoteId no es null,
+  // este mismo campo también identifica quién hizo la CONVERSIÓN (crear_pedido con
+  // cotizacion_origen_id corre como el usuario que convierte, no hay un campo aparte).
+  creadoPor?: string
 }
 
 export interface CustomerRecord {

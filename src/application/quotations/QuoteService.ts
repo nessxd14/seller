@@ -7,6 +7,7 @@ import type { Quote } from '../../domain/quotations/entities'
 export class QuoteService {
   constructor(private readonly repository: LocalRepository<QuoteDraft>) {}
   list() { return this.repository.list() }
+  getById(id: string) { return this.repository.get(id) }
   async save(quote: QuoteDraft) {
     const existing = await this.repository.get(quote.id)
     if (existing?.status === 'converted') throw new Error('Una cotización convertida no puede editarse')

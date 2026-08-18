@@ -19,6 +19,7 @@ import { EditQuoteLineModal } from './EditQuoteLineModal'
 import { coincideBusqueda } from '../../domain/customers/textSearch'
 import { requiereCotizacionOrigen } from '../../domain/quotations/requiereCotizacionOrigen'
 import { ProductQuickAdd } from '../../components/ProductQuickAdd'
+import { AutoriaBadge } from '../../components/AutoriaBadge'
 
 type EditableChannel = QuoteDraft['channel']
 
@@ -340,6 +341,8 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     <Modal title={value.id ? `Cotización ${value.number || value.id}` : 'Nueva cotización'} subtitle={readOnly ? 'Solo lectura — esta cotización ya no está en borrador' : 'Editor tipo borrador de pedido'} onClose={onClose} wide escapeToClose={!customModalOpen}>
       <div className="modal-body quote-editor draft-order-editor">
         {borradorPendiente && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}
+        {/* Brief S3 Parte B: autoría — quién creó la cotización. */}
+        {value.creadoPor && <div className="autoria-row"><AutoriaBadge label="Creado por" email={value.creadoPor} /></div>}
         <div className="channel-tabs draft-order-tabs">
           {channelTabs.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" disabled={readOnly} className={value.channel === id ? 'active' : ''} onClick={() => setChannel(id)}>

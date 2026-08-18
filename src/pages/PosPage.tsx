@@ -31,6 +31,7 @@ import { hasPermission, type AuthSession } from '../application/auth/AuthSession
 import { authSessionProvider } from '../infrastructure/services'
 import { supabaseAuthSessionProvider } from '../infrastructure/supabase/SupabaseAuthSessionProvider'
 import type { QuoteDraft } from '../application/shared/models'
+import { parseRoute } from '../router/appRoute'
 
 const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 
@@ -53,7 +54,14 @@ const PERMISOS_MODULO: Record<string, (s: AuthSession | null) => boolean> = {
 
 function PosContent() {
   const { newOperation, cart, loadSuspendedSale, addProduct, mode } = usePos()
-  const [activeModule, setActiveModule] = useState('Venta')
+  // Brief S3 Parte A: /pedidos/:id, /cotizaciones/:id, /ventas/:id deben sobrevivir un
+  // refresco — si el load arranca directo en una de esas URLs, hay que montar el módulo
+  // que sabe abrir ese detalle (OrdersPage/QuotationsPage/ReportsPage), no el catálogo
+  // de Venta por default.
+  const [activeModule, setActiveModule] = useState(() => {
+    const route = parseRoute(window.location.pathname)
+    return route.kind === 'pedido' ? 'Pedidos' : route.kind === 'cotizacion' ? 'Cotizaciones' : route.kind === 'venta' ? 'Reportes' : 'Venta'
+  })
   const [session, setSession] = useState<AuthSession | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(!featureFlags.supabase)
   const [conflictDemo, setConflictDemo] = useState(false)

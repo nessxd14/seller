@@ -9,6 +9,10 @@ import { DocumentoExportable } from '../../components/DocumentoExportable'
 import { featureFlags } from '../../config/featureFlags'
 import { hoyLocal, sumarDiasIso } from '../../domain/common/fechas'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
+import { useRoute } from '../../router/useRoute'
+import { navigate } from '../../router/history'
+import { cotizacionPath } from '../../router/appRoute'
+import { RowLink } from '../../router/RowLink'
 
 type SortKey = 'number' | 'customerName' | 'status' | 'validUntil' | 'total' | 'createdAt'
 type SortDir = 'asc' | 'desc'
@@ -49,6 +53,16 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
     if (initialDraft) { setEditing(initialDraft); setEditingIsExisting(false); onInitialDraftConsumed?.() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDraft])
+  // Brief S3 Parte A: /cotizaciones/:id — la lista nunca se desmonta (mismo criterio que
+  // Pedidos), así que "Volver" (navigate('/')) conserva el filtro/orden gratis.
+  const route = useRoute()
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza el editor abierto con la URL actual, no un fetch que difiera
+    if (route.kind !== 'cotizacion') { setEditing((current) => current && editingIsExisting ? null : current); return }
+    const found = quotes.find((q) => q.id === route.id)
+    if (found) { setEditingIsExisting(true); setEditing(found) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- editingIsExisting se lee pero no debe reprogramar el efecto en cada toggle propio
+  }, [route, quotes])
   const toggleSort = (key: SortKey) => { if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setSortDir('asc') } }
   const filtered = useMemo(() => {
     const list = quotes.filter((quote) => (filter === 'all' || quote.status === filter) && (matchesNumero(quote.number, query) || `${quote.customerName} ${quote.status}`.toLowerCase().includes(query.toLowerCase())))
@@ -68,7 +82,11 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   // the real numeric id from crear_cotizacion's return value; the mock repository
   // still needs a client-generated id up front (it has no server round trip).
   const create = () => { if(readOnly){notify('Modo solo lectura');return} setEditingIsExisting(false); setEditing({ id: featureFlags.supabase ? '' : crypto.randomUUID(), number: '', customerId: '', customerName: '', channel: 'mayoreo', status: 'draft', validUntil: sumarDiasIso(hoyLocal(), 15), terms: 'Contado', notes: '', generalDiscountCents: 0, createdAt: new Date().toISOString(), lines: [] }) }
-  const save = async (quote: QuoteDraft) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.save(quote); setEditing(null); await load(); notify('Cotización guardada') }
+  // Brief S3: cerrar el editor de una cotización EXISTENTE (abierta por URL) también
+  // navega a '/' — si no, la URL se queda apuntando a /cotizaciones/:id con el editor ya
+  // cerrado, y el próximo re-render (p. ej. tras `load()`) lo reabriría solo.
+  const closeEditor = () => { setEditing(null); if (editingIsExisting) navigate('/') }
+  const save = async (quote: QuoteDraft) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.save(quote); closeEditor(); await load(); notify('Cotización guardada') }
   const duplicate = async (id: string) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.duplicate(id); await load(); notify('Cotización duplicada') }
   const createOrderDirect = async (quote: QuoteDraft) => {
     if(readOnly){notify('Modo solo lectura');return}
@@ -86,7 +104,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
       lines: quote.lines.map((line) => ({ ...line, prepared: 0, allocations: [] })),
       events: [],
     })
-    setEditing(null)
+    closeEditor()
     onOrderCreated()
     notify('Pedido creado')
   }
@@ -107,7 +125,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
       const snapshot = await sensitiveOperations.execute('convert_quote',quote.id,()=>quoteService.markConverted(quote.id, crypto.randomUUID()))
       await orderService.save({ id: snapshot.id, number: snapshot.number, customerName: snapshot.customer.name, channel: quote.channel, status: 'draft', createdAt: snapshot.createdAt, sourceQuoteId: quote.id, lines: snapshot.items.map((line) => ({ id: line.id, productId: line.product.productId, name: line.product.name, sku: line.product.sku, quantity: line.quantity, unitPriceCents: line.appliedPrice.cents, discountBasisPoints: line.discountBasisPoints, prepared: 0, allocations: [] })), events: [{ at: new Date().toLocaleString('es-BO'), label: 'Pedido creado desde cotización', detail: `Snapshots conservados desde ${quote.number}` }] })
     }
-    setEditing(null)
+    closeEditor()
     await load()
     onOrderCreated()
     notify('Pedido creado desde cotización')
@@ -123,17 +141,18 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
         const days = daysUntil(quote.validUntil)
         const nearExpiry = days <= 7 && !['expired', 'rejected', 'converted'].includes(quote.status)
         return <article key={quote.id}>
+          <RowLink href={cotizacionPath(quote.id)} label={`Ver cotización ${quote.number}`} />
           <div><strong className="doc-number-cell">{quote.number}</strong><small>{new Date(quote.createdAt).toLocaleDateString('es-BO')}</small></div>
           <div><strong>{quote.customerName}</strong><small className="channel-chip">{quote.channel}</small></div>
           <span>{quote.asunto || '—'}</span>
           <span className={`status-chip ${statusChipClass(quote.status)}`}>{statusLabel[quote.status]}</span>
           <span>{nearExpiry ? <span className="vigencia-warning"><AlertTriangle />{days < 0 ? 'Vencida' : `${quote.validUntil} (${days} d)`}</span> : quote.validUntil}</span>
           <strong>{formatMoney(money(Math.max(0,total(quote))))}</strong>
-          <div className="row-actions"><button title="Vista previa / exportar" onClick={() => setPreview(quote)}><Eye /></button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => { setEditingIsExisting(true); setEditing(quote) }}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title={quote.customerId ? 'Convertir en pedido' : 'Sin cliente — abrí la cotización y elegí uno'} onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
+          <div className="row-actions"><button title="Vista previa / exportar" onClick={() => setPreview(quote)}><Eye /></button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => navigate(cotizacionPath(quote.id))}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title={quote.customerId ? 'Convertir en pedido' : 'Sin cliente — abrí la cotización y elegí uno'} onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
         </article>
       })}
     </div>}
-    {editing && <DraftOrderEditor quote={editing} isExistingQuote={editingIsExisting} onClose={() => setEditing(null)} onSave={save} onCreateOrder={createOrderDirect} onConvert={editingIsExisting ? convert : undefined} />}
+    {editing && <DraftOrderEditor quote={editing} isExistingQuote={editingIsExisting} onClose={closeEditor} onSave={save} onCreateOrder={createOrderDirect} onConvert={editingIsExisting ? convert : undefined} />}
     {preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, asunto: preview.asunto, documentDate: preview.documentDate, generalDiscountCents: preview.generalDiscountCents }} onClose={() => setPreview(null)} />}
   </FeatureShell>
 }

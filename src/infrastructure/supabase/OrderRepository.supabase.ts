@@ -140,6 +140,7 @@ const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[], eventos: Ped
     updatedAt: header.creado_en,
     sourceQuoteId: convertedMatch ? convertedMatch[1] : undefined,
     asunto: convertedMatch ? undefined : (header.referencia ?? undefined),
+    creadoPor: header.creado_por ?? undefined,
   }
 }
 

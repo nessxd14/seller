@@ -17,6 +17,11 @@ import { registrarPago } from '../../infrastructure/hermes/client'
 import { pendienteSyncHermesPagoRepository } from '../../infrastructure/supabase/PendienteSyncHermesPagoRepository'
 import { methodExtToMedioHermes, channelToCategoria } from '../../infrastructure/supabase/mappers'
 import { categoriasDeSegmento, SEGMENTOS_PEDIDO, type CategoriaPedido, type SegmentoPedido } from '../../domain/orders/segmentoPedido'
+import { useRoute } from '../../router/useRoute'
+import { navigate } from '../../router/history'
+import { pedidoPath, cotizacionPath } from '../../router/appRoute'
+import { RowLink } from '../../router/RowLink'
+import { AutoriaBadge } from '../../components/AutoriaBadge'
 
 type SortKey = 'number' | 'customerName' | 'channel' | 'status' | 'lines' | 'total' | 'createdAt'
 type SortDir = 'asc' | 'desc'
@@ -108,6 +113,16 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar; cambiar de segmento pasa por cambiarSegmento, no por este efecto
   }, [])
   useEffect(() => { void (selected ? cashService.getAdvancesForOrder(selected.id) : Promise.resolve([])).then(setAdvances) }, [selected])
+  // Brief S3 Parte A: /pedidos/:id sobrevive al refresco y es compartible — la lista
+  // (con sus filtros) nunca se desmonta, así que "Volver" (navigate('/')) los conserva
+  // gratis; esto solo sincroniza qué pedido muestra el modal con la URL actual.
+  const route = useRoute()
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza el modal abierto con la URL actual (navegación / botón atrás), no un fetch que difiera
+    if (route.kind !== 'pedido') { setSelected(null); return }
+    const found = orders.find((o) => o.id === route.id)
+    if (found) setSelected(found)
+  }, [route, orders])
   useEffect(() => {
     if (!featureFlags.supabase || !orders.length) return
     const ids = orders.map((o) => Number(o.id)).filter(Number.isFinite)
@@ -265,7 +280,8 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
         // para que salten a la vista en la grilla sin tener que abrir cada uno.
         const deleted = order.status === 'cancelled'
         const edited = !deleted && (versionCounts[order.id] ?? 0) > 1
-        return <article key={order.id} className={`clickable-row ${deleted ? 'order-row-deleted' : edited ? 'order-row-edited' : ''}`} onClick={() => setSelected(order)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') setSelected(order) }}>
+        return <article key={order.id} className={`clickable-row ${deleted ? 'order-row-deleted' : edited ? 'order-row-edited' : ''}`}>
+          <RowLink href={pedidoPath(order.id)} label={`Ver pedido ${order.number}`} />
           {deleted && <span className="order-row-flag order-row-flag-deleted" title="Anulado"><XCircle size={12} /></span>}
           {edited && <span className="order-row-flag order-row-flag-edited" title="Editado"><Pencil size={12} /></span>}
           <strong className="doc-number-cell">{order.number}</strong>
@@ -279,9 +295,16 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
         </article>
       })}
     </div>}
-    {selected && <Modal title={selected.number} subtitle={selected.customerName} onClose={() => setSelected(null)}><div className="modal-body order-detail">
+    {selected && <Modal title={selected.number} subtitle={selected.customerName} onClose={() => navigate('/')}><div className="modal-body order-detail">
       <div className="panel-top-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={featureFlags.supabase && !sessionId} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button></div>
       <div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong>{statusLabel[selected.status]}</strong></div></div>
+      {/* Brief S3 Parte B: autoría — quién creó el pedido, y si nació de una conversión,
+          quién convirtió (mismo campo: crear_pedido con cotizacion_origen_id corre como
+          el usuario que convierte) con enlace a la cotización de origen. */}
+      <div className="autoria-row">
+        <AutoriaBadge label={selected.sourceQuoteId ? 'Convertido por' : 'Creado por'} email={selected.creadoPor} />
+        {selected.sourceQuoteId && <a className="autoria-source-link" href={cotizacionPath(selected.sourceQuoteId)} onClick={(e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey) { e.preventDefault(); navigate(cotizacionPath(selected.sourceQuoteId!)) } }}>Ver cotización de origen{selected.sourceQuoteNumber ? ` (${selected.sourceQuoteNumber})` : ''}</a>}
+      </div>
       {/* Brief S11 Bloque B2: navegador de versiones — solo aparece si hay más de una.
           "Restaurar" queda deliberadamente sin implementar: ver una versión vieja es
           seguro, volver a ella no (¿qué pasa con lo ya despachado parcialmente?). */}

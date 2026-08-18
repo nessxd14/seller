@@ -126,6 +126,7 @@ const rowToQuoteDraft = (header: CotizacionRow, lines: CotizacionLineaRow[]): Qu
   asunto: header.asunto ?? undefined,
   conditionPago: header.condicion_pago ?? undefined,
   documentDate: header.fecha ?? undefined,
+  creadoPor: header.creado_por ?? undefined,
 })
 
 // Exportado para test directo (Brief S11: serialización carrito → buildLineasJsonb con
