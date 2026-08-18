@@ -1,0 +1,57 @@
+/* Brief S2 — ProductQuickAdd: buscador de cotización que no se reinicia al agregar,
+   agrupado por familia, con chips de lo ya agregado y navegación por teclado. */
+
+.quick-add { display: flex; flex-direction: column; gap: 6px }
+
+.quick-add-chips { display: flex; flex-wrap: wrap; gap: 6px }
+.quick-add-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: #fff0e8; color: var(--orange); border-radius: 14px;
+  padding: 4px 5px 4px 10px; font-size: 11px; font-weight: 600;
+}
+.quick-add-chip b { font-weight: 700 }
+.quick-add-chip button {
+  display: grid; place-items: center; width: 16px; height: 16px;
+  border: 0; background: #fff; border-radius: 50%; color: var(--orange);
+}
+
+.quick-add-input {
+  display: flex; align-items: center; gap: 7px;
+  border: 1px solid #ddd8cf; border-radius: 8px; padding: 0 10px; background: #fff;
+}
+.quick-add-input svg { width: 14px; color: #96928a; flex: 0 0 auto }
+.quick-add-input input { border: 0; outline: 0; padding: 9px 0; font-size: 12px; width: 100% }
+
+.quick-add-results {
+  position: absolute; top: 100%; left: 0; right: 50%; z-index: 5;
+  background: #fff; border: 1px solid #e5e0d8; border-radius: 10px;
+  box-shadow: 0 12px 28px #28251d1f; max-height: 340px; overflow: auto; padding: 5px; margin-top: 2px;
+}
+.quick-add-group-header {
+  font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase;
+  color: #96928a; padding: 8px 11px 3px;
+}
+.quick-add-results button {
+  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "nombre precio" "meta precio" "ya ya";
+  align-items: center; column-gap: 12px; row-gap: 1px; width: 100%; text-align: left;
+  padding: 9px 11px; border: 0; background: transparent; border-radius: 9px; transition: background .1s;
+}
+.quick-add-results button + button { margin-top: 1px }
+.quick-add-results button:hover, .quick-add-results button.resaltado { background: #f5f2ed }
+.quick-add-results button strong { grid-area: nombre; display: block; font-size: 12px; font-weight: 600; color: #24231f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.quick-add-results button small { grid-area: meta; display: block; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.quick-add-results button .precio { grid-area: precio; font-size: 12px; font-weight: 700; color: #3d3b36; white-space: nowrap }
+.quick-add-ya { grid-area: ya; display: flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; color: #1F9254; margin-top: 2px }
+
+/* Catálogo (Venta): chips del carrito arriba de la grilla, encabezados de familia, y
+   marca "ya agregado" en la propia tarjeta. */
+.catalog-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px }
+.catalog-familia-header {
+  font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase;
+  color: #96928a; margin: 18px 0 9px;
+}
+.catalog-familia-header:first-child { margin-top: 0 }
+.catalog-en-carrito {
+  margin-top: 7px; font-size: 11px; font-weight: 700;
+  color: #1F9254; background: #E4F5EA; border-radius: 8px; padding: 4px 8px; text-align: center;
+}

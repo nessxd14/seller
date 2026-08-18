@@ -18,6 +18,7 @@ import { BorradorBanner } from '../../components/BorradorBanner'
 import { EditQuoteLineModal } from './EditQuoteLineModal'
 import { coincideBusqueda } from '../../domain/customers/textSearch'
 import { requiereCotizacionOrigen } from '../../domain/quotations/requiereCotizacionOrigen'
+import { ProductQuickAdd } from '../../components/ProductQuickAdd'
 
 type EditableChannel = QuoteDraft['channel']
 
@@ -99,12 +100,23 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   useEffect(() => { void authSessionProvider.getSession().then((session) => session && setActorId(session.user.email ?? session.user.id)) }, [])
   useEffect(() => { void customerService.list().then(setCustomers) }, [])
 
+  // Brief S2: guardia por id de pedido (no solo un booleano `cancelled`) — con dos
+  // peticiones en vuelo, la más vieja puede resolver DESPUÉS que la más nueva si la red
+  // las reordena; comparar contra el último id emitido descarta la respuesta stale
+  // aunque ambas terminen "sin cancelar" en el sentido del cleanup de abajo.
+  const [productLoading, setProductLoading] = useState(false)
+  const productSearchIdRef = useRef(0)
   useEffect(() => {
-    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- limpia los resultados en cuanto el término queda vacío, sin esperar al debounce de abajo
+    if (!productQuery.trim()) { setProductResults([]); setProductLoading(false); return }
+    const requestId = ++productSearchIdRef.current
+    setProductLoading(true)
     const handle = setTimeout(() => {
-      void productRepository.search({ query: productQuery, active: true, page: { page: 1, pageSize: 20 } }).then((page) => { if (!cancelled) setProductResults(page.items) })
+      void productRepository.search({ query: productQuery, active: true, page: { page: 1, pageSize: 20 } }).then((page) => {
+        if (productSearchIdRef.current === requestId) { setProductResults(page.items); setProductLoading(false) }
+      })
     }, 250)
-    return () => { cancelled = true; clearTimeout(handle) }
+    return () => clearTimeout(handle)
   }, [productQuery])
 
   // Brief T2 Tarea 3 (único cambio permitido acá al buscador de clientes): normalización
@@ -157,8 +169,17 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Brief S2: "volver a agregar el mismo producto suma cantidad, no duplica línea" — antes
+  // esto no hacía NADA si la línea ya existía (ni sumaba ni duplicaba, un no-op silencioso
+  // que el cajero interpretaba como que el click no había funcionado). Tampoco se limpia
+  // productQuery/productResults acá: es justo el reinicio que el brief pide sacar — el
+  // buscador se limpia únicamente con Escape (ver ProductQuickAdd).
   const addCatalogProduct = (product: Product) => {
-    if (value.lines.some((line) => line.productId === String(product.id) && !line.isCustomItem)) return
+    const existing = value.lines.find((line) => line.productId === String(product.id) && !line.isCustomItem)
+    if (existing) {
+      updateLine(existing.id, { quantity: existing.quantity + 1 })
+      return
+    }
     const unitPriceCents = Math.round(priceForChannel(product, value.channel) * 100)
     const lineId = crypto.randomUUID()
     const newLine: WorkflowLine = {
@@ -175,8 +196,6 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     setValue((v) => ({ ...v, lines: [...v.lines, newLine] }))
     setBasePriceCentsByLine((prev) => ({ ...prev, [lineId]: unitPriceCents }))
     ensureProductData(product)
-    setProductQuery('')
-    setProductResults([])
   }
 
   const scanBarcode = async () => {
@@ -373,28 +392,22 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
 
         {!readOnly && (
           <div className="line-add-controls">
-            <input placeholder="Buscar producto por nombre o SKU..." value={productQuery} onChange={(e) => setProductQuery(e.target.value)} />
+            <ProductQuickAdd
+              value={productQuery}
+              onValueChange={setProductQuery}
+              results={productResults}
+              loading={productLoading}
+              chips={value.lines.filter((l) => !l.isCustomItem && l.productId).map((l) => ({ productId: Number(l.productId), nombre: l.name, cantidad: l.quantity }))}
+              priceFor={(p) => formatMoney(money(Math.round(priceForChannel(p, value.channel) * 100)))}
+              onAdd={addCatalogProduct}
+              onRemoveChip={(productId) => { const line = value.lines.find((l) => l.productId === String(productId) && !l.isCustomItem); if (line) removeLine(line.id) }}
+            />
             <input
               placeholder="Escanear código (Enter)"
               value={scanSku}
               onChange={(e) => setScanSku(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void scanBarcode() } }}
             />
-            {productQuery && (
-              <div className="product-search-results">
-                {productResults.map((p) => {
-                  const priceValue = priceForChannel(p, value.channel)
-                  return (
-                    <button type="button" key={p.id} title={p.nombre} onClick={() => addCatalogProduct(p)}>
-                      <strong>{p.nombre}</strong>
-                      <small>{[p.sku, p.codigoBarra].filter(Boolean).join(' · ')}</small>
-                      <span className={`precio ${priceValue ? '' : 'sin-precio'}`}>{formatMoney(money(Math.round(priceValue * 100)))}</span>
-                    </button>
-                  )
-                })}
-                {!productResults.length && <span className="empty-hint">Sin resultados</span>}
-              </div>
-            )}
           </div>
         )}
 

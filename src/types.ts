@@ -21,6 +21,11 @@ export interface Product {
   // (Supabase adapter only — see ProductRepository.supabase.ts's precioCanal helper). Absent/
   // undefined in mock mode, where every channel price is seeded, so there is no gap to mark.
   preciosHeredados?: { mayoreo: boolean; institucional: boolean; municipal: boolean }
+  // Brief S2 — agrupar resultados de búsqueda por familia (producto.familia_id, ~32% de
+  // cobertura). Ausente/undefined en modo mock y en productos sin familia asignada: esos
+  // van al grupo "Otros" en vez de forzar un valor que la base no tiene.
+  familiaId?: number
+  familiaNombre?: string
 }
 
 export interface CartItem extends Product {
