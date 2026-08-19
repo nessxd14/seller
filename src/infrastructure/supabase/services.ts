@@ -39,6 +39,11 @@ export const quoteService = {
     const { items } = await quoteRepository.list({ page: bigPage })
     return items
   },
+  // Brief S3: /cotizaciones/:id necesita traer una cotización puntual sin pedir la lista
+  // completa — quoteRepository.getById ya existía, solo faltaba exponerlo en el facade.
+  getById(id: string): Promise<QuoteDraft | null> {
+    return quoteRepository.getById(id)
+  },
   async save(quote: QuoteDraft): Promise<QuoteDraft> {
     const actorId = await currentActorId()
     const existing = quote.id ? await quoteRepository.getById(quote.id) : null
@@ -195,6 +200,11 @@ export const ventaDirectaService = {
   },
   async listAbiertas(sesionCajaId: string): Promise<VentaDirectaRecord[]> {
     return ventaDirectaRepository.listAbiertas(sesionCajaId)
+  },
+  // Brief S3: /ventas/:id — sirve para cualquier `venta` (VTD o mostrador), no solo las
+  // ABIERTA de listAbiertas.
+  async getById(id: string): Promise<VentaDirectaRecord | null> {
+    return ventaDirectaRepository.getById(id)
   },
   /**
    * Mismo criterio que saleService.checkout: la huella del contenido (checkoutFingerprint)

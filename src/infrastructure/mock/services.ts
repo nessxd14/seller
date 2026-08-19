@@ -177,6 +177,9 @@ export const ventaDirectaService = {
   listAbiertas(sesionCajaId: string): Promise<VentaDirectaRecord[]> {
     return ventaDirectaMockRepository.listAbiertas(sesionCajaId)
   },
+  getById(id: string): Promise<VentaDirectaRecord | null> {
+    return ventaDirectaMockRepository.getById(id)
+  },
   async abrir(input: Parameters<typeof ventaDirectaMockRepository.abrir>[0] & { operationId?: string }): Promise<VentaDirectaRecord & { isRetry?: boolean }> {
     const actor = await currentMockActor()
     const created = await ventaDirectaMockRepository.abrir(input, actor)

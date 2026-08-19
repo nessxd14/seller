@@ -8,6 +8,11 @@ import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { formatMoney, money } from '../../domain/common/money'
 import { buildCsv, downloadCsv, type CsvColumn } from '../../domain/common/csv'
 import { hoyLocal } from '../../domain/common/fechas'
+import { useRoute } from '../../router/useRoute'
+import { navigate } from '../../router/history'
+import { ventaPath } from '../../router/appRoute'
+import { RowLink } from '../../router/RowLink'
+import { SaleDetailModal } from './SaleDetailModal'
 
 type ReportKind = 'ventas' | 'productos' | 'caja' | 'cotizaciones' | 'reorden' | 'valuacion'
 
@@ -72,6 +77,14 @@ export function ReportsPage({ notify }: { notify: (message: string) => void }) {
   }, [kind, dates, pageRequest])
 
   useEffect(() => { void reportsService.getSummary(dates).then(setSummary).catch(() => setSummary(null)) }, [dates])
+
+  // Brief S3 Parte A: /ventas/:id — a diferencia de Pedidos/Cotizaciones no hay un
+  // "selected" con los datos ya cargados (el reporte no trae líneas), así que el modal
+  // se abre siempre con el id y resuelve su propio detalle (ver SaleDetailModal).
+  const route = useRoute()
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza la pestaña con la URL actual, no un fetch que difiera
+  useEffect(() => { if (route.kind === 'venta') setKind('ventas') }, [route])
+  const ventaAbierta = route.kind === 'venta' ? route.id : null
 
   const exportCsv = () => {
     const build = <T,>(rows: T[], columns: Array<CsvColumn<T>>) => downloadCsv(`reporte-${kind}-${from}_${to}.csv`, buildCsv(rows, columns))
@@ -139,7 +152,7 @@ export function ReportsPage({ notify }: { notify: (message: string) => void }) {
 
     {status === 'loading' ? <FeatureState type="skeleton" text="Cargando reporte" /> : status === 'error' ? <FeatureState type="error" text="No se pudo cargar el reporte" /> : !hasRows ? <FeatureState type="empty" text="No hay datos para el período seleccionado" /> : <>
       {kind === 'ventas' && <div className="feature-table reports-table reports-table-ventas"><div className="table-head"><span>Fecha</span><span>Vendedor</span><span>Cliente</span><span>Subtotal</span><span>Descuento</span><span>Total</span><span>Métodos</span></div>
-        {ventas.items.map((row) => <article key={row.ventaId}><span>{fecha(row.fecha)}</span><span>{row.vendedor}</span><span>{row.cliente ?? '—'}</span><span>{bs(row.subtotalCents)}</span><span>{bs(row.descuentoTotalCents)}</span><span>{bs(row.totalCents)}</span><span>{row.metodos}</span></article>)}
+        {ventas.items.map((row) => <article key={row.ventaId}><RowLink href={ventaPath(String(row.ventaId))} label={`Ver venta ${row.ventaId}`} /><span>{fecha(row.fecha)}</span><span>{row.vendedor}</span><span>{row.cliente ?? '—'}</span><span>{bs(row.subtotalCents)}</span><span>{bs(row.descuentoTotalCents)}</span><span>{bs(row.totalCents)}</span><span>{row.metodos}</span></article>)}
       </div>}
       {kind === 'productos' && <div className="feature-table reports-table reports-table-productos"><div className="table-head"><span>Producto</span><span>SKU</span><span>Marca</span><span>Fecha</span><span>Canal</span><span>Cantidad</span><span>Importe</span></div>
         {productos.items.map((row) => <article key={`${row.productoId}-${row.fecha}`}><span>{row.producto}</span><span>{row.skuInterno ?? '—'}</span><span>{row.marca ?? '—'}</span><span>{fecha(row.fecha)}</span><span>{row.canal}</span><span>{row.cantidadBase}</span><span>{bs(row.importeCents)}</span></article>)}
@@ -158,5 +171,6 @@ export function ReportsPage({ notify }: { notify: (message: string) => void }) {
       </div>}
       <div className="pagination-bar"><span>Página {page} de {totalPages} · {currentTotal} registros</span><button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}><ChevronLeft size={14} /></button><button disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}><ChevronRight size={14} /></button></div>
     </>}
+    {ventaAbierta && <SaleDetailModal id={ventaAbierta} onClose={() => navigate('/')} />}
   </FeatureShell>
 }
