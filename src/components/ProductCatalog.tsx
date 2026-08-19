@@ -1,4 +1,4 @@
-import { PackageOpen, Plus, X } from 'lucide-react'
+import { ChevronDown, PackageOpen, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { getPrice, products } from '../data/products'
 import { usePos } from '../context/PosContext'
@@ -108,6 +108,14 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   // 1518 productos activos no tiene familia_id, así que un solo balde "Otros" no dice nada.
   const grupos = query ? agruparPorFamilia(filtered) : [{ key: '__todo__', nombre: '', productos: filtered }]
   const quitarDelCarrito = (item: { id: number; cantidad: number }) => { if (item.cantidad <= 1) removeItem(item.id); else updateQuantity(item.id, item.cantidad - 1) }
+  // Dato de producción (Ness, 2026-08-18): de 1.518 productos activos, solo 472 tienen
+  // familia_id — los 1.046 restantes ("sin familia") son la MAYORÍA, no la excepción. La
+  // agrupación es correcta, pero mostrarla expandida por default dejaría ese balde
+  // dominando visualmente cualquier búsqueda. Colapsado por default, con encabezado
+  // neutro y conteo — un click lo despliega si hace falta.
+  const [mostrarSinFamilia, setMostrarSinFamilia] = useState(false)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resetea el colapso cada vez que cambia la búsqueda, no un fetch que difiera
+  useEffect(() => { setMostrarSinFamilia(false) }, [query])
 
   return <>
     {// Brief S2 — item 4: chips de lo ya agregado, con acceso a quitar — "sensación de
@@ -122,8 +130,16 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
         </select>
       )}</div>
     <div className="section-heading"><div><p>Catálogo de productos</p><span>{filtered.length} productos disponibles</span></div><small>Precios en Bs</small></div>
-    {filtered.length ? grupos.map((grupo) => <div key={grupo.key}>
-      {!esGrupoSinFamilia(grupo.key) && grupo.nombre && <h4 className="catalog-familia-header">{grupo.nombre}</h4>}
+    {filtered.length ? grupos.map((grupo) => {
+      const sinFamilia = esGrupoSinFamilia(grupo.key)
+      if (sinFamilia && !mostrarSinFamilia) {
+        return <button key={grupo.key} type="button" className="catalog-sin-familia-toggle" onClick={() => setMostrarSinFamilia(true)}>
+          Otros productos (sin familia asignada) · {grupo.productos.length} <ChevronDown size={13} />
+        </button>
+      }
+      return <div key={grupo.key}>
+      {!sinFamilia && grupo.nombre && <h4 className="catalog-familia-header">{grupo.nombre}</h4>}
+      {sinFamilia && <h4 className="catalog-familia-header catalog-familia-header-neutro">Otros productos (sin familia asignada) · {grupo.productos.length}</h4>}
       <div className="product-grid">{grupo.productos.map((product) => {
         const enCarrito = cart.find((item) => item.id === product.id && !item.isCustomItem)
         return <article className="product-card" key={product.id}>
@@ -145,6 +161,7 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
           </div>
         </article>
       })}</div>
-    </div>) : <div className="empty-products"><PackageOpen /><h3>No encontramos productos</h3><p>Prueba con otro nombre, código o categoría.</p></div>}
+    </div>
+    }) : <div className="empty-products"><PackageOpen /><h3>No encontramos productos</h3><p>Prueba con otro nombre, código o categoría.</p></div>}
   </>
 }

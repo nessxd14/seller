@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Search, X } from 'lucide-react'
+import { ChevronDown, Plus, Search, X } from 'lucide-react'
 import type { Product } from '../types'
 import { agruparPorFamilia, esGrupoSinFamilia } from '../domain/catalog/agruparPorFamilia'
 
@@ -27,11 +27,17 @@ export function ProductQuickAdd({
   const [resaltado, setResaltado] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const grupos = agruparPorFamilia(results)
-  const plano = grupos.flatMap((g) => g.productos)
+  // Dato de producción: 1.046 de 1.518 productos activos no tienen familia_id — "sin
+  // familia" es la MAYORÍA, no una excepción. Colapsado por default (encabezado neutro
+  // con conteo) para que no domine visualmente el desplegable; se reinicia con cada
+  // búsqueda nueva. Los productos colapsados quedan fuera de `plano` (navegación por
+  // teclado) hasta que se despliegan — flechas nunca deben aterrizar en algo invisible.
+  const [mostrarSinFamilia, setMostrarSinFamilia] = useState(false)
+  const plano = grupos.flatMap((g) => esGrupoSinFamilia(g.key) && !mostrarSinFamilia ? [] : g.productos)
   // El resaltado se reinicia cada vez que cambia el set de resultados — evita quedar
   // apuntando a un índice que ya no existe (p. ej. de 8 resultados a 2).
   // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza el índice resaltado con el set de resultados que llega desde afuera (prop), no hay nada que "no necesitar" acá
-  useEffect(() => { setResaltado(0) }, [results])
+  useEffect(() => { setResaltado(0); setMostrarSinFamilia(false) }, [results])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setResaltado((i) => Math.min(i + 1, Math.max(0, plano.length - 1))) }
@@ -57,9 +63,16 @@ export function ProductQuickAdd({
         <div className="quick-add-results">
           {loading && <span className="empty-hint">Buscando…</span>}
           {!loading && !plano.length && <span className="empty-hint">Sin resultados</span>}
-          {!loading && grupos.map((grupo) => (
+          {!loading && grupos.map((grupo) => {
+            const sinFamilia = esGrupoSinFamilia(grupo.key)
+            if (sinFamilia && !mostrarSinFamilia) {
+              return <button key={grupo.key} type="button" className="quick-add-sin-familia-toggle" onClick={() => setMostrarSinFamilia(true)}>
+                Otros (sin familia) · {grupo.productos.length} <ChevronDown size={12} />
+              </button>
+            }
+            return (
             <div className="quick-add-group" key={grupo.key}>
-              {!esGrupoSinFamilia(grupo.key) && <div className="quick-add-group-header">{grupo.nombre}</div>}
+              {sinFamilia ? <div className="quick-add-group-header quick-add-group-header-neutro">Otros (sin familia) · {grupo.productos.length}</div> : <div className="quick-add-group-header">{grupo.nombre}</div>}
               {grupo.productos.map((producto) => {
                 const index = plano.indexOf(producto)
                 const yaAgregado = chips.find((c) => c.productId === producto.id)
@@ -80,7 +93,8 @@ export function ProductQuickAdd({
                 )
               })}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

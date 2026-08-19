@@ -55,3 +55,14 @@
   margin-top: 7px; font-size: 11px; font-weight: 700;
   color: #1F9254; background: #E4F5EA; border-radius: 8px; padding: 4px 8px; text-align: center;
 }
+
+/* "Sin familia" (mayoría del catálogo, 1046/1518 productos) — colapsado por default,
+   encabezado neutro, para que no domine visualmente una búsqueda. */
+.catalog-sin-familia-toggle, .quick-add-sin-familia-toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  border: 1px dashed #ddd8cf; background: #faf9f6; border-radius: 10px;
+  padding: 9px 12px; margin: 14px 0; font-size: 11px; font-weight: 600; color: #77746d;
+}
+.catalog-sin-familia-toggle svg, .quick-add-sin-familia-toggle svg { margin-left: auto; width: 13px }
+.catalog-familia-header-neutro { color: #b1aea7 }
+.quick-add-group-header-neutro { color: #b1aea7 }
