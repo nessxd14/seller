@@ -1,5 +1,5 @@
-import { PackageOpen, Plus } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ChevronDown, PackageOpen, Plus, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { getPrice, products } from '../data/products'
 import { usePos } from '../context/PosContext'
 import { ProductVisual } from './ProductVisual'
@@ -8,6 +8,7 @@ import { featureFlags } from '../config/featureFlags'
 import type { Product } from '../types'
 import { ProductInfoPopover } from './ProductInfoPopover'
 import { isLineUnpriced } from '../domain/sales/priceCheck'
+import { agruparPorFamilia, esGrupoSinFamilia } from '../domain/catalog/agruparPorFamilia'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -28,7 +29,7 @@ const CATEGORIAS = ['Todos', 'Frecuentes']
 const MIN_FRECUENTES = 8
 
 export function ProductCatalog({ search, category, setCategory }: { search: string; category: string; setCategory: (value: string) => void }) {
-  const { channel, addProduct } = usePos()
+  const { channel, cart, addProduct, updateQuantity, removeItem } = usePos()
   const query = search.trim().toLowerCase()
   const [brand, setBrand] = useState('')
   const [brandOptions, setBrandOptions] = useState<{ marcas: string[]; sinMarca: number }>({ marcas: [], sinMarca: 0 })
@@ -38,13 +39,17 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   // the exact previous synchronous filtering behavior unchanged. Skipped entirely on
   // the Frecuentes chip: that data comes from listFrecuentes below instead.
   const [remoteProducts, setRemoteProducts] = useState<Product[]>([])
+  // Brief S2 — item 6: guardia por id de pedido, no solo un booleano `cancelled` —
+  // protege contra respuestas que llegan fuera de orden (tipear rápido no debe hacer
+  // "saltar" los resultados bajo el cursor con una respuesta vieja que llega tarde).
+  const searchIdRef = useRef(0)
   useEffect(() => {
     if (!featureFlags.supabase || category === 'Frecuentes') return
-    let cancelled = false
+    const requestId = ++searchIdRef.current
     const handle = setTimeout(() => {
-      void productRepository.search({ query: search, active: true, page: { page: 1, pageSize: 60 } }).then((page) => { if (!cancelled) setRemoteProducts(page.items) })
+      void productRepository.search({ query: search, active: true, page: { page: 1, pageSize: 60 } }).then((page) => { if (searchIdRef.current === requestId) setRemoteProducts(page.items) })
     }, 300)
-    return () => { cancelled = true; clearTimeout(handle) }
+    return () => clearTimeout(handle)
   }, [search, category])
 
   // TAREA 2 (Tanda 3): los N productos más vendidos de los últimos 30 días — el único
@@ -97,8 +102,25 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   const sourceItems = category === 'Frecuentes' ? frecuentes : featureFlags.supabase ? remoteProducts : products
   const needsClientTextFilter = category === 'Frecuentes' || !featureFlags.supabase
   const filtered = sourceItems.filter((product) => matchesBrand(product) && (!needsClientTextFilter || matchesQuery(product)))
+  // Brief S2 — item 3: agrupar por familia cuando hay una búsqueda activa (el caso "goma
+  // eva" es justamente eso: escribís y las variantes de un mismo artículo aparecen
+  // dispersas). Sin búsqueda (catálogo completo) agrupar no aporta — la mayoría de los
+  // 1518 productos activos no tiene familia_id, así que un solo balde "Otros" no dice nada.
+  const grupos = query ? agruparPorFamilia(filtered) : [{ key: '__todo__', nombre: '', productos: filtered }]
+  const quitarDelCarrito = (item: { id: number; cantidad: number }) => { if (item.cantidad <= 1) removeItem(item.id); else updateQuantity(item.id, item.cantidad - 1) }
+  // Dato de producción (Ness, 2026-08-18): de 1.518 productos activos, solo 472 tienen
+  // familia_id — los 1.046 restantes ("sin familia") son la MAYORÍA, no la excepción. La
+  // agrupación es correcta, pero mostrarla expandida por default dejaría ese balde
+  // dominando visualmente cualquier búsqueda. Colapsado por default, con encabezado
+  // neutro y conteo — un click lo despliega si hace falta.
+  const [mostrarSinFamilia, setMostrarSinFamilia] = useState(false)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resetea el colapso cada vez que cambia la búsqueda, no un fetch que difiera
+  useEffect(() => { setMostrarSinFamilia(false) }, [query])
 
   return <>
+    {// Brief S2 — item 4: chips de lo ya agregado, con acceso a quitar — "sensación de
+    // carrito vivo sin abandonar la búsqueda".
+    cart.length > 0 && <div className="catalog-chips">{cart.map((item) => <span className="quick-add-chip" key={item.id}>{item.nombre} <b>×{item.cantidad}</b><button type="button" onClick={() => quitarDelCarrito(item)} aria-label={`Quitar ${item.nombre}`}><X size={11} /></button></span>)}</div>}
     <div className="category-row"><div className="category-scroll">{categoriasVisibles.map((item) => <button key={item} onClick={() => setCategory(item)} className={category === item ? 'active' : ''}>{item}</button>)}</div>
       {(brandOptions.marcas.length > 0 || brandOptions.sinMarca > 0) && (
         <select aria-label="Filtrar por marca" className="brand-filter select-skin" value={brand} onChange={(e) => setBrand(e.target.value)}>
@@ -108,20 +130,38 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
         </select>
       )}</div>
     <div className="section-heading"><div><p>Catálogo de productos</p><span>{filtered.length} productos disponibles</span></div><small>Precios en Bs</small></div>
-    {filtered.length ? <div className="product-grid">{filtered.map((product) => <article className="product-card" key={product.id}>
-      <ProductVisual type={product.imagen} color={product.color} imagenUrl={product.imagenUrl} />
-      <div className="product-info"><div className="stock-pill"><span /> {
-        featureFlags.supabase
-          ? (stockLoading ? '—' : (stockByProduct.get(product.id)?.tienda ?? 0))
-          : product.stockTienda
-      } en tienda</div><ProductInfoPopover product={product} /><h3 title={product.nombre}>{product.nombre}</h3><p>{product.descripcion}</p><small>SKU {product.sku}</small><div className="product-bottom"><div><span>Precio</span><strong>Bs {money(getPrice(product, channel))}{
-        // TAREA A/three-state badges: "heredado" only means something when there's a real
-        // (non-zero) price being inherited from retail — if retail itself is 0/NULL there's
-        // nothing to inherit, so this shows "sin precio" instead of the misleading "heredado".
-        isLineUnpriced({ precioAplicado: getPrice(product, channel) })
-          ? <small className="price-heredado-badge price-overridden-badge" title="Este producto no tiene precio configurado en ningún canal.">sin precio</small>
-          : channel !== 'retail' && product.preciosHeredados?.[channel] && <small className="price-heredado-badge" title="Sin precio propio para este canal: se usa el precio de mostrador.">heredado</small>
-      }</strong></div><button onClick={() => addProduct(product)}><Plus /> Agregar</button></div></div>
-    </article>)}</div> : <div className="empty-products"><PackageOpen /><h3>No encontramos productos</h3><p>Prueba con otro nombre, código o categoría.</p></div>}
+    {filtered.length ? grupos.map((grupo) => {
+      const sinFamilia = esGrupoSinFamilia(grupo.key)
+      if (sinFamilia && !mostrarSinFamilia) {
+        return <button key={grupo.key} type="button" className="catalog-sin-familia-toggle" onClick={() => setMostrarSinFamilia(true)}>
+          Otros productos (sin familia asignada) · {grupo.productos.length} <ChevronDown size={13} />
+        </button>
+      }
+      return <div key={grupo.key}>
+      {!sinFamilia && grupo.nombre && <h4 className="catalog-familia-header">{grupo.nombre}</h4>}
+      {sinFamilia && <h4 className="catalog-familia-header catalog-familia-header-neutro">Otros productos (sin familia asignada) · {grupo.productos.length}</h4>}
+      <div className="product-grid">{grupo.productos.map((product) => {
+        const enCarrito = cart.find((item) => item.id === product.id && !item.isCustomItem)
+        return <article className="product-card" key={product.id}>
+          <ProductVisual type={product.imagen} color={product.color} imagenUrl={product.imagenUrl} />
+          <div className="product-info"><div className="stock-pill"><span /> {
+            featureFlags.supabase
+              ? (stockLoading ? '—' : (stockByProduct.get(product.id)?.tienda ?? 0))
+              : product.stockTienda
+          } en tienda</div><ProductInfoPopover product={product} /><h3 title={product.nombre}>{product.nombre}</h3><p>{product.descripcion}</p><small>SKU {product.sku}</small><div className="product-bottom"><div><span>Precio</span><strong>Bs {money(getPrice(product, channel))}{
+            // TAREA A/three-state badges: "heredado" only means something when there's a real
+            // (non-zero) price being inherited from retail — if retail itself is 0/NULL there's
+            // nothing to inherit, so this shows "sin precio" instead of the misleading "heredado".
+            isLineUnpriced({ precioAplicado: getPrice(product, channel) })
+              ? <small className="price-heredado-badge price-overridden-badge" title="Este producto no tiene precio configurado en ningún canal.">sin precio</small>
+              : channel !== 'retail' && product.preciosHeredados?.[channel] && <small className="price-heredado-badge" title="Sin precio propio para este canal: se usa el precio de mostrador.">heredado</small>
+          }</strong></div><button onClick={() => addProduct(product)}><Plus /> Agregar</button></div>
+          {// Brief S2 — item 1: "la fila agregada se marca como ya incluida, con su cantidad".
+          enCarrito && <div className="catalog-en-carrito">En carrito × {enCarrito.cantidad}</div>}
+          </div>
+        </article>
+      })}</div>
+    </div>
+    }) : <div className="empty-products"><PackageOpen /><h3>No encontramos productos</h3><p>Prueba con otro nombre, código o categoría.</p></div>}
   </>
 }

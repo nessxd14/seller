@@ -17,6 +17,11 @@ interface ProductoRow {
   imagen_url: string | null
   stock_min: number | string | null
   punto_reorden: number | string | null
+  familia_id: number | null
+  // Mismo patrón que producto(nombre,sku_interno) en TransferRepository.supabase.ts:
+  // embed por nombre de tabla destino (no alias), PostgREST resuelve la FK
+  // producto_familia_id_fkey solo y devuelve un objeto (relación to-one).
+  familia?: { nombre: string } | null
 }
 
 const num = (value: number | string | null | undefined): number => (value == null ? 0 : Number(value))
@@ -54,6 +59,12 @@ const rowToProduct = (row: ProductoRow, codes?: { barra?: string; fabrica?: stri
     stockTienda: 0,
     stockAlmacen: 0,
     preciosHeredados: { mayoreo: mayoreo.heredado, institucional: institucional.heredado, municipal: municipal.heredado },
+    // Brief S2: agrupar resultados de búsqueda por familia (el caso "goma eva" — variantes
+    // del mismo artículo dispersas). Solo 32% de cobertura (ver comentario histórico en
+    // ProductCatalog.tsx) — la mayoría de los productos no tiene familia, y eso está bien:
+    // agrupan en un balde "Otros" en vez de forzar una familia que no existe.
+    familiaId: row.familia_id ?? undefined,
+    familiaNombre: row.familia?.nombre ?? undefined,
   }
 }
 
@@ -105,7 +116,7 @@ const fetchBarcodeCodes = async (productIds: number[]): Promise<Map<number, { ba
   return result
 }
 
-const PRODUCT_COLUMNS = 'id,nombre,sku_interno,marca,unidad_base,precio_base,precio_mayoreo,precio_institucion,precio_municipal,activo,imagen_url,stock_min,punto_reorden'
+const PRODUCT_COLUMNS = 'id,nombre,sku_interno,marca,unidad_base,precio_base,precio_mayoreo,precio_institucion,precio_municipal,activo,imagen_url,stock_min,punto_reorden,familia_id,familia(nombre)'
 
 export class SupabaseProductRepository implements ProductRepository {
   async search(input: { query?: string; category?: string; active?: boolean; page: PageRequest }): Promise<Page<Product>> {
@@ -122,7 +133,11 @@ export class SupabaseProductRepository implements ProductRepository {
     if (active !== undefined) builder = builder.eq('activo', active)
     const { data, error, count } = await builder.order('nombre', { ascending: true }).order('id', { ascending: true }).range(from, to)
     if (error) throw error
-    const rows = (data ?? []) as ProductoRow[]
+    // supabase-js infiere el embed `familia(nombre)` como array a partir del string de
+    // select (sin un tipo Database generado no puede ver que familia_id -> familia es
+    // una FK to-one) — en runtime PostgREST sí devuelve un objeto. Pasar por `unknown`
+    // evita el falso positivo de "may be a mistake" sin mentirle al resto del tipo.
+    const rows = (data ?? []) as unknown as ProductoRow[]
     // Separate batched call, scoped to just this page's product ids — kept apart from
     // `producto`'s own paginated fetch above so the search's count/pagination can never be
     // affected by the identifier join (see fetchBarcodeCodes doc comment).
@@ -142,7 +157,7 @@ export class SupabaseProductRepository implements ProductRepository {
     if (error) throw error
     if (!data) return null
     const codes = await fetchBarcodeCodes([numericId])
-    return rowToProduct(data as ProductoRow, codes.get(numericId))
+    return rowToProduct(data as unknown as ProductoRow, codes.get(numericId))
   }
 
   /** Exact-match lookup by internal SKU (barcode-scanner style Enter-to-search). */
@@ -150,7 +165,7 @@ export class SupabaseProductRepository implements ProductRepository {
     const { data, error } = await supabase.from('producto').select(PRODUCT_COLUMNS).eq('sku_interno', sku).maybeSingle()
     if (error) throw error
     if (!data) return null
-    const row = data as ProductoRow
+    const row = data as unknown as ProductoRow
     const codes = await fetchBarcodeCodes([row.id])
     return rowToProduct(row, codes.get(row.id))
   }
@@ -422,7 +437,7 @@ export const listFrecuentes = async (limit = 12): Promise<Product[]> => {
   const { data: rows, error } = await supabase.from('producto').select(PRODUCT_COLUMNS).in('id', topIds).eq('activo', true)
   if (error) throw error
   const codes = await fetchBarcodeCodes(topIds)
-  const productos = ((rows ?? []) as ProductoRow[]).map((row) => rowToProduct(row, codes.get(row.id)))
+  const productos = ((rows ?? []) as unknown as ProductoRow[]).map((row) => rowToProduct(row, codes.get(row.id)))
   // v_reporte_productos_vendidos no garantiza el orden de vuelta de `producto` — reordenar
   // por ranking de ventas, que es el punto de este chip.
   const rank = new Map(topIds.map((id, i) => [id, i]))
