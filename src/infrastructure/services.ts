@@ -27,5 +27,6 @@ export const cashService = featureFlags.supabase ? supabaseServices.cashService 
 export const saleService = featureFlags.supabase ? supabaseServices.saleService : mockServices.saleService
 export const transferService = featureFlags.supabase ? supabaseServices.transferService : mockServices.transferService
 export const ventaDirectaService = featureFlags.supabase ? supabaseServices.ventaDirectaService : mockServices.ventaDirectaService
+export const borradorOperacionService = featureFlags.supabase ? supabaseServices.borradorOperacionService : mockServices.borradorOperacionService
 export const configService = featureFlags.supabase ? supabaseServices.configService : mockServices.configService
 export const reportsService = featureFlags.supabase ? supabaseServices.reportsService : mockServices.reportsService

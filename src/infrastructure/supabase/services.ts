@@ -17,8 +17,9 @@ import { expectedCash } from '../../application/cash/CashService'
 import type { CategoriaPedido } from './mappers'
 import { ventaDirectaRepository, listUbicacionesAlmacen, type UbicacionOption } from './VentaDirectaRepository.supabase'
 import type { VentaDirectaAbrirLine, SaleCheckoutPayment } from '../../application/ports/repositories'
-import type { VentaDirectaRecord } from '../../application/shared/models'
+import type { BorradorOperacionTipo, VentaDirectaRecord } from '../../application/shared/models'
 import { SUCURSAL_ALMACEN_ID } from './mappers'
+import { borradorOperacionRepository } from './BorradorOperacionRepository.supabase'
 
 export const configService = configRepository
 export const reportsService = reportsRepository
@@ -225,6 +226,18 @@ export const ventaDirectaService = {
   async anular(id: string, cashSessionId: string | undefined): Promise<VentaDirectaRecord> {
     const actorId = await currentActorId()
     return ventaDirectaRepository.anular(id, cashSessionId, { actorId })
+  },
+}
+
+export const borradorOperacionService = {
+  list: () => borradorOperacionRepository.list(),
+  getById: (id: string) => borradorOperacionRepository.getById(id),
+  async save(input: { id?: string; tipo: BorradorOperacionTipo; sucursalId?: number; titulo?: string; contenido: unknown }) {
+    const actorId = (await supabaseAuthSessionProvider.getSession())?.user.id
+    return borradorOperacionRepository.save(input, { actorId })
+  },
+  async remove(id: string) {
+    return borradorOperacionRepository.remove(id)
   },
 }
 

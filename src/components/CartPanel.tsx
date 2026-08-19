@@ -1,10 +1,10 @@
-import { ChevronDown, CircleUserRound, FileText, HandCoins, Pause, ReceiptText, RotateCcw, ShoppingCart, Sparkles, Truck, Warehouse } from 'lucide-react'
+import { ChevronDown, CircleUserRound, FileText, HandCoins, Pause, ReceiptText, RotateCcw, Save, ShoppingCart, Sparkles, Truck, Warehouse } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { usePos, type CartCustomer } from '../context/PosContext'
 import type { CartItem as CartItemType, SalesChannel } from '../types'
 import { useBorrador, borradorKey } from '../hooks/useBorrador'
 import { BorradorBanner } from './BorradorBanner'
-import { authSessionProvider, transferService, ventaDirectaService } from '../infrastructure/services'
+import { authSessionProvider, transferService, ventaDirectaService, borradorOperacionService } from '../infrastructure/services'
 import { CartItem } from './CartItem'
 import { Modal } from './Modal'
 import { EditCartItemModal } from './EditCartItemModal'
@@ -13,6 +13,8 @@ import { TicketPreviewModal } from './TicketPreviewModal'
 import { VtdTicketPreviewModal } from './VtdTicketPreviewModal'
 import { VtdPaymentModal } from './VtdPaymentModal'
 import { VtdUbicacionPicker } from './VtdUbicacionPicker'
+import { GuardarBorradorModal } from './GuardarBorradorModal'
+import type { BorradorContenido } from '../domain/sales/borradorContenido'
 import { CustomerPicker } from './CustomerPicker'
 import { SaldoBadge } from './SaldoBadge'
 import { TrasladoTargetPicker } from './TrasladoTargetPicker'
@@ -323,6 +325,31 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       setSolicitando(false)
     }
   }
+  // Brief S1: guardado explícito ("tipo Instagram"), cross-device vía borrador_operacion —
+  // distinto del autosave silencioso de arriba (useBorrador) y de Suspender (que sí vacía
+  // el carrito). No interrumpe la operación en curso: solo deja un checkpoint guardado.
+  const [guardarBorradorOpen, setGuardarBorradorOpen] = useState(false)
+  const [guardandoBorrador, setGuardandoBorrador] = useState(false)
+  const [guardarBorradorError, setGuardarBorradorError] = useState('')
+  const puedeGuardarBorrador = cart.length > 0 && (mode === 'venta' || mode === 'traslado' || mode === 'ventaDirecta')
+  const guardarBorrador = async (titulo: string) => {
+    setGuardandoBorrador(true)
+    setGuardarBorradorError('')
+    try {
+      const contenido: BorradorContenido = mode === 'traslado'
+        ? { tipo: 'TRASLADO', cart, trasladoMotivo, trasladoOrigenId, trasladoDestinoId }
+        : mode === 'ventaDirecta'
+          ? { tipo: 'VENTA_DIRECTA', cart, vtdUbicacionId, vtdPrecobrado }
+          : { tipo: 'VENTA', channel, cart, discount, customer }
+      await borradorOperacionService.save({ tipo: contenido.tipo, titulo: titulo || undefined, contenido })
+      setGuardarBorradorOpen(false)
+      notify('Borrador guardado — está en Borradores')
+    } catch (error) {
+      setGuardarBorradorError(error instanceof Error ? error.message : 'No se pudo guardar el borrador')
+    } finally {
+      setGuardandoBorrador(false)
+    }
+  }
   // Brief VTD 2.1/2.2: "Venta directa de almacén" — mismo carrito, cambia el destino
   // (abrir_venta) y qué se pide (ubicación de origen + modo de cobro). abrir_venta deja
   // la venta ABIERTA sin tocar Kardex; solo completar_venta (desde la bandeja) baja stock.
@@ -370,7 +397,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     }
   }
   const modeLabel = mode === 'traslado' ? 'Traslado' : mode === 'ventaDirecta' ? 'Venta directa' : 'Venta'
-  return <aside className="cart-panel">{borradorPendiente && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}<div className="cart-header"><div><span>OPERACIÓN ACTUAL</span><h2>{modeLabel} <b>#{operationNumber}</b></h2></div><div className="modo-group" role="group" aria-label="Modo de operación"><button type="button" className={mode === 'venta' ? 'active' : ''} onClick={() => setMode('venta')} title="Venta"><ShoppingCart /></button><button type="button" className={mode === 'traslado' ? 'active' : ''} onClick={() => setMode('traslado')} title="Traslado"><Truck /></button>{featureFlags.ventaDirectaAlmacen && <button type="button" className={mode === 'ventaDirecta' ? 'active' : ''} onClick={() => setMode('ventaDirecta')} title="Venta directa de almacén"><Warehouse /></button>}</div>{mode === 'venta' && <span className="channel-badge">{channelNames[channel]}</span>}</div><div className="operation-meta"><span>{new Date().toLocaleDateString('es-BO', { day: '2-digit', month: 'short' })}</span><i /> <span>{new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</span></div>
+  return <aside className="cart-panel">{borradorPendiente && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}<div className="cart-header"><div><span>OPERACIÓN ACTUAL</span><h2>{modeLabel} <b>#{operationNumber}</b></h2></div><div className="modo-group" role="group" aria-label="Modo de operación"><button type="button" className={mode === 'venta' ? 'active' : ''} onClick={() => setMode('venta')} title="Venta"><ShoppingCart /></button><button type="button" className={mode === 'traslado' ? 'active' : ''} onClick={() => setMode('traslado')} title="Traslado"><Truck /></button>{featureFlags.ventaDirectaAlmacen && <button type="button" className={mode === 'ventaDirecta' ? 'active' : ''} onClick={() => setMode('ventaDirecta')} title="Venta directa de almacén"><Warehouse /></button>}</div>{puedeGuardarBorrador && <button type="button" className="guardar-borrador-button" title="Guardar borrador — no interrumpe la operación en curso" onClick={() => setGuardarBorradorOpen(true)}><Save /></button>}{mode === 'venta' && <span className="channel-badge">{channelNames[channel]}</span>}</div><div className="operation-meta"><span>{new Date().toLocaleDateString('es-BO', { day: '2-digit', month: 'short' })}</span><i /> <span>{new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</span></div>
     {mode === 'traslado'
       ? <TrasladoTargetPicker origenId={trasladoOrigenId} destinoId={trasladoDestinoId} isAdmin={isAdmin} onInvertir={() => setTrasladoDireccion(trasladoDestinoId, trasladoOrigenId)} />
       : mode === 'ventaDirecta'
@@ -431,6 +458,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     {editing && <EditCartItemModal item={editing} onClose={() => setEditing(null)} />}{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} onCheckoutSuccess={() => invalidateOriginStock()} />}{ticketOpen && <TicketPreviewModal onClose={() => setTicketOpen(false)} />}
     {vtdPaymentOpen && <VtdPaymentModal total={total} submitting={vtdSubmitting} error={vtdError} onClose={() => setVtdPaymentOpen(false)} onConfirm={(payments) => void abrirVentaDirecta(payments)} />}
     {vtdResult && <VtdTicketPreviewModal venta={vtdResult} onClose={() => setVtdResult(null)} />}
+    {guardarBorradorOpen && <GuardarBorradorModal submitting={guardandoBorrador} error={guardarBorradorError} onClose={() => setGuardarBorradorOpen(false)} onConfirm={(titulo) => void guardarBorrador(titulo)} />}
     {anticipoOpen && <AnticipoModal onClose={() => setAnticipoOpen(false)} notify={notify} />}
     {reviewOpen && <CartReview items={cart} channel={channel} originStock={originStock} customer={customer} subtotal={subtotal} discount={discount} total={total} onClose={() => setReviewOpen(false)} onCheckout={() => { setReviewOpen(false); setPaymentOpen(true) }} />}
   </aside>
