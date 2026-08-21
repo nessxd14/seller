@@ -138,7 +138,6 @@ function CustomerEditor({ customer, isNew, onClose, onSave, onGoToCustomer }: { 
   const [duplicado, setDuplicado] = useState<CustomerRecord | null>(null)
   const [candidatosSimilares, setCandidatosSimilares] = useState<ClienteSimilar[]>([])
   const documentoFaltante = !value.document.trim()
-  const bloqueaPorDocumento = isNew && documentoFaltante
 
   const usarCandidato = async (candidate: ClienteSimilar) => {
     const full = await customerRepository.getById(String(candidate.id))
@@ -146,7 +145,6 @@ function CustomerEditor({ customer, isNew, onClose, onSave, onGoToCustomer }: { 
   }
 
   const submit = async () => {
-    if (bloqueaPorDocumento) { setError('El documento es obligatorio para clientes nuevos'); return }
     if (isNew && requiereConfirmacion(candidatosSimilares) && !confirm('Se encontraron clientes parecidos. ¿Crear uno nuevo de todos modos?')) return
     setSaving(true)
     setError('')
@@ -171,7 +169,7 @@ function CustomerEditor({ customer, isNew, onClose, onSave, onGoToCustomer }: { 
     <label>Nombre<input value={value.name} onChange={(e) => setValue({...value,name:e.target.value})} /></label>
     <label>Tipo<select value={value.type} onChange={(e)=>setValue({...value,type:e.target.value as CustomerRecord['type']})}><option value="retail">Retail</option><option value="wholesale">Mayorista</option><option value="institutional">Institución / Gobierno</option><option value="corporate">Corporativo</option></select></label>
     <label>Razón social<input value={value.businessName ?? ''} onChange={(e)=>setValue({...value,businessName:e.target.value})}/></label>
-    <label>Documento / NIT{(isNew || documentoFaltante) && <span className="field-required-mark"> *</span>}<input className={documentoFaltante ? 'field-required-empty' : ''} value={value.document} onChange={(e)=>setValue({...value,document:e.target.value})}/></label>
+    <label>Documento / NIT<input value={value.document} onChange={(e)=>setValue({...value,document:e.target.value})}/></label>
     <label>Teléfono<input value={value.phone} onChange={(e)=>setValue({...value,phone:e.target.value})}/></label>
     <label>Correo<input type="email" value={value.email} onChange={(e)=>setValue({...value,email:e.target.value})}/></label>
     <label>Ciudad<input value={value.city ?? ''} onChange={(e)=>setValue({...value,city:e.target.value})}/></label>
@@ -179,7 +177,7 @@ function CustomerEditor({ customer, isNew, onClose, onSave, onGoToCustomer }: { 
     <label className="full">Dirección<input value={value.address} onChange={(e)=>setValue({...value,address:e.target.value})}/></label>
     <label>Condiciones de pago<input value={value.paymentTerms} onChange={(e)=>setValue({...value,paymentTerms:e.target.value})}/></label>
     <label>Límite de crédito (Bs)<NumberField min={0} value={(value.creditLimitCents ?? 0)/100} onCommit={(bs)=>setValue({...value,creditLimitCents:Math.round(bs*100)})}/></label>
-    {documentoFaltante && <p className="full field-required-hint">{isNew ? 'El documento es obligatorio para clientes nuevos.' : 'Este cliente no tiene documento cargado — completalo cuando puedas, no bloquea guardar.'}</p>}
+    {documentoFaltante && <p className="full field-required-hint">Este cliente no tiene documento cargado — completalo cuando puedas, no bloquea guardar.</p>}
     {isNew && featureFlags.supabase && (
       <div className="full">
         <DuplicateCustomerPanel nombre={value.name} documento={value.document} onCandidatesChange={setCandidatosSimilares} onUseCustomer={(candidate) => void usarCandidato(candidate)} />
@@ -189,5 +187,5 @@ function CustomerEditor({ customer, isNew, onClose, onSave, onGoToCustomer }: { 
       <p>{error}</p>
       {duplicado && <button type="button" className="field-error-link" onClick={() => onGoToCustomer(duplicado)}>Ver a {duplicado.name}</button>}
     </div>}
-  </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!value.name.trim() || bloqueaPorDocumento || saving} onClick={()=>void submit()}>{saving ? 'Guardando…' : 'Guardar'}</button></footer></Modal>
+  </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!value.name.trim() || saving} onClick={()=>void submit()}>{saving ? 'Guardando…' : 'Guardar'}</button></footer></Modal>
 }
