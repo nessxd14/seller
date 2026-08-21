@@ -1,0 +1,11 @@
+/* Brief S-C — SolicitanteField reutiliza el picker de CustomerPicker.tsx (mismo patrón
+   buscar+crear inline: .customer-picker/.customer-select/.customer-picker-panel/etc.,
+   definidos en pos-ajustes.css y styles.css), pero ahí vive en el sidebar del carrito con
+   márgenes laterales fijos (20px) pensados para ese layout. Acá vive dentro del form-grid
+   de un modal, donde el espaciado ya lo da el grid — solo resetea esos márgenes para esta
+   instancia, sin tocar los estilos originales. */
+.solicitante-field { display: block }
+.solicitante-field .customer-picker,
+.solicitante-field .customer-select {
+  margin: 6px 0 0;
+}

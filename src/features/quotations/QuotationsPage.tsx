@@ -101,6 +101,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
       // El editor permite cargar "Descuento general (Bs)" y lo muestra en el
       // footer del total; sin esto el pedido nacía con descuento 0.
       generalDiscountCents: quote.generalDiscountCents,
+      solicitanteId: quote.solicitanteId,
       lines: quote.lines.map((line) => ({ ...line, prepared: 0, allocations: [] })),
       events: [],
     })
@@ -120,7 +121,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
     if(!quote.customerId){notify('Esta cotización no tiene cliente. Abrila y elegí uno en el buscador antes de convertirla.');return}
     if (!confirm(`¿Convertir ${quote.number} en pedido?`)) return
     if (featureFlags.supabase) {
-      await sensitiveOperations.execute('convert_quote', quote.id, () => orderService.save({ id: '', number: '', customerName: quote.customerName, channel: quote.channel, status: 'draft', createdAt: new Date().toISOString(), sourceQuoteId: quote.id, lines: [], events: [] }))
+      await sensitiveOperations.execute('convert_quote', quote.id, () => orderService.save({ id: '', number: '', customerName: quote.customerName, channel: quote.channel, status: 'draft', createdAt: new Date().toISOString(), sourceQuoteId: quote.id, solicitanteId: quote.solicitanteId, lines: [], events: [] }))
     } else {
       const snapshot = await sensitiveOperations.execute('convert_quote',quote.id,()=>quoteService.markConverted(quote.id, crypto.randomUUID()))
       await orderService.save({ id: snapshot.id, number: snapshot.number, customerName: snapshot.customer.name, channel: quote.channel, status: 'draft', createdAt: snapshot.createdAt, sourceQuoteId: quote.id, lines: snapshot.items.map((line) => ({ id: line.id, productId: line.product.productId, name: line.product.name, sku: line.product.sku, quantity: line.quantity, unitPriceCents: line.appliedPrice.cents, discountBasisPoints: line.discountBasisPoints, prepared: 0, allocations: [] })), events: [{ at: new Date().toLocaleString('es-BO'), label: 'Pedido creado desde cotización', detail: `Snapshots conservados desde ${quote.number}` }] })
@@ -143,7 +144,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
         return <article key={quote.id}>
           <RowLink href={cotizacionPath(quote.id)} label={`Ver cotización ${quote.number}`} />
           <div><strong className="doc-number-cell">{quote.number}</strong><small>{new Date(quote.createdAt).toLocaleDateString('es-BO')}</small></div>
-          <div><strong>{quote.customerName}</strong><small className="channel-chip">{quote.channel}</small></div>
+          <div><strong>{quote.customerName}</strong><small className="channel-chip">{quote.channel}</small>{quote.solicitanteNombre && <small className="channel-chip">Solicitante: {quote.solicitanteNombre}</small>}</div>
           <span>{quote.asunto || '—'}</span>
           <span className={`status-chip ${statusChipClass(quote.status)}`}>{statusLabel[quote.status]}</span>
           <span>{nearExpiry ? <span className="vigencia-warning"><AlertTriangle />{days < 0 ? 'Vencida' : `${quote.validUntil} (${days} d)`}</span> : quote.validUntil}</span>

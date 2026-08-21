@@ -56,6 +56,14 @@ export interface QuoteDraft {
   // Brief S3 — cotizacion.creado_por (email). Resolver contra `perfil` para un nombre
   // legible; el email es el respaldo si no hay perfil (ver PerfilRepository.supabase.ts).
   creadoPor?: string
+  // Brief S-C: solicitanteId (cliente_contacto.id) es el valor VIVO que se manda a
+  // crear_cotizacion/actualizar_cotizacion — puede cambiar mientras se edita.
+  // solicitanteNombre es el nombre CONGELADO (cotizacion.solicitado_por) que la base
+  // guarda al momento de guardar; se muestra tal cual en listados/detalle, nunca se
+  // vuelve a resolver contra cliente_contacto (si el contacto se desactivó después, el
+  // documento tiene que seguir mostrando quién lo pidió en su momento).
+  solicitanteId?: string
+  solicitanteNombre?: string
 }
 
 export interface OrderView {
@@ -95,6 +103,11 @@ export interface OrderView {
   // este mismo campo también identifica quién hizo la CONVERSIÓN (crear_pedido con
   // cotizacion_origen_id corre como el usuario que convierte, no hay un campo aparte).
   creadoPor?: string
+  // Brief S-C: mismo criterio que en QuoteDraft — solicitanteId es el valor vivo (para
+  // convertir_cotizacion_a_pedido/crear_pedido); solicitanteNombre es pedido.solicitado_por,
+  // congelado al crear el pedido, nunca re-resuelto contra cliente_contacto.
+  solicitanteId?: string
+  solicitanteNombre?: string
 }
 
 export interface CustomerRecord {
