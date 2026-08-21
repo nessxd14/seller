@@ -96,12 +96,9 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
   // nunca setea id; startEdit() siempre lo setea (del registro existente o de customer.id),
   // incluso en el caso borde donde editingBase queda null porque la búsqueda no lo encontró.
   const isNewCustomer = !creating?.id
-  const documentoFaltante = !creating?.document.trim()
-  const bloqueaPorDocumento = isNewCustomer && documentoFaltante
 
   const confirmCreate = async () => {
     if (!creating || !creating.name.trim()) { setError('El nombre es obligatorio'); return }
-    if (bloqueaPorDocumento) { setError('El documento es obligatorio para clientes nuevos'); return }
     if (isNewCustomer && requiereConfirmacion(candidatosSimilares) && !confirm('Se encontraron clientes parecidos. ¿Crear uno nuevo de todos modos?')) return
     setSaving(true)
     setError('')
@@ -123,8 +120,9 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
             // pestaña Institucional se da de alta como Corporativo (empresa privada);
             // parado en Municipal, como Institución/gobierno.
             type: channel === 'mayoreo' ? 'wholesale' : channel === 'institucional' ? 'corporate' : channel === 'municipal' ? 'institutional' : 'retail',
-            // Brief T2 Tarea 1: NIT obligatorio solo para altas nuevas (ver isNewCustomer
-            // más arriba) — editar un cliente viejo sin documento sigue sin bloquear.
+            // Brief S-B: el documento nunca bloquea el guardado, alta nueva o edición —
+            // sigue siendo uno de los dos mecanismos de detección de duplicados (junto con
+            // la similitud por nombre), pero cargarlo es opcional en todos los casos.
             document: creating.document.trim(),
             phone: creating.phone.trim(),
             email: creating.email.trim(),
@@ -166,7 +164,7 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
         <div className="form-grid">
           <label>Nombre<input value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value })} autoFocus /></label>
           <label>Razón social<input value={creating.businessName} onChange={(e) => setCreating({ ...creating, businessName: e.target.value })} /></label>
-          <label>NIT / Documento{isNewCustomer ? <span className="field-required-mark"> *</span> : ' (opcional)'}<input className={bloqueaPorDocumento ? 'field-required-empty' : ''} value={creating.document} onChange={(e) => setCreating({ ...creating, document: e.target.value })} /></label>
+          <label>NIT / Documento<input value={creating.document} onChange={(e) => setCreating({ ...creating, document: e.target.value })} /></label>
           <label>Teléfono<input value={creating.phone} onChange={(e) => setCreating({ ...creating, phone: e.target.value })} /></label>
           <label className="full">Email<input value={creating.email} onChange={(e) => setCreating({ ...creating, email: e.target.value })} /></label>
         </div>
@@ -179,7 +177,7 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
         </div>}
         <div className="customer-picker-actions">
           <button type="button" className="secondary-button" onClick={() => setCreating(null)}>Cancelar</button>
-          <button type="button" className="primary-button" disabled={saving || bloqueaPorDocumento} onClick={() => void confirmCreate()}>{saving ? 'Guardando…' : 'Guardar cliente'}</button>
+          <button type="button" className="primary-button" disabled={saving} onClick={() => void confirmCreate()}>{saving ? 'Guardando…' : 'Guardar cliente'}</button>
         </div>
       </div> : <>
         <div className="customer-search-box"><Search /><input placeholder="Buscar por nombre o NIT…" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus /></div>
