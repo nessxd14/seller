@@ -285,7 +285,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
           {deleted && <span className="order-row-flag order-row-flag-deleted" title="Anulado"><XCircle size={12} /></span>}
           {edited && <span className="order-row-flag order-row-flag-edited" title="Editado"><Pencil size={12} /></span>}
           <strong className="doc-number-cell">{order.number}</strong>
-          <span>{order.customerName}</span>
+          <span>{order.customerName}{order.solicitanteNombre && <small className="channel-chip">Solicitante: {order.solicitanteNombre}</small>}</span>
           <span>{order.asunto || (order.sourceQuoteNumber ? `origen ${order.sourceQuoteNumber}` : '—')}</span>
           <span className="channel-chip">{channelNames[order.channel] ?? order.channel}</span>
           <span className={`status-chip ${statusChipClass(order.status)}`}>{statusLabel[order.status]}</span>
@@ -305,6 +305,9 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
         <AutoriaBadge label={selected.sourceQuoteId ? 'Convertido por' : 'Creado por'} email={selected.creadoPor} />
         {selected.sourceQuoteId && <a className="autoria-source-link" href={cotizacionPath(selected.sourceQuoteId)} onClick={(e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey) { e.preventDefault(); navigate(cotizacionPath(selected.sourceQuoteId!)) } }}>Ver cotización de origen{selected.sourceQuoteNumber ? ` (${selected.sourceQuoteNumber})` : ''}</a>}
       </div>
+      {/* Brief S-C: nombre congelado (pedido.solicitado_por) — nunca se vuelve a consultar
+          cliente_contacto acá, ni siquiera si el contacto se desactivó después. */}
+      {selected.solicitanteNombre && <div className="autoria-row"><span>Solicitante: {selected.solicitanteNombre}</span></div>}
       {/* Brief S11 Bloque B2: navegador de versiones — solo aparece si hay más de una.
           "Restaurar" queda deliberadamente sin implementar: ver una versión vieja es
           seguro, volver a ella no (¿qué pasa con lo ya despachado parcialmente?). */}

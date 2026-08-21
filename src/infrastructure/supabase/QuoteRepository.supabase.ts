@@ -57,6 +57,10 @@ interface CotizacionRow {
   asunto: string | null
   condicion_pago: CondicionPago | null
   fecha: string | null
+  // Brief S-C: solicitante_id (vivo, id de cliente_contacto) y solicitado_por (nombre
+  // congelado al guardar) — ambos columnas planas de cotizacion, ya cubiertas por select('*').
+  solicitante_id: number | null
+  solicitado_por: string | null
 }
 
 interface CotizacionLineaRow {
@@ -127,6 +131,8 @@ const rowToQuoteDraft = (header: CotizacionRow, lines: CotizacionLineaRow[]): Qu
   conditionPago: header.condicion_pago ?? undefined,
   documentDate: header.fecha ?? undefined,
   creadoPor: header.creado_por ?? undefined,
+  solicitanteId: header.solicitante_id != null ? String(header.solicitante_id) : undefined,
+  solicitanteNombre: header.solicitado_por ?? undefined,
 })
 
 // Exportado para test directo (Brief S11: serialización carrito → buildLineasJsonb con
@@ -234,6 +240,7 @@ export class SupabaseQuoteRepository implements QuoteRepository {
         p_asunto: value.asunto || null,
         p_condicion_pago: value.conditionPago || null,
         p_fecha: value.documentDate || null,
+        p_solicitante_id: value.solicitanteId ? Number(value.solicitanteId) : null,
       })
       if (error) throw error
       const created = await fetchQuoteById(newId as number)
@@ -274,6 +281,7 @@ export class SupabaseQuoteRepository implements QuoteRepository {
       p_condicion_pago: value.conditionPago || null,
       p_fecha: value.documentDate || null,
       p_usuario: actor,
+      p_solicitante_id: value.solicitanteId ? Number(value.solicitanteId) : null,
     })
     if (rpcError) {
       if (rpcError.message.includes('no existe')) throw new NotFoundError('Cotización no encontrada')

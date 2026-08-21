@@ -31,6 +31,9 @@ interface PedidoRow {
   descuento_general: number | string | null
   total: number | string | null
   cliente?: { nombre: string } | null
+  // Brief S-C: mismo criterio que en CotizacionRow — columnas planas, ya cubiertas por select('*').
+  solicitante_id: number | null
+  solicitado_por: string | null
 }
 
 interface PedidoLineaRow {
@@ -141,6 +144,8 @@ const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[], eventos: Ped
     sourceQuoteId: convertedMatch ? convertedMatch[1] : undefined,
     asunto: convertedMatch ? undefined : (header.referencia ?? undefined),
     creadoPor: header.creado_por ?? undefined,
+    solicitanteId: header.solicitante_id != null ? String(header.solicitante_id) : undefined,
+    solicitanteNombre: header.solicitado_por ?? undefined,
   }
 }
 
@@ -231,9 +236,14 @@ export class SupabaseOrderRepository implements OrderRepository {
   async save(value: OrderView & Partial<Versioned>, context: MutationContext): Promise<OrderView & Versioned> {
     const actor = context.actorId ?? 'pos'
     if (value.sourceQuoteId) {
+      // Brief S-C: si no se cambió el solicitante en la pantalla de conversión, value.solicitanteId
+      // ya viene precargado con el de la cotización de origen (el editor arranca desde esa
+      // cotización) — pasarlo explícito acá es idempotente. Si se cambió, este es justamente
+      // el valor nuevo, que tiene que ganarle al heredado.
       const { data: newId, error } = await supabase.rpc('convertir_cotizacion_a_pedido', {
         p_cotizacion_id: Number(value.sourceQuoteId),
         p_usuario: actor,
+        p_solicitante_id: value.solicitanteId ? Number(value.solicitanteId) : null,
       })
       if (error) throw error
       // Brief S11 Bloque B1: versión 1 al crear, para que haya algo que navegar/comparar
@@ -254,6 +264,7 @@ export class SupabaseOrderRepository implements OrderRepository {
       p_usuario: actor,
       p_cliente_id: value.customerId ? Number(value.customerId) : null,
       p_descuento_general: centsToNumeric(value.generalDiscountCents ?? 0),
+      p_solicitante_id: value.solicitanteId ? Number(value.solicitanteId) : null,
     })
     if (error) throw error
     await guardarVersionPedidoSilencioso(newId as number, 'Pedido creado', actor)

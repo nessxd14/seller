@@ -20,6 +20,7 @@ import { coincideBusqueda } from '../../domain/customers/textSearch'
 import { requiereCotizacionOrigen } from '../../domain/quotations/requiereCotizacionOrigen'
 import { ProductQuickAdd } from '../../components/ProductQuickAdd'
 import { AutoriaBadge } from '../../components/AutoriaBadge'
+import { SolicitanteField } from '../../components/SolicitanteField'
 
 type EditableChannel = QuoteDraft['channel']
 
@@ -138,6 +139,10 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       customerId: customer.id,
       customerName: customer.name,
       channel: (customer.usualChannel === 'mayoreo' || customer.usualChannel === 'institucional' || customer.usualChannel === 'municipal') ? customer.usualChannel : v.channel,
+      // Brief S-C: un solicitante de la institución anterior no es válido para la nueva
+      // (la base lo rechazaría igual, pero mejor no dejar que se intente).
+      solicitanteId: undefined,
+      solicitanteNombre: undefined,
     }))
     setShowCustomerPicker(false)
     setCustomerQuery('')
@@ -310,6 +315,14 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const selectedCustomer = customers.find((c) => c.id === value.customerId)
   const requiereCotizacion = requiereCotizacionOrigen(selectedCustomer?.type)
 
+  // Brief S-C: el solicitante es obligatorio para pedidos de clientes institucionales o
+  // corporativos (reforzado en la base, hoy temporalmente desactivado — ver brief). Este
+  // mismo editor sirve tanto para guardar como cotización (nunca bloqueado por esto) como
+  // para crear/convertir a pedido (sí bloqueado): missingSolicitante solo gatea esos
+  // botones, nunca "Guardar como cotización".
+  const requiereSolicitante = selectedCustomer?.type === 'institutional' || selectedCustomer?.type === 'corporate'
+  const missingSolicitante = requiereSolicitante && !value.solicitanteId
+
   const runAction = async (action: (q: QuoteDraft) => void | Promise<void>) => {
     setSaving(true)
     setSaveError('')
@@ -343,6 +356,10 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         {borradorPendiente && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}
         {/* Brief S3 Parte B: autoría — quién creó la cotización. */}
         {value.creadoPor && <div className="autoria-row"><AutoriaBadge label="Creado por" email={value.creadoPor} /></div>}
+        {/* Brief S-C: en solo-lectura el picker no se muestra (nada que editar) — el
+            nombre congelado (solicitado_por) se muestra tal cual, sin volver a consultar
+            cliente_contacto. */}
+        {readOnly && value.solicitanteNombre && <div className="autoria-row"><span>Solicitante: {value.solicitanteNombre}</span></div>}
         <div className="channel-tabs draft-order-tabs">
           {channelTabs.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" disabled={readOnly} className={value.channel === id ? 'active' : ''} onClick={() => setChannel(id)}>
@@ -377,6 +394,17 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             {!readOnly && missingCustomer && <small className="line-stock-error">Elegí un cliente en el buscador de arriba — una cotización sin cliente no se puede guardar. "Cliente de mostrador" no cuenta.</small>}
             {value.customerId && <SaldoBadge clienteId={value.customerId} />}
           </label>
+          {/* Brief S-C: solo aparece para clientes institucionales/corporativos — para
+              mayorista/retail no ocupa espacio, no queda oculto-pero-deshabilitado. */}
+          {!readOnly && featureFlags.supabase && value.customerId && requiereSolicitante && (
+            <SolicitanteField
+              clienteId={value.customerId}
+              value={value.solicitanteId ? { id: value.solicitanteId, nombre: value.solicitanteNombre ?? '' } : null}
+              onChange={(solicitante) => setValue((v) => ({ ...v, solicitanteId: solicitante?.id, solicitanteNombre: solicitante?.nombre }))}
+              required={missingSolicitante}
+              actorId={actorId}
+            />
+          )}
           <label>Vigencia<input type="date" disabled={readOnly} value={value.validUntil} onChange={(e) => setValue((v) => ({ ...v, validUntil: e.target.value }))} /></label>
           <label>Fecha<input type="date" disabled={readOnly} value={value.documentDate ?? ''} onChange={(e) => setValue((v) => ({ ...v, documentDate: e.target.value || undefined }))} /></label>
           <label>Descuento general (Bs)<NumberField min={0} disabled={readOnly} value={value.generalDiscountCents / 100} onCommit={(bs) => setValue((v) => ({ ...v, generalDiscountCents: Math.round(bs * 100) }))} /></label>
@@ -575,14 +603,14 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         {!readOnly && !isExistingQuote && onCreateOrder && (
           <button
             className="primary-button"
-            disabled={!value.lines.length || saving || hasStockErrors || requiereCotizacion}
-            title={requiereCotizacion ? `${selectedCustomer?.name} requiere una cotización de origen — usá "Guardar como cotización"` : undefined}
+            disabled={!value.lines.length || saving || hasStockErrors || requiereCotizacion || missingSolicitante}
+            title={requiereCotizacion ? `${selectedCustomer?.name} requiere una cotización de origen — usá "Guardar como cotización"` : missingSolicitante ? 'Elegí un solicitante para crear el pedido' : undefined}
             onClick={() => void runAction(onCreateOrder)}
           >
             Crear pedido
           </button>
         )}
-        {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors || missingCustomer} title={missingCustomer ? 'Elegí un cliente para convertir' : undefined} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
+        {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors || missingCustomer || missingSolicitante} title={missingCustomer ? 'Elegí un cliente para convertir' : missingSolicitante ? 'Elegí un solicitante para convertir' : undefined} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
       </footer>
       {customModalOpen && (
         <CustomItemModal
