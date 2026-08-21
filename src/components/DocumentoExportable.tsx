@@ -46,6 +46,11 @@ const lineTotalCents = (line: WorkflowLine) => Math.round(line.unitPriceCents * 
  *   building a second price-stripped layout for a single, rarely-used document type).
  */
 export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc; mode: 'cotizacion' | 'nota-entrega' | 'pedido'; onClose: () => void }) {
+  // Brief S-A: "Vista de cliente" (default) muestra doc.lines en una sola lista plana, sin
+  // separar ítems especiales ni encabezados de sección — pensada para mandarle al cliente.
+  // "Vista de empresa" es el comportamiento de siempre (catalogLines/customLines separados).
+  // Solo aplica a cotización; sin persistencia, siempre arranca en Cliente al abrir el modal.
+  const [vistaCliente, setVistaCliente] = useState(true)
   const [customerDoc, setCustomerDoc] = useState('')
   useEffect(() => {
     void customerService.list().then((customers) => {
@@ -75,12 +80,22 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
 
   const catalogLines = doc.lines.filter((line) => !line.isCustomItem)
   const customLines = doc.lines.filter((line) => line.isCustomItem)
+  const isVistaCliente = mode === 'cotizacion' && vistaCliente
+  const primaryLines = isVistaCliente ? doc.lines : catalogLines
   const subtotalCents = doc.lines.reduce((sum, line) => sum + lineTotalCents(line), 0)
   const title = mode === 'cotizacion' ? 'COTIZACIÓN' : mode === 'pedido' ? 'PEDIDO' : 'NOTA DE ENTREGA'
   const modalTitle = mode === 'cotizacion' ? 'Vista previa de cotización' : mode === 'pedido' ? 'Vista previa de pedido' : 'Vista previa de nota de entrega'
 
   return (
     <Modal title={modalTitle} subtitle={empresa.razonSocial} onClose={onClose} wide>
+      {mode === 'cotizacion' && (
+        <div className="doc-view-toggle">
+          <label>
+            <input type="checkbox" checked={vistaCliente} onChange={(e) => setVistaCliente(e.target.checked)} />
+            Vista de cliente
+          </label>
+        </div>
+      )}
       <div className={`print-document documento-exportable ${mode === 'pedido' ? 'order-a4' : mode === 'nota-entrega' ? 'delivery-a4' : 'quote-a4'}`}>
         <header>
           <div className="doc-brand">
@@ -110,7 +125,7 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
             <tr><th>Nº</th><th>Descripción</th><th>Medida</th><th>Cant</th><th>Equiv.</th><th>P/U</th><th>Desc.</th>{mode === 'nota-entrega' && <th>Origen</th>}<th>Total</th></tr>
           </thead>
           <tbody>
-            {catalogLines.map((line, index) => {
+            {primaryLines.map((line, index) => {
               const factor = line.factorUnidadBase ?? 1
               const hasEquivalence = factor !== 1
               // TAREA 1 (Ronda 10): la máscara (descripcion) es para el cliente — cotización
@@ -134,7 +149,7 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
             })}
           </tbody>
         </table>
-        {customLines.length > 0 && (
+        {!isVistaCliente && customLines.length > 0 && (
           <div className="doc-custom-block">
             <h4>Ítems especiales / a pedido</h4>
             <table className="doc-table">
