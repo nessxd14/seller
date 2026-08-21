@@ -19,3 +19,12 @@
 .doc-signatures span { display: block; font-size: 11px; color: #77736c }
 .doc-signatures strong { display: block; font-size: 12px; margin-top: 2px }
 .doc-signatures small { display: block; font-size: 10px; color: #96928a; margin-top: 2px }
+
+/* Brief S-A — toggle "Vista de cliente" en la vista previa de cotización. Vive fuera de
+   .print-document (igual que .modal-actions), así que ya no imprime por la regla general
+   `body *{visibility:hidden}` de workflows.css; se agrega su propio @media print por las
+   dudas, siguiendo el mismo patrón explícito que usa .modal-actions ahí. */
+.doc-view-toggle { margin: 0 22px 4px; display: flex; justify-content: flex-end }
+.doc-view-toggle label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #57534a; cursor: pointer }
+.doc-view-toggle input { width: 14px; height: 14px }
+@media print { .doc-view-toggle { display: none !important } }
