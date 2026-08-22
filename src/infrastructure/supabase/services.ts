@@ -148,7 +148,7 @@ export const cashService = {
     const actorId = await currentActorId()
     return cashRepository.addMovement(sessionId, { type, method, amountCents, note }, { actorId })
   },
-  async registerAdvance(orderId: string, amountCents: number, method: 'cash' | 'qr' | 'transfer', sessionId: string): Promise<{ movementId: string }> {
+  async registerAdvance(orderId: string, amountCents: number, method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check', sessionId: string): Promise<{ movementId: string }> {
     const actorId = await currentActorId()
     return cashRepository.registerAdvance({ orderId, amountCents, method, sessionId }, { actorId })
   },

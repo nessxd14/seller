@@ -411,10 +411,16 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
           <label>Condición de pago<select disabled={readOnly} value={value.conditionPago ?? ''} onChange={(e) => setValue((v) => ({ ...v, conditionPago: (e.target.value || undefined) as QuoteDraft['conditionPago'] }))}>
             <option value="">Sin especificar</option>
             <option value="CONTADO">Contado</option>
-            <option value="PAGO_PARCIAL">Pago parcial</option>
-            <option value="SIGEP">SIGEP</option>
-            <option value="TRANSFERENCIA_BANCARIA">Transferencia bancaria</option>
+            <option value="CREDITO">Crédito</option>
+          </select></label>
+          <label>Medio de pago<select disabled={readOnly} value={value.medioPago ?? ''} onChange={(e) => setValue((v) => ({ ...v, medioPago: (e.target.value || undefined) as QuoteDraft['medioPago'] }))}>
+            <option value="">Sin especificar</option>
+            <option value="EFECTIVO">Efectivo</option>
             <option value="QR">QR</option>
+            <option value="TRANSFERENCIA">Transferencia</option>
+            <option value="SIGEP">SIGEP</option>
+            <option value="CHEQUE">Cheque</option>
+            <option value="DEPOSITO">Depósito</option>
           </select></label>
           <label className="full">Asunto<input disabled={readOnly} value={value.asunto ?? ''} onChange={(e) => setValue((v) => ({ ...v, asunto: e.target.value || undefined }))} /></label>
           <label className="full">Condiciones comerciales<input disabled={readOnly} value={value.terms} onChange={(e) => setValue((v) => ({ ...v, terms: e.target.value }))} /></label>

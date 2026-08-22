@@ -73,16 +73,20 @@ export const cashService = {
   // Mock retail flow has never modeled orden-linked advances against a real pedido table;
   // deliberately kept minimal per the brief ("don't over-build this for mock") — it just
   // records an income movement tagged with the order id in the note.
-  registerAdvance: async (orderId: string, amountCents: number, method: 'cash' | 'qr' | 'transfer', sessionId: string) => {
+  registerAdvance: async (orderId: string, amountCents: number, method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check', sessionId: string) => {
     const session = (await rawCashService.list()).find((s) => s.id === sessionId)
     if (!session) throw new Error('Sesión de caja no encontrada')
-    const updated = await rawCashService.addMovement(session, 'income', amountCents, `Anticipo pedido ${orderId}`, method)
+    // El mock solo distingue cash/qr/transfer en su store; depósito/SIGEP/cheque se
+    // registran como 'transfer' con el detalle real en la nota (igual que registerPayment).
+    const mockMethod: 'cash' | 'qr' | 'transfer' = method === 'cash' || method === 'qr' ? method : 'transfer'
+    const extraNota = method === 'deposit' ? ' · Depósito bancario' : method === 'sigep' ? ' · SIGEP' : method === 'check' ? ' · Cheque' : ''
+    const updated = await rawCashService.addMovement(session, 'income', amountCents, `Anticipo pedido ${orderId}${extraNota}`, mockMethod)
     const movement = updated.movements[updated.movements.length - 1]
     return { movementId: movement.id }
   },
   // No real pedido/movimiento_caja link exists in the mock store; history is deliberately
   // skipped rather than faking a persistence layer that doesn't otherwise exist in mock mode.
-  getAdvancesForOrder: async (orderId: string): Promise<Array<{ id: string; amountCents: number; method: string; note: string; at: string }>> => { void orderId; return [] },
+  getAdvancesForOrder: async (orderId: string): Promise<Array<{ id: string; amountCents: number; method: string | null; note: string; at: string }>> => { void orderId; return [] },
   // Igual que registerAdvance: el mock no tiene una tabla movimiento_caja real, así que
   // depósito/SIGEP/cheque se registran como 'transfer' (el mock sólo distingue cash/qr/
   // transfer) con la nota indicando el método real. No hay puente a Hermes en modo mock.

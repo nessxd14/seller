@@ -72,7 +72,7 @@ export interface CashRepository {
   open(input:{register:string;openingCents:number},context:MutationContext&{idempotencyKey:string}):Promise<CashSessionRecord & Versioned>
   close(id:string,countedCents:number,context:MutationContext&{idempotencyKey:string}):Promise<CashSessionRecord & Versioned>
   addMovement(sessionId:string,input:{type:'income'|'expense';method:'cash'|'qr'|'transfer';amountCents:number;note:string},context:MutationContext&{idempotencyKey:string}):Promise<CashSessionRecord & Versioned>
-  registerAdvance(input:{orderId:string;amountCents:number;method:'cash'|'qr'|'transfer';sessionId:string},context:MutationContext&{idempotencyKey:string}):Promise<{movementId:string}>
+  registerAdvance(input:{orderId:string;amountCents:number;method:'cash'|'qr'|'transfer'|'deposit'|'sigep'|'check';sessionId:string},context:MutationContext&{idempotencyKey:string}):Promise<{movementId:string}>
   registerPayment(input:{customerId:string;orderId?:string;amountCents:number;method:'cash'|'qr'|'transfer'|'deposit'|'sigep'|'check';sessionId:string},context:MutationContext&{idempotencyKey:string}):Promise<{movementId:string}>
 }
 // Brief VTD: abrir_venta/completar_venta/ajustar_venta_abierta/anular_venta — deliberadamente

@@ -4,7 +4,7 @@ import type { OrderView, OrderWorkflowStatus, WorkflowLine } from '../../applica
 import { NotFoundError } from '../../application/errors/AppError'
 import {
   bpToPct, categoriaToChannel, centsToNumeric, channelToCategoria, defaultSucursalForChannel,
-  locationToSucursalId, numericToCents, sucursalIdToLocation, type CategoriaPedido,
+  locationToSucursalId, numericToCents, sucursalIdToLocation, type CategoriaPedido, type CondicionPago, type MedioPago,
 } from './mappers'
 
 type EstadoPedido = 'ABIERTO' | 'COMPLETADO' | 'CANCELADO'
@@ -34,6 +34,8 @@ interface PedidoRow {
   // Brief S-C: mismo criterio que en CotizacionRow — columnas planas, ya cubiertas por select('*').
   solicitante_id: number | null
   solicitado_por: string | null
+  condicion_pago: CondicionPago | null
+  medio_pago: MedioPago | null
 }
 
 interface PedidoLineaRow {
@@ -146,6 +148,8 @@ const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[], eventos: Ped
     creadoPor: header.creado_por ?? undefined,
     solicitanteId: header.solicitante_id != null ? String(header.solicitante_id) : undefined,
     solicitanteNombre: header.solicitado_por ?? undefined,
+    conditionPago: header.condicion_pago ?? undefined,
+    medioPago: header.medio_pago ?? undefined,
   }
 }
 
@@ -265,6 +269,8 @@ export class SupabaseOrderRepository implements OrderRepository {
       p_cliente_id: value.customerId ? Number(value.customerId) : null,
       p_descuento_general: centsToNumeric(value.generalDiscountCents ?? 0),
       p_solicitante_id: value.solicitanteId ? Number(value.solicitanteId) : null,
+      p_condicion_pago: value.conditionPago || null,
+      p_medio_pago: value.medioPago || null,
     })
     if (error) throw error
     await guardarVersionPedidoSilencioso(newId as number, 'Pedido creado', actor)
