@@ -140,6 +140,7 @@ function CustomerEditor({ customer, isNew, onClose, onSave, onGoToCustomer }: { 
   const [duplicado, setDuplicado] = useState<CustomerRecord | null>(null)
   const [candidatosSimilares, setCandidatosSimilares] = useState<ClienteSimilar[]>([])
   const documentoFaltante = !value.document.trim()
+  const requiereTope = value.type === 'institutional' || value.type === 'corporate'
 
   const usarCandidato = async (candidate: ClienteSimilar) => {
     const full = await customerRepository.getById(String(candidate.id))
@@ -179,6 +180,16 @@ function CustomerEditor({ customer, isNew, onClose, onSave, onGoToCustomer }: { 
     <label className="full">Dirección<input value={value.address} onChange={(e)=>setValue({...value,address:e.target.value})}/></label>
     <label>Condiciones de pago<input value={value.paymentTerms} onChange={(e)=>setValue({...value,paymentTerms:e.target.value})}/></label>
     <label>Límite de crédito (Bs)<NumberField min={0} value={(value.creditLimitCents ?? 0)/100} onCommit={(bs)=>setValue({...value,creditLimitCents:Math.round(bs*100)})}/></label>
+    {/* Brief S-H: solo institucional/corporativo — mismo criterio que SolicitanteField para
+        decidir si tiene sentido mostrarlo (resolver_tope/evaluar_tope ni se llaman para
+        retail/mayorista). Input numérico plano, no NumberField: acá "vacío" es un estado
+        válido y distinto de 0 (sin tope vs. tope cero), y NumberField no representa eso. */}
+    {requiereTope && (
+      <label>Tope autorizado (Bs)
+        <input type="number" min="0" step="0.01" placeholder="Sin tope" value={value.topeAutorizado ?? ''} onChange={(e)=>setValue({...value,topeAutorizado:e.target.value===''?undefined:Number(e.target.value)})}/>
+        <small className="field-required-hint">Opcional. Vacío = sin tope.</small>
+      </label>
+    )}
     {documentoFaltante && <p className="full field-required-hint">Este cliente no tiene documento cargado — completalo cuando puedas, no bloquea guardar.</p>}
     {isNew && featureFlags.supabase && (
       <div className="full">

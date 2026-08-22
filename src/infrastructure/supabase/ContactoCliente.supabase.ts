@@ -45,6 +45,9 @@ export interface NuevoContactoInput {
   cargo?: string
   telefono?: string
   email?: string
+  // Brief S-H: Bs, no centavos — mismo criterio que ContactoCliente.tope. undefined = sin
+  // tope propio (no 0); si el contacto no tiene uno, resolver_tope cae al de la institución.
+  topeAutorizado?: number
 }
 
 // Brief S-G: evaluar_tope ya arma el texto del aviso del lado de la base (motivo_advertencia)
@@ -90,6 +93,7 @@ export async function crearContacto(clienteId: string, input: NuevoContactoInput
       cargo: input.cargo?.trim() || null,
       telefono: input.telefono?.trim() || null,
       email: input.email?.trim() || null,
+      tope_autorizado: input.topeAutorizado ?? null,
       creado_por: actorId,
     })
     .select('id, nombre, cargo, telefono, email, tope_autorizado')

@@ -138,6 +138,11 @@ export interface CustomerRecord {
   origin?: 'shopify' | 'manual'
   businessName?: string
   city?: string
+  // Brief S-H: tope de la institución (cliente.tope_autorizado) — solo aplica a
+  // institutional/corporate (resolver_tope/evaluar_tope ni se llaman para retail/mayorista).
+  // Bs, no centavos — mismo criterio que ContactoCliente.tope (brief S-C/S-G), no el de
+  // creditLimitCents. undefined/null = sin tope, nunca 0.
+  topeAutorizado?: number
 }
 
 // Traslados Almacén <-> Tienda (Parte 1). Mirrors solicitud_traslado/solicitud_traslado_linea

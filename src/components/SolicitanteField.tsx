@@ -4,7 +4,7 @@ import { buscarContactos, crearContacto, type ContactoCliente } from '../infrast
 
 export interface SolicitanteValue { id: string; nombre: string }
 
-const emptyForm = { nombre: '', cargo: '', telefono: '', email: '' }
+const emptyForm = { nombre: '', cargo: '', telefono: '', email: '', tope: '' }
 
 /**
  * Brief S-C — picker de solicitante (contacto de una institución/empresa), reutilizable
@@ -58,7 +58,14 @@ export function SolicitanteField({ clienteId, value, onChange, required, actorId
     setSaving(true)
     setError('')
     try {
-      const created = await crearContacto(clienteId, creating, actorId)
+      const topeTrimmed = creating.tope.trim()
+      const created = await crearContacto(clienteId, {
+        nombre: creating.nombre,
+        cargo: creating.cargo,
+        telefono: creating.telefono,
+        email: creating.email,
+        topeAutorizado: topeTrimmed === '' ? undefined : Number(topeTrimmed),
+      }, actorId)
       onChange({ id: created.id, nombre: created.nombre })
       closeAll()
     } catch (err) {
@@ -82,6 +89,10 @@ export function SolicitanteField({ clienteId, value, onChange, required, actorId
               <label>Cargo<input value={creating.cargo} onChange={(e) => setCreating({ ...creating, cargo: e.target.value })} /></label>
               <label>Teléfono<input value={creating.telefono} onChange={(e) => setCreating({ ...creating, telefono: e.target.value })} /></label>
               <label className="full">Email<input value={creating.email} onChange={(e) => setCreating({ ...creating, email: e.target.value })} /></label>
+              <label className="full">Tope autorizado (Bs)
+                <input type="number" min="0" step="0.01" placeholder="Sin tope" value={creating.tope} onChange={(e) => setCreating({ ...creating, tope: e.target.value })} />
+                <small className="field-required-hint">Opcional. Vacío = sin tope. Si el contacto tiene uno propio, ese manda sobre el de la institución.</small>
+              </label>
             </div>
             {error && <div className="mock-note payment-error"><p>{error}</p></div>}
             <div className="customer-picker-actions">
