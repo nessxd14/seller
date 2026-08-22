@@ -40,7 +40,7 @@ export interface QuoteDraft {
   number: string
   customerId: string
   customerName: string
-  channel: Extract<SalesChannel, 'mayoreo' | 'institucional' | 'municipal'>
+  channel: Extract<SalesChannel, 'mayoreo' | 'institucional' | 'corporativo'>
   status: QuoteWorkflowStatus
   validUntil: string
   terms: string
@@ -71,7 +71,7 @@ export interface OrderView {
   number: string
   customerId?: string
   customerName: string
-  channel: Extract<SalesChannel, 'mayoreo' | 'institucional' | 'municipal'>
+  channel: Extract<SalesChannel, 'mayoreo' | 'institucional' | 'corporativo'>
   status: OrderWorkflowStatus
   createdAt: string
   sourceQuoteId?: string

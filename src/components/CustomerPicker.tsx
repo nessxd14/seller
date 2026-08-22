@@ -19,13 +19,13 @@ const emptyForm = { name: '', businessName: '', document: '', phone: '', email: 
 // Channel display-name lookup — mirrors CartPanel.tsx's existing channelNames constant
 // exactly (kept as a local duplicate rather than importing it, since CartPanel imports
 // this component, not the other way around — see report for why this wasn't hoisted).
-const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
+const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', corporativo: 'Corporativo' }
 // Brief's exact announcement copy pattern: "Canal cambiado a Mayoreo (cliente mayorista)" —
 // the parenthetical names the CUSTOMER TYPE, not the channel again.
-const customerTypeLabel = (channel: 'retail' | 'mayoreo' | 'institucional' | 'municipal') =>
-  ({ retail: 'cliente minorista', mayoreo: 'cliente mayorista', institucional: 'cliente corporativo', municipal: 'cliente institución / gobierno' })[channel]
+const customerTypeLabel = (channel: 'retail' | 'mayoreo' | 'institucional' | 'corporativo') =>
+  ({ retail: 'cliente minorista', mayoreo: 'cliente mayorista', institucional: 'cliente institución / gobierno', corporativo: 'cliente corporativo' })[channel]
 
-export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayoreo' | 'institucional' | 'municipal'; notify?: (message: string) => void }) {
+export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayoreo' | 'institucional' | 'corporativo'; notify?: (message: string) => void }) {
   const { customer, selectCustomer, setChannel } = usePos()
   const [expanded, setExpanded] = useState(false)
   const [query, setQuery] = useState('')
@@ -116,10 +116,14 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
         : {
             id: creating.id ?? (featureFlags.supabase ? '' : crypto.randomUUID()),
             name: creating.name.trim(),
-            // Brief M: categoría de cliente distinta de canal de precio — parado en la
-            // pestaña Institucional se da de alta como Corporativo (empresa privada);
-            // parado en Municipal, como Institución/gobierno.
-            type: channel === 'mayoreo' ? 'wholesale' : channel === 'institucional' ? 'corporate' : channel === 'municipal' ? 'institutional' : 'retail',
+            // Brief S-D: se invierte el mapeo de Brief M, que producía exactamente el
+            // problema que este brief corrige — el sistema sugería "Municipal" para todo
+            // cliente de gobierno (tipo_precio = 'institucion'), y el 100% de los 30
+            // documentos históricos con categoría MUNICIPAL eran clientes reales de
+            // gobierno. Ahora la pestaña coincide con el nombre: parado en Institucional
+            // se da de alta como Institución/gobierno; parado en Corporativo, como
+            // empresa privada.
+            type: channel === 'mayoreo' ? 'wholesale' : channel === 'institucional' ? 'institutional' : channel === 'corporativo' ? 'corporate' : 'retail',
             // Brief S-B: el documento nunca bloquea el guardado, alta nueva o edición —
             // sigue siendo uno de los dos mecanismos de detección de duplicados (junto con
             // la similitud por nombre), pero cargarlo es opcional en todos los casos.

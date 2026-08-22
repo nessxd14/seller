@@ -31,7 +31,7 @@
 //       verificado en vivo antes de escribir este script. tipo_precio queda
 //       DELIBERADAMENTE fuera del DO UPDATE SET: se siembra solo en el
 //       INSERT inicial, así una reclasificación manual a institucion/
-//       municipal hecha en el POS sobrevive a cada re-corrida de este
+//       corporativo hecha en el POS sobrevive a cada re-corrida de este
 //       script (mismo patrón que bootstrap_catalogo.mjs usa con `marca`).
 //    5. Imprime un reporte: creados, actualizados, sin-email, sin-teléfono,
 //       sin-nombre-utilizable.

@@ -18,8 +18,8 @@ interface Presentation { id: number; nombre: string; factorUnidadBase: number; e
 
 // TAREA 2: preciosHeredados only carries keys for the non-retail channels — retail is always
 // the fallback source, never a fallback target, so it can never be "inherited".
-const heredadoKeyForChannel = (channel: SalesChannel): 'mayoreo' | 'institucional' | 'municipal' | null =>
-  channel === 'mayoreo' || channel === 'institucional' || channel === 'municipal' ? channel : null
+const heredadoKeyForChannel = (channel: SalesChannel): 'mayoreo' | 'institucional' | 'corporativo' | null =>
+  channel === 'mayoreo' || channel === 'institucional' || channel === 'corporativo' ? channel : null
 
 /**
  * TAREA D (Tanda 5): el único campo de cantidad que quedó fuera del NumberField de la

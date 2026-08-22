@@ -131,7 +131,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
     onOrderCreated()
     notify('Pedido creado desde cotización')
   }
-  return <FeatureShell eyebrow="GESTIÓN COMERCIAL" title="Cotizaciones" subtitle="Propuestas para clientes mayoristas, institucionales y municipales" action={<button className="primary-button" onClick={create}><Plus /> Nueva cotización</button>}>
+  return <FeatureShell eyebrow="GESTIÓN COMERCIAL" title="Cotizaciones" subtitle="Propuestas para clientes mayoristas, institucionales y corporativos" action={<button className="primary-button" onClick={create}><Plus /> Nueva cotización</button>}>
     <FeatureToolbar query={query} onQuery={setQuery} placeholder="Buscar por número, cliente o estado...">
       <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}><option value="all">Todos los estados</option>{['draft','sent','negotiating','approved','rejected','expired','converted'].map((value) => <option key={value} value={value}>{statusLabel[value]}</option>)}</select>
       <input type="date" aria-label="Filtrar por fecha" />

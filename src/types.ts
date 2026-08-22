@@ -1,4 +1,4 @@
-export type SalesChannel = 'retail' | 'mayoreo' | 'institucional' | 'municipal'
+export type SalesChannel = 'retail' | 'mayoreo' | 'institucional' | 'corporativo'
 
 export interface Product {
   id: number
@@ -14,13 +14,13 @@ export interface Product {
   precioRetail: number
   precioMayoreo: number
   precioInstitucional: number
-  precioMunicipal: number
+  precioCorporativo: number
   stockTienda: number
   stockAlmacen: number
   // Which non-retail channel prices were NOT set explicitly and fell back to precioRetail
   // (Supabase adapter only — see ProductRepository.supabase.ts's precioCanal helper). Absent/
   // undefined in mock mode, where every channel price is seeded, so there is no gap to mark.
-  preciosHeredados?: { mayoreo: boolean; institucional: boolean; municipal: boolean }
+  preciosHeredados?: { mayoreo: boolean; institucional: boolean; corporativo: boolean }
   // Brief S2 — agrupar resultados de búsqueda por familia (producto.familia_id, ~32% de
   // cobertura). Ausente/undefined en modo mock y en productos sin familia asignada: esos
   // van al grupo "Otros" en vez de forzar un valor que la base no tiene.

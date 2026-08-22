@@ -9,12 +9,12 @@ import type { CustomerRecord } from '../../application/shared/models'
 
 describe('mappers', () => {
   it('round-trips channel <-> categoria', () => {
-    const channels: SalesChannel[] = ['retail', 'mayoreo', 'institucional', 'municipal']
+    const channels: SalesChannel[] = ['retail', 'mayoreo', 'institucional', 'corporativo']
     for (const channel of channels) expect(categoriaToChannel(channelToCategoria(channel))).toBe(channel)
     expect(channelToCategoria('retail')).toBe('TIENDA')
     expect(channelToCategoria('mayoreo')).toBe('MAYOR')
     expect(channelToCategoria('institucional')).toBe('INSTITUCIONAL')
-    expect(channelToCategoria('municipal')).toBe('MUNICIPAL')
+    expect(channelToCategoria('corporativo')).toBe('CORPORATIVO')
   })
 
   it('round-trips customer type <-> tipo_precio', () => {
@@ -53,13 +53,13 @@ describe('mappers', () => {
     expect(defaultSucursalForChannel('retail')).toBe(SUCURSAL_TIENDA_ID)
     expect(defaultSucursalForChannel('mayoreo')).toBe(SUCURSAL_ALMACEN_ID)
     expect(defaultSucursalForChannel('institucional')).toBe(SUCURSAL_ALMACEN_ID)
-    expect(defaultSucursalForChannel('municipal')).toBe(SUCURSAL_ALMACEN_ID)
+    expect(defaultSucursalForChannel('corporativo')).toBe(SUCURSAL_ALMACEN_ID)
   })
 
   it('maps channel to price column', () => {
     expect(channelToPriceField('retail')).toBe('precio_base')
     expect(channelToPriceField('mayoreo')).toBe('precio_mayoreo')
     expect(channelToPriceField('institucional')).toBe('precio_institucion')
-    expect(channelToPriceField('municipal')).toBe('precio_municipal')
+    expect(channelToPriceField('corporativo')).toBe('precio_corporativo')
   })
 })

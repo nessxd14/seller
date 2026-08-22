@@ -59,19 +59,19 @@ export function ProductsPage({ notify }: { notify: (message: string) => void }) 
   return <FeatureShell eyebrow="CATÁLOGO" title="Productos" subtitle="Precios por canal y disponibilidad de inventario">
     <div className="feature-toolbar"><label><Search /><input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); void runSearch(query, 1) } }} placeholder="Buscar por nombre o SKU... (Enter para buscar de inmediato)" /></label></div>
     {status === 'loading' ? <FeatureState type="skeleton" text="Cargando productos" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.length ? <FeatureState type={query ? 'no-results' : 'empty'} text="No hay productos" /> : <div className="feature-table products-table sticky-head">
-      <div className="table-head"><span>Producto</span><span>Marca</span><span>Retail</span><span>Mayoreo</span><span>Institucional</span><span>Municipal</span></div>
+      <div className="table-head"><span>Producto</span><span>Marca</span><span>Retail</span><span>Mayoreo</span><span>Institucional</span><span>Corporativo</span></div>
       {filtered.map((product) => <article key={product.id} className="clickable-row" onClick={() => openProduct(product)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') openProduct(product) }}>
         <div className="product-row-name"><ProductVisual type={product.imagen} color={product.color} small imagenUrl={product.imagenUrl} /><div><strong>{product.nombre}</strong><small>{product.sku}</small></div></div>
         <span>{product.categoria || '—'}</span>
         <span>{bs(product.precioRetail)}</span>
         <span>{bs(product.precioMayoreo)}</span>
         <span>{bs(product.precioInstitucional)}</span>
-        <span>{bs(product.precioMunicipal)}</span>
+        <span>{bs(product.precioCorporativo)}</span>
       </article>)}
       <div className="pagination-bar"><span>Página {page} de {totalPages} · {total} productos</span><button disabled={page <= 1} onClick={() => goToPage(page - 1)}><ChevronLeft size={14} /></button><button disabled={page >= totalPages} onClick={() => goToPage(page + 1)}><ChevronRight size={14} /></button></div>
     </div>}
     {selected && <Modal title={selected.nombre} subtitle={`SKU ${selected.sku}`} onClose={() => setSelected(null)}><div className="modal-body">
-      <div className="customer-metrics"><div><span>Retail</span><strong>{bs(selected.precioRetail)}</strong></div><div><span>Mayoreo</span><strong>{bs(selected.precioMayoreo)}</strong></div><div><span>Institucional</span><strong>{bs(selected.precioInstitucional)}</strong></div><div><span>Municipal</span><strong>{bs(selected.precioMunicipal)}</strong></div></div>
+      <div className="customer-metrics"><div><span>Retail</span><strong>{bs(selected.precioRetail)}</strong></div><div><span>Mayoreo</span><strong>{bs(selected.precioMayoreo)}</strong></div><div><span>Institucional</span><strong>{bs(selected.precioInstitucional)}</strong></div><div><span>Corporativo</span><strong>{bs(selected.precioCorporativo)}</strong></div></div>
       <h3><Boxes size={14} /> Disponibilidad</h3>
       {stockLoading ? <FeatureState type="loading" text="Cargando stock" /> : stock ? <div className="stock-breakdown"><div className="stock-total"><span>Saldo disponible</span><strong>{stock.saldoDisponible}</strong></div><div className="stock-by-location">{stock.onHand.length ? stock.onHand.map((row) => <div key={row.ubicacionId}><span>{locationLabel(row)}</span><strong>{row.cantidadBase}</strong></div>) : <span className="empty-hint">Sin stock registrado</span>}</div></div> : <span className="empty-hint">Sin información de stock</span>}
     </div></Modal>}

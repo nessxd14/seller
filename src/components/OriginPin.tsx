@@ -26,7 +26,7 @@ export interface OriginPinOption {
 /**
  * Shared pin-button + popover for picking a line's origin sucursal. Replaces the
  * old segmented Tienda/Almacén toggle in both CartItem.tsx (retail) and
- * DraftOrderEditor.tsx (mayoreo/institucional/municipal). Reads real sucursal
+ * DraftOrderEditor.tsx (mayoreo/institucional/corporativo). Reads real sucursal
  * names from configService.listSucursales() rather than hardcoding labels.
  */
 export function OriginPin({ value, options, onChange, ariaLabel }: {

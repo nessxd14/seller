@@ -41,7 +41,7 @@ interface CotizacionRow {
   id: number
   numero: string
   cliente_id: number | null
-  categoria: 'TIENDA' | 'MAYOR' | 'INSTITUCIONAL' | 'MUNICIPAL'
+  categoria: 'TIENDA' | 'MAYOR' | 'INSTITUCIONAL' | 'CORPORATIVO'
   referencia: string | null
   estado: EstadoCotizacion
   subtotal: number | string

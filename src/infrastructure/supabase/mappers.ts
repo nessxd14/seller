@@ -9,8 +9,8 @@ import type { CategoriaPedido } from '../../domain/orders/segmentoPedido'
 // compartida por el filtro de segmento) — se reexporta acá para no romper los imports
 // existentes desde este módulo.
 export type { CategoriaPedido }
-// Brief M: institucion (DB) -> corporativo (DB, empresas privadas), municipal (DB) ->
-// institucion (DB, gobierno/instituciones públicas). Migración aparte, ya validada.
+// Brief S-D: institucion (DB) = gobierno (licitaciones, ministerios, GAMs), corporativo
+// (DB) = empresa privada u ONG. 'municipal' se retiró — ver mappers.test.ts.
 export type TipoPrecioCliente = 'retail' | 'mayorista' | 'corporativo' | 'institucion'
 
 export const SUCURSAL_ALMACEN_ID = 1
@@ -22,7 +22,7 @@ export const channelToCategoria = (channel: SalesChannel): CategoriaPedido => {
     case 'retail': return 'TIENDA'
     case 'mayoreo': return 'MAYOR'
     case 'institucional': return 'INSTITUCIONAL'
-    case 'municipal': return 'MUNICIPAL'
+    case 'corporativo': return 'CORPORATIVO'
   }
 }
 
@@ -31,7 +31,7 @@ export const categoriaToChannel = (categoria: CategoriaPedido): SalesChannel => 
     case 'TIENDA': return 'retail'
     case 'MAYOR': return 'mayoreo'
     case 'INSTITUCIONAL': return 'institucional'
-    case 'MUNICIPAL': return 'municipal'
+    case 'CORPORATIVO': return 'corporativo'
   }
 }
 
@@ -71,7 +71,7 @@ export const locationToSucursalId = (location: 'Tienda' | 'Almacén'): number =>
 export const sucursalIdToLocation = (sucursalId: number | null | undefined): 'Tienda' | 'Almacén' =>
   sucursalId === SUCURSAL_TIENDA_ID ? 'Tienda' : 'Almacén'
 
-/** Default sucursal_origen_id per channel: TIENDA -> Tienda(2); MAYOR/INST/MUNICIPAL -> Almacén(1) */
+/** Default sucursal_origen_id per channel: TIENDA -> Tienda(2); MAYOR/INST/CORPORATIVO -> Almacén(1) */
 export const defaultSucursalForChannel = (channel: SalesChannel): number =>
   channel === 'retail' ? SUCURSAL_TIENDA_ID : SUCURSAL_ALMACEN_ID
 
@@ -148,11 +148,11 @@ export const tipoMovimientoToType = (tipo: TipoMovimientoCaja): 'income' | 'expe
 /** Which producto.precio_* column to use for a channel. */
 export const channelToPriceField = (
   channel: SalesChannel
-): 'precio_base' | 'precio_mayoreo' | 'precio_institucion' | 'precio_municipal' => {
+): 'precio_base' | 'precio_mayoreo' | 'precio_institucion' | 'precio_corporativo' => {
   switch (channel) {
     case 'retail': return 'precio_base'
     case 'mayoreo': return 'precio_mayoreo'
     case 'institucional': return 'precio_institucion'
-    case 'municipal': return 'precio_municipal'
+    case 'corporativo': return 'precio_corporativo'
   }
 }

@@ -12,13 +12,13 @@ describe('PosContext.clearOperation — suspender/solicitar traslado no deben de
     act(() => {
       // id no numérico: evita el fetch a consultarSaldos (rama esAcreedor) — acá
       // solo importa el reseteo de campos, no la consulta a Hermes.
-      result.current.selectCustomer({ id: 'no-numeric', name: 'Alcaldía Municipal', documento: 'NIT-123' })
-      result.current.setChannel('municipal')
+      result.current.selectCustomer({ id: 'no-numeric', name: 'Droguería Inti', documento: 'NIT-123' })
+      result.current.setChannel('corporativo')
       result.current.setMode('traslado')
     })
 
-    expect(result.current.customer?.name).toBe('Alcaldía Municipal')
-    expect(result.current.channel).toBe('municipal')
+    expect(result.current.customer?.name).toBe('Droguería Inti')
+    expect(result.current.channel).toBe('corporativo')
     expect(result.current.mode).toBe('traslado')
 
     act(() => {

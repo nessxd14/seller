@@ -1,4 +1,4 @@
-import { Building2, Landmark, Minus, Pencil, Plus, Warehouse, X } from 'lucide-react'
+import { Briefcase, Building2, Minus, Pencil, Plus, Warehouse, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { QuoteDraft, WorkflowLine } from '../../application/shared/models'
 import type { CustomerRecord } from '../../application/shared/models'
@@ -27,13 +27,13 @@ type EditableChannel = QuoteDraft['channel']
 const channelTabs: { id: EditableChannel; label: string; icon: typeof Warehouse }[] = [
   { id: 'mayoreo', label: 'Mayoreo', icon: Warehouse },
   { id: 'institucional', label: 'Institucional', icon: Building2 },
-  { id: 'municipal', label: 'Municipal', icon: Landmark },
+  { id: 'corporativo', label: 'Corporativo', icon: Briefcase },
 ]
 
 const priceForChannel = (product: Product, channel: EditableChannel) =>
-  channel === 'mayoreo' ? product.precioMayoreo : channel === 'institucional' ? product.precioInstitucional : product.precioMunicipal
+  channel === 'mayoreo' ? product.precioMayoreo : channel === 'institucional' ? product.precioInstitucional : product.precioCorporativo
 
-const defaultSourceForChannel = (): 'Tienda' | 'Almacén' => 'Almacén' // MAYOR/INST/MUNICIPAL all default to Almacén
+const defaultSourceForChannel = (): 'Tienda' | 'Almacén' => 'Almacén' // MAYOR/INST/CORPORATIVO all default to Almacén
 
 const lineTotalCents = (line: WorkflowLine) => Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000)
 
@@ -138,7 +138,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       ...v,
       customerId: customer.id,
       customerName: customer.name,
-      channel: (customer.usualChannel === 'mayoreo' || customer.usualChannel === 'institucional' || customer.usualChannel === 'municipal') ? customer.usualChannel : v.channel,
+      channel: (customer.usualChannel === 'mayoreo' || customer.usualChannel === 'institucional' || customer.usualChannel === 'corporativo') ? customer.usualChannel : v.channel,
       // Brief S-C: un solicitante de la institución anterior no es válido para la nueva
       // (la base lo rechazaría igual, pero mejor no dejar que se intente).
       solicitanteId: undefined,

@@ -8,7 +8,7 @@ import { aggregateStockBySucursal } from '../features/inventory/stockAggregation
 import { featureFlags } from '../config/featureFlags'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const channelLabels: Record<SalesChannel, string> = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
+const channelLabels: Record<SalesChannel, string> = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', corporativo: 'Corporativo' }
 
 interface Presentation { id: number; nombre: string; factorUnidadBase: number; esBase: boolean }
 
@@ -42,7 +42,7 @@ export function ProductInfoPopover({ product }: { product: Product }) {
     return () => { cancelled = true }
   }, [open, product.id, product.stockTienda, product.stockAlmacen])
 
-  const channels: SalesChannel[] = ['retail', 'mayoreo', 'institucional', 'municipal']
+  const channels: SalesChannel[] = ['retail', 'mayoreo', 'institucional', 'corporativo']
 
   return <>
     <button

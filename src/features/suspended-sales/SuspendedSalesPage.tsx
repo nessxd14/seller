@@ -7,7 +7,7 @@ import type { QuoteDraft } from '../../application/shared/models'
 
 export type { SuspendedSale }
 
-const channelLabel: Record<string, string> = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
+const channelLabel: Record<string, string> = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', corporativo: 'Corporativo' }
 
 // Brief S11 Bloque C2: total de una cotización — misma fórmula que QuotationsPage (línea
 // neta de descuento por línea, menos el descuento general del encabezado).

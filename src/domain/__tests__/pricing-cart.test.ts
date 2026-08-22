@@ -6,7 +6,7 @@ import { isLineUnderstocked } from '../sales/stockCheck'
 
 describe('precios y carrito', () => {
   it('cambia precio por canal', () => {
-    const prices = { retailCents: 1850, wholesaleCents: 1620, institutionalCents: 1580, municipalCents: 1580 }
+    const prices = { retailCents: 1850, wholesaleCents: 1620, institutionalCents: 1580, corporativoCents: 1580 }
     expect(resolveMockChannelPrice('retail', prices).cents).toBe(1850)
     expect(resolveMockChannelPrice('mayoreo', prices).cents).toBe(1620)
     expect(resolveMockChannelPrice('institucional', prices).cents).toBe(1580)
