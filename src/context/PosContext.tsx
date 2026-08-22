@@ -20,7 +20,7 @@ export type PosMode = 'venta' | 'traslado' | 'ventaDirecta'
 
 /**
  * TAREA 1 (Tanda 4): default de origen por línea. Retail sugiere Tienda; mayoreo/
- * institucional/municipal sugieren Almacén (son ventas grandes, y ahí es donde vive el
+ * institucional/corporativo sugieren Almacén (son ventas grandes, y ahí es donde vive el
  * volumen — ver el caso de Goma Eva Azul: 520 uds. en Almacén, 0 en Tienda). Un cliente
  * ACREEDOR (cuenta corriente en Hermes) siempre sugiere Tienda sin importar el canal —
  * es la ubicación desde la que efectivamente se le entrega. En todos los casos es una
@@ -225,7 +225,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     const item: CartItem = {
       id, sku: '', codigoBarra: '', codigoFabrica: '', nombre: input.descripcion, descripcion: input.descripcion,
       categoria: '', imagen: '', color: '',
-      precioRetail: input.precio, precioMayoreo: input.precio, precioInstitucional: input.precio, precioMunicipal: input.precio,
+      precioRetail: input.precio, precioMayoreo: input.precio, precioInstitucional: input.precio, precioCorporativo: input.precio,
       stockTienda: 0, stockAlmacen: 0,
       cantidad: Math.max(1, Math.floor(input.cantidad)), precioAplicado: Math.max(0, input.precio), descuento: 0,
       ubicacion: 'Tienda', observacion: '', motivoPrecio: '', origenManual: true, precioModificado: true,

@@ -35,7 +35,7 @@ const orderTotal = (order: OrderView) =>
     (sum, line) => sum + Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000),
     0
   )
-const channelNames: Record<string, string> = { mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
+const channelNames: Record<string, string> = { mayoreo: 'Mayoreo', institucional: 'Institucional', corporativo: 'Corporativo' }
 
 // Brief P1 Tarea 4: persiste durante la sesión (sessionStorage, mismo patrón que
 // PosContext), nunca entre sesiones.
@@ -47,7 +47,7 @@ const segmentoLabel: Record<SegmentoPedido, string> = { retail: 'Retail', wholes
 type ConteosSegmento = { retail: number; wholesale: number; todos: number }
 
 const contarPorSegmento = (items: OrderView[]): ConteosSegmento => {
-  const porCategoria: Record<CategoriaPedido, number> = { TIENDA: 0, MAYOR: 0, INSTITUCIONAL: 0, MUNICIPAL: 0 }
+  const porCategoria: Record<CategoriaPedido, number> = { TIENDA: 0, MAYOR: 0, INSTITUCIONAL: 0, CORPORATIVO: 0 }
   for (const order of items) porCategoria[channelToCategoria(order.channel)]++
   const sumar = (categorias: CategoriaPedido[]) => categorias.reduce((sum, c) => sum + porCategoria[c], 0)
   return { retail: sumar(SEGMENTOS_PEDIDO.retail), wholesale: sumar(SEGMENTOS_PEDIDO.wholesale), todos: items.length }

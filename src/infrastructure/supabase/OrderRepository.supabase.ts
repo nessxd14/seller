@@ -21,7 +21,7 @@ const estadoPedidoToStatus = (estado: EstadoPedido): OrderWorkflowStatus => {
 interface PedidoRow {
   id: number
   numero: string
-  categoria: 'TIENDA' | 'MAYOR' | 'INSTITUCIONAL' | 'MUNICIPAL'
+  categoria: 'TIENDA' | 'MAYOR' | 'INSTITUCIONAL' | 'CORPORATIVO'
   referencia: string | null
   estado: EstadoPedido
   creado_por: string | null

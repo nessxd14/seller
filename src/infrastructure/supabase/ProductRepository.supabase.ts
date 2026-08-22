@@ -12,7 +12,7 @@ interface ProductoRow {
   precio_base: number | string | null
   precio_mayoreo: number | string | null
   precio_institucion: number | string | null
-  precio_municipal: number | string | null
+  precio_corporativo: number | string | null
   activo: boolean
   imagen_url: string | null
   stock_min: number | string | null
@@ -28,7 +28,7 @@ const num = (value: number | string | null | undefined): number => (value == nul
 
 /**
  * Channel-price resolution with retail fallback (TAREA 2, option a confirmed by Ness): a
- * missing precio_mayoreo/precio_institucion/precio_municipal must NEVER be charged as Bs 0 —
+ * missing precio_mayoreo/precio_institucion/precio_corporativo must NEVER be charged as Bs 0 —
  * it falls back to precio_base (retail) and is flagged as "heredado" (inherited, not
  * negotiated) so the UI can mark it distinctly from a real, deliberately-set channel price.
  * Never applied to retail itself — retail has no fallback target, it IS the fallback source.
@@ -40,7 +40,7 @@ const rowToProduct = (row: ProductoRow, codes?: { barra?: string; fabrica?: stri
   const retail = num(row.precio_base)
   const mayoreo = precioCanal(row.precio_mayoreo, retail)
   const institucional = precioCanal(row.precio_institucion, retail)
-  const municipal = precioCanal(row.precio_municipal, retail)
+  const corporativo = precioCanal(row.precio_corporativo, retail)
   return {
     id: row.id,
     sku: row.sku_interno ?? String(row.id),
@@ -55,10 +55,10 @@ const rowToProduct = (row: ProductoRow, codes?: { barra?: string; fabrica?: stri
     precioRetail: retail,
     precioMayoreo: mayoreo.precio,
     precioInstitucional: institucional.precio,
-    precioMunicipal: municipal.precio,
+    precioCorporativo: corporativo.precio,
     stockTienda: 0,
     stockAlmacen: 0,
-    preciosHeredados: { mayoreo: mayoreo.heredado, institucional: institucional.heredado, municipal: municipal.heredado },
+    preciosHeredados: { mayoreo: mayoreo.heredado, institucional: institucional.heredado, corporativo: corporativo.heredado },
     // Brief S2: agrupar resultados de búsqueda por familia (el caso "goma eva" — variantes
     // del mismo artículo dispersas). Solo 32% de cobertura (ver comentario histórico en
     // ProductCatalog.tsx) — la mayoría de los productos no tiene familia, y eso está bien:
@@ -116,7 +116,7 @@ const fetchBarcodeCodes = async (productIds: number[]): Promise<Map<number, { ba
   return result
 }
 
-const PRODUCT_COLUMNS = 'id,nombre,sku_interno,marca,unidad_base,precio_base,precio_mayoreo,precio_institucion,precio_municipal,activo,imagen_url,stock_min,punto_reorden,familia_id,familia(nombre)'
+const PRODUCT_COLUMNS = 'id,nombre,sku_interno,marca,unidad_base,precio_base,precio_mayoreo,precio_institucion,precio_corporativo,activo,imagen_url,stock_min,punto_reorden,familia_id,familia(nombre)'
 
 export class SupabaseProductRepository implements ProductRepository {
   async search(input: { query?: string; category?: string; active?: boolean; page: PageRequest }): Promise<Page<Product>> {

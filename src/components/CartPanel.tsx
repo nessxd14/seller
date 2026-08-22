@@ -35,7 +35,7 @@ import { NumberField } from './NumberField'
 import { addSuspendedSale, readSuspendedSales, removeSuspendedSale } from '../infrastructure/local/suspendedSales'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', municipal: 'Municipal' }
+const channelNames = { retail: 'Retail', mayoreo: 'Mayoreo', institucional: 'Institucional', corporativo: 'Corporativo' }
 const fmtQty = (n: number) => n.toLocaleString('es-BO', { maximumFractionDigits: 2 })
 
 // TAREA 12 (Tanda 3): ver el comentario en el useBorrador de más abajo.
@@ -120,7 +120,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // modo libre y todavía no se inventaría".
   const [originStock, setOriginStock] = useState<Record<number, StockControlInfo>>({})
   // TAREA 1 (Tanda 4): antes solo se fetcheaba en retail-venta o traslado, dejando
-  // mayoreo/institucional/municipal sin selector de origen NI aviso de stock — el
+  // mayoreo/institucional/corporativo sin selector de origen NI aviso de stock — el
   // origen quedaba fijo en 'Tienda' pase lo que pase. Ahora se fetchea en cualquier
   // canal, siempre que haya carrito (mode ya solo puede ser 'venta' o 'traslado').
   useEffect(() => {

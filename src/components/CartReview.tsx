@@ -10,8 +10,8 @@ import { isLineUnpriced } from '../domain/sales/priceCheck'
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
 
-const heredadoKeyForChannel = (channel: SalesChannel): 'mayoreo' | 'institucional' | 'municipal' | null =>
-  channel === 'mayoreo' || channel === 'institucional' || channel === 'municipal' ? channel : null
+const heredadoKeyForChannel = (channel: SalesChannel): 'mayoreo' | 'institucional' | 'corporativo' | null =>
+  channel === 'mayoreo' || channel === 'institucional' || channel === 'corporativo' ? channel : null
 
 /**
  * TAREA 5 — pre-checkout review. Optional detour: the existing "Cobrar" button keeps

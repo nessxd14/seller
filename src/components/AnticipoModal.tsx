@@ -11,7 +11,7 @@ const money = (value: number) => value.toLocaleString('es-BO', { minimumFraction
  * — solo exige que venga uno de los dos. cashService.registerPayment ya llama esa RPC con
  * p_cliente_id (y p_pedido_id null cuando no se pasa orderId), así que este modal la reusa
  * en vez de duplicar la llamada — es exactamente lo que "Registrar anticipo" institucional/
- * municipal necesita: cliente + caja abierta, sin pedido previo.
+ * corporativo necesita: cliente + caja abierta, sin pedido previo.
  *
  * Sin parámetro de idempotencia (no existe en registrar_anticipo, a diferencia de
  * registrar_venta) — alcanza con deshabilitar el botón mientras la promesa está en vuelo.

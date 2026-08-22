@@ -30,13 +30,13 @@ const rowToCustomer = (row: ClienteRow): CustomerRecord & Versioned => ({
   address: row.direccion ?? '',
   // cliente has no notion of "usual channel" / credit terms in this schema; these
   // fields are UI-only conveniences preserved for compatibility with mock consumers.
-  // Brief M: el fallback `: row.tipo_precio` funcionaba antes por coincidencia (retail y
-  // municipal eran valores válidos de SalesChannel) — con el rename, 'corporativo' ya no
-  // lo es. Mapeo explícito que preserva el mismo canal de precio por defecto que cada
-  // categoría tenía antes del rename.
+  // Brief S-D: el sistema sugería 'municipal' para todo cliente institucion (gobierno) —
+  // el 100% de los 30 documentos históricos con categoría MUNICIPAL eran en realidad
+  // clientes de gobierno mal encaminados por esta sugerencia. Mapeo corregido: institucion
+  // (gobierno) sugiere institucional, corporativo (empresa privada) sugiere corporativo.
   usualChannel: row.tipo_precio === 'mayorista' ? 'mayoreo'
-    : row.tipo_precio === 'corporativo' ? 'institucional'
-    : row.tipo_precio === 'institucion' ? 'municipal'
+    : row.tipo_precio === 'corporativo' ? 'corporativo'
+    : row.tipo_precio === 'institucion' ? 'institucional'
     : 'retail',
   paymentTerms: 'Contado',
   origin: row.origen === 'shopify' ? 'shopify' : 'manual',
