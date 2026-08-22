@@ -51,7 +51,11 @@ export interface QuoteDraft {
   // Item 3 bonus: quote-only fields backed by cotizacion.asunto/condicion_pago/fecha.
   // Optional/additive — undefined in mock mode and for older quote rows.
   asunto?: string
-  conditionPago?: 'CONTADO' | 'PAGO_PARCIAL' | 'SIGEP' | 'TRANSFERENCIA_BANCARIA' | 'QR'
+  // Brief S-E: dos ejes separados — conditionPago (CONTADO/CREDITO, término de pago) y
+  // medioPago (cómo se paga: efectivo/QR/transferencia/SIGEP/cheque/depósito). Antes un
+  // solo campo mezclaba ambos (p. ej. 'SIGEP' como si fuera una condición de pago).
+  conditionPago?: 'CONTADO' | 'CREDITO'
+  medioPago?: 'EFECTIVO' | 'QR' | 'TRANSFERENCIA' | 'SIGEP' | 'CHEQUE' | 'DEPOSITO'
   documentDate?: string
   // Brief S3 — cotizacion.creado_por (email). Resolver contra `perfil` para un nombre
   // legible; el email es el respaldo si no hay perfil (ver PerfilRepository.supabase.ts).
@@ -108,6 +112,10 @@ export interface OrderView {
   // congelado al crear el pedido, nunca re-resuelto contra cliente_contacto.
   solicitanteId?: string
   solicitanteNombre?: string
+  // Brief S-E: heredados de la cotización de origen al convertir (o mandados directo al
+  // crear pedido sin pasar por cotización) — mismo par de campos que QuoteDraft.
+  conditionPago?: 'CONTADO' | 'CREDITO'
+  medioPago?: 'EFECTIVO' | 'QR' | 'TRANSFERENCIA' | 'SIGEP' | 'CHEQUE' | 'DEPOSITO'
 }
 
 export interface CustomerRecord {

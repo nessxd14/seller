@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { OrderView, OrderWorkflowStatus } from '../../application/shared/models'
 import { authSessionProvider, cashService, orderService, sensitiveOperations } from '../../infrastructure/services'
 import { formatMoney, money } from '../../domain/common/money'
-import { FeatureShell, FeatureState, FeatureToolbar, statusChipClass, statusLabel } from '../shared/FeatureShell'
+import { FeatureShell, FeatureState, FeatureToolbar, condicionPagoLabel, statusChipClass, statusLabel } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
 import { NumberField } from '../../components/NumberField'
 import { DocumentoExportable } from '../../components/DocumentoExportable'
@@ -15,7 +15,7 @@ import { decidirEliminacionPedido } from '../../domain/orders/deletionDecision'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
 import { registrarPago } from '../../infrastructure/hermes/client'
 import { pendienteSyncHermesPagoRepository } from '../../infrastructure/supabase/PendienteSyncHermesPagoRepository'
-import { methodExtToMedioHermes, channelToCategoria } from '../../infrastructure/supabase/mappers'
+import { methodExtToMedioHermes, channelToCategoria, type PosPaymentMethodExt } from '../../infrastructure/supabase/mappers'
 import { categoriasDeSegmento, SEGMENTOS_PEDIDO, type CategoriaPedido, type SegmentoPedido } from '../../domain/orders/segmentoPedido'
 import { useRoute } from '../../router/useRoute'
 import { navigate } from '../../router/history'
@@ -36,6 +36,7 @@ const orderTotal = (order: OrderView) =>
     0
   )
 const channelNames: Record<string, string> = { mayoreo: 'Mayoreo', institucional: 'Institucional', corporativo: 'Corporativo' }
+const metodoPagoLabel: Record<string, string> = { EFECTIVO: 'Efectivo', QR: 'QR', TRANSFERENCIA: 'Transferencia', SIGEP: 'SIGEP', CHEQUE: 'Cheque', DEPOSITO: 'Depósito' }
 
 // Brief P1 Tarea 4: persiste durante la sesión (sessionStorage, mismo patrón que
 // PosContext), nunca entre sesiones.
@@ -76,7 +77,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   const [deliveryNote, setDeliveryNote] = useState<OrderView | null>(null)
   const [orderDoc, setOrderDoc] = useState<OrderView | null>(null)
   const [advanceOpen, setAdvanceOpen] = useState(false)
-  const [advances, setAdvances] = useState<Array<{ id: string; amountCents: number; method: string; note: string; at: string }>>([])
+  const [advances, setAdvances] = useState<Array<{ id: string; amountCents: number; method: string | null; note: string; at: string }>>([])
   const [reasonModal, setReasonModal] = useState<{ action: 'cancel' | 'restore'; order: OrderView } | null>(null)
   // Brief S11 Bloque B: conteo de versiones por pedido (para resaltar filas editadas en
   // la grilla), versiones del pedido seleccionado (navegador), y la versión que se está
@@ -172,7 +173,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   // pago_aplicacion se quedaba vacía por más que la pantalla dijera que todo salió bien.
   // Mismo patrón fire-and-forget que PagoModal.syncHermesPago: el anticipo ya quedó
   // confirmado en Cation antes de que esto corra, un fallo acá solo encola un reintento.
-  const syncAnticipoHermes = async (movementId: string, clienteId: string, amountCents: number, metodo: 'cash' | 'qr' | 'transfer', pedidoId: string) => {
+  const syncAnticipoHermes = async (movementId: string, clienteId: string, amountCents: number, metodo: PosPaymentMethodExt, pedidoId: string) => {
     if (!featureFlags.supabase) return
     let usuarioPos = 'pos'
     try {
@@ -201,7 +202,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       }
     }
   }
-  const registerAdvance = async (amountCents: number, method: 'cash' | 'qr' | 'transfer') => {
+  const registerAdvance = async (amountCents: number, method: PosPaymentMethodExt) => {
     if (!selected || !sessionId) return
     const { movementId } = await cashService.registerAdvance(selected.id, amountCents, method, sessionId)
     if (selected.customerId) void syncAnticipoHermes(movementId, selected.customerId, amountCents, method, selected.id)
@@ -288,7 +289,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
           <span>{order.customerName}{order.solicitanteNombre && <small className="channel-chip">Solicitante: {order.solicitanteNombre}</small>}</span>
           <span>{order.asunto || (order.sourceQuoteNumber ? `origen ${order.sourceQuoteNumber}` : '—')}</span>
           <span className="channel-chip">{channelNames[order.channel] ?? order.channel}</span>
-          <span className={`status-chip ${statusChipClass(order.status)}`}>{statusLabel[order.status]}</span>
+          <span><span className={`status-chip ${statusChipClass(order.status)}`}>{statusLabel[order.status]}</span>{order.conditionPago && <small className="channel-chip">{condicionPagoLabel[order.conditionPago]}</small>}</span>
           <div><div className="progress"><span style={{ width: `${requested ? prepared / requested * 100 : 0}%` }} /></div><small>{prepared}/{requested}</small></div>
           <strong>{formatMoney(money(total))}</strong>
           <span>{new Date(order.createdAt).toLocaleDateString('es-BO')}</span>
@@ -298,6 +299,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     {selected && <Modal title={selected.number} subtitle={selected.customerName} onClose={() => navigate('/')}><div className="modal-body order-detail">
       <div className="panel-top-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={featureFlags.supabase && !sessionId} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button></div>
       <div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong>{statusLabel[selected.status]}</strong></div></div>
+      {selected.conditionPago && <div className="autoria-row"><span className="channel-chip">{condicionPagoLabel[selected.conditionPago]}</span>{selected.medioPago && <span className="channel-chip">{metodoPagoLabel[selected.medioPago] ?? selected.medioPago}</span>}</div>}
       {/* Brief S3 Parte B: autoría — quién creó el pedido, y si nació de una conversión,
           quién convirtió (mismo campo: crear_pedido con cotizacion_origen_id corre como
           el usuario que convierte) con enlace a la cotización de origen. */}
@@ -348,12 +350,12 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
         </div>
       )}
       <h3>Historial</h3><div className="timeline">{selected.events.map((event,index) => <div key={`${event.at}-${index}`}><CheckCircle2 /><span><strong>{event.label}</strong><small>{event.at} · {event.detail}</small></span></div>)}</div>
-      {<><h3>Anticipos</h3>{advances.length ? <div className="timeline">{advances.map((advance) => <div key={advance.id}><HandCoins /><span><strong>{formatMoney(money(advance.amountCents))} · {advance.method}</strong><small>{new Date(advance.at).toLocaleString('es-BO')}</small></span></div>)}</div> : <FeatureState type="empty" text="Sin anticipos registrados" />}{featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar un anticipo.</p>}</>}
+      {<><h3>Anticipos</h3>{advances.length ? <div className="timeline">{advances.map((advance) => <div key={advance.id}><HandCoins /><span><strong>{formatMoney(money(advance.amountCents))} · {advance.method ? (metodoPagoLabel[advance.method] ?? advance.method) : '—'}</strong><small>{new Date(advance.at).toLocaleString('es-BO')}</small></span></div>)}</div> : <FeatureState type="empty" text="Sin anticipos registrados" />}{featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar un anticipo.</p>}</>}
     </div><footer className="modal-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}>Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}>Nota de entrega A4</button>{selected.status === 'cancelled' ? <button className="primary-button" onClick={() => setReasonModal({ action: 'restore', order: selected })}><RotateCcw /> Restaurar</button> : <button className="danger-button" disabled={hasDispatchedLines(selected)} title={hasDispatchedLines(selected) ? 'No se puede anular: tiene líneas despachadas' : undefined} onClick={() => setReasonModal({ action: 'cancel', order: selected })}><XCircle /> Anular pedido</button>}{!featureFlags.supabase && <button className="primary-button" disabled={!['preparing','ready'].includes(selected.status)} onClick={() => dispatch(selected)}><Truck /> Despacho parcial</button>}{featureFlags.supabase && <button className="danger-button" onClick={() => void openDeleteCheck(selected)}><Trash2 /> Eliminar pedido</button>}</footer></Modal>}
     {advanceOpen && selected && <AdvanceModal onClose={()=>setAdvanceOpen(false)} onConfirm={registerAdvance}/>}
     {reasonModal && <ReasonModal action={reasonModal.action} orderNumber={reasonModal.order.number} onClose={()=>setReasonModal(null)} onConfirm={confirmReason}/>}
-    {deliveryNote && <DocumentoExportable mode="nota-entrega" doc={{ number: deliveryNote.number, customerName: deliveryNote.customerName, channel: deliveryNote.channel, lines: deliveryNote.lines, generalDiscountCents: deliveryNote.generalDiscountCents, asunto: deliveryNote.asunto, sourceQuoteNumber: deliveryNote.sourceQuoteNumber }} onClose={()=>setDeliveryNote(null)} />}
-    {orderDoc && <DocumentoExportable mode="pedido" doc={{ number: orderDoc.number, customerName: orderDoc.customerName, channel: orderDoc.channel, lines: orderDoc.lines, generalDiscountCents: orderDoc.generalDiscountCents, asunto: orderDoc.asunto, sourceQuoteNumber: orderDoc.sourceQuoteNumber }} onClose={()=>setOrderDoc(null)} />}
+    {deliveryNote && <DocumentoExportable mode="nota-entrega" doc={{ number: deliveryNote.number, customerName: deliveryNote.customerName, channel: deliveryNote.channel, lines: deliveryNote.lines, generalDiscountCents: deliveryNote.generalDiscountCents, conditionPago: deliveryNote.conditionPago, medioPago: deliveryNote.medioPago, asunto: deliveryNote.asunto, sourceQuoteNumber: deliveryNote.sourceQuoteNumber }} onClose={()=>setDeliveryNote(null)} />}
+    {orderDoc && <DocumentoExportable mode="pedido" doc={{ number: orderDoc.number, customerName: orderDoc.customerName, channel: orderDoc.channel, lines: orderDoc.lines, generalDiscountCents: orderDoc.generalDiscountCents, conditionPago: orderDoc.conditionPago, medioPago: orderDoc.medioPago, asunto: orderDoc.asunto, sourceQuoteNumber: orderDoc.sourceQuoteNumber }} onClose={()=>setOrderDoc(null)} />}
     {deleteModalOpen && selected && <DeletePedidoModal orderNumber={selected.number} check={deleteCheck} onClose={() => setDeleteModalOpen(false)} onConfirm={confirmDelete} />}
   </FeatureShell>
 }
@@ -373,13 +375,18 @@ function ReasonModal({ action, orderNumber, onClose, onConfirm }: { action: 'can
   </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className={action === 'cancel' ? 'danger-button' : 'primary-button'} disabled={!valid || saving} onClick={()=>void submit()}>{title}</button></footer></Modal>
 }
 
-function AdvanceModal({onClose,onConfirm}:{onClose:()=>void;onConfirm:(amountCents:number,method:'cash'|'qr'|'transfer')=>void}) {
+// Brief S-E: mismos 6 métodos reales que PagoModal.tsx ofrece — antes solo 3
+// (cash/qr/transfer), aunque el enum de la base ya distinguía los 6.
+const metodoAnticipoLabels: Record<PosPaymentMethodExt, string> = { cash: 'Efectivo', qr: 'QR', deposit: 'Depósito', transfer: 'Transferencia', sigep: 'SIGEP', check: 'Cheque' }
+const metodoAnticipoOrder: PosPaymentMethodExt[] = ['cash', 'qr', 'deposit', 'transfer', 'sigep', 'check']
+
+function AdvanceModal({onClose,onConfirm}:{onClose:()=>void;onConfirm:(amountCents:number,method:PosPaymentMethodExt)=>void}) {
   const [amount,setAmount]=useState(0)
-  const [method,setMethod]=useState<'cash'|'qr'|'transfer'>('cash')
+  const [method,setMethod]=useState<PosPaymentMethodExt>('cash')
   const valid = amount > 0
   return <Modal title="Registrar anticipo" onClose={onClose}><div className="modal-body form-grid">
     <label className="full">Monto (Bs)<NumberField autoFocus min={0} step={0.01} value={amount/100} onCommit={(bs)=>setAmount(Math.round(bs*100))}/></label>
-    <label className="full">Método<select value={method} onChange={(e)=>setMethod(e.target.value as 'cash'|'qr'|'transfer')}><option value="cash">Efectivo</option><option value="qr">QR</option><option value="transfer">Transferencia</option></select></label>
+    <label className="full">Método<select value={method} onChange={(e)=>setMethod(e.target.value as PosPaymentMethodExt)}>{metodoAnticipoOrder.map((m) => <option key={m} value={m}>{metodoAnticipoLabels[m]}</option>)}</select></label>
   </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid} onClick={()=>onConfirm(amount,method)}>Confirmar</button></footer></Modal>
 }
 

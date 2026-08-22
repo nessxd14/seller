@@ -75,8 +75,15 @@ export const sucursalIdToLocation = (sucursalId: number | null | undefined): 'Ti
 export const defaultSucursalForChannel = (channel: SalesChannel): number =>
   channel === 'retail' ? SUCURSAL_TIENDA_ID : SUCURSAL_ALMACEN_ID
 
-export type MetodoPago = 'EFECTIVO' | 'QR' | 'TRANSFERENCIA'
+export type MetodoPago = 'EFECTIVO' | 'QR' | 'TRANSFERENCIA' | 'SIGEP' | 'CHEQUE' | 'DEPOSITO'
 export type PosPaymentMethod = 'cash' | 'qr' | 'transfer'
+
+// Brief S-E: dos ejes separados en cotizacion/pedido — condicion_pago (CONTADO/CREDITO,
+// término de pago) y medio_pago (cómo se paga, mismos 6 valores reales que metodo_pago).
+// Antes un solo campo condicion_pago mezclaba ambos ejes (p. ej. 'SIGEP' como si fuera una
+// condición), lo que hacía imposible expresar "crédito a 30 días, pagado por transferencia".
+export type CondicionPago = 'CONTADO' | 'CREDITO'
+export type MedioPago = MetodoPago
 
 /** POS payment method ('cash'/'qr'/'transfer') -> backend metodo_pago enum. */
 export const methodToMetodoPago = (method: PosPaymentMethod): MetodoPago => {
@@ -96,30 +103,21 @@ export const metodoPagoToMethod = (metodo: MetodoPago | null | undefined): PosPa
   }
 }
 
-// El enum metodo_pago en producción solo tiene EFECTIVO/QR/TRANSFERENCIA — depósito, SIGEP
-// y cheque no existen ahí (SIGEP es un valor de condicion_pago, un enum distinto para
-// términos de pago, no de método). Para "Registrar pago" el cajero elige entre 6 métodos,
-// pero del lado de Cation se guardan en el mismo bucket TRANSFERENCIA que ya existe —
-// el detalle real se preserva en la nota del movimiento y, del lado de Hermes, en el
-// campo medio (texto libre, sin esa restricción).
+// Brief S-E: el enum metodo_pago en producción ahora tiene los 6 valores reales
+// (EFECTIVO, QR, TRANSFERENCIA, SIGEP, CHEQUE, DEPOSITO) — antes solo tenía
+// EFECTIVO/QR/TRANSFERENCIA y depósito/SIGEP/cheque se bucketeaban como TRANSFERENCIA,
+// preservando el detalle real solo en la nota del movimiento. Ya no hace falta bucketear.
 export type PosPaymentMethodExt = PosPaymentMethod | 'deposit' | 'sigep' | 'check'
 
-/** POS payment method extendido -> backend metodo_pago enum (bucket, ver nota arriba). */
+/** POS payment method extendido -> backend metodo_pago enum (mapeo 1 a 1, sin bucket). */
 export const methodExtToMetodoPago = (method: PosPaymentMethodExt): MetodoPago => {
   switch (method) {
     case 'cash': return 'EFECTIVO'
     case 'qr': return 'QR'
-    default: return 'TRANSFERENCIA'
-  }
-}
-
-/** Nota a anexar en movimiento_caja para los métodos que el enum no distingue. */
-export const methodExtNotaExtra = (method: PosPaymentMethodExt): string | undefined => {
-  switch (method) {
-    case 'deposit': return 'Depósito bancario'
+    case 'transfer': return 'TRANSFERENCIA'
     case 'sigep': return 'SIGEP'
-    case 'check': return 'Cheque'
-    default: return undefined
+    case 'check': return 'CHEQUE'
+    case 'deposit': return 'DEPOSITO'
   }
 }
 

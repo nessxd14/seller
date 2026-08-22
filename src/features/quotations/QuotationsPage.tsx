@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { QuoteDraft, QuoteWorkflowStatus } from '../../application/shared/models'
 import { orderService, quoteService, sensitiveOperations } from '../../infrastructure/services'
 import { formatMoney, money } from '../../domain/common/money'
-import { FeatureShell, FeatureState, FeatureToolbar, statusChipClass, statusLabel } from '../shared/FeatureShell'
+import { FeatureShell, FeatureState, FeatureToolbar, condicionPagoLabel, statusChipClass, statusLabel } from '../shared/FeatureShell'
 import { DraftOrderEditor } from './DraftOrderEditor'
 import { DocumentoExportable } from '../../components/DocumentoExportable'
 import { featureFlags } from '../../config/featureFlags'
@@ -102,6 +102,8 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
       // footer del total; sin esto el pedido nacía con descuento 0.
       generalDiscountCents: quote.generalDiscountCents,
       solicitanteId: quote.solicitanteId,
+      conditionPago: quote.conditionPago,
+      medioPago: quote.medioPago,
       lines: quote.lines.map((line) => ({ ...line, prepared: 0, allocations: [] })),
       events: [],
     })
@@ -146,7 +148,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
           <div><strong className="doc-number-cell">{quote.number}</strong><small>{new Date(quote.createdAt).toLocaleDateString('es-BO')}</small></div>
           <div><strong>{quote.customerName}</strong><small className="channel-chip">{quote.channel}</small>{quote.solicitanteNombre && <small className="channel-chip">Solicitante: {quote.solicitanteNombre}</small>}</div>
           <span>{quote.asunto || '—'}</span>
-          <span className={`status-chip ${statusChipClass(quote.status)}`}>{statusLabel[quote.status]}</span>
+          <span><span className={`status-chip ${statusChipClass(quote.status)}`}>{statusLabel[quote.status]}</span>{quote.conditionPago && <small className="channel-chip">{condicionPagoLabel[quote.conditionPago]}</small>}</span>
           <span>{nearExpiry ? <span className="vigencia-warning"><AlertTriangle />{days < 0 ? 'Vencida' : `${quote.validUntil} (${days} d)`}</span> : quote.validUntil}</span>
           <strong>{formatMoney(money(Math.max(0,total(quote))))}</strong>
           <div className="row-actions"><button title="Vista previa / exportar" onClick={() => setPreview(quote)}><Eye /></button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => navigate(cotizacionPath(quote.id))}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title={quote.customerId ? 'Convertir en pedido' : 'Sin cliente — abrí la cotización y elegí uno'} onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
@@ -154,6 +156,6 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
       })}
     </div>}
     {editing && <DraftOrderEditor quote={editing} isExistingQuote={editingIsExisting} onClose={closeEditor} onSave={save} onCreateOrder={createOrderDirect} onConvert={editingIsExisting ? convert : undefined} />}
-    {preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, asunto: preview.asunto, documentDate: preview.documentDate, generalDiscountCents: preview.generalDiscountCents }} onClose={() => setPreview(null)} />}
+    {preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, medioPago: preview.medioPago, asunto: preview.asunto, documentDate: preview.documentDate, generalDiscountCents: preview.generalDiscountCents }} onClose={() => setPreview(null)} />}
   </FeatureShell>
 }

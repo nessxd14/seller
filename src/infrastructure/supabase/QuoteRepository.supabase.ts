@@ -4,7 +4,7 @@ import type { QuoteDraft, QuoteWorkflowStatus, WorkflowLine } from '../../applic
 import { ConflictError, NotFoundError } from '../../application/errors/AppError'
 import {
   bpToPct, categoriaToChannel, centsToNumeric, channelToCategoria, defaultSucursalForChannel,
-  locationToSucursalId, numericToCents, pctToBp, sucursalIdToLocation,
+  locationToSucursalId, numericToCents, pctToBp, sucursalIdToLocation, type CondicionPago, type MedioPago,
 } from './mappers'
 
 type EstadoCotizacion = 'BORRADOR' | 'APROBADA' | 'CONVERTIDA' | 'VENCIDA' | 'ANULADA'
@@ -35,8 +35,6 @@ const statusToEstado = (status: QuoteWorkflowStatus): EstadoCotizacion => {
   }
 }
 
-type CondicionPago = 'CONTADO' | 'PAGO_PARCIAL' | 'SIGEP' | 'TRANSFERENCIA_BANCARIA' | 'QR'
-
 interface CotizacionRow {
   id: number
   numero: string
@@ -56,6 +54,7 @@ interface CotizacionRow {
   cliente?: { nombre: string } | null
   asunto: string | null
   condicion_pago: CondicionPago | null
+  medio_pago: MedioPago | null
   fecha: string | null
   // Brief S-C: solicitante_id (vivo, id de cliente_contacto) y solicitado_por (nombre
   // congelado al guardar) — ambos columnas planas de cotizacion, ya cubiertas por select('*').
@@ -129,6 +128,7 @@ const rowToQuoteDraft = (header: CotizacionRow, lines: CotizacionLineaRow[]): Qu
   updatedAt: header.actualizado_en ?? header.creado_en,
   asunto: header.asunto ?? undefined,
   conditionPago: header.condicion_pago ?? undefined,
+  medioPago: header.medio_pago ?? undefined,
   documentDate: header.fecha ?? undefined,
   creadoPor: header.creado_por ?? undefined,
   solicitanteId: header.solicitante_id != null ? String(header.solicitante_id) : undefined,
@@ -239,6 +239,7 @@ export class SupabaseQuoteRepository implements QuoteRepository {
         p_usuario: actor,
         p_asunto: value.asunto || null,
         p_condicion_pago: value.conditionPago || null,
+        p_medio_pago: value.medioPago || null,
         p_fecha: value.documentDate || null,
         p_solicitante_id: value.solicitanteId ? Number(value.solicitanteId) : null,
       })
@@ -279,6 +280,7 @@ export class SupabaseQuoteRepository implements QuoteRepository {
       p_vigencia_hasta: value.validUntil || null,
       p_asunto: value.asunto || null,
       p_condicion_pago: value.conditionPago || null,
+      p_medio_pago: value.medioPago || null,
       p_fecha: value.documentDate || null,
       p_usuario: actor,
       p_solicitante_id: value.solicitanteId ? Number(value.solicitanteId) : null,

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   bpToPct, categoriaToChannel, centsToNumeric, channelToCategoria, channelToPriceField,
-  customerTypeToTipoPrecio, defaultSucursalForChannel, locationToSucursalId, numericToCents,
-  pctToBp, sucursalIdToLocation, tipoPrecioToCustomerType, SUCURSAL_ALMACEN_ID, SUCURSAL_TIENDA_ID,
+  customerTypeToTipoPrecio, defaultSucursalForChannel, locationToSucursalId, methodExtToMetodoPago,
+  numericToCents, pctToBp, sucursalIdToLocation, tipoPrecioToCustomerType,
+  SUCURSAL_ALMACEN_ID, SUCURSAL_TIENDA_ID, type PosPaymentMethodExt,
 } from './mappers'
 import type { SalesChannel } from '../../domain/common/types'
 import type { CustomerRecord } from '../../application/shared/models'
@@ -61,5 +62,19 @@ describe('mappers', () => {
     expect(channelToPriceField('mayoreo')).toBe('precio_mayoreo')
     expect(channelToPriceField('institucional')).toBe('precio_institucion')
     expect(channelToPriceField('corporativo')).toBe('precio_corporativo')
+  })
+
+  // Brief S-E: los 6 valores reales del enum metodo_pago, mapeados 1 a 1 — sin bucketear
+  // depósito/SIGEP/cheque como TRANSFERENCIA como se hacía antes de la migración.
+  it('maps extended payment method to metodo_pago 1 a 1, sin bucketear', () => {
+    const cases: Array<[PosPaymentMethodExt, string]> = [
+      ['cash', 'EFECTIVO'],
+      ['qr', 'QR'],
+      ['transfer', 'TRANSFERENCIA'],
+      ['sigep', 'SIGEP'],
+      ['check', 'CHEQUE'],
+      ['deposit', 'DEPOSITO'],
+    ]
+    for (const [method, expected] of cases) expect(methodExtToMetodoPago(method)).toBe(expected)
   })
 })

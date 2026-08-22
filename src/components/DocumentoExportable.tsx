@@ -16,6 +16,7 @@ export interface ExportableDoc {
   lines: WorkflowLine[]
   validUntil?: string
   conditionPago?: string
+  medioPago?: string
   asunto?: string
   documentDate?: string
   /** Descuento general del encabezado, en centavos. Ausente = sin descuento. */
@@ -25,12 +26,19 @@ export interface ExportableDoc {
   sourceQuoteNumber?: string
 }
 
+// Brief S-E: condición (CONTADO/CREDITO) y medio de pago (cómo se paga) son dos ejes
+// separados desde acá en más — antes un solo campo condicion_pago mezclaba ambos.
 const conditionPagoLabel: Record<string, string> = {
   CONTADO: 'Contado',
-  PAGO_PARCIAL: 'Pago parcial',
-  SIGEP: 'SIGEP',
-  TRANSFERENCIA_BANCARIA: 'Transferencia bancaria',
+  CREDITO: 'Crédito',
+}
+const medioPagoLabel: Record<string, string> = {
+  EFECTIVO: 'Efectivo',
   QR: 'QR',
+  TRANSFERENCIA: 'Transferencia',
+  SIGEP: 'SIGEP',
+  CHEQUE: 'Cheque',
+  DEPOSITO: 'Depósito',
 }
 
 const lineTotalCents = (line: WorkflowLine) => Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000)
@@ -169,10 +177,11 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
           )}
           <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))))}</strong></div>
         </footer>
-        {(doc.validUntil || doc.conditionPago) && (
+        {(doc.validUntil || doc.conditionPago || doc.medioPago) && (
           <div className="doc-footer-notes">
             {doc.validUntil && <span>Vigencia: {doc.validUntil}</span>}
             {doc.conditionPago && <span>Condición de pago: {conditionPagoLabel[doc.conditionPago] ?? doc.conditionPago}</span>}
+            {doc.medioPago && <span>Medio de pago: {medioPagoLabel[doc.medioPago] ?? doc.medioPago}</span>}
           </div>
         )}
         {/* Brief S11 Bloque A: sello y firma superpuestos (el sello pisa un poco la

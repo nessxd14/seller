@@ -2,7 +2,7 @@ import { supabase } from './supabaseClient'
 import type { CashRepository, MutationContext, Page, PageRequest, Versioned } from '../../application/ports/repositories'
 import type { CashSessionRecord } from '../../application/shared/models'
 import { NotFoundError } from '../../application/errors/AppError'
-import { centsToNumeric, methodToMetodoPago, metodoPagoToMethod, methodExtToMetodoPago, methodExtNotaExtra, numericToCents, tipoMovimientoToType, type MetodoPago, type PosPaymentMethodExt } from './mappers'
+import { centsToNumeric, methodToMetodoPago, metodoPagoToMethod, methodExtToMetodoPago, numericToCents, tipoMovimientoToType, type MetodoPago, type PosPaymentMethodExt } from './mappers'
 
 // TAREA 10 (Tanda 3): el esquema es multi-caja (ver `caja`, ConfigPage lista todas), pero
 // hoy solo hay una caja habilitada operando este POS — simplificación deliberada, no un
@@ -89,10 +89,13 @@ export const getOpenSession = async (): Promise<(CashSessionRecord & Versioned) 
   return fetchSession(data.id as number)
 }
 
-export const getAdvancesForOrder = async (orderId: string): Promise<Array<{ id: string; amountCents: number; method: string; note: string; at: string }>> => {
+// Brief S-E: se devuelve el MetodoPago crudo (los 6 valores reales), no el bucket de
+// 3 vías de metodoPagoToMethod — con el enum real ya distinguiendo SIGEP/CHEQUE/DEPOSITO,
+// colapsarlos acá mentiría en la pantalla de anticipos del pedido.
+export const getAdvancesForOrder = async (orderId: string): Promise<Array<{ id: string; amountCents: number; method: string | null; note: string; at: string }>> => {
   const { data, error } = await supabase.from('movimiento_caja').select('*').eq('pedido_id', Number(orderId)).order('creado_en', { ascending: false })
   if (error) throw error
-  return ((data ?? []) as MovimientoCajaRow[]).map((m) => ({ id: String(m.id), amountCents: numericToCents(num(m.monto)), method: metodoPagoToMethod(m.metodo), note: m.nota ?? '', at: m.creado_en }))
+  return ((data ?? []) as MovimientoCajaRow[]).map((m) => ({ id: String(m.id), amountCents: numericToCents(num(m.monto)), method: m.metodo, note: m.nota ?? '', at: m.creado_en }))
 }
 
 export class SupabaseCashRepository implements CashRepository {
@@ -156,7 +159,7 @@ export class SupabaseCashRepository implements CashRepository {
     return updated
   }
 
-  async registerAdvance(input: { orderId: string; amountCents: number; method: 'cash' | 'qr' | 'transfer'; sessionId: string }, context: MutationContext): Promise<{ movementId: string }> {
+  async registerAdvance(input: { orderId: string; amountCents: number; method: PosPaymentMethodExt; sessionId: string }, context: MutationContext): Promise<{ movementId: string }> {
     const actor = context.actorId ?? 'pos'
     // registrar_anticipo ahora recibe p_cliente_id (segundo parámetro) — se manda null
     // explícito acá porque este flujo (anticipo desde un pedido) no lo necesita, la RPC
@@ -166,7 +169,7 @@ export class SupabaseCashRepository implements CashRepository {
       p_pedido_id: Number(input.orderId),
       p_cliente_id: null,
       p_monto: centsToNumeric(input.amountCents),
-      p_metodo: methodToMetodoPago(input.method),
+      p_metodo: methodExtToMetodoPago(input.method),
       p_sesion_id: Number(input.sessionId),
       p_usuario: actor,
     })
@@ -192,21 +195,6 @@ export class SupabaseCashRepository implements CashRepository {
       ({ data: movementId, error } = await supabase.rpc('registrar_anticipo', rpcParams))
     }
     if (error) throw error
-    // El pago ya quedó registrado — si esta nota cosmética falla, no vale la pena
-    // reportarlo como error al cajero.
-    const nota = methodExtNotaExtra(input.method)
-    if (nota) {
-      try {
-        // TAREA 11 (Tanda 3): esto ANTES reemplazaba la nota entera con `nota` (el extra
-        // de depósito/SIGEP/cheque), perdiendo la nota original que registrar_anticipo ya
-        // había escrito (p. ej. "Anticipo pedido #123"). Se concatena.
-        const { data: current } = await supabase.from('movimiento_caja').select('nota').eq('id', movementId).maybeSingle()
-        const notaFinal = current?.nota ? `${current.nota} · ${nota}` : nota
-        await supabase.from('movimiento_caja').update({ nota: notaFinal }).eq('id', movementId)
-      } catch {
-        // ver comentario arriba
-      }
-    }
     return { movementId: String(movementId) }
   }
 }

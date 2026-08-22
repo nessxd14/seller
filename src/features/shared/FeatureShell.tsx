@@ -16,6 +16,11 @@ export function FeatureState({ type, text, rows = 4 }: { type: 'loading' | 'skel
 
 export const statusLabel: Record<string, string> = { draft: 'Borrador', sent: 'Enviada', negotiating: 'Negociando', approved: 'Aprobada', rejected: 'Rechazada', expired: 'Vencida', converted: 'Convertida', confirmed: 'Confirmado', awaiting_stock: 'Esperando stock', reserved: 'Reservado', preparing: 'Preparando', ready: 'Listo', dispatched: 'Despachado', delivered: 'Entregado', cancelled: 'Cancelado' }
 
+// Brief S-E: chip corto de condición de pago en listados/detalle de pedidos y
+// cotizaciones — solo se muestra cuando conditionPago viene especificado (documentos
+// viejos o sin especificar quedan en null y no muestran chip, nunca un valor inventado).
+export const condicionPagoLabel: Record<string, string> = { CONTADO: 'Contado', CREDITO: 'Crédito' }
+
 // Semantic 3-bucket status color system, shared across Pedidos/Cotizaciones/Inventario.
 const statusOk = new Set(['approved', 'converted', 'confirmed', 'delivered', 'ready', 'dispatched', 'ok'])
 const statusPending = new Set(['draft', 'sent', 'negotiating', 'awaiting_stock', 'reserved', 'preparing', 'low-stock'])
