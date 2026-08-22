@@ -47,6 +47,40 @@ export interface NuevoContactoInput {
   email?: string
 }
 
+// Brief S-G: evaluar_tope ya arma el texto del aviso del lado de la base (motivo_advertencia)
+// a propósito, para que Seller y Conciliador digan siempre lo mismo sobre el mismo hecho —
+// se muestra tal cual acá, sin reescribirlo ni resumirlo. origen ('CONTACTO'/'INSTITUCION'/
+// 'SIN_TOPE') no se muestra aparte: ya está incorporado en el texto de motivoAdvertencia.
+export interface TopeEvaluacion {
+  dentroDelTope: boolean
+  tope: number | null
+  origen: 'CONTACTO' | 'INSTITUCION' | 'SIN_TOPE'
+  motivoAdvertencia: string | null
+}
+
+interface TopeRow {
+  dentro_del_tope: boolean
+  tope: number | string | null
+  origen: 'CONTACTO' | 'INSTITUCION' | 'SIN_TOPE'
+  motivo_advertencia: string | null
+}
+
+export async function evaluarTope(clienteId: string, contactoId: string, montoCents: number): Promise<TopeEvaluacion> {
+  const { data, error } = await supabase.rpc('evaluar_tope', {
+    p_cliente_id: Number(clienteId),
+    p_contacto_id: Number(contactoId),
+    p_monto: Math.round(montoCents) / 100,
+  })
+  if (error) throw error
+  const row = (Array.isArray(data) ? data[0] : data) as TopeRow | null
+  return {
+    dentroDelTope: row?.dentro_del_tope !== false,
+    tope: row?.tope != null ? Number(row.tope) : null,
+    origen: row?.origen ?? 'SIN_TOPE',
+    motivoAdvertencia: row?.motivo_advertencia ?? null,
+  }
+}
+
 export async function crearContacto(clienteId: string, input: NuevoContactoInput, actorId: string): Promise<ContactoCliente> {
   const { data, error } = await supabase
     .from('cliente_contacto')
