@@ -1,4 +1,4 @@
-import { Briefcase, Building2, Minus, Pencil, Plus, Warehouse, X } from 'lucide-react'
+import { AlertTriangle, Briefcase, Building2, Minus, Pencil, Plus, Warehouse, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { QuoteDraft, WorkflowLine } from '../../application/shared/models'
 import type { CustomerRecord } from '../../application/shared/models'
@@ -21,6 +21,7 @@ import { requiereCotizacionOrigen } from '../../domain/quotations/requiereCotiza
 import { ProductQuickAdd } from '../../components/ProductQuickAdd'
 import { AutoriaBadge } from '../../components/AutoriaBadge'
 import { SolicitanteField } from '../../components/SolicitanteField'
+import { evaluarTope } from '../../infrastructure/supabase/ContactoCliente.supabase'
 
 type EditableChannel = QuoteDraft['channel']
 
@@ -72,6 +73,9 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const [actorId, setActorId] = useState('pos')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  // Brief S-G: aviso ámbar, no bloqueo — evaluar_tope ya arma el texto (motivo_advertencia),
+  // se muestra tal cual. null = dentro del tope o nada que evaluar (sin solicitante todavía).
+  const [topeWarning, setTopeWarning] = useState<string | null>(null)
   // Brief H — useBorrador: autosave de la cotización. Desactivado en solo-lectura (nada
   // que autoguardar ahí); si queda un borrador viejo de otra cotización nueva sin
   // terminar, igual se ofrece — el banner es por tipo de formulario, no por registro.
@@ -130,6 +134,24 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
 
   const subtotalCents = value.lines.reduce((sum, line) => sum + lineTotalCents(line), 0)
   const totalCents = Math.max(0, subtotalCents - value.generalDiscountCents)
+
+  // Brief S-G: se recalcula cada vez que cambia el solicitante o el total (se agregan/sacan
+  // líneas, cambia el descuento) — no solo una vez al abrir el formulario. Debounce corto
+  // (mismo patrón 300ms que ya usan CustomerPicker/SolicitanteField) para no disparar una
+  // llamada por cada línea tocada en una edición rápida.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- limpia el aviso al instante cuando cambia el cliente/solicitante (Ej. se deselecciona), sin esperar al debounce de abajo
+    if (!featureFlags.supabase || !value.customerId || !value.solicitanteId) { setTopeWarning(null); return }
+    const customerId = value.customerId
+    const solicitanteId = value.solicitanteId
+    let cancelled = false
+    const handle = setTimeout(() => {
+      void evaluarTope(customerId, solicitanteId, totalCents)
+        .then((resultado) => { if (!cancelled) setTopeWarning(resultado.dentroDelTope ? null : resultado.motivoAdvertencia) })
+        .catch(() => { if (!cancelled) setTopeWarning(null) })
+    }, 350)
+    return () => { cancelled = true; clearTimeout(handle) }
+  }, [value.customerId, value.solicitanteId, totalCents])
 
   const setChannel = (channel: EditableChannel) => setValue((v) => ({ ...v, channel }))
 
@@ -405,6 +427,9 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
               actorId={actorId}
             />
           )}
+          {/* Brief S-G: aviso, no bloqueo — nunca gatea "Guardar"/"Crear pedido"/"Convertir".
+              motivo_advertencia se muestra tal cual, sin reescribirlo. */}
+          {topeWarning && <div className="full tope-warning-banner" role="status"><AlertTriangle size={14} /><span>{topeWarning}</span></div>}
           <label>Vigencia<input type="date" disabled={readOnly} value={value.validUntil} onChange={(e) => setValue((v) => ({ ...v, validUntil: e.target.value }))} /></label>
           <label>Fecha<input type="date" disabled={readOnly} value={value.documentDate ?? ''} onChange={(e) => setValue((v) => ({ ...v, documentDate: e.target.value || undefined }))} /></label>
           <label>Descuento general (Bs)<NumberField min={0} disabled={readOnly} value={value.generalDiscountCents / 100} onCommit={(bs) => setValue((v) => ({ ...v, generalDiscountCents: Math.round(bs * 100) }))} /></label>

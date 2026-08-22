@@ -9,3 +9,21 @@
 .solicitante-field .customer-select {
   margin: 6px 0 0;
 }
+
+/* Brief S-G: aviso de tope superado — ámbar, no bloqueo. Mismo tono ya usado para avisos
+   no bloqueantes en el resto del repo (.version-readonly-banner en pos-ajustes.css,
+   .mock-note en styles.css: background #fff2de-#fff6e6, texto #a76a19-#a36c20) —
+   reutilizado acá en vez de inventar un tono nuevo. */
+.tope-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff2de;
+  color: #a76a19;
+  border-radius: 9px;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: -2px;
+}
+.tope-warning-banner svg { width: 14px; flex-shrink: 0 }
