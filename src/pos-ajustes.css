@@ -94,6 +94,12 @@
 .order-row-flag-deleted{background:#fae8e5;color:#ad4b3c}
 .order-row-flag-edited{background:#fff2c2;color:#a76a19}
 
+/* Brief S-I Tarea 3 — líneas CAMBIADA/RECHAZADO/RETIRADA en el detalle del pedido: mismo
+   criterio visual que order-row-deleted (opaco), más tachado para diferenciarlas de una
+   línea activa a simple vista sin depender solo de la opacidad. */
+.order-line-inactive{opacity:.55;text-decoration:line-through}
+.order-line-inactive-badge{text-decoration:none;font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:#fae8e5;color:#ad4b3c;margin-left:6px}
+
 /* Brief S11 Bloque B2 — navegador de versiones del pedido. */
 .version-nav{display:flex;align-items:center;gap:10px;background:#f5f2ed;border-radius:10px;padding:9px 12px;margin-bottom:10px}
 .version-nav button{border:1px solid #ddd8cf;background:#fff;border-radius:7px;width:28px;height:28px;display:grid;place-items:center}

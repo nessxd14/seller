@@ -33,6 +33,11 @@ export interface WorkflowLine {
   // views and the editor keep showing it regardless of this field. Irrelevant when
   // isCustomItem is true (there, `name` already IS the free-text descripcion).
   maskName?: string
+  // Brief S-I Tarea 3: estado real de pedido_linea (Supabase mode únicamente — mock queda
+  // undefined, sin líneas RECHAZADO/CAMBIADA/RETIRADA que distinguir). Las acciones que
+  // producen estos tres estados se disparan desde Almacén (brief aparte); acá es de solo
+  // lectura, para dar tratamiento visual distinto a una línea activa.
+  lineStatus?: 'POR_DESPACHAR' | 'DESPACHADA' | 'PENDIENTE' | 'COMPRADO_DIRECTO' | 'ESPECIAL' | 'RECHAZADO' | 'CAMBIADA' | 'RETIRADA'
 }
 
 export interface QuoteDraft {

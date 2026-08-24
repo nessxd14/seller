@@ -1,19 +1,22 @@
-import { CheckCircle2, ChevronLeft, ChevronRight, HandCoins, PackageCheck, Pencil, Trash2, Truck, XCircle, RotateCcw, ArrowUpDown, FileDown } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, HandCoins, PackageCheck, PackagePlus, Pencil, Trash2, Truck, XCircle, RotateCcw, ArrowUpDown, FileDown } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { OrderView, OrderWorkflowStatus } from '../../application/shared/models'
-import { authSessionProvider, cashService, orderService, sensitiveOperations } from '../../infrastructure/services'
+import type { OrderView, OrderWorkflowStatus, WorkflowLine } from '../../application/shared/models'
+import { authSessionProvider, cashService, orderService, productRepository, sensitiveOperations } from '../../infrastructure/services'
 import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState, FeatureToolbar, condicionPagoLabel, statusChipClass, statusLabel } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
 import { NumberField } from '../../components/NumberField'
 import { DocumentoExportable } from '../../components/DocumentoExportable'
+import { ProductQuickAdd } from '../../components/ProductQuickAdd'
+import type { Product } from '../../types'
 import { featureFlags } from '../../config/featureFlags'
 import { useCashSession } from '../../context/CashSessionContext'
 import { contarVersionesPedidos, eliminarPedido, listVersionesPedido, puedeEliminarsePedido, type PedidoVersion, type PuedeEliminarsePedido } from '../../infrastructure/supabase/OrderAdmin.supabase'
+import { buildLineasJsonb } from '../../infrastructure/supabase/OrderRepository.supabase'
 import { diffVersionLines } from '../../domain/orders/versionDiff'
 import { decidirEliminacionPedido } from '../../domain/orders/deletionDecision'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
-import { registrarPago } from '../../infrastructure/hermes/client'
+import { registrarPago, agregarLineasPedido, AgregarLineasHttpError } from '../../infrastructure/hermes/client'
 import { pendienteSyncHermesPagoRepository } from '../../infrastructure/supabase/PendienteSyncHermesPagoRepository'
 import { methodExtToMedioHermes, channelToCategoria, type PosPaymentMethodExt } from '../../infrastructure/supabase/mappers'
 import { categoriasDeSegmento, SEGMENTOS_PEDIDO, type CategoriaPedido, type SegmentoPedido } from '../../domain/orders/segmentoPedido'
@@ -36,7 +39,15 @@ const orderTotal = (order: OrderView) =>
     0
   )
 const channelNames: Record<string, string> = { mayoreo: 'Mayoreo', institucional: 'Institucional', corporativo: 'Corporativo' }
+const priceForOrderChannel = (product: Product, channel: OrderView['channel']) =>
+  channel === 'mayoreo' ? product.precioMayoreo : channel === 'institucional' ? product.precioInstitucional : channel === 'corporativo' ? product.precioCorporativo : product.precioRetail
 const metodoPagoLabel: Record<string, string> = { EFECTIVO: 'Efectivo', QR: 'QR', TRANSFERENCIA: 'Transferencia', SIGEP: 'SIGEP', CHEQUE: 'Cheque', DEPOSITO: 'Depósito' }
+
+// Brief S-I Tarea 3: las acciones que producen estos tres estados (Rechazar/Cambiar/Restar)
+// se disparan desde Almacén — acá solo se muestran, distintas de una línea activa.
+const lineaEstadoLabel: Record<string, string> = { RECHAZADO: 'Rechazada', CAMBIADA: 'Cambiada', RETIRADA: 'Retirada' }
+const lineaInactiva = (status?: string): boolean =>
+  status === 'RECHAZADO' || status === 'CAMBIADA' || status === 'RETIRADA'
 
 // Brief P1 Tarea 4: persiste durante la sesión (sessionStorage, mismo patrón que
 // PosContext), nunca entre sesiones.
@@ -77,6 +88,10 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   const [deliveryNote, setDeliveryNote] = useState<OrderView | null>(null)
   const [orderDoc, setOrderDoc] = useState<OrderView | null>(null)
   const [advanceOpen, setAdvanceOpen] = useState(false)
+  // Brief S-I: "Agregar ítems" — agrega líneas a un pedido ya armado, encadenando
+  // agregar_lineas_pedido (Cation) con procesar_adicion_pedido (Hermes) vía el endpoint
+  // propio (api/hermes/agregar-lineas-pedido.ts).
+  const [addItemsOpen, setAddItemsOpen] = useState(false)
   const [advances, setAdvances] = useState<Array<{ id: string; amountCents: number; method: string | null; note: string; at: string }>>([])
   const [reasonModal, setReasonModal] = useState<{ action: 'cancel' | 'restore'; order: OrderView } | null>(null)
   // Brief S11 Bloque B: conteo de versiones por pedido (para resaltar filas editadas en
@@ -210,6 +225,31 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     notify('Anticipo registrado')
     setAdvances(await cashService.getAdvancesForOrder(selected.id))
   }
+  // Brief S-I: el mensaje distingue MISMA_PARTIDA (nada especial que avisar) de
+  // PARTIDA_HIJA (una nueva entrega nació porque el pedido ya había salido parcialmente
+  // — el cajero tiene que saberlo, no es un detalle interno).
+  const submitAddItems = async (lines: WorkflowLine[], motivo: string) => {
+    if (!selected) return
+    const lineasJsonb = buildLineasJsonb(lines, selected.channel)
+    try {
+      const resultado = await agregarLineasPedido({ pedidoId: selected.id, lineas: lineasJsonb, motivo: motivo || undefined })
+      setAddItemsOpen(false)
+      await load()
+      notify(
+        resultado.camino === 'PARTIDA_HIJA'
+          ? `Se generó la Entrega ${resultado.entregaNumero ?? ''} — el pedido ya había salido parcialmente.`
+          : 'Se agregó al pedido.'
+      )
+    } catch (error) {
+      if (error instanceof AgregarLineasHttpError && error.cationOk) {
+        // Las líneas ya quedaron agregadas en Cation (paso anterior, no se revierte) —
+        // el pedido tiene que reflejarlas aunque el paso de Hermes haya fallado.
+        setAddItemsOpen(false)
+        await load()
+      }
+      notify(error instanceof Error ? error.message : 'No se pudieron agregar los ítems al pedido')
+    }
+  }
   const toggleSort = (key: SortKey) => { if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setSortDir('asc') } }
   const filtered = useMemo(() => {
     const list = orders.filter((order) =>
@@ -297,7 +337,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       })}
     </div>}
     {selected && <Modal title={selected.number} subtitle={selected.customerName} onClose={() => navigate('/')}><div className="modal-body order-detail">
-      <div className="panel-top-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={featureFlags.supabase && !sessionId} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button></div>
+      <div className="panel-top-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={featureFlags.supabase && !sessionId} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button>{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && <button className="secondary-button" onClick={()=>setAddItemsOpen(true)}><PackagePlus /> Agregar ítems</button>}</div>
       <div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong>{statusLabel[selected.status]}</strong></div></div>
       {selected.conditionPago && <div className="autoria-row"><span className="channel-chip">{condicionPagoLabel[selected.conditionPago]}</span>{selected.medioPago && <span className="channel-chip">{metodoPagoLabel[selected.medioPago] ?? selected.medioPago}</span>}</div>}
       {/* Brief S3 Parte B: autoría — quién creó el pedido, y si nació de una conversión,
@@ -325,8 +365,8 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
         <p className="version-readonly-banner">Estás viendo una versión anterior — no es la vigente, solo lectura. <button type="button" onClick={() => setViewingVersionIndex(null)}>Volver a la vigente</button></p>
       )}
       {viewingCurrent ? <>
-        {selected.lines.filter((line) => !line.isCustomItem).map((line) => <article key={line.id}><header><div><strong>{line.name}</strong><small>{line.sku}{line.sourceLocation ? ` · Origen: ${line.sourceLocation}` : ''}</small></div><span>{line.prepared}/{line.quantity} preparadas</span></header><div className="allocation-bars">{line.allocations.map((allocation) => <div key={allocation.location}><span>{allocation.location}</span><b>{allocation.quantity} uds.</b></div>)}</div></article>)}
-        {selected.lines.some((line) => line.isCustomItem) && <><h3>Ítems especiales / a pedido</h3>{selected.lines.filter((line) => line.isCustomItem).map((line) => <article key={line.id}><header><div><strong>{line.name}</strong><small>Personalizado</small></div><span>{line.prepared}/{line.quantity} preparadas</span></header></article>)}</>}
+        {selected.lines.filter((line) => !line.isCustomItem).map((line) => <article key={line.id} className={lineaInactiva(line.lineStatus) ? 'order-line-inactive' : ''}><header><div><strong>{line.name}</strong><small>{line.sku}{line.sourceLocation ? ` · Origen: ${line.sourceLocation}` : ''}</small>{lineaInactiva(line.lineStatus) && <span className="order-line-inactive-badge">{lineaEstadoLabel[line.lineStatus!]}</span>}</div><span>{line.prepared}/{line.quantity} preparadas</span></header><div className="allocation-bars">{line.allocations.map((allocation) => <div key={allocation.location}><span>{allocation.location}</span><b>{allocation.quantity} uds.</b></div>)}</div></article>)}
+        {selected.lines.some((line) => line.isCustomItem) && <><h3>Ítems especiales / a pedido</h3>{selected.lines.filter((line) => line.isCustomItem).map((line) => <article key={line.id} className={lineaInactiva(line.lineStatus) ? 'order-line-inactive' : ''}><header><div><strong>{line.name}</strong><small>Personalizado</small>{lineaInactiva(line.lineStatus) && <span className="order-line-inactive-badge">{lineaEstadoLabel[line.lineStatus!]}</span>}</div><span>{line.prepared}/{line.quantity} preparadas</span></header></article>)}</>}
       </> : viewedVersion && (
         <div className="version-lines">
           {viewedVersion.lineas.map((linea) => {
@@ -353,6 +393,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       {<><h3>Anticipos</h3>{advances.length ? <div className="timeline">{advances.map((advance) => <div key={advance.id}><HandCoins /><span><strong>{formatMoney(money(advance.amountCents))} · {advance.method ? (metodoPagoLabel[advance.method] ?? advance.method) : '—'}</strong><small>{new Date(advance.at).toLocaleString('es-BO')}</small></span></div>)}</div> : <FeatureState type="empty" text="Sin anticipos registrados" />}{featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar un anticipo.</p>}</>}
     </div><footer className="modal-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}>Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}>Nota de entrega A4</button>{selected.status === 'cancelled' ? <button className="primary-button" onClick={() => setReasonModal({ action: 'restore', order: selected })}><RotateCcw /> Restaurar</button> : <button className="danger-button" disabled={hasDispatchedLines(selected)} title={hasDispatchedLines(selected) ? 'No se puede anular: tiene líneas despachadas' : undefined} onClick={() => setReasonModal({ action: 'cancel', order: selected })}><XCircle /> Anular pedido</button>}{!featureFlags.supabase && <button className="primary-button" disabled={!['preparing','ready'].includes(selected.status)} onClick={() => dispatch(selected)}><Truck /> Despacho parcial</button>}{featureFlags.supabase && <button className="danger-button" onClick={() => void openDeleteCheck(selected)}><Trash2 /> Eliminar pedido</button>}</footer></Modal>}
     {advanceOpen && selected && <AdvanceModal onClose={()=>setAdvanceOpen(false)} onConfirm={registerAdvance}/>}
+    {addItemsOpen && selected && <AddItemsModal orderNumber={selected.number} channel={selected.channel} onClose={()=>setAddItemsOpen(false)} onConfirm={submitAddItems}/>}
     {reasonModal && <ReasonModal action={reasonModal.action} orderNumber={reasonModal.order.number} onClose={()=>setReasonModal(null)} onConfirm={confirmReason}/>}
     {deliveryNote && <DocumentoExportable mode="nota-entrega" doc={{ number: deliveryNote.number, customerName: deliveryNote.customerName, channel: deliveryNote.channel, lines: deliveryNote.lines, generalDiscountCents: deliveryNote.generalDiscountCents, conditionPago: deliveryNote.conditionPago, medioPago: deliveryNote.medioPago, asunto: deliveryNote.asunto, sourceQuoteNumber: deliveryNote.sourceQuoteNumber }} onClose={()=>setDeliveryNote(null)} />}
     {orderDoc && <DocumentoExportable mode="pedido" doc={{ number: orderDoc.number, customerName: orderDoc.customerName, channel: orderDoc.channel, lines: orderDoc.lines, generalDiscountCents: orderDoc.generalDiscountCents, conditionPago: orderDoc.conditionPago, medioPago: orderDoc.medioPago, asunto: orderDoc.asunto, sourceQuoteNumber: orderDoc.sourceQuoteNumber }} onClose={()=>setOrderDoc(null)} />}
@@ -388,6 +429,75 @@ function AdvanceModal({onClose,onConfirm}:{onClose:()=>void;onConfirm:(amountCen
     <label className="full">Monto (Bs)<NumberField autoFocus min={0} step={0.01} value={amount/100} onCommit={(bs)=>setAmount(Math.round(bs*100))}/></label>
     <label className="full">Método<select value={method} onChange={(e)=>setMethod(e.target.value as PosPaymentMethodExt)}>{metodoAnticipoOrder.map((m) => <option key={m} value={m}>{metodoAnticipoLabels[m]}</option>)}</select></label>
   </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid} onClick={()=>onConfirm(amount,method)}>Confirmar</button></footer></Modal>
+}
+
+// Brief S-I: mismo selector de productos que la cotización (ProductQuickAdd) para armar
+// una lista de líneas nuevas a agregar a un pedido ya armado. Reagregar un producto ya
+// puesto en la lista suma cantidad, no duplica línea — mismo criterio que DraftOrderEditor.
+function AddItemsModal({ orderNumber, channel, onClose, onConfirm }: {
+  orderNumber: string
+  channel: OrderView['channel']
+  onClose: () => void
+  onConfirm: (lines: WorkflowLine[], motivo: string) => void | Promise<void>
+}) {
+  const [productQuery, setProductQuery] = useState('')
+  const [productResults, setProductResults] = useState<Product[]>([])
+  const [productLoading, setProductLoading] = useState(false)
+  const [lines, setLines] = useState<WorkflowLine[]>([])
+  const [motivo, setMotivo] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- limpia los resultados en cuanto el término queda vacío, sin esperar al debounce de abajo
+    if (!productQuery.trim()) { setProductResults([]); setProductLoading(false); return }
+    setProductLoading(true)
+    const handle = setTimeout(() => {
+      void productRepository.search({ query: productQuery, active: true, page: { page: 1, pageSize: 20 } }).then((page) => {
+        setProductResults(page.items)
+        setProductLoading(false)
+      })
+    }, 250)
+    return () => clearTimeout(handle)
+  }, [productQuery])
+
+  const addProduct = (product: Product) => {
+    const existing = lines.find((line) => line.productId === String(product.id))
+    if (existing) { setLines((prev) => prev.map((line) => line.id === existing.id ? { ...line, quantity: line.quantity + 1 } : line)); return }
+    const unitPriceCents = Math.round(priceForOrderChannel(product, channel) * 100)
+    setLines((prev) => [...prev, {
+      id: crypto.randomUUID(),
+      productId: String(product.id),
+      name: product.nombre,
+      sku: product.sku,
+      quantity: 1,
+      unitPriceCents,
+      discountBasisPoints: 0,
+      listPriceCents: unitPriceCents,
+    }])
+  }
+  const removeLine = (productId: number) => setLines((prev) => prev.filter((line) => line.productId !== String(productId)))
+
+  const valid = lines.length > 0
+  const submit = async () => { setSaving(true); try { await onConfirm(lines, motivo.trim()) } finally { setSaving(false) } }
+
+  return <Modal title="Agregar ítems" subtitle={orderNumber} onClose={onClose}><div className="modal-body form-grid">
+    <div className="full">
+      <ProductQuickAdd
+        value={productQuery}
+        onValueChange={setProductQuery}
+        results={productResults}
+        loading={productLoading}
+        chips={lines.map((l) => ({ productId: Number(l.productId), nombre: l.name, cantidad: l.quantity }))}
+        priceFor={(p) => formatMoney(money(Math.round(priceForOrderChannel(p, channel) * 100)))}
+        onAdd={addProduct}
+        onRemoveChip={removeLine}
+      />
+    </div>
+    {lines.length > 0 && <div className="full timeline">
+      {lines.map((line) => <div key={line.id}><PackagePlus /><span><strong>{line.name} × {line.quantity}</strong><small>{formatMoney(money(line.unitPriceCents * line.quantity))}</small></span></div>)}
+    </div>}
+    <label className="full">Motivo (opcional)<textarea rows={2} placeholder="Ej. el cliente pidió agregar más unidades" value={motivo} onChange={(e)=>setMotivo(e.target.value)}/></label>
+  </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid || saving} onClick={()=>void submit()}>{saving ? 'Agregando...' : 'Agregar al pedido'}</button></footer></Modal>
 }
 
 // Brief S11 Bloque B3: consultar puede_eliminarse_pedido PRIMERO y mostrar el resultado
