@@ -82,6 +82,43 @@ export async function consultarSaldo(clienteId: number): Promise<ResultadoSaldo>
 }
 
 /**
+ * Tanda 3: `evaluar_credito_pos` existe en Hermes hace tiempo pero no tenía llamadores —
+ * los límites de crédito se configuraban y mostraban en CONCILIADOR pero nunca se
+ * aplicaban al vender. Por ahora es solo advertencia (decisión de Ness), mismo patrón de
+ * tres estados que ResultadoSaldo: 'ok' con `permitido` en false es lo que dispara el
+ * cartel, 'sin-cuenta' y 'no-disponible' no muestran nada — nunca bloquea el submit.
+ */
+export type ResultadoCredito =
+  | { estado: 'ok'; permitido: boolean; saldoConfirmado: number; limiteCredito: number | null; motivoAdvertencia: string | null }
+  | { estado: 'sin-cuenta' }
+  | { estado: 'no-disponible' }
+
+/** Nunca lanza, mismo criterio que consultarSaldo — el llamador (DraftOrderEditor) solo
+ * necesita saber si mostrar el cartel de advertencia, nunca bloquea el submit. */
+export async function evaluarCredito(clienteId: number, montoCents: number): Promise<ResultadoCredito> {
+  try {
+    const response = await fetch('/api/hermes/evaluar-credito', {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify({ clienteId, monto: Math.round(montoCents) / 100 }),
+    })
+    if (!response.ok) return { estado: 'no-disponible' }
+    const data = await response.json()
+    if (data?.sinCuenta) return { estado: 'sin-cuenta' }
+    if (!data) return { estado: 'no-disponible' }
+    return {
+      estado: 'ok',
+      permitido: data.permitido !== false,
+      saldoConfirmado: Number(data.saldoConfirmado ?? 0),
+      limiteCredito: data.limiteCredito != null ? Number(data.limiteCredito) : null,
+      motivoAdvertencia: data.motivoAdvertencia ?? null,
+    }
+  } catch {
+    return { estado: 'no-disponible' }
+  }
+}
+
+/**
  * Brief S11 Bloque B4: paso 2 de "eliminar cliente" — hay que saber si el cliente existe
  * en Hermes antes de borrarlo de Cation. Mismo criterio de tres estados que ResultadoSaldo,
  * pero acá 'no-disponible' importa distinto: el llamador (eliminar cliente) lo trata como

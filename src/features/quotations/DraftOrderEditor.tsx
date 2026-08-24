@@ -22,6 +22,7 @@ import { ProductQuickAdd } from '../../components/ProductQuickAdd'
 import { AutoriaBadge } from '../../components/AutoriaBadge'
 import { SolicitanteField } from '../../components/SolicitanteField'
 import { evaluarTope } from '../../infrastructure/supabase/ContactoCliente.supabase'
+import { evaluarCredito } from '../../infrastructure/hermes/client'
 
 type EditableChannel = QuoteDraft['channel']
 
@@ -76,6 +77,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // Brief S-G: aviso ámbar, no bloqueo — evaluar_tope ya arma el texto (motivo_advertencia),
   // se muestra tal cual. null = dentro del tope o nada que evaluar (sin solicitante todavía).
   const [topeWarning, setTopeWarning] = useState<string | null>(null)
+  const [creditoWarning, setCreditoWarning] = useState<string | null>(null)
   // Brief H — useBorrador: autosave de la cotización. Desactivado en solo-lectura (nada
   // que autoguardar ahí); si queda un borrador viejo de otra cotización nueva sin
   // terminar, igual se ofrece — el banner es por tipo de formulario, no por registro.
@@ -152,6 +154,23 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     }, 350)
     return () => { cancelled = true; clearTimeout(handle) }
   }, [value.customerId, value.solicitanteId, totalCents])
+
+  // Tanda 3: mismo mecanismo que evalúaTope arriba — solo advertencia, nunca bloquea el
+  // submit (evaluar_credito_pos no tiene forma de gatear crear_pedido sin cruzar la
+  // frontera Cation/Hermes). Solo aplica a ventas a crédito: al contado no hay límite que
+  // evaluar.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- limpia el aviso al instante al cambiar cliente/condición de pago, sin esperar al debounce de abajo
+    if (!featureFlags.supabase || !value.customerId || value.conditionPago !== 'CREDITO' || totalCents <= 0) { setCreditoWarning(null); return }
+    const customerId = value.customerId
+    let cancelled = false
+    const handle = setTimeout(() => {
+      void evaluarCredito(Number(customerId), totalCents)
+        .then((resultado) => { if (!cancelled) setCreditoWarning(resultado.estado === 'ok' && !resultado.permitido ? resultado.motivoAdvertencia : null) })
+        .catch(() => { if (!cancelled) setCreditoWarning(null) })
+    }, 350)
+    return () => { cancelled = true; clearTimeout(handle) }
+  }, [value.customerId, value.conditionPago, totalCents])
 
   const setChannel = (channel: EditableChannel) => setValue((v) => ({ ...v, channel }))
 
@@ -430,6 +449,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
           {/* Brief S-G: aviso, no bloqueo — nunca gatea "Guardar"/"Crear pedido"/"Convertir".
               motivo_advertencia se muestra tal cual, sin reescribirlo. */}
           {topeWarning && <div className="full tope-warning-banner" role="status"><AlertTriangle size={14} /><span>{topeWarning}</span></div>}
+          {creditoWarning && <div className="full tope-warning-banner" role="status"><AlertTriangle size={14} /><span>{creditoWarning}</span></div>}
           <label>Vigencia<input type="date" disabled={readOnly} value={value.validUntil} onChange={(e) => setValue((v) => ({ ...v, validUntil: e.target.value }))} /></label>
           <label>Fecha<input type="date" disabled={readOnly} value={value.documentDate ?? ''} onChange={(e) => setValue((v) => ({ ...v, documentDate: e.target.value || undefined }))} /></label>
           <label>Descuento general (Bs)<NumberField min={0} disabled={readOnly} value={value.generalDiscountCents / 100} onCommit={(bs) => setValue((v) => ({ ...v, generalDiscountCents: Math.round(bs * 100) }))} /></label>
