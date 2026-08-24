@@ -30,7 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const response = await fetch(`${hermesUrl}/rest/v1/rpc/evaluar_credito_pos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
-      body: JSON.stringify({ p_cliente_id: clienteId, p_monto: monto }),
+      body: JSON.stringify({ p_pos_cliente_id: clienteId, p_monto: monto }),
     })
     if (!response.ok) {
       const bodyText = await response.text().catch(() => '')
