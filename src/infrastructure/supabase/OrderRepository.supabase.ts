@@ -8,7 +8,7 @@ import {
 } from './mappers'
 
 type EstadoPedido = 'ABIERTO' | 'COMPLETADO' | 'CANCELADO'
-type EstadoLinea = 'POR_DESPACHAR' | 'DESPACHADA' | 'PENDIENTE' | 'COMPRADO_DIRECTO' | 'ESPECIAL'
+type EstadoLinea = 'POR_DESPACHAR' | 'DESPACHADA' | 'PENDIENTE' | 'COMPRADO_DIRECTO' | 'ESPECIAL' | 'RECHAZADO' | 'CAMBIADA' | 'RETIRADA'
 
 const estadoPedidoToStatus = (estado: EstadoPedido): OrderWorkflowStatus => {
   switch (estado) {
@@ -116,6 +116,7 @@ const lineaRowToOrderLine = (row: PedidoLineaRow): OrderLine => {
     cantidadPresentacion: row.cantidad_presentacion != null ? num(row.cantidad_presentacion) : undefined,
     prepared,
     allocations: row.sucursal_origen_id != null ? [{ location: sucursalIdToLocation(row.sucursal_origen_id), quantity: baseQuantity }] : [],
+    lineStatus: row.estado,
   }
 }
 // local alias to avoid importing pctToBp under a name collision with bpToPct import above
@@ -178,7 +179,7 @@ const fetchOrderById = async (id: number): Promise<(OrderView & Versioned) | nul
   return view
 }
 
-const buildLineasJsonb = (lines: WorkflowLine[], channel: OrderView['channel']) =>
+export const buildLineasJsonb = (lines: WorkflowLine[], channel: OrderView['channel']) =>
   lines.map((line) => {
     if (line.isCustomItem) {
       return {

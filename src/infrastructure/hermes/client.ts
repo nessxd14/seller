@@ -260,6 +260,52 @@ export async function calcularRepartoFifo(clienteId: number, monto: number): Pro
   }))
 }
 
+// Brief S-I: a diferencia de los demás endpoints, agregar-lineas-pedido puede fallar
+// DESPUÉS de que las líneas ya quedaron agregadas en Cation (el paso a Hermes es el que
+// falló, y ese paso no se revierte) — cationOk distingue ese caso (el llamador tiene que
+// refrescar el pedido igual, aunque el resultado sea un error) de un fallo previo a
+// Cation (nada cambió, no hay nada que refrescar).
+export class AgregarLineasHttpError extends Error {
+  constructor(message: string, public readonly status: number, public readonly cationOk: boolean) {
+    super(message)
+    this.name = 'AgregarLineasHttpError'
+  }
+}
+
+export interface AgregarLineasResultado {
+  pedidoId: number
+  lineasAgregadas: number
+  montoAdicional: number
+  // null: no hubo monto adicional que sincronizar (ver api/hermes/agregar-lineas-pedido.ts).
+  camino: 'MISMA_PARTIDA' | 'PARTIDA_HIJA' | null
+  entregaNumero: number | null
+}
+
+/** SÍ lanza — el llamador (OrdersPage) necesita distinguir éxito de fallo para decidir
+ * qué mensaje mostrar. El mensaje de error, cuando viene de Hermes (p. ej. "el pedido no
+ * tiene ninguna partida abierta"), se propaga tal cual — nunca se reemplaza por uno
+ * genérico. */
+export async function agregarLineasPedido(input: { pedidoId: number | string; lineas: unknown[]; motivo?: string }): Promise<AgregarLineasResultado> {
+  const response = await fetch('/api/hermes/agregar-lineas-pedido', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ pedidoId: input.pedidoId, lineas: input.lineas, motivo: input.motivo || undefined }),
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message = (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) || 'No se pudieron agregar los ítems al pedido'
+    const cationOk = data != null && typeof data === 'object' && 'lineasAgregadas' in data
+    throw new AgregarLineasHttpError(message, response.status, cationOk)
+  }
+  return {
+    pedidoId: Number(data?.pedidoId),
+    lineasAgregadas: Number(data?.lineasAgregadas ?? 0),
+    montoAdicional: Number(data?.montoAdicional ?? 0),
+    camino: data?.camino === 'MISMA_PARTIDA' || data?.camino === 'PARTIDA_HIJA' ? data.camino : null,
+    entregaNumero: data?.entregaNumero != null ? Number(data.entregaNumero) : null,
+  }
+}
+
 export interface ImputacionGuardada {
   pagoId: number
   aplicaciones: number
