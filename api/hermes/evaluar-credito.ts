@@ -32,7 +32,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       headers: { 'Content-Type': 'application/json', apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
       body: JSON.stringify({ p_cliente_id: clienteId, p_monto: monto }),
     })
-    if (!response.ok) { res.status(502).json({ error: `Hermes respondió ${response.status}` }); return }
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => '')
+      console.error('[evaluar-credito] Hermes respondió', response.status, bodyText.slice(0, 500))
+      res.status(502).json({ error: `Hermes respondió ${response.status}` })
+      return
+    }
     const data = await response.json()
     // evaluar_credito_pos devuelve cero filas cuando el cliente no tiene contraparte
     // en Hermes — mismo criterio que consultar_saldo, no es "crédito permitido".
@@ -47,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       motivoAdvertencia: row.motivo_advertencia ?? row.motivoAdvertencia ?? null,
     })
   } catch (err) {
+    console.error('[evaluar-credito] excepción', err)
     res.status(502).json({ error: err instanceof Error ? err.message : 'No se pudo contactar a Hermes' })
   }
 }
