@@ -1,8 +1,7 @@
 import type { VentaDirectaRecord, VtdLine } from '../../application/shared/models'
 import { LocalStorageRepository } from './localStore'
 import { products } from '../../data/products'
-
-const SUCURSAL_ALMACEN_ID = 1
+import { SUCURSAL_ALMACEN_ID } from '../supabase/mappers'
 
 export interface UbicacionOption { id: number; label: string }
 

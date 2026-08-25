@@ -1,9 +1,7 @@
 import type { TransferEstado, TransferLine, TransferRecord } from '../../application/shared/models'
 import { LocalStorageRepository } from './localStore'
 import { products } from '../../data/products'
-
-const SUCURSAL_ALMACEN_ID = 1
-const SUCURSAL_TIENDA_ID = 2
+import { SUCURSAL_ALMACEN_ID, SUCURSAL_TIENDA_ID } from '../supabase/mappers'
 
 const productAt = (index: number) => products[index % products.length]
 
