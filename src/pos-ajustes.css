@@ -75,13 +75,18 @@
 .image-upload-empty{font-size:11px;color:#96928a;border:1px dashed var(--line);border-radius:8px;padding:10px 14px}
 .image-upload-field small{display:block;color:#96928a;margin-top:4px}
 
-/* Brief S11 Bloque A — sello y firma al pie de cotización/pedido/nota de entrega,
-   superpuestos como en un documento real (el sello pisa un poco la firma). */
+/* Brief S11 Bloque A — sello y firma al pie de cotización/pedido/nota de entrega.
+   Firma a la izquierda, sello a la derecha, sin superposición. Tamaños ×2.5
+   respecto del diseño original (55→137px de alto de firma, 85→212px de sello).
+   El ancho máximo de la firma se cortó en 340px en vez de 450px (×2.5 literal)
+   porque 450 + 212 + gap desborda el ancho imprimible de una A4 con los 28px
+   de padding de .print-document; el ALTO sí escala ×2.5 completo, que es lo
+   que determina el tamaño percibido. */
 .doc-signoff{margin-top:26px;display:flex;flex-direction:column;align-items:center;gap:4px}
-.doc-signoff-stamp{position:relative;display:flex;align-items:center;justify-content:center;min-height:70px}
-.doc-firma-img{max-height:55px;max-width:180px;object-fit:contain}
-.doc-firma-blank{width:180px;border-bottom:1px solid #292724;height:55px}
-.doc-sello-img{position:absolute;left:50%;top:50%;transform:translate(-38%,-55%) rotate(-6deg);max-height:85px;max-width:85px;object-fit:contain;opacity:.92}
+.doc-signoff-stamp{display:flex;align-items:center;justify-content:space-between;gap:32px;width:100%;min-height:175px}
+.doc-firma-img{max-height:137px;max-width:340px;object-fit:contain}
+.doc-firma-blank{width:340px;border-bottom:1px solid #292724;height:137px}
+.doc-sello-img{transform:rotate(-6deg);max-height:212px;max-width:212px;object-fit:contain;opacity:.92}
 .doc-signoff-name{font-size:var(--fs-body);color:#4c4944;margin:2px 0 0;border-top:1px solid #ddd;padding-top:4px;min-width:200px;text-align:center}
 
 /* Brief S11 Bloque B — pedidos anulados (opacos, X) y editados (amarillo, lápiz)
