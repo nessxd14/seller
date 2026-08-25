@@ -12,6 +12,7 @@ import { PaymentModal } from './PaymentModal'
 import { TicketPreviewModal } from './TicketPreviewModal'
 import { VtdTicketPreviewModal } from './VtdTicketPreviewModal'
 import { VtdPaymentModal } from './VtdPaymentModal'
+import { SUCURSAL_ALMACEN_ID } from '../infrastructure/supabase/mappers'
 import { VtdUbicacionPicker } from './VtdUbicacionPicker'
 import { GuardarBorradorModal } from './GuardarBorradorModal'
 import type { BorradorContenido } from '../domain/sales/borradorContenido'
@@ -185,7 +186,6 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     : ''
   // Brief J: disponible en la sucursal ORIGEN del traslado (no el split Tienda/Almacén de
   // venta) — es aviso, nunca bloqueo, el faltante se resuelve en el AJUSTE de recepción.
-  const SUCURSAL_ALMACEN_ID = 1
   const trasladoDisponibleFor = (productId: number) => {
     const stock = originStock[productId]
     if (!stock) return 0
