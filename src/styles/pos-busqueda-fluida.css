@@ -66,3 +66,14 @@
 .catalog-sin-familia-toggle svg, .quick-add-sin-familia-toggle svg { margin-left: auto; width: 13px }
 .catalog-familia-header-neutro { color: #b1aea7 }
 .quick-add-group-header-neutro { color: #b1aea7 }
+
+/* AmbiguousScanPicker — candidatos de un código escaneado que mapea a más de un
+   producto (40 casos confirmados en producción, p. ej. bolígrafos de un mismo grupo). */
+.ambiguous-scan-results { display: flex; flex-direction: column; gap: 1px }
+.ambiguous-scan-row {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  padding: 10px 12px; border: 0; background: transparent; border-radius: 9px; transition: background .1s;
+}
+.ambiguous-scan-row:hover { background: #f5f2ed }
+.ambiguous-scan-row strong { font-size: 13px; font-weight: 600; color: #24231f }
+.ambiguous-scan-row small { font-size: 11px; color: var(--muted) }

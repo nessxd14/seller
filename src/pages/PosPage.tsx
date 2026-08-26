@@ -24,6 +24,7 @@ import { featureFlags } from '../config/featureFlags'
 import { products } from '../data/products'
 import { productRepository as supabaseProductRepository } from '../infrastructure/supabase/ProductRepository.supabase'
 import { loadEmpresaConfig } from '../config/empresaStore'
+import { AmbiguousScanPicker } from '../components/AmbiguousScanPicker'
 import { AuthDevSelector } from '../features/auth/AuthDevSelector'
 import { LoginScreen } from '../features/auth/LoginScreen'
 import { IntegrationState } from '../features/integration/IntegrationState'
@@ -71,6 +72,7 @@ function PosContent() {
   const [pendingDraft, setPendingDraft] = useState<QuoteDraft | null>(null)
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransferRequest | null>(null)
   const [pagoModalOpen, setPagoModalOpen] = useState(false)
+  const [ambiguousIds, setAmbiguousIds] = useState<number[] | null>(null)
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2800) }
   const handleNew = () => { if (cart.length && !window.confirm('¿Crear una nueva operación y limpiar el carrito actual?')) return; newOperation(); setSearch(''); setCategory('Todos'); notify('Nueva operación lista') }
   useEffect(() => {
@@ -101,7 +103,8 @@ function PosContent() {
               setSearch('')
               notify(`${resolved.product.nombre} agregado`)
             } else if (resolved.kind === 'ambiguous') {
-              notify('Ese código está en más de un producto — buscalo por nombre')
+              setAmbiguousIds(resolved.productIds)
+              setSearch('')
             } else {
               notify('Código no reconocido')
             }
@@ -161,7 +164,7 @@ function PosContent() {
   if(conflictDemo)return <div className="integration-demo-page"><IntegrationState kind="conflict" onReload={()=>setConflictDemo(false)} onKeepCopy={()=>{setConflictDemo(false);notify('Copia local conservada')}} onCancel={()=>setConflictDemo(false)}/></div>
   if (featureFlags.supabase && !sessionLoaded) return null
   if (featureFlags.supabase && !session) return <LoginScreen />
-  return <div className={`app-shell pos-root ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`} data-modo={mode}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} onRegistrarPago={() => setPagoModalOpen(true)} user={session?.user} onOpenSettings={() => navigate('Configuración')} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}{pagoModalOpen && <PagoModal onClose={() => setPagoModalOpen(false)} />}</div>
+  return <div className={`app-shell pos-root ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`} data-modo={mode}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} onRegistrarPago={() => setPagoModalOpen(true)} user={session?.user} onOpenSettings={() => navigate('Configuración')} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}{pagoModalOpen && <PagoModal onClose={() => setPagoModalOpen(false)} />}{ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onPick={(product) => { addProduct(product); setAmbiguousIds(null); notify(`${product.nombre} agregado`) }} onClose={() => setAmbiguousIds(null)} />}</div>
 }
 
 export function PosPage() { return <PosProvider><CashSessionProvider><PosContent /></CashSessionProvider></PosProvider> }
