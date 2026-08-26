@@ -452,7 +452,7 @@ function AddItemsModal({ orderNumber, channel, onClose, onConfirm }: {
     if (!productQuery.trim()) { setProductResults([]); setProductLoading(false); return }
     setProductLoading(true)
     const handle = setTimeout(() => {
-      void productRepository.search({ query: productQuery, active: true, page: { page: 1, pageSize: 20 } }).then((page) => {
+      void productRepository.search({ query: productQuery, active: true, page: { page: 1, pageSize: 100 } }).then((page) => {
         setProductResults(page.items)
         setProductLoading(false)
       })
