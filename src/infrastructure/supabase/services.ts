@@ -15,10 +15,9 @@ import { sensitiveOperations } from '../mock/services'
 import { checkoutFingerprint } from '../../domain/sales/checkoutFingerprint'
 import { expectedCash } from '../../application/cash/CashService'
 import type { CategoriaPedido } from './mappers'
-import { ventaDirectaRepository, listUbicacionesAlmacen, type UbicacionOption } from './VentaDirectaRepository.supabase'
+import { ventaDirectaRepository, getUbicacionVentasDirectas } from './VentaDirectaRepository.supabase'
 import type { VentaDirectaAbrirLine, SaleCheckoutPayment } from '../../application/ports/repositories'
 import type { BorradorOperacionTipo, VentaDirectaRecord } from '../../application/shared/models'
-import { SUCURSAL_ALMACEN_ID } from './mappers'
 import { borradorOperacionRepository } from './BorradorOperacionRepository.supabase'
 
 export const configService = configRepository
@@ -195,8 +194,8 @@ export const saleService = {
 }
 
 export const ventaDirectaService = {
-  listUbicaciones(): Promise<UbicacionOption[]> {
-    return listUbicacionesAlmacen(SUCURSAL_ALMACEN_ID)
+  getUbicacionVentasDirectas(): Promise<number> {
+    return getUbicacionVentasDirectas()
   },
   async listAbiertas(sesionCajaId: string): Promise<VentaDirectaRecord[]> {
     return ventaDirectaRepository.listAbiertas(sesionCajaId)
@@ -229,9 +228,9 @@ export const ventaDirectaService = {
     const actorId = await currentActorId()
     return ventaDirectaRepository.completar(id, { actorId })
   },
-  async ajustar(id: string, ajustes: Array<{ lineaId: string; cantidadPresentacion: number }>, cashSessionId: string | undefined): Promise<VentaDirectaRecord> {
+  async ajustar(id: string, ajustes: Array<{ lineaId: string; cantidadPresentacion: number }>, cashSessionId: string | undefined, motivo: string): Promise<VentaDirectaRecord> {
     const actorId = await currentActorId()
-    return ventaDirectaRepository.ajustar(id, ajustes, cashSessionId, { actorId })
+    return ventaDirectaRepository.ajustar(id, ajustes, cashSessionId, motivo, { actorId })
   },
   async anular(id: string, cashSessionId: string | undefined): Promise<VentaDirectaRecord> {
     const actorId = await currentActorId()

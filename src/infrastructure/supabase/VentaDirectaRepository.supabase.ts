@@ -3,7 +3,7 @@ import type { MutationContext, VentaDirectaAbrirLine, VentaDirectaRepository } f
 import type { VentaDirectaRecord, VtdEstado, VtdLine } from '../../application/shared/models'
 import type { SaleCheckoutPayment } from '../../application/ports/repositories'
 import { NotFoundError } from '../../application/errors/AppError'
-import { centsToNumeric, methodToMetodoPago, numericToCents } from './mappers'
+import { centsToNumeric, methodToMetodoPago, numericToCents, SUCURSAL_ALMACEN_ID } from './mappers'
 
 interface VentaRow {
   id: number
@@ -160,7 +160,7 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
     return updated
   }
 
-  async ajustar(id: string, ajustes: Array<{ lineaId: string; cantidadPresentacion: number }>, cashSessionId: string | undefined, context: MutationContext): Promise<VentaDirectaRecord> {
+  async ajustar(id: string, ajustes: Array<{ lineaId: string; cantidadPresentacion: number }>, cashSessionId: string | undefined, motivo: string, context: MutationContext): Promise<VentaDirectaRecord> {
     const actor = context.actorId ?? 'pos'
     const numericId = Number(id)
     const { error } = await supabase.rpc('ajustar_venta_abierta', {
@@ -168,6 +168,7 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
       p_ajustes: ajustes.map((a) => ({ linea_id: Number(a.lineaId), cantidad_presentacion: a.cantidadPresentacion })),
       p_sesion_caja_id: cashSessionId ? Number(cashSessionId) : null,
       p_usuario: actor,
+      p_motivo: motivo,
     })
     if (error) throw error
     const updated = await fetchVtdById(numericId)
@@ -188,15 +189,13 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
 
 export const ventaDirectaRepository = new SupabaseVentaDirectaRepository()
 
-export interface UbicacionOption { id: number; label: string }
-
-// Brief 2.1: "no hardcodear la ubicación... si hay más de una, el cajero elige" — se
-// deriva de la sucursal Almacén Central, nunca de un id fijo de ubicación.
-export const listUbicacionesAlmacen = async (sucursalAlmacenId: number): Promise<UbicacionOption[]> => {
-  const { data, error } = await supabase.from('ubicacion').select('id, codigo_zona, estante, nivel, compartimiento').eq('sucursal_id', sucursalAlmacenId).order('id')
+// Brief ubicación fija: Venta Directa despacha siempre desde esta única ubicación
+// ('VENTAS DIRECTAS', sucursal_id=1/Almacén Central), aplicada en Cation 2026-08-26. El
+// id no se hardcodea — lo asigna la base y no es estable entre entornos — se resuelve
+// consultando por sucursal_id + codigo_zona en cada carga.
+export const getUbicacionVentasDirectas = async (): Promise<number> => {
+  const { data, error } = await supabase.from('ubicacion').select('id').eq('sucursal_id', SUCURSAL_ALMACEN_ID).eq('codigo_zona', 'VENTAS DIRECTAS').maybeSingle()
   if (error) throw error
-  return (data ?? []).map((row) => ({
-    id: row.id as number,
-    label: [row.codigo_zona, [row.estante, row.nivel].filter(Boolean).join(' '), row.compartimiento].filter(Boolean).join(' · '),
-  }))
+  if (!data) throw new NotFoundError('No se encontró la ubicación fija de Venta Directa (VENTAS DIRECTAS) para Almacén Central')
+  return data.id as number
 }

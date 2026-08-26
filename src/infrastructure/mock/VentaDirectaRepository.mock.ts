@@ -1,17 +1,11 @@
 import type { VentaDirectaRecord, VtdLine } from '../../application/shared/models'
 import { LocalStorageRepository } from './localStore'
 import { products } from '../../data/products'
-import { SUCURSAL_ALMACEN_ID } from '../supabase/mappers'
 
-export interface UbicacionOption { id: number; label: string }
-
-// El mock no tiene tabla `ubicacion` real — un puñado fijo alcanza para ejercitar el
-// selector "si hay más de una, el cajero elige" (brief 2.1) en modo demo.
-const MOCK_UBICACIONES: UbicacionOption[] = [
-  { id: 1, label: 'HUECO · Estante 1 A' },
-  { id: 2, label: 'PLANTA BAJA · Estante 1 A' },
-  { id: 3, label: 'PLANTA ARRIBA · Pallet 1' },
-]
+// Brief ubicación fija: mismo id fijo que la ubicación real 'VENTAS DIRECTAS' en
+// Supabase — el mock no tiene tabla `ubicacion`, así que alcanza con un valor
+// constante, consistente con getUbicacionVentasDirectas() del adaptador Supabase.
+const UBICACION_VENTAS_DIRECTAS_ID = 1
 
 const now = () => new Date().toISOString()
 
@@ -32,9 +26,8 @@ const buildLines = (lines: Array<{ productId: string; presentacionId?: number; c
   })
 
 export const ventaDirectaMockRepository = {
-  async listUbicaciones(): Promise<UbicacionOption[]> {
-    void SUCURSAL_ALMACEN_ID
-    return MOCK_UBICACIONES
+  async getUbicacionVentasDirectas(): Promise<number> {
+    return UBICACION_VENTAS_DIRECTAS_ID
   },
   async listAbiertas(sesionCajaId: string): Promise<VentaDirectaRecord[]> {
     const all = await store.list()
@@ -73,7 +66,10 @@ export const ventaDirectaMockRepository = {
     if (existing.estado !== 'ABIERTA') throw new Error(`Venta % está en estado ${existing.estado} y no admite checkout`)
     return store.save({ ...existing, estado: 'COMPLETADA', completadoEn: now() })
   },
-  async ajustar(id: string, ajustes: Array<{ lineaId: string; cantidadPresentacion: number }>): Promise<VentaDirectaRecord> {
+  // motivo no se persiste en el mock — venta_evento es una tabla real de Supabase, sin
+  // equivalente local; alcanza con aceptar el parámetro para no divergir de la firma.
+  async ajustar(id: string, ajustes: Array<{ lineaId: string; cantidadPresentacion: number }>, motivo?: string): Promise<VentaDirectaRecord> {
+    void motivo
     const existing = await store.get(id)
     if (!existing) throw new Error('Venta directa no encontrada')
     if (existing.estado !== 'ABIERTA') throw new Error('Solo se puede ajustar una venta ABIERTA')

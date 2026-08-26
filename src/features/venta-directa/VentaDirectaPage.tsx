@@ -109,10 +109,12 @@ export function VentaDirectaPage({ notify }: { notify: (message: string) => void
  */
 function AjustarVentaModal({ venta, onClose, onDone, notify }: { venta: VentaDirectaRecord; onClose: () => void; onDone: () => void; notify: (message: string) => void }) {
   const [cantidades, setCantidades] = useState<Record<string, number>>(() => Object.fromEntries(venta.lines.map((l) => [l.id, l.cantidadPresentacion])))
+  const [motivo, setMotivo] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const dejaTodoEnCero = Object.values(cantidades).every((v) => v === 0)
   const huboCambio = venta.lines.some((l) => cantidades[l.id] !== l.cantidadPresentacion)
+  const motivoFalta = huboCambio && !motivo.trim()
   const confirmar = async () => {
     if (dejaTodoEnCero) { setError('Eso vacía la venta entera — usá "Anular" en la bandeja en vez de ajustar.'); return }
     setSubmitting(true)
@@ -122,6 +124,7 @@ function AjustarVentaModal({ venta, onClose, onDone, notify }: { venta: VentaDir
         venta.id,
         venta.lines.filter((l) => cantidades[l.id] !== l.cantidadPresentacion).map((l) => ({ lineaId: l.id, cantidadPresentacion: cantidades[l.id] })),
         venta.sesionCajaId,
+        motivo.trim(),
       )
       notify(`${venta.numero} ajustada`)
       onDone()
@@ -134,22 +137,28 @@ function AjustarVentaModal({ venta, onClose, onDone, notify }: { venta: VentaDir
   return (
     <Modal title={`Ajustar ${venta.numero}`} subtitle="Solo se puede reducir — para vender más, crear una venta nueva" onClose={onClose}>
       <div className="modal-body vtd-ajuste-lines">
-        {venta.lines.map((line) => (
-          <div className="vtd-ajuste-line" key={line.id}>
-            <span>{line.name}{line.presentacionNombre ? ` (${line.presentacionNombre})` : ''}</span>
-            <div className="qty-control">
-              <button type="button" disabled={cantidades[line.id] <= 0} onClick={() => setCantidades((c) => ({ ...c, [line.id]: Math.max(0, c[line.id] - 1) }))}><Minus size={11} /></button>
-              <strong>{cantidades[line.id]}</strong>
-              <button type="button" disabled={cantidades[line.id] >= line.cantidadPresentacion} onClick={() => setCantidades((c) => ({ ...c, [line.id]: Math.min(line.cantidadPresentacion, c[line.id] + 1) }))}>+</button>
+        {venta.lines.map((line) => {
+          const cantidad = cantidades[line.id]
+          const rechazada = cantidad === 0
+          const cambiada = !rechazada && cantidad !== line.cantidadPresentacion
+          return (
+            <div className="vtd-ajuste-line" key={line.id}>
+              <span>{line.name}{line.presentacionNombre ? ` (${line.presentacionNombre})` : ''}{(rechazada || cambiada) && <span className="order-line-inactive-badge">{rechazada ? 'Rechazado' : 'Cambiado'}</span>}</span>
+              <div className="qty-control">
+                <button type="button" disabled={cantidad <= 0} onClick={() => setCantidades((c) => ({ ...c, [line.id]: Math.max(0, c[line.id] - 1) }))}><Minus size={11} /></button>
+                <strong>{cantidad}</strong>
+                <button type="button" disabled={cantidad >= line.cantidadPresentacion} onClick={() => setCantidades((c) => ({ ...c, [line.id]: Math.min(line.cantidadPresentacion, c[line.id] + 1) }))}>+</button>
+              </div>
+              <small>de {line.cantidadPresentacion}</small>
             </div>
-            <small>de {line.cantidadPresentacion}</small>
-          </div>
-        ))}
+          )
+        })}
+        <label>Motivo{huboCambio && !dejaTodoEnCero ? ' (obligatorio)' : ''}<textarea rows={2} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="¿Por qué se rechaza o cambia esta línea?" /></label>
         {error && <p className="mock-note payment-error">{error} {dejaTodoEnCero && <button type="button" className="vtd-retail-error-link" onClick={onClose}>Ir a anular</button>}</p>}
       </div>
       <footer className="modal-actions">
         <button className="secondary-button" onClick={onClose}>Cancelar</button>
-        <button className="primary-button" disabled={submitting || !huboCambio || dejaTodoEnCero} onClick={() => void confirmar()}>{submitting ? 'Guardando…' : 'Confirmar ajuste'}</button>
+        <button className="primary-button" disabled={submitting || !huboCambio || dejaTodoEnCero || motivoFalta} onClick={() => void confirmar()}>{submitting ? 'Guardando…' : 'Confirmar ajuste'}</button>
       </footer>
     </Modal>
   )
