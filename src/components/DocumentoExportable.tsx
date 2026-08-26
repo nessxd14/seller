@@ -4,7 +4,7 @@ import type { WorkflowLine } from '../application/shared/models'
 import { customerService, listLineIdentifiers } from '../infrastructure/services'
 import { formatMoney, money } from '../domain/common/money'
 import { Modal } from './Modal'
-import { empresaStore as empresa } from '../config/empresaStore'
+import { empresaStore as empresa, loadEmpresaConfig } from '../config/empresaStore'
 import { LineIdentifiersRow, type LineIdentifiers } from './LineIdentifiersRow'
 import { nombreArchivoDocumento } from '../domain/documents/nombreArchivoDocumento'
 
@@ -52,6 +52,7 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
   // Solo aplica a cotización; sin persistencia, siempre arranca en Cliente al abrir el modal.
   const [vistaCliente, setVistaCliente] = useState(true)
   const [customerDoc, setCustomerDoc] = useState('')
+  useEffect(() => { void loadEmpresaConfig() }, [])
   useEffect(() => {
     void customerService.list().then((customers) => {
       const match = doc.customerId ? customers.find((c) => c.id === doc.customerId) : customers.find((c) => c.name === doc.customerName)
