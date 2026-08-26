@@ -52,7 +52,7 @@
 .vtd-ubicacion-picker > svg { width: 20px; color: var(--pos-acento) }
 .vtd-ubicacion-picker label { flex: 1; min-width: 0 }
 .vtd-ubicacion-picker small { display: block; font-size: 11px; letter-spacing: 1px; color: var(--pos-acento-texto); opacity: .75 }
-.vtd-ubicacion-picker select {
+.vtd-ubicacion-picker select, .vtd-ubicacion-picker .vtd-ubicacion-fija {
   display: block; width: 100%; border: 0; background: transparent; outline: 0;
   font-size: 12px; font-weight: 700; color: var(--pos-acento-texto); padding: 2px 0 0;
 }

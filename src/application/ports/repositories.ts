@@ -85,8 +85,9 @@ export interface VentaDirectaRepository {
   getById(id:string):Promise<VentaDirectaRecord|null>
   abrir(input:{lines:VentaDirectaAbrirLine[];ubicacionId:number;cashSessionId:string;payments?:SaleCheckoutPayment[];customerId?:string;discountCents?:number},context:MutationContext&{idempotencyKey:string}):Promise<VentaDirectaRecord&{isRetry?:boolean}>
   completar(id:string,context:MutationContext):Promise<VentaDirectaRecord>
-  // ajustes: solo reduce (nunca sube) — la RPC rechaza subir; ver brief 2.5.
-  ajustar(id:string,ajustes:Array<{lineaId:string;cantidadPresentacion:number}>,cashSessionId:string|undefined,context:MutationContext):Promise<VentaDirectaRecord>
+  // ajustes: solo reduce (nunca sube) — la RPC rechaza subir; ver brief 2.5. motivo es
+  // obligatorio (rechazo/cambio de cantidad) — la RPC lo exige apenas alguna línea cambia.
+  ajustar(id:string,ajustes:Array<{lineaId:string;cantidadPresentacion:number}>,cashSessionId:string|undefined,motivo:string,context:MutationContext):Promise<VentaDirectaRecord>
   anular(id:string,cashSessionId:string|undefined,context:MutationContext):Promise<VentaDirectaRecord>
 }
 

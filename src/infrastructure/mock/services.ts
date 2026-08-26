@@ -8,7 +8,7 @@ import { cashSeeds, customerSeeds, orderSeeds, quoteSeeds } from './seeds'
 import { LocalIdempotencyService } from '../../application/idempotency/IdempotencyService'
 import { SensitiveOperationExecutor } from '../../application/idempotency/SensitiveOperationExecutor'
 import { transferService as rawTransferService, type CreateTransferInput } from './TransferRepository.mock'
-import { ventaDirectaMockRepository, type UbicacionOption } from './VentaDirectaRepository.mock'
+import { ventaDirectaMockRepository } from './VentaDirectaRepository.mock'
 import type { BorradorOperacionTipo, VentaDirectaRecord } from '../../application/shared/models'
 import { borradorOperacionMockRepository } from './BorradorOperacionRepository.mock'
 import { mockAuthSessionProvider } from './MockAuthSessionProvider'
@@ -175,8 +175,8 @@ export const borradorOperacionService = {
 }
 
 export const ventaDirectaService = {
-  listUbicaciones(): Promise<UbicacionOption[]> {
-    return ventaDirectaMockRepository.listUbicaciones()
+  getUbicacionVentasDirectas(): Promise<number> {
+    return ventaDirectaMockRepository.getUbicacionVentasDirectas()
   },
   listAbiertas(sesionCajaId: string): Promise<VentaDirectaRecord[]> {
     return ventaDirectaMockRepository.listAbiertas(sesionCajaId)
@@ -192,8 +192,8 @@ export const ventaDirectaService = {
   completar(id: string): Promise<VentaDirectaRecord> {
     return ventaDirectaMockRepository.completar(id)
   },
-  ajustar(id: string, ajustes: Array<{ lineaId: string; cantidadPresentacion: number }>): Promise<VentaDirectaRecord> {
-    return ventaDirectaMockRepository.ajustar(id, ajustes)
+  ajustar(id: string, ajustes: Array<{ lineaId: string; cantidadPresentacion: number }>, _cashSessionId: string | undefined, motivo: string): Promise<VentaDirectaRecord> {
+    return ventaDirectaMockRepository.ajustar(id, ajustes, motivo)
   },
   anular(id: string): Promise<VentaDirectaRecord> {
     return ventaDirectaMockRepository.anular(id)
