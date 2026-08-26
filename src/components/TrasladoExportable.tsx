@@ -3,7 +3,7 @@ import { FileDown, Printer } from 'lucide-react'
 import type { TransferEstado, TransferLine, TransferRecord } from '../application/shared/models'
 import { listLineIdentifiers } from '../infrastructure/services'
 import { Modal } from './Modal'
-import { empresaStore as empresa } from '../config/empresaStore'
+import { empresaStore as empresa, loadEmpresaConfig } from '../config/empresaStore'
 import { LineIdentifiersRow, type LineIdentifiers } from './LineIdentifiersRow'
 import { fechaFmt, fmtQty, motivoLabel, sucursalLabel } from '../features/transfers/TransfersPage'
 import { nombreArchivoDocumento } from '../domain/documents/nombreArchivoDocumento'
@@ -41,6 +41,7 @@ const formatQty = (baseQty: number, factor: number, presentacionNombre?: string)
 
 export function TrasladoExportable({ transfer, onClose }: { transfer: TransferRecord; onClose: () => void }) {
   const [identifiersByProduct, setIdentifiersByProduct] = useState<Record<string, LineIdentifiers>>({})
+  useEffect(() => { void loadEmpresaConfig() }, [])
   useEffect(() => {
     const ids = Array.from(new Set(transfer.lines.map((line) => line.productId).filter(Boolean)))
     if (!ids.length) return
