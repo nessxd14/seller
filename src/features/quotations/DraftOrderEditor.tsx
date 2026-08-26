@@ -120,7 +120,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     const requestId = ++productSearchIdRef.current
     setProductLoading(true)
     const handle = setTimeout(() => {
-      void productRepository.search({ query: productQuery, active: true, page: { page: 1, pageSize: 20 } }).then((page) => {
+      void productRepository.search({ query: productQuery, active: true, page: { page: 1, pageSize: 100 } }).then((page) => {
         if (productSearchIdRef.current === requestId) { setProductResults(page.items); setProductLoading(false) }
       })
     }, 250)
