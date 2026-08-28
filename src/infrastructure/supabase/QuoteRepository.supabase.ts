@@ -201,17 +201,15 @@ export class SupabaseQuoteRepository implements QuoteRepository {
     const { data, error, count } = await builder.order('id', { ascending: false }).range(from, to)
     if (error) throw error
     const headers = (data ?? []) as CotizacionRow[]
-    const ids = headers.map((h) => h.id)
-    // Sin `.range()` explícito, PostgREST recorta en silencio a 1.000 filas — con 145+
-    // cotizaciones reales la suma de sus líneas ya supera eso, y las que caen del lado
-    // cortado llegan con `lines: []` sin ningún error. El total de la lista ya no depende
-    // de esto (viene de header.total/subtotal), pero el fetch se arregla igual para no
-    // dejar la misma trampa para lo próximo que sí use `lines` acá.
-    const { data: allLines, error: linesError } = ids.length
-      ? await supabase.from('cotizacion_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').in('cotizacion_id', ids).range(0, 9999)
-      : { data: [] as CotizacionLineaRow[], error: null }
-    if (linesError) throw linesError
-    const items = headers.map((header) => rowToQuoteDraft(header, (allLines ?? []).filter((l) => l.cotizacion_id === header.id) as CotizacionLineaRow[]))
+    // La lista no trae líneas: Supabase aplica un tope propio de 1.000 filas
+    // (db-max-rows) a nivel de proyecto que ningún .range() del cliente puede
+    // levantar, y con 147+ cotizaciones reales la suma de sus líneas ya lo supera —
+    // las que caían del lado cortado llegaban con `lines: []` sin ningún error. El
+    // total de la lista no depende de esto (viene de header.total/subtotal); cada item
+    // se arma con `lines: []` y quien necesite las líneas reales de una cotización
+    // puntual las trae fresco por su propio id (getById/fetchQuoteById, nunca sujeto a
+    // este límite).
+    const items = headers.map((header) => rowToQuoteDraft(header, []))
     return { items, page: page.page, pageSize: page.pageSize, total: count ?? 0 }
   }
 
