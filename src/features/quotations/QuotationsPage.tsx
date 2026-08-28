@@ -6,6 +6,7 @@ import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState, FeatureToolbar, condicionPagoLabel, statusChipClass, statusLabel } from '../shared/FeatureShell'
 import { DraftOrderEditor } from './DraftOrderEditor'
 import { DocumentoExportable } from '../../components/DocumentoExportable'
+import { Modal } from '../../components/Modal'
 import { featureFlags } from '../../config/featureFlags'
 import { hoyLocal, sumarDiasIso } from '../../domain/common/fechas'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
@@ -50,6 +51,12 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   // between offering "Convertir a pedido" (existing cotización) or "Crear pedido"
   // (nothing to convert yet). See DraftOrderEditor's isExistingQuote prop comment.
   const [editingIsExisting, setEditingIsExisting] = useState(false)
+  // Brief: abrir /cotizaciones/:id (recarga directa o click en la fila) trae la
+  // cotización fresca por su propio id en vez de reusar el objeto de `quotes` — list()
+  // ya no trae líneas (tope de 1.000 filas de Supabase), así que ese objeto siempre
+  // tendría lines: []. Mientras el fetch está en curso, el modal muestra un esqueleto
+  // en vez de quedar cerrado o abrir el editor vacío.
+  const [editingLoading, setEditingLoading] = useState(false)
   const [preview, setPreview] = useState<QuoteDraft | null>(null)
   const load = () => quoteService.list().then((items) => { setQuotes(items); setStatus('ready') }).catch(() => setStatus('error'))
   useEffect(() => { void load() }, [])
@@ -65,11 +72,25 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   const route = useRoute()
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza el editor abierto con la URL actual, no un fetch que difiera
-    if (route.kind !== 'cotizacion') { setEditing((current) => current && editingIsExisting ? null : current); return }
-    const found = quotes.find((q) => q.id === route.id)
-    if (found) { setEditingIsExisting(true); setEditing(found) }
+    if (route.kind !== 'cotizacion') { setEditing((current) => current && editingIsExisting ? null : current); setEditingLoading(false); return }
+    if (!route.id) return
+    let cancelled = false
+    setEditingIsExisting(true)
+    setEditingLoading(true)
+    setEditing(null)
+    void quoteService.getById(route.id).then((found) => {
+      if (cancelled) return
+      setEditingLoading(false)
+      if (found) setEditing(found)
+      else { notify('Cotización no encontrada'); navigate('/') }
+    })
+    // Si la ruta cambia (o el componente se desmonta) antes de que el fetch resuelva,
+    // cortamos el `setEditing`/`setEditingLoading` de esa promesa vieja — si no, el
+    // esqueleto de carga podía quedar pegado, o una cotización distinta a la que ya
+    // navegamos podía pisar el editor un instante después.
+    return () => { cancelled = true; setEditingLoading(false) }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- editingIsExisting se lee pero no debe reprogramar el efecto en cada toggle propio
-  }, [route, quotes])
+  }, [route])
   const toggleSort = (key: SortKey) => { if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc'); else { setSortKey(key); setSortDir('asc') } }
   const filtered = useMemo(() => {
     const list = quotes.filter((quote) => (filter === 'all' || quote.status === filter) && (matchesNumero(quote.number, query) || `${quote.customerName} ${quote.status}`.toLowerCase().includes(query.toLowerCase())))
@@ -162,6 +183,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
         </article>
       })}
     </div>}
+    {editingLoading && <Modal title="Cargando cotización" onClose={closeEditor}><FeatureState type="skeleton" text="Cargando cotización" /></Modal>}
     {editing && <DraftOrderEditor quote={editing} isExistingQuote={editingIsExisting} onClose={closeEditor} onSave={save} onCreateOrder={createOrderDirect} onConvert={editingIsExisting ? convert : undefined} />}
     {preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, medioPago: preview.medioPago, asunto: preview.asunto, documentDate: preview.documentDate, generalDiscountCents: preview.generalDiscountCents }} onClose={() => setPreview(null)} />}
   </FeatureShell>
