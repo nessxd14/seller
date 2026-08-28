@@ -4,6 +4,9 @@ import type { OrderView } from '../shared/models'
 export class OrderService {
   constructor(private readonly repository: LocalRepository<OrderView>) {}
   list() { return this.repository.list() }
+  // Brief: /pedidos/:id (y la vista previa/impresión) necesitan traer un pedido puntual
+  // sin pedir la lista completa — mismo criterio que QuoteService.getById.
+  getById(id: string) { return this.repository.get(id) }
   save(order: OrderView) { return this.repository.save(order) }
   async partialDispatch(id: string) {
     const order = await this.repository.get(id)
