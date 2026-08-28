@@ -26,7 +26,7 @@ import { pedidoPath, cotizacionPath } from '../../router/appRoute'
 import { RowLink } from '../../router/RowLink'
 import { AutoriaBadge } from '../../components/AutoriaBadge'
 
-type SortKey = 'number' | 'customerName' | 'channel' | 'status' | 'lines' | 'total' | 'createdAt'
+type SortKey = 'number' | 'customerName' | 'channel' | 'status' | 'total' | 'createdAt'
 type SortDir = 'asc' | 'desc'
 
 // El backend ya calculó pedido.total (subtotal con descuentos de línea, menos
@@ -85,6 +85,10 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [selected, setSelected] = useState<OrderView | null>(null)
+  // Brief: mismo bug que en Cotizaciones — list() ya no trae líneas (tope de 1.000 filas
+  // de Supabase), así que abrir /pedidos/:id no puede reusar el objeto de `orders`.
+  // selectedLoading solo gatea el modal de esqueleto mientras dura ese fetch por id.
+  const [selectedLoading, setSelectedLoading] = useState(false)
   const [deliveryNote, setDeliveryNote] = useState<OrderView | null>(null)
   const [orderDoc, setOrderDoc] = useState<OrderView | null>(null)
   const [advanceOpen, setAdvanceOpen] = useState(false)
@@ -135,10 +139,22 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   const route = useRoute()
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza el modal abierto con la URL actual (navegación / botón atrás), no un fetch que difiera
-    if (route.kind !== 'pedido') { setSelected(null); return }
-    const found = orders.find((o) => o.id === route.id)
-    if (found) setSelected(found)
-  }, [route, orders])
+    if (route.kind !== 'pedido') { setSelected(null); setSelectedLoading(false); return }
+    if (!route.id) return
+    let cancelled = false
+    setSelectedLoading(true)
+    setSelected(null)
+    void orderService.getById(route.id).then((found) => {
+      if (cancelled) return
+      setSelectedLoading(false)
+      if (found) setSelected(found)
+      else { notify('Pedido no encontrado'); navigate('/') }
+    })
+    // Corta el `setSelected`/`setSelectedLoading` de una promesa vieja si la ruta cambia
+    // (o el componente se desmonta) antes de que resuelva.
+    return () => { cancelled = true; setSelectedLoading(false) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- notify/navigate son estables por convención en este archivo (props/imports), no deben reprogramar el efecto
+  }, [route])
   useEffect(() => {
     if (!featureFlags.supabase || !orders.length) return
     const ids = orders.map((o) => Number(o.id)).filter(Number.isFinite)
@@ -258,19 +274,18 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       (matchesNumero(order.number, query) || order.customerName.toLowerCase().includes(query.toLowerCase()))
     )
     const dir = sortDir === 'asc' ? 1 : -1
-    const withStats = list.map((order) => ({
-      order,
-      requested: order.lines.reduce((sum, line) => sum + line.quantity, 0),
-      prepared: order.lines.reduce((sum, line) => sum + line.prepared, 0),
-      total: orderTotal(order),
-    }))
+    // requested/prepared (progreso de despacho por línea) salían de order.lines, que
+    // list() ya no trae (mismo tope de 1.000 filas de Supabase que en Cotizaciones) — ese
+    // detalle solo está disponible al abrir el pedido puntual (`selected`, traído fresco
+    // por id). La columna "Líneas" queda como placeholder acá; ver detalle para el
+    // desglose real.
+    const withStats = list.map((order) => ({ order, total: orderTotal(order) }))
     withStats.sort((a, b) => {
       switch (sortKey) {
         case 'number': return a.order.number.localeCompare(b.order.number) * dir
         case 'customerName': return a.order.customerName.localeCompare(b.order.customerName) * dir
         case 'channel': return a.order.channel.localeCompare(b.order.channel) * dir
         case 'status': return a.order.status.localeCompare(b.order.status) * dir
-        case 'lines': return ((a.requested ? a.prepared / a.requested : 0) - (b.requested ? b.prepared / b.requested : 0)) * dir
         case 'total': return (a.total - b.total) * dir
         case 'createdAt': return (new Date(a.order.createdAt).getTime() - new Date(b.order.createdAt).getTime()) * dir
       }
@@ -314,8 +329,8 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}><option value="all">Todos los canales</option>{Object.entries(channelNames).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
     </FeatureToolbar>
     {status === 'loading' ? <FeatureState type="skeleton" text="Cargando pedidos" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.length ? <FeatureState type={orders.length ? 'no-results' : 'empty'} text="No hay pedidos" /> : <div className="feature-table orders-table sticky-head">
-      <div className="table-head"><SortTh label="Nº" sortkey="number" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Cliente" sortkey="customerName" activeKey={sortKey} onToggle={toggleSort} /><span>Asunto</span><SortTh label="Canal" sortkey="channel" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Estado" sortkey="status" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Líneas" sortkey="lines" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Total" sortkey="total" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Fecha" sortkey="createdAt" activeKey={sortKey} onToggle={toggleSort} /></div>
-      {filtered.map(({ order, requested, prepared, total }) => {
+      <div className="table-head"><SortTh label="Nº" sortkey="number" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Cliente" sortkey="customerName" activeKey={sortKey} onToggle={toggleSort} /><span>Asunto</span><SortTh label="Canal" sortkey="channel" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Estado" sortkey="status" activeKey={sortKey} onToggle={toggleSort} /><span>Líneas</span><SortTh label="Total" sortkey="total" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Fecha" sortkey="createdAt" activeKey={sortKey} onToggle={toggleSort} /></div>
+      {filtered.map(({ order, total }) => {
         // Nota del usuario (no es parte del brief original): resaltar pedidos anulados
         // (opacos, con X) y editados — más de una versión guardada — (amarillo, con lápiz)
         // para que salten a la vista en la grilla sin tener que abrir cada uno.
@@ -330,12 +345,13 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
           <span>{order.asunto || (order.sourceQuoteNumber ? `origen ${order.sourceQuoteNumber}` : '—')}</span>
           <span className="channel-chip">{channelNames[order.channel] ?? order.channel}</span>
           <span><span className={`status-chip ${statusChipClass(order.status)}`}>{statusLabel[order.status]}</span>{order.conditionPago && <small className="channel-chip">{condicionPagoLabel[order.conditionPago]}</small>}</span>
-          <div><div className="progress"><span style={{ width: `${requested ? prepared / requested * 100 : 0}%` }} /></div><small>{prepared}/{requested}</small></div>
+          <span className="lines-unavailable" title="Abrí el pedido para ver el detalle de líneas">—</span>
           <strong>{formatMoney(money(total))}</strong>
           <span>{new Date(order.createdAt).toLocaleDateString('es-BO')}</span>
         </article>
       })}
     </div>}
+    {selectedLoading && <Modal title="Cargando pedido" onClose={() => navigate('/')}><FeatureState type="skeleton" text="Cargando pedido" /></Modal>}
     {selected && <Modal title={selected.number} subtitle={selected.customerName} onClose={() => navigate('/')}><div className="modal-body order-detail">
       <div className="panel-top-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={featureFlags.supabase && !sessionId} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button>{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && <button className="secondary-button" onClick={()=>setAddItemsOpen(true)}><PackagePlus /> Agregar ítems</button>}</div>
       <div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong>{statusLabel[selected.status]}</strong></div></div>

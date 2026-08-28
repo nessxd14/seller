@@ -35,6 +35,7 @@ export const orderService = {
     rawOrderService.list().then((items) =>
       input?.categorias?.length ? items.filter((o) => input.categorias!.includes(channelToCategoria(o.channel))) : items
     ),
+  getById: (id: string) => rawOrderService.getById(id),
   save: (order: OrderView) => rawOrderService.save(order),
   partialDispatch: (id: string) => rawOrderService.partialDispatch(id),
   cancel: async (id: string, motivo: string) => rawOrderService.cancel(id, motivo, await currentMockActorId()),

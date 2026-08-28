@@ -74,6 +74,12 @@ export const orderService = {
     const { items } = await orderRepository.list({ categorias: input?.categorias, page: bigPageOrders })
     return items
   },
+  // Brief: /pedidos/:id (y la vista previa/impresión) necesitan traer un pedido puntual
+  // sin pedir la lista completa — list() ya no trae líneas (mismo tope de 1.000 filas de
+  // Supabase que en Cotizaciones), así que la fila de la lista nunca sirve para esto.
+  getById(id: string): Promise<OrderView | null> {
+    return orderRepository.getById(id)
+  },
   async save(order: OrderView): Promise<OrderView> {
     const actorId = await currentActorId()
     return orderRepository.save(order, { actorId })

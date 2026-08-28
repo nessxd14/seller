@@ -221,14 +221,18 @@ export class SupabaseOrderRepository implements OrderRepository {
     const { data, error, count } = await builder.order('id', { ascending: false }).range(from, to)
     if (error) throw error
     const headers = (data ?? []) as PedidoRow[]
-    const ids = headers.map((h) => h.id)
-    const { data: allLines, error: linesError } = ids.length
-      ? await supabase.from('pedido_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').in('pedido_id', ids)
-      : { data: [] as PedidoLineaRow[], error: null }
-    if (linesError) throw linesError
+    // La lista no trae líneas: mismo bug que en Cotizaciones (ver QuoteRepository.supabase.ts
+    // list()) — Supabase aplica un tope propio de 1.000 filas (db-max-rows) a nivel de
+    // proyecto que ningún .range() del cliente puede levantar, y con 397+ pedidos reales
+    // (1.422+ líneas combinadas) un .in('pedido_id', ids) sin paginar ya lo supera — los
+    // pedidos cuyas líneas caían del lado cortado llegaban con `lines: []` sin ningún
+    // error. El total de la lista no depende de esto (rowToOrderView ya lee
+    // totalCents/subtotalCents de header.total/subtotal); cada item se arma con
+    // `lines: []` y quien necesite las líneas reales de un pedido puntual las trae
+    // fresco por su propio id (getById/fetchOrderById, nunca sujeto a este límite).
     // List rows don't need the bitácora — only the detail panel does — so events stay
     // empty here rather than fetching pedido_evento for every row on every page load.
-    const items = await resolveSourceQuoteNumeros(headers.map((header) => rowToOrderView(header, (allLines ?? []).filter((l) => l.pedido_id === header.id) as PedidoLineaRow[], [])))
+    const items = await resolveSourceQuoteNumeros(headers.map((header) => rowToOrderView(header, [], [])))
     return { items, page: page.page, pageSize: page.pageSize, total: count ?? 0 }
   }
 
