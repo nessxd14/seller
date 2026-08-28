@@ -354,13 +354,18 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // (abrir_venta) y qué se pide (ubicación de origen + modo de cobro). abrir_venta deja
   // la venta ABIERTA sin tocar Kardex; solo completar_venta (desde la bandeja) baja stock.
   const [vtdSubmitting, setVtdSubmitting] = useState(false)
+  const vtdSubmittingRef = useRef(false)
   const [vtdError, setVtdError] = useState('')
   const [vtdRetailError, setVtdRetailError] = useState('')
   const [vtdPaymentOpen, setVtdPaymentOpen] = useState(false)
   const [vtdResult, setVtdResult] = useState<VentaDirectaRecord | null>(null)
   const vtdCashClosed = featureFlags.supabase && !sessionId
   const abrirVentaDirecta = async (payments?: SaleCheckoutPayment[]) => {
-    if (!cart.length || vtdUbicacionId == null || vtdSubmitting) return
+    // vtdSubmitting es estado de React: un doble clic/toque muy rápido invoca esta función
+    // dos veces con el mismo valor de estado (no hay repintado entre medio), así que no
+    // alcanza para bloquear la segunda llamada. El ref sí es síncrono entre llamadas.
+    if (!cart.length || vtdUbicacionId == null || vtdSubmitting || vtdSubmittingRef.current) return
+    vtdSubmittingRef.current = true
     setVtdSubmitting(true)
     setVtdError('')
     setVtdRetailError('')
@@ -393,6 +398,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
         setVtdError(error instanceof Error ? error.message : 'No se pudo abrir la venta directa')
       }
     } finally {
+      vtdSubmittingRef.current = false
       setVtdSubmitting(false)
     }
   }
