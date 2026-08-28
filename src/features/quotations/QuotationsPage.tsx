@@ -19,6 +19,13 @@ type SortDir = 'asc' | 'desc'
 
 const total = (quote: QuoteDraft) => quote.lines.reduce((sum, line) => sum + Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000), 0) - quote.generalDiscountCents
 
+// El total de la lista viene de cotizacion.total (ya calculado y correcto en la base),
+// no de sumar `lines` en el cliente: con el tope de 1.000 filas de PostgREST, las
+// cotizaciones cuyas líneas caían del lado recortado en list() mostraban Bs 0,00 aunque
+// el total real fuera correcto. `total(quote)` queda solo para modo mock (totalCents
+// undefined ahí, donde `lines` siempre está completo).
+const listTotal = (quote: QuoteDraft) => quote.totalCents ?? total(quote)
+
 const DAY_MS = 86_400_000
 // Days until validUntil is reached; negative once past. Used to flag near/past expiry.
 const daysUntil = (validUntil: string) => Math.ceil((new Date(validUntil).getTime() - Date.now()) / DAY_MS)
@@ -73,7 +80,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
         case 'customerName': return a.customerName.localeCompare(b.customerName) * dir
         case 'status': return a.status.localeCompare(b.status) * dir
         case 'validUntil': return a.validUntil.localeCompare(b.validUntil) * dir
-        case 'total': return (total(a) - total(b)) * dir
+        case 'total': return (listTotal(a) - listTotal(b)) * dir
         case 'createdAt': return (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * dir
       }
     })
@@ -150,7 +157,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
           <span>{quote.asunto || '—'}</span>
           <span><span className={`status-chip ${statusChipClass(quote.status)}`}>{statusLabel[quote.status]}</span>{quote.conditionPago && <small className="channel-chip">{condicionPagoLabel[quote.conditionPago]}</small>}</span>
           <span>{nearExpiry ? <span className="vigencia-warning"><AlertTriangle />{days < 0 ? 'Vencida' : `${quote.validUntil} (${days} d)`}</span> : quote.validUntil}</span>
-          <strong>{formatMoney(money(Math.max(0,total(quote))))}</strong>
+          <strong>{formatMoney(money(Math.max(0,listTotal(quote))))}</strong>
           <div className="row-actions"><button title="Vista previa / exportar" onClick={() => setPreview(quote)}><Eye /></button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => navigate(cotizacionPath(quote.id))}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title={quote.customerId ? 'Convertir en pedido' : 'Sin cliente — abrí la cotización y elegí uno'} onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
         </article>
       })}

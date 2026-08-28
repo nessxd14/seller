@@ -73,6 +73,13 @@ export interface QuoteDraft {
   // documento tiene que seguir mostrando quién lo pidió en su momento).
   solicitanteId?: string
   solicitanteNombre?: string
+  // Brief: total/subtotal ya calculados por la base (cotizacion.total/subtotal),
+  // para que la lista no tenga que recomputarlos sumando `lines` — con el tope de
+  // 1.000 filas de PostgREST, cotizaciones con líneas recortadas por la paginación
+  // masiva de list() mostraban Bs 0,00 aunque el total real en la base fuera correcto.
+  // Undefined en modo mock (donde `lines` siempre está completo y confiable).
+  totalCents?: number
+  subtotalCents?: number
 }
 
 export interface OrderView {

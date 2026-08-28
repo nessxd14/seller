@@ -133,6 +133,8 @@ const rowToQuoteDraft = (header: CotizacionRow, lines: CotizacionLineaRow[]): Qu
   creadoPor: header.creado_por ?? undefined,
   solicitanteId: header.solicitante_id != null ? String(header.solicitante_id) : undefined,
   solicitanteNombre: header.solicitado_por ?? undefined,
+  totalCents: numericToCents(num(header.total)),
+  subtotalCents: numericToCents(num(header.subtotal)),
 })
 
 // Exportado para test directo (Brief S11: serialización carrito → buildLineasJsonb con
@@ -200,8 +202,13 @@ export class SupabaseQuoteRepository implements QuoteRepository {
     if (error) throw error
     const headers = (data ?? []) as CotizacionRow[]
     const ids = headers.map((h) => h.id)
+    // Sin `.range()` explícito, PostgREST recorta en silencio a 1.000 filas — con 145+
+    // cotizaciones reales la suma de sus líneas ya supera eso, y las que caen del lado
+    // cortado llegan con `lines: []` sin ningún error. El total de la lista ya no depende
+    // de esto (viene de header.total/subtotal), pero el fetch se arregla igual para no
+    // dejar la misma trampa para lo próximo que sí use `lines` acá.
     const { data: allLines, error: linesError } = ids.length
-      ? await supabase.from('cotizacion_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').in('cotizacion_id', ids)
+      ? await supabase.from('cotizacion_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').in('cotizacion_id', ids).range(0, 9999)
       : { data: [] as CotizacionLineaRow[], error: null }
     if (linesError) throw linesError
     const items = headers.map((header) => rowToQuoteDraft(header, (allLines ?? []).filter((l) => l.cotizacion_id === header.id) as CotizacionLineaRow[]))
