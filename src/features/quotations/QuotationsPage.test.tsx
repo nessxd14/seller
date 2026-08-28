@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { QuoteDraft } from '../../application/shared/models'
 import { QuotationsPage } from './QuotationsPage'
 
@@ -54,5 +54,21 @@ describe('QuotationsPage — abrir por URL trae la cotización fresca', () => {
     expect((await screen.findAllByText('Producto Fresco')).length).toBeGreaterThan(0)
 
     window.history.pushState({}, '', '/')
+  })
+})
+
+// Brief: el botón del ojito ("Vista previa / exportar") pasaba la fila de la tabla tal
+// cual a DocumentoExportable — con list() sin líneas, la vista previa/impresión
+// siempre mostraba 0 ítems. Debe traer la cotización fresca por su propio id primero.
+describe('QuotationsPage — vista previa trae la cotización fresca', () => {
+  it('el botón del ojito muestra las líneas de getById, no las (vacías) de la fila de la lista', async () => {
+    getByIdMock.mockClear()
+    render(<QuotationsPage notify={() => {}} onOrderCreated={() => {}} />)
+
+    const previewButton = await screen.findByTitle('Vista previa / exportar')
+    fireEvent.click(previewButton)
+
+    await waitFor(() => expect(getByIdMock).toHaveBeenCalledWith('218'))
+    expect((await screen.findAllByText('Producto Fresco')).length).toBeGreaterThan(0)
   })
 })

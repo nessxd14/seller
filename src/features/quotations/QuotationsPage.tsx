@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowUpDown, Copy, Eye, Plus, ShoppingCart } from 'lucide-react'
+import { AlertTriangle, ArrowUpDown, Copy, Eye, LoaderCircle, Plus, ShoppingCart } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { QuoteDraft, QuoteWorkflowStatus } from '../../application/shared/models'
 import { orderService, quoteService, sensitiveOperations } from '../../infrastructure/services'
@@ -58,6 +58,21 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   // en vez de quedar cerrado o abrir el editor vacío.
   const [editingLoading, setEditingLoading] = useState(false)
   const [preview, setPreview] = useState<QuoteDraft | null>(null)
+  // Brief: list() ya no trae líneas, así que la fila de la tabla siempre tiene
+  // lines: [] — la vista previa/impresión necesita traer la cotización fresca por su
+  // propio id (nunca sujeto al tope de 1.000 filas de Supabase) antes de mostrarla.
+  // previewLoadingId solo deshabilita el botón del ojito de esa fila mientras dura
+  // ese único fetch — no hace falta un estado de carga elaborado como en el editor.
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null)
+  const openPreview = async (id: string) => {
+    setPreviewLoadingId(id)
+    try {
+      const full = await quoteService.getById(id)
+      if (full) setPreview(full)
+    } finally {
+      setPreviewLoadingId(null)
+    }
+  }
   const load = () => quoteService.list().then((items) => { setQuotes(items); setStatus('ready') }).catch(() => setStatus('error'))
   useEffect(() => { void load() }, [])
   // Opens a cart-panel-originated draft prefilled into the editor, then immediately
@@ -179,7 +194,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
           <span><span className={`status-chip ${statusChipClass(quote.status)}`}>{statusLabel[quote.status]}</span>{quote.conditionPago && <small className="channel-chip">{condicionPagoLabel[quote.conditionPago]}</small>}</span>
           <span>{nearExpiry ? <span className="vigencia-warning"><AlertTriangle />{days < 0 ? 'Vencida' : `${quote.validUntil} (${days} d)`}</span> : quote.validUntil}</span>
           <strong>{formatMoney(money(Math.max(0,listTotal(quote))))}</strong>
-          <div className="row-actions"><button title="Vista previa / exportar" onClick={() => setPreview(quote)}><Eye /></button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => navigate(cotizacionPath(quote.id))}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title={quote.customerId ? 'Convertir en pedido' : 'Sin cliente — abrí la cotización y elegí uno'} onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
+          <div className="row-actions"><button title="Vista previa / exportar" disabled={previewLoadingId === quote.id} onClick={() => void openPreview(quote.id)}>{previewLoadingId === quote.id ? <LoaderCircle className="spin" /> : <Eye />}</button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => navigate(cotizacionPath(quote.id))}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title={quote.customerId ? 'Convertir en pedido' : 'Sin cliente — abrí la cotización y elegí uno'} onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
         </article>
       })}
     </div>}
