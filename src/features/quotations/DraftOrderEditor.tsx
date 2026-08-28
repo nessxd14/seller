@@ -73,6 +73,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const [editLineModalId, setEditLineModalId] = useState<string | null>(null)
   const [actorId, setActorId] = useState('pos')
   const [saving, setSaving] = useState(false)
+  const submittingRef = useRef(false)
   const [saveError, setSaveError] = useState('')
   // Brief S-G: aviso ámbar, no bloqueo — evaluar_tope ya arma el texto (motivo_advertencia),
   // se muestra tal cual. null = dentro del tope o nada que evaluar (sin solicitante todavía).
@@ -365,6 +366,12 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const missingSolicitante = requiereSolicitante && !value.solicitanteId
 
   const runAction = async (action: (q: QuoteDraft) => void | Promise<void>) => {
+    // Candado síncrono: `disabled={saving}` recién surte efecto en el próximo repintado,
+    // así que un doble clic/toque muy rápido (terminal táctil, conexión lenta) puede
+    // disparar runAction dos veces antes de que el DOM se actualice. El ref corta la
+    // segunda llamada en el mismo tick.
+    if (submittingRef.current) return
+    submittingRef.current = true
     setSaving(true)
     setSaveError('')
     try {
@@ -375,6 +382,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       // muestra tal cual, nunca reemplazado por uno genérico.
       setSaveError(err instanceof Error ? err.message : 'No se pudo completar la acción')
     } finally {
+      submittingRef.current = false
       setSaving(false)
     }
   }
