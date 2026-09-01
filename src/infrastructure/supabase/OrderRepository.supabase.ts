@@ -36,6 +36,8 @@ interface PedidoRow {
   solicitado_por: string | null
   condicion_pago: CondicionPago | null
   medio_pago: MedioPago | null
+  alerta_lineas_en: string | null
+  alerta_lineas_vista_en: string | null
 }
 
 interface PedidoLineaRow {
@@ -60,23 +62,44 @@ interface PedidoLineaRow {
   presentacion_id: number | null
   cantidad_presentacion: number | string | null
   presentacion?: { nombre: string; factor_unidad_base: number | string } | null
+  // Brief: reemplazada_por_id tiene FK propia a pedido_linea(id) — PostgREST la resuelve
+  // anidada igual que producto:producto_id(...). Solo se pide en fetchOrderById (detalle
+  // puntual), nunca en list() — que ya no trae líneas en absoluto (tope de 1.000 filas).
+  reemplazada_por?: { id: number; cantidad_base: number | string; cantidad_presentacion: number | string | null; es_personalizado: boolean; descripcion: string | null; producto?: { nombre: string } | null } | null
 }
 
 interface PedidoEventoRow {
   id: number
-  accion: 'ANULADO' | 'RESTAURADO'
-  motivo: string
-  estado_previo: string
+  accion: 'ANULADO' | 'RESTAURADO' | 'LINEA_RECHAZADA' | 'LINEA_CAMBIADA' | 'LINEA_RETIRADA' | 'LINEAS_AGREGADAS'
+  motivo: string | null
+  estado_previo: string | null
   usuario: string
   creado_en: string
 }
 
 const estadoLabel: Record<string, string> = { ABIERTO: 'Abierto', COMPLETADO: 'Completado', CANCELADO: 'Cancelado' }
 
+// El select('*') de pedido_evento no filtra por `accion` — además de ANULADO/RESTAURADO
+// también trae LINEA_RECHAZADA/LINEA_CAMBIADA/LINEA_RETIRADA/LINEAS_AGREGADAS (eventos que
+// Almacén dispara al rechazar/cambiar/retirar una línea, o al agregar ítems). El ternario
+// viejo (ANULADO ? 'anulado' : 'restaurado') etiquetaba cualquiera de esos como "Pedido
+// restaurado" — dato falso en el historial.
+const accionLabel: Record<PedidoEventoRow['accion'], string> = {
+  ANULADO: 'Pedido anulado',
+  RESTAURADO: 'Pedido restaurado',
+  LINEA_RECHAZADA: 'Línea rechazada',
+  LINEA_CAMBIADA: 'Línea cambiada',
+  LINEA_RETIRADA: 'Línea retirada',
+  LINEAS_AGREGADAS: 'Ítems agregados',
+}
+
 const eventoRowToEvent = (row: PedidoEventoRow) => ({
   at: new Date(row.creado_en).toLocaleString('es-BO'),
-  label: row.accion === 'ANULADO' ? 'Pedido anulado' : 'Pedido restaurado',
-  detail: `${row.usuario} · ${row.motivo} · antes: ${estadoLabel[row.estado_previo] ?? row.estado_previo}`,
+  label: accionLabel[row.accion] ?? row.accion,
+  // estado_previo no aplica a los eventos de línea — viene null.
+  detail: row.accion === 'ANULADO' || row.accion === 'RESTAURADO'
+    ? `${row.usuario} · ${row.motivo} · antes: ${estadoLabel[row.estado_previo ?? ''] ?? row.estado_previo}`
+    : `${row.usuario}${row.motivo ? ' · ' + row.motivo : ''}`,
 })
 
 const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
@@ -117,6 +140,12 @@ const lineaRowToOrderLine = (row: PedidoLineaRow): OrderLine => {
     prepared,
     allocations: row.sucursal_origen_id != null ? [{ location: sucursalIdToLocation(row.sucursal_origen_id), quantity: baseQuantity }] : [],
     lineStatus: row.estado,
+    replacedByName: row.reemplazada_por
+      ? (row.reemplazada_por.es_personalizado ? (row.reemplazada_por.descripcion ?? 'Ítem especial') : (row.reemplazada_por.producto?.nombre ?? row.reemplazada_por.descripcion ?? ''))
+      : undefined,
+    replacedByQuantity: row.reemplazada_por
+      ? num(row.reemplazada_por.cantidad_presentacion ?? row.reemplazada_por.cantidad_base)
+      : undefined,
   }
 }
 // local alias to avoid importing pctToBp under a name collision with bpToPct import above
@@ -151,7 +180,17 @@ const rowToOrderView = (header: PedidoRow, lines: PedidoLineaRow[], eventos: Ped
     solicitanteNombre: header.solicitado_por ?? undefined,
     conditionPago: header.condicion_pago ?? undefined,
     medioPago: header.medio_pago ?? undefined,
+    needsAttention: !!header.alerta_lineas_en &&
+      (!header.alerta_lineas_vista_en || header.alerta_lineas_vista_en < header.alerta_lineas_en),
   }
+}
+
+// Brief: marca pedido.alerta_lineas_vista_en = now() cuando alguien abre el pedido en
+// Seller, para apagar el flag de "necesita atención" de la grilla (OrdersPage.tsx la
+// llama fire-and-forget al abrir el detalle, sin bloquear el render).
+export const marcarPedidoAtencionVista = async (pedidoId: number, usuario?: string): Promise<void> => {
+  const { error } = await supabase.rpc('marcar_pedido_atencion_vista', { p_pedido_id: pedidoId, p_usuario: usuario ?? null })
+  if (error) throw error
 }
 
 // Batch-resuelve numero de cotizacion para los pedidos convertidos de una página/detalle —
@@ -169,7 +208,9 @@ const fetchOrderById = async (id: number): Promise<(OrderView & Versioned) | nul
   const { data: header, error: headerError } = await supabase.from('pedido').select('*, cliente(nombre)').eq('id', id).maybeSingle()
   if (headerError) throw headerError
   if (!header) return null
-  const { data: lines, error: linesError } = await supabase.from('pedido_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').eq('pedido_id', id)
+  const { data: lines, error: linesError } = await supabase.from('pedido_linea')
+    .select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base), reemplazada_por:reemplazada_por_id(id, cantidad_base, cantidad_presentacion, es_personalizado, descripcion, producto(nombre))')
+    .eq('pedido_id', id)
   if (linesError) throw linesError
   const { data: eventos, error: eventosError } = await supabase.from('pedido_evento').select('*').eq('pedido_id', id).order('creado_en', { ascending: true })
   // pedido_evento is created by TAREA 2's migration — not applied yet, so a missing-table

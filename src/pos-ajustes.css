@@ -94,16 +94,24 @@
 .orders-table>article{position:relative}
 .order-row-deleted{opacity:.55}
 .order-row-edited{background:#fffbe6}
+/* Brief: Almacén rechazó/cambió una línea sin revisar todavía — ámbar más saturado que
+   order-row-edited (informativo) para que se lea como "requiere acción", nunca
+   confundible con order-row-deleted (rojizo, pedido anulado). Tiene prioridad visual
+   sobre order-row-edited cuando ambas son ciertas — ver OrdersPage.tsx. */
+.order-row-attention{background:#fff1de}
 .order-row-flag{position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center}
 .order-row-flag svg{width:11px;height:11px}
 .order-row-flag-deleted{background:#fae8e5;color:#ad4b3c}
 .order-row-flag-edited{background:#fff2c2;color:#a76a19}
+.order-row-flag-attention{background:#ffe1b3;color:#a35b00}
 
 /* Brief S-I Tarea 3 — líneas CAMBIADA/RECHAZADO/RETIRADA en el detalle del pedido: mismo
    criterio visual que order-row-deleted (opaco), más tachado para diferenciarlas de una
    línea activa a simple vista sin depender solo de la opacidad. */
 .order-line-inactive{opacity:.55;text-decoration:line-through}
 .order-line-inactive-badge{text-decoration:none;font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:#fae8e5;color:#ad4b3c;margin-left:6px}
+/* Brief: a qué se cambió una línea CAMBIADA (pedido_linea.reemplazada_por_id). */
+.order-line-replacement{display:block;color:#a35b00;margin-top:2px}
 
 /* Brief S11 Bloque B2 — navegador de versiones del pedido. */
 .version-nav{display:flex;align-items:center;gap:10px;background:#f5f2ed;border-radius:10px;padding:9px 12px;margin-bottom:10px}

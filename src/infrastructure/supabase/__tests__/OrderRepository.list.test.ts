@@ -9,8 +9,10 @@ import { describe, expect, it, vi } from 'vitest'
 // líneas reales de un pedido puntual las trae fresco por su propio id
 // (getById/fetchOrderById — ver OrdersPage.tsx).
 const headers = [
-  { id: 501, numero: 'PED-2026-00501', categoria: 'MAYOR', referencia: null, estado: 'ABIERTO', creado_por: null, creado_en: '2026-08-01T00:00:00Z', cliente_id: null, subtotal: 900, descuento_general: 0, total: 900, cliente: null, solicitante_id: null, solicitado_por: null, condicion_pago: null, medio_pago: null },
-  { id: 503, numero: 'PED-2026-00503', categoria: 'MAYOR', referencia: null, estado: 'ABIERTO', creado_por: null, creado_en: '2026-08-02T00:00:00Z', cliente_id: null, subtotal: 1218, descuento_general: 0, total: 1218, cliente: null, solicitante_id: null, solicitado_por: null, condicion_pago: null, medio_pago: null },
+  { id: 501, numero: 'PED-2026-00501', categoria: 'MAYOR', referencia: null, estado: 'ABIERTO', creado_por: null, creado_en: '2026-08-01T00:00:00Z', cliente_id: null, subtotal: 900, descuento_general: 0, total: 900, cliente: null, solicitante_id: null, solicitado_por: null, condicion_pago: null, medio_pago: null, alerta_lineas_en: null, alerta_lineas_vista_en: null },
+  { id: 503, numero: 'PED-2026-00503', categoria: 'MAYOR', referencia: null, estado: 'ABIERTO', creado_por: null, creado_en: '2026-08-02T00:00:00Z', cliente_id: null, subtotal: 1218, descuento_general: 0, total: 1218, cliente: null, solicitante_id: null, solicitado_por: null, condicion_pago: null, medio_pago: null, alerta_lineas_en: '2026-08-10T00:00:00Z', alerta_lineas_vista_en: null },
+  // Alertado pero ya visto DESPUÉS de la última alerta — needsAttention debe ser false.
+  { id: 505, numero: 'PED-2026-00505', categoria: 'MAYOR', referencia: null, estado: 'ABIERTO', creado_por: null, creado_en: '2026-08-03T00:00:00Z', cliente_id: null, subtotal: 500, descuento_general: 0, total: 500, cliente: null, solicitante_id: null, solicitado_por: null, condicion_pago: null, medio_pago: null, alerta_lineas_en: '2026-08-10T00:00:00Z', alerta_lineas_vista_en: '2026-08-11T00:00:00Z' },
 ]
 
 const headerBuilder = {
@@ -51,5 +53,14 @@ describe('SupabaseOrderRepository.list — ya no trae líneas', () => {
     expect(ped503?.lines).toEqual([])
     expect(ped503?.totalCents).toBe(121800)
     expect(ped503?.subtotalCents).toBe(121800)
+  })
+
+  it('needsAttention compara alerta_lineas_en contra alerta_lineas_vista_en', async () => {
+    const { orderRepository } = await import('../OrderRepository.supabase')
+    const { items } = await orderRepository.list({ page: { page: 1, pageSize: 50 } })
+
+    expect(items.find((o) => o.number === 'PED-2026-00501')?.needsAttention).toBe(false)
+    expect(items.find((o) => o.number === 'PED-2026-00503')?.needsAttention).toBe(true)
+    expect(items.find((o) => o.number === 'PED-2026-00505')?.needsAttention).toBe(false)
   })
 })

@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronLeft, ChevronRight, HandCoins, PackageCheck, PackagePlus, Pencil, Trash2, Truck, XCircle, RotateCcw, ArrowUpDown, FileDown } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, HandCoins, PackageCheck, PackagePlus, Pencil, Trash2, Truck, XCircle, RotateCcw, ArrowUpDown, FileDown } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { OrderView, OrderWorkflowStatus, WorkflowLine } from '../../application/shared/models'
 import { authSessionProvider, cashService, orderService, productRepository, sensitiveOperations } from '../../infrastructure/services'
@@ -12,7 +12,7 @@ import type { Product } from '../../types'
 import { featureFlags } from '../../config/featureFlags'
 import { useCashSession } from '../../context/CashSessionContext'
 import { contarVersionesPedidos, eliminarPedido, listVersionesPedido, puedeEliminarsePedido, type PedidoVersion, type PuedeEliminarsePedido } from '../../infrastructure/supabase/OrderAdmin.supabase'
-import { buildLineasJsonb } from '../../infrastructure/supabase/OrderRepository.supabase'
+import { buildLineasJsonb, marcarPedidoAtencionVista } from '../../infrastructure/supabase/OrderRepository.supabase'
 import { diffVersionLines } from '../../domain/orders/versionDiff'
 import { decidirEliminacionPedido } from '../../domain/orders/deletionDecision'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
@@ -147,7 +147,16 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     void orderService.getById(route.id).then((found) => {
       if (cancelled) return
       setSelectedLoading(false)
-      if (found) setSelected(found)
+      if (found) {
+        setSelected(found)
+        // Fire-and-forget: no bloquea el render (mismo criterio que syncAnticipoHermes).
+        // Si falla, no pasa nada grave — el flag sigue prendido hasta la próxima apertura.
+        if (found.needsAttention) {
+          void marcarPedidoAtencionVista(Number(found.id)).then(() => {
+            setOrders((prev) => prev.map((o) => o.id === found.id ? { ...o, needsAttention: false } : o))
+          })
+        }
+      }
       else { notify('Pedido no encontrado'); navigate('/') }
     })
     // Corta el `setSelected`/`setSelectedLoading` de una promesa vieja si la ruta cambia
@@ -336,10 +345,12 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
         // para que salten a la vista en la grilla sin tener que abrir cada uno.
         const deleted = order.status === 'cancelled'
         const edited = !deleted && (versionCounts[order.id] ?? 0) > 1
-        return <article key={order.id} className={`clickable-row ${deleted ? 'order-row-deleted' : edited ? 'order-row-edited' : ''}`}>
+        const needsAttention = !deleted && order.needsAttention
+        return <article key={order.id} className={`clickable-row ${deleted ? 'order-row-deleted' : needsAttention ? 'order-row-attention' : edited ? 'order-row-edited' : ''}`}>
           <RowLink href={pedidoPath(order.id)} label={`Ver pedido ${order.number}`} />
           {deleted && <span className="order-row-flag order-row-flag-deleted" title="Anulado"><XCircle size={12} /></span>}
-          {edited && <span className="order-row-flag order-row-flag-edited" title="Editado"><Pencil size={12} /></span>}
+          {!deleted && needsAttention && <span className="order-row-flag order-row-flag-attention" title="Almacén rechazó o cambió un ítem — sin revisar"><AlertTriangle size={12} /></span>}
+          {!deleted && !needsAttention && edited && <span className="order-row-flag order-row-flag-edited" title="Editado"><Pencil size={12} /></span>}
           <strong className="doc-number-cell">{order.number}</strong>
           <span>{order.customerName}{order.solicitanteNombre && <small className="channel-chip">Solicitante: {order.solicitanteNombre}</small>}</span>
           <span>{order.asunto || (order.sourceQuoteNumber ? `origen ${order.sourceQuoteNumber}` : '—')}</span>
@@ -381,8 +392,8 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
         <p className="version-readonly-banner">Estás viendo una versión anterior — no es la vigente, solo lectura. <button type="button" onClick={() => setViewingVersionIndex(null)}>Volver a la vigente</button></p>
       )}
       {viewingCurrent ? <>
-        {selected.lines.filter((line) => !line.isCustomItem).map((line) => <article key={line.id} className={lineaInactiva(line.lineStatus) ? 'order-line-inactive' : ''}><header><div><strong>{line.name}</strong><small>{line.sku}{line.sourceLocation ? ` · Origen: ${line.sourceLocation}` : ''}</small>{lineaInactiva(line.lineStatus) && <span className="order-line-inactive-badge">{lineaEstadoLabel[line.lineStatus!]}</span>}</div><span>{line.prepared}/{line.quantity} preparadas</span></header><div className="allocation-bars">{line.allocations.map((allocation) => <div key={allocation.location}><span>{allocation.location}</span><b>{allocation.quantity} uds.</b></div>)}</div></article>)}
-        {selected.lines.some((line) => line.isCustomItem) && <><h3>Ítems especiales / a pedido</h3>{selected.lines.filter((line) => line.isCustomItem).map((line) => <article key={line.id} className={lineaInactiva(line.lineStatus) ? 'order-line-inactive' : ''}><header><div><strong>{line.name}</strong><small>Personalizado</small>{lineaInactiva(line.lineStatus) && <span className="order-line-inactive-badge">{lineaEstadoLabel[line.lineStatus!]}</span>}</div><span>{line.prepared}/{line.quantity} preparadas</span></header></article>)}</>}
+        {selected.lines.filter((line) => !line.isCustomItem).map((line) => <article key={line.id} className={lineaInactiva(line.lineStatus) ? 'order-line-inactive' : ''}><header><div><strong>{line.name}</strong><small>{line.sku}{line.sourceLocation ? ` · Origen: ${line.sourceLocation}` : ''}</small>{lineaInactiva(line.lineStatus) && <span className="order-line-inactive-badge">{lineaEstadoLabel[line.lineStatus!]}</span>}{line.lineStatus === 'CAMBIADA' && line.replacedByName && <small className="order-line-replacement">→ ahora: {line.replacedByName} × {line.replacedByQuantity}</small>}</div><span>{line.prepared}/{line.quantity} preparadas</span></header><div className="allocation-bars">{line.allocations.map((allocation) => <div key={allocation.location}><span>{allocation.location}</span><b>{allocation.quantity} uds.</b></div>)}</div></article>)}
+        {selected.lines.some((line) => line.isCustomItem) && <><h3>Ítems especiales / a pedido</h3>{selected.lines.filter((line) => line.isCustomItem).map((line) => <article key={line.id} className={lineaInactiva(line.lineStatus) ? 'order-line-inactive' : ''}><header><div><strong>{line.name}</strong><small>Personalizado</small>{lineaInactiva(line.lineStatus) && <span className="order-line-inactive-badge">{lineaEstadoLabel[line.lineStatus!]}</span>}{line.lineStatus === 'CAMBIADA' && line.replacedByName && <small className="order-line-replacement">→ ahora: {line.replacedByName} × {line.replacedByQuantity}</small>}</div><span>{line.prepared}/{line.quantity} preparadas</span></header></article>)}</>}
       </> : viewedVersion && (
         <div className="version-lines">
           {viewedVersion.lineas.map((linea) => {
