@@ -38,6 +38,11 @@ export interface WorkflowLine {
   // producen estos tres estados se disparan desde Almacén (brief aparte); acá es de solo
   // lectura, para dar tratamiento visual distinto a una línea activa.
   lineStatus?: 'POR_DESPACHAR' | 'DESPACHADA' | 'PENDIENTE' | 'COMPRADO_DIRECTO' | 'ESPECIAL' | 'RECHAZADO' | 'CAMBIADA' | 'RETIRADA'
+  // Brief: cuando lineStatus === 'CAMBIADA', esto trae un resumen de la línea que
+  // la reemplazó (pedido_linea.reemplazada_por_id, ya con FK propia — PostgREST
+  // la resuelve anidada sin nada especial del lado de la query).
+  replacedByName?: string
+  replacedByQuantity?: number
 }
 
 export interface QuoteDraft {
@@ -128,6 +133,11 @@ export interface OrderView {
   // crear pedido sin pasar por cotización) — mismo par de campos que QuoteDraft.
   conditionPago?: 'CONTADO' | 'CREDITO'
   medioPago?: 'EFECTIVO' | 'QR' | 'TRANSFERENCIA' | 'SIGEP' | 'CHEQUE' | 'DEPOSITO'
+  // pedido.alerta_lineas_en: se marca desde Cation cada vez que Almacén rechaza o
+  // cambia una línea. pedido.alerta_lineas_vista_en: se marca cuando alguien abre
+  // el pedido en Seller (marcar_pedido_atencion_vista). needsAttention es la
+  // comparación de ambas, resuelta acá para no repetirla en cada consumidor.
+  needsAttention?: boolean
 }
 
 export interface CustomerRecord {
