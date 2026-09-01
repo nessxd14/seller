@@ -124,10 +124,11 @@ export class SupabaseProductRepository implements ProductRepository {
     const from = (page.page - 1) * page.pageSize
     const to = from + page.pageSize - 1
     let builder = supabase.from('producto').select(PRODUCT_COLUMNS, { count: 'exact' })
-    if (query && query.trim()) {
+    const trimmed = query?.trim()
+    if (trimmed) {
       // Dentro de un or=(...) de PostgREST, la coma separa condiciones y el paréntesis
       // cierra el grupo: sin escapar, cualquiera de los dos rompe el filtro (400).
-      const escaped = query.trim().replace(/[%,()]/g, '')
+      const escaped = trimmed.replace(/[%,()]/g, '')
       builder = builder.or(`nombre.ilike.%${escaped}%,sku_interno.ilike.%${escaped}%`)
     }
     if (active !== undefined) builder = builder.eq('activo', active)
@@ -137,7 +138,43 @@ export class SupabaseProductRepository implements ProductRepository {
     // select (sin un tipo Database generado no puede ver que familia_id -> familia es
     // una FK to-one) — en runtime PostgREST sí devuelve un objeto. Pasar por `unknown`
     // evita el falso positivo de "may be a mistake" sin mentirle al resto del tipo.
-    const rows = (data ?? []) as unknown as ProductoRow[]
+    let rows = (data ?? []) as unknown as ProductoRow[]
+    let total = count ?? 0
+
+    // Brief: nombre/sku_interno no cubren el código de barras real (identificador.valor,
+    // tipo='barra'/'fabrica' — distinto de sku_interno, ligado a la presentación base del
+    // producto, no a producto directamente). Un cajero que escanea o tipea el código
+    // impreso no encontraba nada. Solo se intenta en la página 1 y cuando la búsqueda
+    // directa no llenó la página — no vale la pena pagar esta consulta extra en cada
+    // tecla si ya hay resultados de sobra por nombre.
+    if (trimmed && page.page === 1 && rows.length < page.pageSize) {
+      const escaped = trimmed.replace(/[%,()]/g, '')
+      const { data: porCodigo } = await supabase
+        .from('identificador')
+        .select('presentacion:presentacion_id(producto_id)')
+        .in('tipo', ['barra', 'fabrica'])
+        .eq('activo', true)
+        .ilike('valor', `%${escaped}%`)
+        .limit(20)
+      const idsYaTraidos = new Set(rows.map((r) => r.id))
+      const idsPorCodigo = [...new Set(
+        (porCodigo ?? [])
+          .map((row) => (row as unknown as { presentacion: { producto_id: number } | null }).presentacion?.producto_id)
+          .filter((id): id is number => id != null && !idsYaTraidos.has(id))
+      )]
+      if (idsPorCodigo.length) {
+        let extra = supabase.from('producto').select(PRODUCT_COLUMNS).in('id', idsPorCodigo)
+        if (active !== undefined) extra = extra.eq('activo', active)
+        const { data: extraRows } = await extra
+        if (extraRows?.length) {
+          // Los que matchearon por código van primero — si alguien escaneó, es
+          // casi seguro el que busca, no uno más entre 40 resultados por nombre.
+          rows = [...(extraRows as unknown as ProductoRow[]), ...rows]
+          total += extraRows.length
+        }
+      }
+    }
+
     // Separate batched call, scoped to just this page's product ids — kept apart from
     // `producto`'s own paginated fetch above so the search's count/pagination can never be
     // affected by the identifier join (see fetchBarcodeCodes doc comment).
@@ -146,7 +183,7 @@ export class SupabaseProductRepository implements ProductRepository {
       items: rows.map((row) => rowToProduct(row, codes.get(row.id))),
       page: page.page,
       pageSize: page.pageSize,
-      total: count ?? 0,
+      total,
     }
   }
 
