@@ -293,7 +293,7 @@ export const getStockBySucursalBatch = async (
   const result = new Map<number, StockBatchEntry>()
   if (!ids.length) return result
   const [{ data, error }, sucursalDefaults, { data: overridesData, error: overridesError }, { data: vendibleTiendaData, error: vendibleTiendaError }, { data: vendibleAlmacenData, error: vendibleAlmacenError }] = await Promise.all([
-    supabase.from('stock_actual').select('producto_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id)').in('producto_id', ids),
+    supabase.from('stock_actual').select('producto_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id,excluye_disponible)').in('producto_id', ids),
     getSucursalControlDefaults(),
     supabase.from('producto_sucursal').select('producto_id,sucursal_id,control_stock').in('producto_id', ids),
     supabase.rpc('saldo_vendible', { p_producto_ids: ids, p_sucursal_id: 2 }),
@@ -331,18 +331,19 @@ export const getStockBySucursalBatch = async (
   const rows = (data ?? []) as unknown as Array<{
     producto_id: number
     cantidad_base: number | string
-    ubicacion?: { sucursal_id: number | null } | null
+    ubicacion?: { sucursal_id: number | null; excluye_disponible: boolean | null } | null
   }>
   for (const row of rows) {
     const entry = result.get(row.producto_id)
     if (!entry) continue
+    if (row.ubicacion?.excluye_disponible === true) continue
     if (row.ubicacion?.sucursal_id === 2) entry.tienda += num(row.cantidad_base)
     else if (row.ubicacion?.sucursal_id === 1) entry.almacen += num(row.cantidad_base)
   }
   return result
 }
 
-export interface StockByLocation { ubicacionId: number; sucursalId?: number; cantidadBase: number }
+export interface StockByLocation { ubicacionId: number; sucursalId?: number; cantidadBase: number; excluyeDisponible?: boolean }
 
 /**
  * On-demand stock lookup for a single product — never bulk-preloads stock_actual
@@ -353,16 +354,17 @@ export const getStockByProduct = async (
   productId: number,
 ): Promise<{ onHand: StockByLocation[]; saldoDisponible: number }> => {
   const [{ data: stockRows, error: stockError }, { data: saldoRows, error: saldoError }] = await Promise.all([
-    supabase.from('stock_actual').select('ubicacion_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id)').eq('producto_id', productId),
+    supabase.from('stock_actual').select('ubicacion_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id,excluye_disponible)').eq('producto_id', productId),
     supabase.rpc('saldo_disponible_pedido', { p_producto_ids: [productId] }),
   ])
   if (stockError) throw stockError
   if (saldoError) throw saldoError
-  const typedStockRows = (stockRows ?? []) as unknown as Array<{ ubicacion_id: number; cantidad_base: number | string; ubicacion?: { sucursal_id: number | string | null } | null }>
+  const typedStockRows = (stockRows ?? []) as unknown as Array<{ ubicacion_id: number; cantidad_base: number | string; ubicacion?: { sucursal_id: number | string | null; excluye_disponible: boolean | null } | null }>
   const onHand: StockByLocation[] = typedStockRows.map((row) => ({
     ubicacionId: row.ubicacion_id,
     sucursalId: row.ubicacion?.sucursal_id != null ? num(row.ubicacion.sucursal_id) : undefined,
     cantidadBase: num(row.cantidad_base),
+    excluyeDisponible: row.ubicacion?.excluye_disponible === true ? true : undefined,
   }))
   const saldoRow = (saldoRows as Array<{ producto_id: number; saldo_libre: number | string }> | null)?.[0]
   return { onHand, saldoDisponible: num(saldoRow?.saldo_libre) }

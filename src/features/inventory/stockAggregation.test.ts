@@ -23,6 +23,17 @@ describe('aggregateStockBySucursal', () => {
     expect(result.total).toBe(14)
   })
 
+  it('excludes virtual locations (excluyeDisponible) from the almacen/tienda split but keeps them in total', () => {
+    const result = aggregateStockBySucursal([
+      { ubicacionId: 22, sucursalId: 1, cantidadBase: 5016 },
+      { ubicacionId: 27, sucursalId: 2, cantidadBase: 40 },
+      { ubicacionId: 31, sucursalId: 1, cantidadBase: -110, excluyeDisponible: true },
+    ])
+    expect(result.almacen).toBe(5016)
+    expect(result.tienda).toBe(40)
+    expect(result.total).toBe(4946)
+  })
+
   it('returns zeroed totals for an empty onHand list', () => {
     const result = aggregateStockBySucursal([])
     expect(result).toEqual({ hasSucursalSplit: false, tienda: 0, almacen: 0, total: 0 })
