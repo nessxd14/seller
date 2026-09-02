@@ -7,7 +7,7 @@ import type { StockByLocation } from '../../infrastructure/supabase/ProductRepos
  * back to a single aggregate total.
  */
 export function aggregateStockBySucursal(onHand: StockByLocation[]): { hasSucursalSplit: boolean; tienda: number; almacen: number; total: number } {
-  const total = onHand.reduce((sum, row) => sum + row.cantidadBase, 0)
+  const total = onHand.filter((row) => row.excluyeDisponible !== true).reduce((sum, row) => sum + row.cantidadBase, 0)
   const hasSucursalSplit = onHand.some((row) => row.sucursalId !== undefined)
   if (!hasSucursalSplit) return { hasSucursalSplit: false, tienda: 0, almacen: 0, total }
   const tienda = onHand.filter((row) => row.sucursalId === 2 && row.excluyeDisponible !== true).reduce((sum, row) => sum + row.cantidadBase, 0)

@@ -23,7 +23,7 @@ describe('aggregateStockBySucursal', () => {
     expect(result.total).toBe(14)
   })
 
-  it('excludes virtual locations (excluyeDisponible) from the almacen/tienda split but keeps them in total', () => {
+  it('excludes virtual locations from almacen/tienda split and from total', () => {
     const result = aggregateStockBySucursal([
       { ubicacionId: 22, sucursalId: 1, cantidadBase: 5016 },
       { ubicacionId: 27, sucursalId: 2, cantidadBase: 40 },
@@ -31,7 +31,7 @@ describe('aggregateStockBySucursal', () => {
     ])
     expect(result.almacen).toBe(5016)
     expect(result.tienda).toBe(40)
-    expect(result.total).toBe(4946)
+    expect(result.total).toBe(5056)
   })
 
   it('returns zeroed totals for an empty onHand list', () => {
