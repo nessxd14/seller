@@ -10,7 +10,7 @@ export function aggregateStockBySucursal(onHand: StockByLocation[]): { hasSucurs
   const total = onHand.reduce((sum, row) => sum + row.cantidadBase, 0)
   const hasSucursalSplit = onHand.some((row) => row.sucursalId !== undefined)
   if (!hasSucursalSplit) return { hasSucursalSplit: false, tienda: 0, almacen: 0, total }
-  const tienda = onHand.filter((row) => row.sucursalId === 2).reduce((sum, row) => sum + row.cantidadBase, 0)
-  const almacen = onHand.filter((row) => row.sucursalId === 1).reduce((sum, row) => sum + row.cantidadBase, 0)
+  const tienda = onHand.filter((row) => row.sucursalId === 2 && row.excluyeDisponible !== true).reduce((sum, row) => sum + row.cantidadBase, 0)
+  const almacen = onHand.filter((row) => row.sucursalId === 1 && row.excluyeDisponible !== true).reduce((sum, row) => sum + row.cantidadBase, 0)
   return { hasSucursalSplit: true, tienda, almacen, total }
 }
