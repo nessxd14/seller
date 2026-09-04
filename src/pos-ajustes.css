@@ -8,12 +8,6 @@
 .price-heredado-badge{color:var(--orange-dark);font-size:10px;font-style:normal;border:1px solid var(--orange-dark);border-radius:5px;padding:1px 5px;white-space:nowrap}
 .qty-unit-label{font-size:10px;color:#8c8880;margin-left:4px;text-transform:none}
 .line-total{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
-.documento-exportable .doc-brand{flex-direction:column;align-items:center;text-align:center;gap:6px}
-.documento-exportable .doc-brand img{width:132px;height:132px}
-.documento-exportable .doc-brand b{text-transform:uppercase;letter-spacing:.4px}
-.documento-exportable .doc-brand div{justify-items:center;text-align:center}
-@media print{.documento-exportable .doc-brand img{width:104px;height:104px}}
-
 /* Ronda 2 — catálogo: h3 usa el mismo indicio visual que el r2 CSS ya define para h4
    (ProductCatalog no cambió de tag; se agrega el selector correspondiente acá en vez de
    tocar el archivo r2, que se deja exactamente como fue entregado). */

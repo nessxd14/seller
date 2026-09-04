@@ -16,12 +16,32 @@
 .doc-fill.doc-fill-lg { min-width: 120mm }
 
 /* ---------- Encabezado con QR ---------- */
-.doc-id-block-with-qr { display: flex; gap: 10px; align-items: flex-start }
+/* Brief "Correcciones de impresión" 1.2: `.print-document header div{display:grid}`
+   (workflows.css) también matchea este div (es un div dentro de header) y le gana a
+   `.doc-id-block-with-qr{display:flex}` por especificidad (1 clase + 2 tipos vs. 1
+   clase) — el QR y el bloque de título quedaban apilados verticalmente en vez de en
+   fila, la otra mitad del "mucho espacio entre el logo y otros elementos" reportado
+   (la primera mitad era el logo de 208px). Dos clases acá gana sin tocar esa regla
+   genérica, que sigue haciendo falta para el div de texto de DocBrand. */
+.documento-exportable .doc-id-block-with-qr { display: flex; gap: 10px; align-items: flex-start }
 .doc-qr { width: 22mm; height: 22mm; display: block; flex-shrink: 0 }
 .doc-page-info { display: block; font-size: 8pt; color: #8a867f; margin-top: 2px }
 .doc-bultos-input { border: 0; border-bottom: 1px solid #666; background: transparent; font-size: var(--fs-body); width: 100%; padding: 0 }
 .doc-bultos-input:focus { outline: none; border-bottom-color: var(--orange) }
-@media print { .doc-bultos-input { border-bottom: 0 } }
+/* Brief "Correcciones de impresión" 1.3: el input y su placeholder son solo para
+   pantalla — en @media print jamás se pintan, así que el placeholder no puede aparecer
+   como si fuera un valor cargado. .doc-bultos-print es el reverso: oculto en pantalla
+   (el input ya muestra lo mismo ahí), visible solo al imprimir. */
+.doc-bultos-print { display: none }
+@media print {
+  .doc-bultos-input-screen { display: none }
+  .doc-bultos-print { display: inline-block }
+}
+
+/* ---------- Selector de formato (carta / rollo 80mm) — vive junto a "Vista de cliente" ---------- */
+.doc-format-select { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #57534a; margin-left: auto }
+.doc-format-select select { border: 1px solid #ddd8cf; border-radius: 7px; padding: 5px 8px; font-size: 12px; background: #fff }
+@media print { .doc-format-select { display: none !important } }
 
 /* ---------- Tabla: encabezado en mayúsculas, sin bordes de celda (familia visual) ---------- */
 .documento-exportable .doc-table thead th { border-bottom: 1px solid #666; font-weight: 600 }
@@ -39,6 +59,16 @@
 .doc-legend { font-size: 8pt; color: #8a867f; margin-top: 8px; line-height: 1.5 }
 .doc-obs { margin-top: 10px; font-size: 8.5pt; color: #8a867f }
 .doc-telegram-note { margin-top: 10px; padding-top: 7px; border-top: 1px solid #eee; font-size: 8pt; color: #8a867f }
+
+/* ---------- Cabecera compacta de la nota de entrega (páginas 2..N) ---------- */
+.documento-exportable header.doc-page-header-compact {
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid #666; padding-bottom: 6px;
+}
+.doc-page-header-compact-logo { width: 24px; height: 24px; object-fit: contain; flex-shrink: 0 }
+.doc-page-header-compact-title { flex: 1; font-size: 9pt; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.doc-page-header-compact .doc-qr { width: 16mm; height: 16mm; flex-shrink: 0 }
+.doc-page-header-compact .doc-page-info { margin: 0; white-space: nowrap }
 
 /* Firmas manuscritas de la nota de entrega — dos líneas, sin firma preimpresa. */
 .doc-manual-signs { display: flex; justify-content: space-between; gap: 20px; margin-top: 22mm }
@@ -72,4 +102,40 @@
   .quote-a4.print-document, .order-a4.print-document, .delivery-a4.print-document { padding: 0 }
   .documento-exportable .doc-page { padding: 15mm }
   .documento-exportable .doc-page + .doc-page { page-break-before: always; break-before: page }
+}
+
+/* ---------- Brief "Correcciones de impresión" 1.1: el modal necesita más ancho para que
+   el escalado de la vista previa no quede innecesariamente chico. Mismo truco de
+   `:has()` que .modal:has(.order-detail)/.modal:has(.draft-lines) (pos-detalle-pedido.css
+   / pos-ajustes-r4.css) — no tocar .modal.wide en general, son decenas de modales que lo
+   usan y no todos son documentos. ---------- */
+@media screen {
+  .modal:has(.documento-exportable) { max-width: min(720px, calc(100vw - 48px)); width: 100% }
+}
+
+/* ---------- Formato rollo (80mm) — cotización y nota de entrega, sin tabla, apilado ---------- */
+.doc-roll {
+  width: 80mm; font-family: 'Courier New', Consolas, monospace; font-size: 9.5pt;
+  line-height: 1.4; color: #111;
+}
+.doc-roll-center { text-align: center }
+.doc-roll-logo { width: 40px; height: 40px; object-fit: contain; display: block; margin: 0 auto 4px }
+.doc-roll .doc-qr.doc-roll-qr { width: 22mm; height: 22mm; margin: 6px auto }
+.doc-roll-rule { border: 0; border-top: 1px dashed #666; margin: 6px 0 }
+.doc-roll-line { margin: 2px 0; word-break: break-word }
+.doc-roll-line b { font-weight: 700 }
+.doc-roll-total { font-size: 11pt; margin-top: 4px }
+.doc-roll-item { margin-top: 4px }
+.doc-roll-checks { display: flex; gap: 10px; margin: 3px 0; font-size: 9.5pt }
+.doc-roll-checks .doc-checkbox { margin-right: 3px; vertical-align: middle }
+.doc-roll-end { text-align: center; font-weight: 700; letter-spacing: 3px; margin: 12px 0 }
+.doc-roll-telegram { font-size: 8.5pt; margin-top: 8px }
+.doc-roll .doc-fill { min-width: 30mm }
+.doc-roll .doc-fill.doc-fill-sm { min-width: 20mm }
+.doc-roll .doc-fill.doc-fill-lg { min-width: 60mm }
+@media screen {
+  .doc-roll.print-document { margin: 18px auto; padding: 12px }
+}
+@media print {
+  .doc-roll.print-document { padding: 4mm; margin: 0 }
 }

@@ -303,25 +303,14 @@
 .modal-actions .primary-button:last-child { box-shadow: 0 6px 14px #f26b2b28 }
 
 
-/* ── 5. Membrete: logo al doble, título más chico ─────────────────────────
+/* ── 5. Membrete ────────────────────────────────────────────────────────
  *
- * Valores absolutos, no relativos a la ronda 1 — así no dependen de cómo haya
- * quedado implementado aquello.
+ * Brief "Correcciones de impresión de documentos": los 264px/208px de acá
+ * (calculados sobre A4, de antes del rediseño del membrete) se pisaban con
+ * los 132px/104px de pos-ajustes.css y los 56px de workflows.css, dejando un
+ * logo gigante centrado con una zona muerta grande entre el membrete y el
+ * bloque de QR/título. Se elimina el override — workflows.css ya define
+ * `.doc-brand` en fila (logo 56px a la izquierda, razón social al lado,
+ * alineado arriba), que es el diseño de la maqueta aprobada. No agregar una
+ * cuarta capa acá: si el logo necesita otro tamaño, ajustar workflows.css.
  */
-
-.documento-exportable .doc-brand img {
-  width: 264px;
-  height: 264px;
-}
-
-.documento-exportable .doc-brand b {
-  font-size: 13px;
-  letter-spacing: 1.1px;
-}
-
-@media print {
-  /* 208px sobre A4 con margen de 15mm son ~30% del ancho útil: grande y
-     equilibrado. Más que eso empuja la tabla a la segunda página. */
-  .documento-exportable .doc-brand img { width: 208px; height: 208px }
-  .documento-exportable .doc-brand b { font-size: 11px; letter-spacing: 1px }
-}

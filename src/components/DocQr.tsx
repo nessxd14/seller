@@ -4,7 +4,7 @@ import QRCode from 'qrcode'
 /** QR impreso (nota de entrega / pedido) — 20mm mínimo con zona de silencio, generado
  * a dataURL en cliente (sin llamada a red). Ver domain/documents/qrContent.ts para el
  * contenido codificado. */
-export function DocQr({ content }: { content: string }) {
+export function DocQr({ content, className }: { content: string; className?: string }) {
   const [src, setSrc] = useState<string>('')
   useEffect(() => {
     let cancelled = false
@@ -13,6 +13,7 @@ export function DocQr({ content }: { content: string }) {
     })
     return () => { cancelled = true }
   }, [content])
-  if (!src) return <div className="doc-qr" aria-hidden />
-  return <img className="doc-qr" src={src} alt="Código QR del documento" />
+  const cls = className ? `doc-qr ${className}` : 'doc-qr'
+  if (!src) return <div className={cls} aria-hidden />
+  return <img className={cls} src={src} alt="Código QR del documento" />
 }

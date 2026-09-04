@@ -5,6 +5,7 @@ import { loadEmpresaConfig } from '../../config/empresaStore'
 import type { CajaSummary, EmpresaConfig, SucursalSummary, UserSummary } from '../../application/ports/configRepository'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { PRINT_FORMAT_STORAGE_KEY, type PrintFormat } from '../../components/printFormat'
+import { DOC_PRINT_FORMAT_STORAGE_KEY, readDefaultDocPrintFormat, type DocPrintFormat } from '../../components/docPrintFormat'
 import { featureFlags } from '../../config/featureFlags'
 import { pendienteSyncHermesRepository, type PendienteSyncHermes } from '../../infrastructure/supabase/PendienteSyncHermesRepository'
 import { pendienteSyncHermesPagoRepository, type PendienteSyncHermesPago } from '../../infrastructure/supabase/PendienteSyncHermesPagoRepository'
@@ -23,6 +24,9 @@ export function ConfigPage({ notify, canEdit }: { notify: (message: string) => v
   const [sucursales, setSucursales] = useState<SucursalSummary[]>([])
   const [cajas, setCajas] = useState<CajaSummary[]>([])
   const [printFormat, setPrintFormat] = useState<PrintFormat>(() => (localStorage.getItem(PRINT_FORMAT_STORAGE_KEY) as PrintFormat) || 'ticket-80')
+  // Brief "Correcciones de impresión" Parte 3: default de rollo/carta para cotización y
+  // nota de entrega — universo de documentos separado del ticket de venta de arriba.
+  const [docPrintFormat, setDocPrintFormat] = useState<DocPrintFormat>(readDefaultDocPrintFormat)
 
   useEffect(() => {
     void configService.getEmpresaConfig().then((value) => { setEmpresa(value); setEmpresaStatus('ready') }).catch(() => setEmpresaStatus('error'))
@@ -48,6 +52,7 @@ export function ConfigPage({ notify, canEdit }: { notify: (message: string) => v
   }
 
   const changeFormat = (value: PrintFormat) => { setPrintFormat(value); localStorage.setItem(PRINT_FORMAT_STORAGE_KEY, value) }
+  const changeDocFormat = (value: DocPrintFormat) => { setDocPrintFormat(value); localStorage.setItem(DOC_PRINT_FORMAT_STORAGE_KEY, value) }
 
   return <FeatureShell eyebrow="SISTEMA" title="Configuración" subtitle="Datos de la empresa, usuarios y preferencias de impresión">
     <section className="settings-section">
@@ -109,6 +114,11 @@ export function ConfigPage({ notify, canEdit }: { notify: (message: string) => v
       <div className="settings-print-format">
         <button className={printFormat === 'ticket-58' ? 'active' : ''} onClick={() => changeFormat('ticket-58')}>Térmico 58 mm</button>
         <button className={printFormat === 'ticket-80' ? 'active' : ''} onClick={() => changeFormat('ticket-80')}>Térmico 80 mm</button>
+      </div>
+      <p className="settings-note">Formato de cotización y nota de entrega por defecto (el pedido siempre se imprime en carta)</p>
+      <div className="settings-print-format">
+        <button className={docPrintFormat === 'carta' ? 'active' : ''} onClick={() => changeDocFormat('carta')}>Carta</button>
+        <button className={docPrintFormat === 'rollo-80' ? 'active' : ''} onClick={() => changeDocFormat('rollo-80')}>Rollo 80 mm</button>
       </div>
     </section>
 
