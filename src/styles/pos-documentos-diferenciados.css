@@ -1,0 +1,75 @@
+/* Brief: rediseño de documentos exportables — layouts distintos para cotización,
+   pedido y nota de entrega, compartiendo un mismo lenguaje visual (metadatos en
+   .doc-kv, tabla sin bordes de celda, totales alineados a la derecha, etc). Ver
+   prueba_impresion_documentos.html adjunta al brief para la referencia visual. */
+
+/* ---------- Metadatos: patrón .k / .v compartido por los tres documentos ---------- */
+.doc-kv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 16px; margin: 10px 0 }
+.doc-kv-grid.doc-kv-grid-wide { grid-template-columns: 1.6fr 1fr 1fr }
+.doc-kv .k { font-size: 7.5pt; color: #8a867f; text-transform: uppercase; letter-spacing: .3px }
+.doc-kv .v { font-size: var(--fs-body); margin-top: 1px }
+.doc-kv.doc-kv-span2 { grid-column: span 2 }
+
+/* Línea en blanco para completar a mano (transportista, placa, observaciones). */
+.doc-fill { border-bottom: 1px solid #666; display: inline-block; min-width: 52mm; height: 14px; vertical-align: bottom }
+.doc-fill.doc-fill-sm { min-width: 26mm }
+.doc-fill.doc-fill-lg { min-width: 120mm }
+
+/* ---------- Encabezado con QR ---------- */
+.doc-id-block-with-qr { display: flex; gap: 10px; align-items: flex-start }
+.doc-qr { width: 22mm; height: 22mm; display: block; flex-shrink: 0 }
+.doc-page-info { display: block; font-size: 8pt; color: #8a867f; margin-top: 2px }
+.doc-bultos-input { border: 0; border-bottom: 1px solid #666; background: transparent; font-size: var(--fs-body); width: 100%; padding: 0 }
+.doc-bultos-input:focus { outline: none; border-bottom-color: var(--orange) }
+@media print { .doc-bultos-input { border-bottom: 0 } }
+
+/* ---------- Tabla: encabezado en mayúsculas, sin bordes de celda (familia visual) ---------- */
+.documento-exportable .doc-table thead th { border-bottom: 1px solid #666; font-weight: 600 }
+.documento-exportable .doc-table tbody td { border-bottom: 1px solid #eee }
+
+/* ---------- Totales: fila Total separada por una línea superior, mayor peso ---------- */
+.documento-exportable .doc-totals .doc-total-line { border-top: 1px solid #666; padding-top: 6px; margin-top: 2px }
+
+/* ---------- Nota de entrega: columnas C/P/N/R, motivo, casillas ---------- */
+.doc-table .doc-col-check { text-align: center; width: 28px }
+.doc-checkbox { width: 11px; height: 11px; border: 1px solid #666; display: inline-block }
+.doc-qty-fill { border-bottom: 1px solid #666; display: inline-block; width: 20mm; height: 13px }
+.doc-motivo-row td { padding: 0 3px 8px !important; font-size: 8pt; color: #8a867f; border-bottom: 1px solid #eee !important }
+.doc-motivo-line { border-bottom: 1px solid #ddd; display: inline-block; width: 60%; height: 11px; margin-left: 4px }
+.doc-legend { font-size: 8pt; color: #8a867f; margin-top: 8px; line-height: 1.5 }
+.doc-obs { margin-top: 10px; font-size: 8.5pt; color: #8a867f }
+.doc-telegram-note { margin-top: 10px; padding-top: 7px; border-top: 1px solid #eee; font-size: 8pt; color: #8a867f }
+
+/* Firmas manuscritas de la nota de entrega — dos líneas, sin firma preimpresa. */
+.doc-manual-signs { display: flex; justify-content: space-between; gap: 20px; margin-top: 22mm }
+.doc-manual-signs .doc-manual-sign { flex: 1; text-align: center }
+.doc-manual-signs .doc-manual-sign-line { border-top: 1px solid #666; margin-bottom: 5px }
+.doc-manual-signs span { font-size: 8pt; color: #8a867f }
+.doc-manual-signs .doc-stamp-only { width: 34mm }
+
+/* ---------- Pedido: bloque de estado de despacho ---------- */
+.doc-state-box { border: 1px solid #d4d4d4; border-radius: 6px; padding: 9px 12px; margin: 9px 0; display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 10px }
+.doc-state-box .k { font-size: 7.5pt; color: #8a867f; text-transform: uppercase; letter-spacing: .3px }
+.doc-state-box .doc-state-big { font-size: 11pt; font-weight: 600; margin-top: 2px }
+.doc-state-box .doc-state-sm { font-size: 8.5pt; margin-top: 2px }
+.doc-state-box .doc-state-sm span { display: block; color: #8a867f; font-size: 8pt }
+.doc-disclaimer { font-size: 8pt; color: #8a867f; margin-top: 12px; line-height: 1.5 }
+.doc-line-status-cambiada { color: #8a867f; font-style: italic }
+
+/* ---------- Cotización: mismo lenguaje visual (encabezado en mayúsculas, notas al pie) ---------- */
+.doc-footer-notes-line { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 14px; padding-top: 8px; border-top: 1px solid #eee; font-size: var(--fs-label); color: #8a867f }
+.doc-footer-notes-line b { color: #292724; font-weight: 600 }
+
+/* ---------- Paginado de la nota de entrega: cada .doc-page es una hoja física ---------- */
+@media screen {
+  .documento-exportable .doc-page + .doc-page { margin-top: 24px; border-top: 2px dashed #ddd; padding-top: 24px }
+}
+@media print {
+  /* La nota de entrega multipágina reparte el padding por hoja (.doc-page), no en el
+     contenedor entero — si no, el margen de impresión solo aparecería en la primera y
+     la última hoja. Se apunta con dos clases para no tocar .traslado-a4 (mismo selector
+     compartido hoy, otro componente). */
+  .quote-a4.print-document, .order-a4.print-document, .delivery-a4.print-document { padding: 0 }
+  .documento-exportable .doc-page { padding: 15mm }
+  .documento-exportable .doc-page + .doc-page { page-break-before: always; break-before: page }
+}

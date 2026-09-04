@@ -200,6 +200,6 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
     </div>}
     {editingLoading && <Modal title="Cargando cotización" onClose={closeEditor}><FeatureState type="skeleton" text="Cargando cotización" /></Modal>}
     {editing && <DraftOrderEditor quote={editing} isExistingQuote={editingIsExisting} onClose={closeEditor} onSave={save} onCreateOrder={createOrderDirect} onConvert={editingIsExisting ? convert : undefined} />}
-    {preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, medioPago: preview.medioPago, asunto: preview.asunto, documentDate: preview.documentDate, generalDiscountCents: preview.generalDiscountCents }} onClose={() => setPreview(null)} />}
+    {preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, medioPago: preview.medioPago, asunto: preview.asunto, documentDate: preview.documentDate, generalDiscountCents: preview.generalDiscountCents, creadoPor: preview.creadoPor }} onClose={() => setPreview(null)} />}
   </FeatureShell>
 }
