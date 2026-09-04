@@ -2,6 +2,11 @@
    imprimir (no es CSS del documento, no se puede eliminar de forma confiable
    con @page{margin:0} — se documenta para el usuario en su lugar). */
 .print-header-footer-hint { margin: 12px 22px 0; font-size: 11px; color: #96928a }
+/* Brief "Correcciones de impresión de documentos" 1.5: visibility:hidden (la regla
+   global body *{visibility:hidden} de workflows.css) oculta pero conserva el espacio
+   en el flujo — este párrafo seguía empujando una hoja en blanco al final de cada
+   documento. display:none sí saca el elemento del flujo. */
+@media print { .print-header-footer-hint { display: none } }
 
 /* Brief S8 — impresión de traslados: checkbox impreso para la hoja de picking, cantidad
    grande (se lee caminando, no sentado), fila marcada cuando el despacho fue incompleto,

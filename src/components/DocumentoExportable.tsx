@@ -11,6 +11,7 @@ import { qrContentForNotaEntrega, qrContentForPedido } from '../domain/documents
 import { DocQr } from './DocQr'
 import { featureFlags } from '../config/featureFlags'
 import { resolveNombrePorEmail } from '../infrastructure/supabase/PerfilRepository.supabase'
+import { readDefaultDocPrintFormat, type DocPrintFormat } from './docPrintFormat'
 
 export interface ExportableDoc {
   number: string
@@ -60,27 +61,37 @@ const medioPagoLabel: Record<string, string> = {
 
 const lineTotalCents = (line: WorkflowLine) => Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000)
 
-// Brief nota de entrega: "12 líneas por hoja para empezar, ajustable" — medido contra el
-// membrete real (el logo grande de "Membrete: logo al doble", pos-ajustes-r3.css) más
-// meta/tabla/leyenda en carta con los márgenes actuales, 12 no entraba en una hoja física
-// y partía cada página lógica en dos físicas sin repetir "Página N de M" en la segunda
-// mitad — quedaba peor que no paginar. 4 entra con margen en la mayoría de los casos
-// (probado con Playwright imprimiendo a PDF). Un nombre de producto largo que fuerza 3
-// líneas de wrap en varias filas de la misma página todavía puede desbordar una hoja
-// ocasionalmente — CSS de impresión no da un hook para medir antes de romper página; si
-// eso se vuelve un problema real, la solución de fondo es binning por altura medida en
-// vez de por cantidad fija de líneas. El número en sí no es mágico: si el membrete
-// cambia de tamaño, volver a medir.
-const NE_LINES_PER_PAGE = 4
+// Brief "Correcciones de impresión de documentos" Parte 2: la página 1 lleva el membrete
+// completo (más alto); las páginas 2..N llevan la cabecera compacta de una sola línea
+// (más baja, aunque acotada por abajo por el QR de 16mm que se mantiene en todas las
+// páginas). El brief sugería arrancar en 12/16 — con el membrete ya corregido (logo
+// 56px, sin los overrides de 132/208/264px que existían antes, y el bug de
+// .doc-id-block-with-qr apilándose en vertical por especificidad CSS, también corregido)
+// esos números todavía partían cada página lógica en dos físicas. 9 primera / 11
+// siguientes sí entra: medido con Playwright imprimiendo a PDF tamaño carta y contando
+// páginas físicas contra "Página N de M" hasta que coincidieron exactamente (confirmado
+// con nombres de producto largos que fuerzan 2 líneas de wrap). Un nombre aún más largo
+// que fuerce 3 líneas todavía puede desbordar una hoja ocasionalmente — CSS de impresión
+// no da un hook para medir antes de romper página; si eso se vuelve un problema real, la
+// solución de fondo es binning por altura medida en vez de por cantidad fija de líneas.
+const NE_LINES_FIRST_PAGE = 9
+const NE_LINES_OTHER_PAGES = 11
 
-const chunk = <T,>(items: T[], size: number): T[][] => {
+const chunkVariable = <T,>(items: T[], firstSize: number, restSize: number): T[][] => {
   if (!items.length) return [[]]
   const pages: T[][] = []
-  for (let i = 0; i < items.length; i += size) pages.push(items.slice(i, i + size))
+  let i = 0
+  let size = firstSize
+  while (i < items.length) {
+    pages.push(items.slice(i, i + size))
+    i += size
+    size = restSize
+  }
   return pages
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
+const formatFecha = (date: Date) => `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`
 
 type PedidoLine = WorkflowLine & { prepared?: number }
 
@@ -156,10 +167,16 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
   // cual (el navegador pinta el valor actual del campo al imprimir).
   const [bultos, setBultos] = useState(doc.bultos ?? '')
   const [asesorNombre, setAsesorNombre] = useState(doc.creadoPor ?? '')
-  // Fecha/hora de la nota de entrega: documentDate hoy es solo fecha (ver brief, sección
-  // "Datos que no existen todavía") — se usa la hora de impresión como aproximación
-  // hasta que el backend traiga una marca de tiempo real del documento.
+  // Fecha/hora de la nota de entrega: documentDate puede faltar (ver brief "Correcciones
+  // de impresión" 1.4 — el flujo de pedidos hoy no lo envía, y no hay una fecha de
+  // despacho propia distinta de "ahora" en el modelo). printedAt cubre ambos casos: hora
+  // siempre, y fecha de respaldo cuando documentDate no llega.
   const [printedAt] = useState(() => new Date())
+  // Brief "Correcciones de impresión" Parte 3: rollo 80mm para cotización y nota de
+  // entrega — el pedido se queda en carta (documento de consulta interna, se lee mejor en
+  // hoja completa). Arranca en el default de Configuración > Impresión.
+  const [docFormat, setDocFormat] = useState<DocPrintFormat>(readDefaultDocPrintFormat)
+  const supportsRollo = mode === 'cotizacion' || mode === 'nota-entrega'
   useEffect(() => { void loadEmpresaConfig() }, [])
   useEffect(() => {
     void customerService.list().then((customers) => {
@@ -199,15 +216,26 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
 
   return (
     <Modal title={modalTitle} subtitle={empresa.razonSocial} onClose={onClose} wide>
-      {mode === 'cotizacion' && (
+      {(mode === 'cotizacion' || supportsRollo) && (
         <div className="doc-view-toggle">
-          <label>
-            <input type="checkbox" checked={vistaCliente} onChange={(e) => setVistaCliente(e.target.checked)} />
-            Vista de cliente
-          </label>
+          {mode === 'cotizacion' && (
+            <label>
+              <input type="checkbox" checked={vistaCliente} onChange={(e) => setVistaCliente(e.target.checked)} />
+              Vista de cliente
+            </label>
+          )}
+          {supportsRollo && (
+            <label className="doc-format-select">
+              Formato
+              <select value={docFormat} onChange={(e) => setDocFormat(e.target.value as DocPrintFormat)}>
+                <option value="carta">Carta</option>
+                <option value="rollo-80">Rollo 80 mm</option>
+              </select>
+            </label>
+          )}
         </div>
       )}
-      {mode === 'cotizacion' && <CotizacionDoc doc={doc} vistaCliente={vistaCliente} customerDoc={customerDoc} asesorNombre={asesorNombre} identifiersByProduct={identifiersByProduct} />}
+      {mode === 'cotizacion' && <CotizacionDoc doc={doc} vistaCliente={vistaCliente} customerDoc={customerDoc} asesorNombre={asesorNombre} identifiersByProduct={identifiersByProduct} format={docFormat} />}
       {mode === 'pedido' && <PedidoDoc doc={doc} customerDoc={customerDoc} asesorNombre={asesorNombre} identifiersByProduct={identifiersByProduct} />}
       {mode === 'nota-entrega' && (
         <NotaEntregaDoc
@@ -217,6 +245,7 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
           onBultosChange={setBultos}
           printedAt={printedAt}
           identifiersByProduct={identifiersByProduct}
+          format={docFormat}
         />
       )}
       <p className="print-header-footer-hint">Si el PDF sale con fecha y URL arriba/abajo, es el encabezado que agrega el navegador — desactivalo en el diálogo de impresión, en "Más ajustes" → "Encabezados y pies de página".</p>
@@ -233,17 +262,22 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
 // maskName, ítems especiales, vista de cliente, firma/sello preimpresos) — lo único que
 // cambia es el lenguaje visual, para que la cotización se lea como parte de la misma
 // familia que pedido y nota de entrega (ver brief, sección 3).
-function CotizacionDoc({ doc, vistaCliente, customerDoc, asesorNombre, identifiersByProduct }: {
+function CotizacionDoc({ doc, vistaCliente, customerDoc, asesorNombre, identifiersByProduct, format }: {
   doc: ExportableDoc
   vistaCliente: boolean
   customerDoc: string
   asesorNombre: string
   identifiersByProduct: Record<string, LineIdentifiers>
+  format: DocPrintFormat
 }) {
   const catalogLines = doc.lines.filter((line) => !line.isCustomItem)
   const customLines = doc.lines.filter((line) => line.isCustomItem)
   const primaryLines = vistaCliente ? doc.lines : catalogLines
   const subtotalCents = doc.lines.reduce((sum, line) => sum + lineTotalCents(line), 0)
+
+  if (format === 'rollo-80') {
+    return <CotizacionRoll doc={doc} lines={primaryLines} customerDoc={customerDoc} asesorNombre={asesorNombre} subtotalCents={subtotalCents} />
+  }
 
   return (
     <div className="print-document documento-exportable quote-a4">
@@ -421,15 +455,16 @@ function PedidoDoc({ doc, customerDoc, asesorNombre, identifiersByProduct }: {
 // ============================== NOTA DE ENTREGA ==============================
 // Rehecha por completo: sin precios ni totales, con paginado real y todos los campos
 // operativos que necesita quien despacha/recibe (ver brief, sección 1).
-function NotaEntregaDoc({ doc, customerDoc, bultos, onBultosChange, printedAt, identifiersByProduct }: {
+function NotaEntregaDoc({ doc, customerDoc, bultos, onBultosChange, printedAt, identifiersByProduct, format }: {
   doc: ExportableDoc
   customerDoc: string
   bultos: string
   onBultosChange: (value: string) => void
   printedAt: Date
   identifiersByProduct: Record<string, LineIdentifiers>
+  format: DocPrintFormat
 }) {
-  const pages = useMemo(() => chunk(doc.lines, NE_LINES_PER_PAGE), [doc.lines])
+  const pages = useMemo(() => chunkVariable(doc.lines, NE_LINES_FIRST_PAGE, NE_LINES_OTHER_PAGES), [doc.lines])
   const totalPages = pages.length
   const pageStartIndexes = useMemo(() => {
     const starts: number[] = []
@@ -437,6 +472,15 @@ function NotaEntregaDoc({ doc, customerDoc, bultos, onBultosChange, printedAt, i
     for (const pageLines of pages) { starts.push(running); running += pageLines.length }
     return starts
   }, [pages])
+  // Brief 1.4: documentDate puede faltar (ver comentario junto a printedAt en el
+  // componente padre) — sin esto, la NE imprimía la hora sola, rompiendo la conciliación
+  // contra el timestamp de Cation en la verificación de evidencia.
+  const fechaMostrada = doc.documentDate ?? formatFecha(printedAt)
+  const horaMostrada = `${pad2(printedAt.getHours())}:${pad2(printedAt.getMinutes())}`
+
+  if (format === 'rollo-80') {
+    return <NotaEntregaRoll doc={doc} lines={doc.lines} customerDoc={customerDoc} bultos={bultos} onBultosChange={onBultosChange} fechaMostrada={fechaMostrada} horaMostrada={horaMostrada} identifiersByProduct={identifiersByProduct} />
+  }
 
   return (
     <div className="print-document documento-exportable delivery-a4">
@@ -446,34 +490,56 @@ function NotaEntregaDoc({ doc, customerDoc, bultos, onBultosChange, printedAt, i
         const isLastPage = pageIndex === totalPages - 1
         return (
           <div className="doc-page" key={pageIndex}>
-            <header>
-              <DocBrand />
-              <div className="doc-id-block-with-qr">
-                {doc.orderId && <DocQr content={qrContentForNotaEntrega(doc.orderId, doc.number)} />}
-                <div className="doc-id-block">
-                  <strong>NOTA DE<br />ENTREGA</strong>
-                  <span className="doc-number-mono">{doc.number}</span>
-                  <span className="doc-page-info">Página {pageIndex + 1} de {totalPages}</span>
+            {isFirstPage ? (
+              <header>
+                <DocBrand />
+                <div className="doc-id-block-with-qr">
+                  {doc.orderId && <DocQr content={qrContentForNotaEntrega(doc.orderId, doc.number)} />}
+                  <div className="doc-id-block">
+                    <strong>NOTA DE<br />ENTREGA</strong>
+                    <span className="doc-number-mono">{doc.number}</span>
+                    <span className="doc-page-info">Página {pageIndex + 1} de {totalPages}</span>
+                  </div>
                 </div>
-              </div>
-            </header>
-            <section className="doc-kv-grid">
-              <div className="doc-kv"><div className="k">Cliente</div><div className="v">{doc.customerName}{customerDoc && ` · ${customerDoc}`}</div></div>
-              <div className="doc-kv"><div className="k">Fecha y hora</div><div className="v">{doc.documentDate ? `${doc.documentDate} · ` : ''}{`${pad2(printedAt.getHours())}:${pad2(printedAt.getMinutes())}`}</div></div>
-              {doc.originOrderNumber && <div className="doc-kv"><div className="k">Origen</div><div className="v">Pedido #{doc.originOrderNumber}</div></div>}
-              <div className="doc-kv"><div className="k">Canal</div><div className="v">{doc.channel}</div></div>
-              <div className="doc-kv">
-                <div className="k">Bultos</div>
-                <div className="v">{isFirstPage
-                  ? <input type="text" value={bultos} onChange={(e) => onBultosChange(e.target.value)} placeholder="Ej. 3 cajas · 1 rollo" className="doc-bultos-input" />
-                  : (bultos || '—')}</div>
-              </div>
-            </section>
-            <section className="doc-kv-grid doc-kv-grid-wide">
-              <div className="doc-kv"><div className="k">Transportista (opcional)</div><div className="v"><span className="doc-fill" /></div></div>
-              <div className="doc-kv"><div className="k">Placa</div><div className="v"><span className="doc-fill doc-fill-sm" /></div></div>
-              <div />
-            </section>
+              </header>
+            ) : (
+              // Brief "Correcciones de impresión" Parte 2: cabecera de una sola línea en
+              // páginas 2..N — la completa (membrete + grilla) repetida en cada hoja se
+              // comía ~45mm por página, casi una hoja entera perdida en una NE de 4. El QR
+              // se mantiene siempre: es lo que le permite al agente de Telegram identificar
+              // el pedido si le llega la foto de una hoja suelta.
+              <header className="doc-page-header-compact">
+                <img className="doc-page-header-compact-logo" src={empresa.logoSrc} alt={empresa.razonSocial} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+                <span className="doc-page-header-compact-title">NOTA DE ENTREGA · {doc.number} · {doc.customerName}</span>
+                {doc.orderId && <DocQr content={qrContentForNotaEntrega(doc.orderId, doc.number)} />}
+                <span className="doc-page-info">Página {pageIndex + 1} de {totalPages}</span>
+              </header>
+            )}
+            {isFirstPage && (
+              <>
+                <section className="doc-kv-grid">
+                  <div className="doc-kv"><div className="k">Cliente</div><div className="v">{doc.customerName}{customerDoc && ` · ${customerDoc}`}</div></div>
+                  <div className="doc-kv"><div className="k">Fecha y hora</div><div className="v">{fechaMostrada} · {horaMostrada}</div></div>
+                  {doc.originOrderNumber && <div className="doc-kv"><div className="k">Origen</div><div className="v">Pedido #{doc.originOrderNumber}</div></div>}
+                  <div className="doc-kv"><div className="k">Canal</div><div className="v">{doc.channel}</div></div>
+                  <div className="doc-kv">
+                    <div className="k">Bultos</div>
+                    <div className="v">
+                      {/* Brief 1.3: el placeholder del input ("Ej. 3 cajas...") se imprimía
+                          como si fuera un valor cargado. En @media print el input nunca se
+                          pinta — .doc-bultos-print (texto o línea en blanco) lo reemplaza. */}
+                      <input type="text" value={bultos} onChange={(e) => onBultosChange(e.target.value)} placeholder="Ej. 3 cajas · 1 rollo" className="doc-bultos-input doc-bultos-input-screen" />
+                      <span className="doc-bultos-print">{bultos ? bultos : <span className="doc-fill doc-fill-sm" />}</span>
+                    </div>
+                  </div>
+                </section>
+                <section className="doc-kv-grid doc-kv-grid-wide">
+                  <div className="doc-kv"><div className="k">Transportista (opcional)</div><div className="v"><span className="doc-fill" /></div></div>
+                  <div className="doc-kv"><div className="k">Placa</div><div className="v"><span className="doc-fill doc-fill-sm" /></div></div>
+                  <div />
+                </section>
+              </>
+            )}
             <table className="doc-table">
               <thead>
                 <tr>
@@ -531,6 +597,145 @@ function NotaEntregaDoc({ doc, customerDoc, bultos, onBultosChange, printedAt, i
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ============================== FORMATO ROLLO (80mm) ==============================
+// Brief "Correcciones de impresión de documentos" Parte 3: cotización y nota de entrega
+// también en rollo térmico de 80mm — mostrador, sin pasar por la impresora de carta.
+// 58mm queda fuera (no entran las cuatro casillas C/P/N/R con un ancho usable) y el
+// pedido no lo pide (documento de consulta interna, se lee mejor en carta completa).
+// Layout apilado, sin tabla de columnas — ver la maqueta del brief.
+
+/** Cotización en rollo: mismo contenido que la de carta (precios, descuentos, totales,
+ * vigencia/condición/medio de pago), apilado en bloques en vez de tabla. Sin QR — mismo
+ * criterio que la cotización en carta, todavía no hay un caso de uso claro para uno. */
+function CotizacionRoll({ doc, lines, customerDoc, asesorNombre, subtotalCents }: {
+  doc: ExportableDoc
+  lines: WorkflowLine[]
+  customerDoc: string
+  asesorNombre: string
+  subtotalCents: number
+}) {
+  const totalCents = Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))
+  return (
+    <div className="print-document documento-exportable doc-roll">
+      <div className="doc-roll-center">
+        <img src={empresa.logoSrc} alt={empresa.razonSocial} className="doc-roll-logo" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+        <div className="doc-roll-line"><b>{empresa.razonSocial}</b></div>
+        <div className="doc-roll-line">{empresa.direccion}</div>
+      </div>
+      <div className="doc-roll-rule" />
+      <div className="doc-roll-center">
+        <div className="doc-roll-line"><b>COTIZACIÓN</b></div>
+        <div className="doc-roll-line">{doc.number}</div>
+        {doc.documentDate && <div className="doc-roll-line">{doc.documentDate}</div>}
+      </div>
+      <div className="doc-roll-rule" />
+      <div className="doc-roll-line">Cliente: {doc.customerName}{customerDoc && ` · ${customerDoc}`}</div>
+      <div className="doc-roll-line">Canal: {doc.channel}</div>
+      {doc.asunto && <div className="doc-roll-line">Asunto: {doc.asunto}</div>}
+      {asesorNombre && <div className="doc-roll-line">Asesor: {asesorNombre}</div>}
+      <div className="doc-roll-rule" />
+      {lines.map((line, index) => {
+        const displayName = line.maskName ?? line.name
+        return (
+          <div className="doc-roll-item" key={line.id}>
+            <div className="doc-roll-line">{index + 1}. {displayName.toUpperCase()}</div>
+            <div className="doc-roll-line">{line.presentacionNombre ?? 'Unidad'} × {line.quantity}</div>
+            <div className="doc-roll-line">P/U {formatMoney(money(line.unitPriceCents))} · Desc {(line.discountBasisPoints / 100).toFixed(1)}%</div>
+            <div className="doc-roll-line"><b>Total {formatMoney(money(lineTotalCents(line)))}</b></div>
+            <div className="doc-roll-rule" />
+          </div>
+        )
+      })}
+      <div className="doc-roll-line">Subtotal: {formatMoney(money(subtotalCents))}</div>
+      {Boolean(doc.generalDiscountCents) && <div className="doc-roll-line">Descuento general: −{formatMoney(money(doc.generalDiscountCents ?? 0))}</div>}
+      <div className="doc-roll-line doc-roll-total"><b>TOTAL: {formatMoney(money(totalCents))}</b></div>
+      {(doc.validUntil || doc.conditionPago || doc.medioPago) && (
+        <>
+          <div className="doc-roll-rule" />
+          {doc.validUntil && <div className="doc-roll-line">Vigencia: {doc.validUntil}</div>}
+          {doc.conditionPago && <div className="doc-roll-line">Condición: {conditionPagoLabel[doc.conditionPago] ?? doc.conditionPago}</div>}
+          {doc.medioPago && <div className="doc-roll-line">Medio de pago: {medioPagoLabel[doc.medioPago] ?? doc.medioPago}</div>}
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Nota de entrega en rollo: sin paginado — el rollo es continuo. Lleva el mismo QR y los
+ * mismos campos operativos que la versión de carta (bultos, transportista/placa, C/P/N/R,
+ * motivo, firmas manuscritas), apilados en vez de en tabla. El marcador "— FIN —" es lo
+ * que reemplaza al paginado acá: sin él, una tira larga reintroduce exactamente el
+ * problema que el paginado resuelve en carta — el agente de Telegram no tendría forma de
+ * saber si la última foto llega al final del rollo o si falta más. */
+function NotaEntregaRoll({ doc, lines, customerDoc, bultos, onBultosChange, fechaMostrada, horaMostrada, identifiersByProduct }: {
+  doc: ExportableDoc
+  lines: WorkflowLine[]
+  customerDoc: string
+  bultos: string
+  onBultosChange: (value: string) => void
+  fechaMostrada: string
+  horaMostrada: string
+  identifiersByProduct: Record<string, LineIdentifiers>
+}) {
+  return (
+    <div className="print-document documento-exportable doc-roll">
+      <div className="doc-roll-center">
+        <img src={empresa.logoSrc} alt={empresa.razonSocial} className="doc-roll-logo" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+        <div className="doc-roll-line"><b>{empresa.razonSocial}</b></div>
+        <div className="doc-roll-line">{empresa.direccion}</div>
+      </div>
+      {doc.orderId && <DocQr content={qrContentForNotaEntrega(doc.orderId, doc.number)} className="doc-roll-qr" />}
+      <div className="doc-roll-center">
+        <div className="doc-roll-line"><b>NOTA DE ENTREGA</b></div>
+        {doc.originOrderNumber && <div className="doc-roll-line">Pedido #{doc.originOrderNumber}</div>}
+        <div className="doc-roll-line">{doc.number}</div>
+        <div className="doc-roll-line">{fechaMostrada} · {horaMostrada}</div>
+      </div>
+      <div className="doc-roll-rule" />
+      <div className="doc-roll-line">Cliente: {doc.customerName}{customerDoc && ` · ${customerDoc}`}</div>
+      <div className="doc-roll-line">Canal: {doc.channel}</div>
+      <div className="doc-roll-line">
+        Bultos:{' '}
+        <input type="text" value={bultos} onChange={(e) => onBultosChange(e.target.value)} placeholder="Ej. 3 cajas · 1 rollo" className="doc-bultos-input doc-bultos-input-screen" />
+        <span className="doc-bultos-print">{bultos ? bultos : <span className="doc-fill doc-fill-sm" />}</span>
+      </div>
+      <div className="doc-roll-line">Transportista: <span className="doc-fill doc-fill-sm" /></div>
+      <div className="doc-roll-line">Placa: <span className="doc-fill doc-fill-sm" /></div>
+      <div className="doc-roll-rule" />
+      {lines.map((line, index) => {
+        const factor = line.factorUnidadBase ?? 1
+        const hasEquivalence = factor !== 1
+        return (
+          <div className="doc-roll-item" key={line.id}>
+            <div className="doc-roll-line">{index + 1}. {line.name.toUpperCase()}<LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} isCustomItem={line.isCustomItem} /></div>
+            <div className="doc-roll-line">
+              {line.presentacionNombre ?? 'Unidad'} · Pedido: {line.quantity}{hasEquivalence ? ` (${line.quantity * factor} u)` : ''} · {line.sourceLocation ?? '—'}
+            </div>
+            <div className="doc-roll-line">Despachado: <span className="doc-fill doc-fill-sm" /></div>
+            <div className="doc-roll-checks">
+              <span><span className="doc-checkbox" /> C</span>
+              <span><span className="doc-checkbox" /> P</span>
+              <span><span className="doc-checkbox" /> N</span>
+              <span><span className="doc-checkbox" /> R</span>
+            </div>
+            <div className="doc-roll-line">Motivo: <span className="doc-fill doc-fill-sm" /></div>
+            <div className="doc-roll-rule" />
+          </div>
+        )
+      })}
+      <div className="doc-roll-line">C=Completo P=Parcial</div>
+      <div className="doc-roll-line">N=No despachado R=Rechazado</div>
+      <div className="doc-roll-rule" />
+      <div className="doc-roll-line">Observaciones:</div>
+      <div className="doc-roll-line"><span className="doc-fill doc-fill-lg" /></div>
+      <div className="doc-roll-line">Entrega: <span className="doc-fill" /></div>
+      <div className="doc-roll-line">Recibe (nombre, CI): <span className="doc-fill" /></div>
+      <div className="doc-roll-end">— FIN —</div>
+      <div className="doc-roll-center doc-roll-telegram">Fotografiar TODO el rollo y enviarlo al grupo de Telegram al momento del despacho.</div>
     </div>
   )
 }
