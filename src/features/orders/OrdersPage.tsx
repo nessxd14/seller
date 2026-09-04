@@ -422,8 +422,12 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     {advanceOpen && selected && <AdvanceModal onClose={()=>setAdvanceOpen(false)} onConfirm={registerAdvance}/>}
     {addItemsOpen && selected && <AddItemsModal orderNumber={selected.number} channel={selected.channel} onClose={()=>setAddItemsOpen(false)} onConfirm={submitAddItems}/>}
     {reasonModal && <ReasonModal action={reasonModal.action} orderNumber={reasonModal.order.number} onClose={()=>setReasonModal(null)} onConfirm={confirmReason}/>}
-    {deliveryNote && <DocumentoExportable mode="nota-entrega" doc={{ number: deliveryNote.number, customerName: deliveryNote.customerName, channel: deliveryNote.channel, lines: deliveryNote.lines, generalDiscountCents: deliveryNote.generalDiscountCents, conditionPago: deliveryNote.conditionPago, medioPago: deliveryNote.medioPago, asunto: deliveryNote.asunto, sourceQuoteNumber: deliveryNote.sourceQuoteNumber }} onClose={()=>setDeliveryNote(null)} />}
-    {orderDoc && <DocumentoExportable mode="pedido" doc={{ number: orderDoc.number, customerName: orderDoc.customerName, channel: orderDoc.channel, lines: orderDoc.lines, generalDiscountCents: orderDoc.generalDiscountCents, conditionPago: orderDoc.conditionPago, medioPago: orderDoc.medioPago, asunto: orderDoc.asunto, sourceQuoteNumber: orderDoc.sourceQuoteNumber }} onClose={()=>setOrderDoc(null)} />}
+    {/* Brief "documentos diferenciados": la nota de entrega es un documento propio del
+        pedido (no tiene número ni id independiente todavía) — usa el mismo pedido como
+        origen del QR y de "Origen: Pedido #...", con deliveryNote.number como referencia
+        visible mientras no exista un correlativo de NE separado. */}
+    {deliveryNote && <DocumentoExportable mode="nota-entrega" doc={{ number: deliveryNote.number, customerName: deliveryNote.customerName, channel: deliveryNote.channel, lines: deliveryNote.lines, generalDiscountCents: deliveryNote.generalDiscountCents, conditionPago: deliveryNote.conditionPago, medioPago: deliveryNote.medioPago, asunto: deliveryNote.asunto, sourceQuoteNumber: deliveryNote.sourceQuoteNumber, orderId: deliveryNote.id, originOrderNumber: deliveryNote.number, creadoPor: deliveryNote.creadoPor }} onClose={()=>setDeliveryNote(null)} />}
+    {orderDoc && <DocumentoExportable mode="pedido" doc={{ number: orderDoc.number, customerName: orderDoc.customerName, channel: orderDoc.channel, lines: orderDoc.lines, generalDiscountCents: orderDoc.generalDiscountCents, conditionPago: orderDoc.conditionPago, medioPago: orderDoc.medioPago, asunto: orderDoc.asunto, sourceQuoteNumber: orderDoc.sourceQuoteNumber, orderId: orderDoc.id, creadoPor: orderDoc.creadoPor }} onClose={()=>setOrderDoc(null)} />}
     {deleteModalOpen && selected && <DeletePedidoModal orderNumber={selected.number} check={deleteCheck} onClose={() => setDeleteModalOpen(false)} onConfirm={confirmDelete} />}
   </FeatureShell>
 }
