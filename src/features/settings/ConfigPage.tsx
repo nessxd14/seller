@@ -10,7 +10,7 @@ import { featureFlags } from '../../config/featureFlags'
 import { pendienteSyncHermesRepository, type PendienteSyncHermes } from '../../infrastructure/supabase/PendienteSyncHermesRepository'
 import { pendienteSyncHermesPagoRepository, type PendienteSyncHermesPago } from '../../infrastructure/supabase/PendienteSyncHermesPagoRepository'
 import { registrarCargoSaldo, registrarPago } from '../../infrastructure/hermes/client'
-import { uploadDocumentoEmpresa } from '../../infrastructure/supabase/DocumentosEmpresaStorage'
+import { uploadDocumentoEmpresa, getDocumentoEmpresaSignedUrl } from '../../infrastructure/supabase/DocumentosEmpresaStorage'
 
 const emptyEmpresa: EmpresaConfig = { razonSocial: '', nit: '', direccion: '', ciudad: '', telefono: '', email: '', pieDocumento: '', selloUrl: '', firmaUrl: '', firmaNombre: '', firmaCargo: '' }
 const moneyBs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -228,11 +228,15 @@ function HermesPagosSyncSection({ notify, canEdit }: { notify: (message: string)
   </section>
 }
 
-// Brief S11 Bloque A: sube al bucket `documentos-empresa` (escritura solo admin, ver
-// política RLS) y devuelve la ruta pública — el llamador la guarda con saveEmpresaConfig
-// en el siguiente "Guardar cambios", no acá (subir no es lo mismo que confirmar).
+// Brief S11 Bloque A: sube al bucket `documentos-empresa` (privado, escritura solo admin,
+// ver política RLS) y devuelve la ruta del objeto — el llamador la guarda con
+// saveEmpresaConfig en el siguiente "Guardar cambios", no acá (subir no es lo mismo que
+// confirmar). La ruta no sirve para <img src>, así que la vista previa resuelve su propia
+// URL firmada localmente.
 function ImageUploadField({ label, hint, url, disabled, onUploaded, notify }: { label: string; hint: string; url: string; disabled: boolean; onUploaded: (url: string) => void; notify: (message: string) => void }) {
   const [uploading, setUploading] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState('')
+  useEffect(() => { void getDocumentoEmpresaSignedUrl(url).then(setPreviewUrl) }, [url])
   const onFile = async (file: File | undefined) => {
     if (!file) return
     setUploading(true)
@@ -249,7 +253,7 @@ function ImageUploadField({ label, hint, url, disabled, onUploaded, notify }: { 
   return <label className="full image-upload-field">
     {label}
     <div className="image-upload-row">
-      {url ? <img src={url} alt={label} onError={(e) => { e.currentTarget.style.display = 'none' }} /> : <span className="image-upload-empty">Sin {label.toLowerCase()}</span>}
+      {previewUrl ? <img src={previewUrl} alt={label} onError={(e) => { e.currentTarget.style.display = 'none' }} /> : <span className="image-upload-empty">Sin {label.toLowerCase()}</span>}
       <input type="file" accept="image/png,image/*" disabled={disabled || uploading} onChange={(e) => void onFile(e.target.files?.[0])} />
     </div>
     <small>{hint}</small>

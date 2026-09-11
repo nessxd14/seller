@@ -1,5 +1,6 @@
 import { empresaFallback } from './empresa'
 import { configService } from '../infrastructure/services'
+import { getDocumentoEmpresaSignedUrl } from '../infrastructure/supabase/DocumentosEmpresaStorage'
 
 // Synchronously-readable, mutable store for the company letterhead data used by
 // print-time components (DocumentoExportable, TicketPreviewModal, PosSidebar,
@@ -56,8 +57,12 @@ export async function loadEmpresaConfig(): Promise<void> {
     empresaStore.correo = config.email || empresaFallback.correo
     empresaStore.nit = config.nit || empresaFallback.nit
     empresaStore.pieDocumento = config.pieDocumento || ''
-    empresaStore.selloUrl = config.selloUrl || ''
-    empresaStore.firmaUrl = config.firmaUrl || ''
+    const [selloUrl, firmaUrl] = await Promise.all([
+      getDocumentoEmpresaSignedUrl(config.selloUrl),
+      getDocumentoEmpresaSignedUrl(config.firmaUrl),
+    ])
+    empresaStore.selloUrl = selloUrl
+    empresaStore.firmaUrl = firmaUrl
     empresaStore.firmaNombre = config.firmaNombre || ''
     empresaStore.firmaCargo = config.firmaCargo || ''
   } catch {

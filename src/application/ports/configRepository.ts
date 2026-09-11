@@ -11,7 +11,8 @@ export interface EmpresaConfig {
   telefono: string
   email: string
   pieDocumento: string
-  // Brief S11 Bloque A: rutas en Storage (bucket documentos-empresa), no el binario.
+  // Brief S11 Bloque A: rutas en Storage (bucket documentos-empresa privado, ej.
+  // "sello.png"), no el binario ni una URL — se resuelven a URL firmada al leer.
   selloUrl: string
   firmaUrl: string
   firmaNombre: string
