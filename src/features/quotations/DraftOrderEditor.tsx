@@ -349,6 +349,9 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // (8 cotizaciones viejas sin cliente siguen abriéndose porque esto solo bloquea el
   // guardado, no la carga).
   const missingCustomer = !value.customerId
+  // Condición de pago obligatoria: mismo criterio que cliente — bloquea guardar,
+  // crear pedido y convertir, no la carga de cotizaciones viejas sin este dato.
+  const missingConditionPago = !value.conditionPago
 
   // Brief T7 Tarea 5: la base rechaza crear un pedido directo (sin cotización de origen)
   // para clientes institucion/corporativo/mayorista — mejor prevenirlo que solo mostrar el
@@ -465,7 +468,9 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             <option value="">Sin especificar</option>
             <option value="CONTADO">Contado</option>
             <option value="CREDITO">Crédito</option>
-          </select></label>
+          </select>
+          {!readOnly && missingConditionPago && <small className="line-stock-error">Elegí una condición de pago — una cotización sin esto no se puede guardar.</small>}
+          </label>
           <label>Medio de pago<select disabled={readOnly} value={value.medioPago ?? ''} onChange={(e) => setValue((v) => ({ ...v, medioPago: (e.target.value || undefined) as QuoteDraft['medioPago'] }))}>
             <option value="">Sin especificar</option>
             <option value="EFECTIVO">Efectivo</option>
@@ -647,7 +652,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       </div>
       <footer className="modal-actions">
         <button className="secondary-button" onClick={onClose}>Cancelar</button>
-        {!readOnly && <button className="secondary-button" disabled={!value.lines.length || saving || missingCustomer} title={missingCustomer ? 'Elegí un cliente para guardar' : undefined} onClick={() => void runAction(onSave)}>Guardar como cotización</button>}
+        {!readOnly && <button className="secondary-button" disabled={!value.lines.length || saving || missingCustomer || missingConditionPago} title={missingCustomer ? 'Elegí un cliente para guardar' : missingConditionPago ? 'Elegí una condición de pago para guardar' : undefined} onClick={() => void runAction(onSave)}>Guardar como cotización</button>}
         {/* Ronda 5 — TAREA 1: which conversion action shows depends on WHERE this editor
             was opened from, not on the form's current state. Editing an existing
             cotización (isExistingQuote) → only "Convertir a pedido" is offered, since
@@ -662,14 +667,14 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         {!readOnly && !isExistingQuote && onCreateOrder && (
           <button
             className="primary-button"
-            disabled={!value.lines.length || saving || hasStockErrors || requiereCotizacion || missingSolicitante}
-            title={requiereCotizacion ? `${selectedCustomer?.name} requiere una cotización de origen — usá "Guardar como cotización"` : missingSolicitante ? 'Elegí un solicitante para crear el pedido' : undefined}
+            disabled={!value.lines.length || saving || hasStockErrors || requiereCotizacion || missingSolicitante || missingConditionPago}
+            title={requiereCotizacion ? `${selectedCustomer?.name} requiere una cotización de origen — usá "Guardar como cotización"` : missingSolicitante ? 'Elegí un solicitante para crear el pedido' : missingConditionPago ? 'Elegí una condición de pago para crear el pedido' : undefined}
             onClick={() => void runAction(onCreateOrder)}
           >
             Crear pedido
           </button>
         )}
-        {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors || missingCustomer || missingSolicitante} title={missingCustomer ? 'Elegí un cliente para convertir' : missingSolicitante ? 'Elegí un solicitante para convertir' : undefined} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
+        {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors || missingCustomer || missingSolicitante || missingConditionPago} title={missingCustomer ? 'Elegí un cliente para convertir' : missingSolicitante ? 'Elegí un solicitante para convertir' : missingConditionPago ? 'Elegí una condición de pago para convertir' : undefined} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
       </footer>
       {customModalOpen && (
         <CustomItemModal
