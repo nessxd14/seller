@@ -18,5 +18,8 @@ export const featureFlags = {
   // anular_venta ya están desplegadas en Supabase — ver migración 2026-08-17). B1/B2
   // resueltos: numeración propia VTD-2026-NNNNN y bandeja como pestaña propia en Ventas.
   ventaDirectaAlmacen: true,
+  // Brief Comisiones Fase 1: comision_regla/comision_vendedor/comision_devengo +
+  // features/comisiones/. Solo POTENCIAL — DEVENGADA depende de Hermes (Fase 2).
+  comisiones: true,
 } as const
 

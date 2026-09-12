@@ -11,6 +11,7 @@ import { transferRepository, type CreateTransferInput } from './TransferReposito
 import type { TransferEstado, TransferRecord } from '../../application/shared/models'
 import { configRepository } from './ConfigRepository.supabase'
 import { reportsRepository } from './ReportsRepository.supabase'
+import { comisionesRepository } from './ComisionRepository.supabase'
 import { sensitiveOperations } from '../mock/services'
 import { checkoutFingerprint } from '../../domain/sales/checkoutFingerprint'
 import { expectedCash } from '../../application/cash/CashService'
@@ -22,6 +23,7 @@ import { borradorOperacionRepository } from './BorradorOperacionRepository.supab
 
 export const configService = configRepository
 export const reportsService = reportsRepository
+export const comisionesService = comisionesRepository
 
 const currentActorId = async (): Promise<string> => {
   const session = await supabaseAuthSessionProvider.getSession()
