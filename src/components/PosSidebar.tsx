@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BarChart3, Boxes, ClipboardList, FileText, LayoutGrid, PackageSearch, PauseCircle, Save, Settings, ShoppingBag, Users, WalletCards, Warehouse } from 'lucide-react'
+import { ArrowLeftRight, BarChart3, Boxes, ClipboardList, FileText, LayoutGrid, PackageSearch, PauseCircle, Percent, Save, Settings, ShoppingBag, Users, WalletCards, Warehouse } from 'lucide-react'
 import { empresaStore as empresa } from '../config/empresaStore'
 
 const nav = [
@@ -11,7 +11,7 @@ const nav = [
   // `pedido`, y el selector Retail/Wholesale de Pedidos no la va a mostrar.
   ['Venta Directa', Warehouse],
   ['Clientes', Users], ['Productos', LayoutGrid],
-  ['Inventario', Boxes], ['Traslados', ArrowLeftRight], ['Caja', WalletCards], ['Reportes', BarChart3], ['Configuración', Settings],
+  ['Inventario', Boxes], ['Traslados', ArrowLeftRight], ['Caja', WalletCards], ['Reportes', BarChart3], ['Comisiones', Percent], ['Configuración', Settings],
 ] as const
 
 export function PosSidebar({ active = 'Venta', onNavigate = () => undefined }: { active?: string; onNavigate?: (name: string) => void }) {

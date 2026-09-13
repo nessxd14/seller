@@ -30,3 +30,4 @@ export const ventaDirectaService = featureFlags.supabase ? supabaseServices.vent
 export const borradorOperacionService = featureFlags.supabase ? supabaseServices.borradorOperacionService : mockServices.borradorOperacionService
 export const configService = featureFlags.supabase ? supabaseServices.configService : mockServices.configService
 export const reportsService = featureFlags.supabase ? supabaseServices.reportsService : mockServices.reportsService
+export const comisionesService = featureFlags.supabase ? supabaseServices.comisionesService : mockServices.comisionesService

@@ -15,10 +15,12 @@ import { mockAuthSessionProvider } from './MockAuthSessionProvider'
 import type { TransferEstado, TransferRecord } from '../../application/shared/models'
 import { configRepository } from './ConfigRepository.mock'
 import { reportsRepository } from './ReportsRepository.mock'
+import { comisionesRepository } from './ComisionRepository.mock'
 import { channelToCategoria, type CategoriaPedido } from '../supabase/mappers'
 
 export const configService = configRepository
 export const reportsService = reportsRepository
+export const comisionesService = comisionesRepository
 
 export const quoteService = new QuoteService(new LocalStorageRepository<QuoteDraft>('roari-quotes-v1', quoteSeeds))
 const rawOrderService = new OrderService(new LocalStorageRepository<OrderView>('roari-orders-v1', orderSeeds))
