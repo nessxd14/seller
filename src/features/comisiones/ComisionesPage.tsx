@@ -154,7 +154,7 @@ function VendedoresTab({ notify }: { notify: (message: string) => void }) {
   </>
 }
 
-export function ComisionesPage({ notify, vendedorEmail, isAdmin }: { notify: (message: string) => void; vendedorEmail: string; isAdmin: boolean }) {
+export function ComisionesPage({ notify, vendedorEmail, esGerente }: { notify: (message: string) => void; vendedorEmail: string; esGerente: boolean }) {
   const [tab, setTab] = useState<Tab>('mias')
   const [from, setFrom] = useState(sumarDiasIso(hoyLocal(), -30))
   const [to, setTo] = useState(hoyLocal())
@@ -176,9 +176,9 @@ export function ComisionesPage({ notify, vendedorEmail, isAdmin }: { notify: (me
   return <FeatureShell eyebrow="COMERCIAL" title="Comisiones" subtitle="Comisión potencial por vendedor, sobre pedidos y ventas directas ya completados">
     <div className="feature-toolbar">
       <button className={tab === 'mias' ? 'active' : ''} onClick={() => setTab('mias')}>Mis comisiones</button>
-      {isAdmin && <button className={tab === 'equipo' ? 'active' : ''} onClick={() => setTab('equipo')}>Equipo</button>}
-      {isAdmin && <button className={tab === 'reglas' ? 'active' : ''} onClick={() => setTab('reglas')}>Reglas</button>}
-      {isAdmin && <button className={tab === 'vendedores' ? 'active' : ''} onClick={() => setTab('vendedores')}>Vendedores</button>}
+      {esGerente && <button className={tab === 'equipo' ? 'active' : ''} onClick={() => setTab('equipo')}>Equipo</button>}
+      {esGerente && <button className={tab === 'reglas' ? 'active' : ''} onClick={() => setTab('reglas')}>Reglas</button>}
+      {esGerente && <button className={tab === 'vendedores' ? 'active' : ''} onClick={() => setTab('vendedores')}>Vendedores</button>}
     </div>
 
     {(tab === 'mias' || tab === 'equipo') && <>
@@ -192,7 +192,7 @@ export function ComisionesPage({ notify, vendedorEmail, isAdmin }: { notify: (me
         <DevengoTable rows={rows} showVendedor />
       </>}
     </>}
-    {tab === 'reglas' && isAdmin && <ReglasTab notify={notify} />}
-    {tab === 'vendedores' && isAdmin && <VendedoresTab notify={notify} />}
+    {tab === 'reglas' && esGerente && <ReglasTab notify={notify} />}
+    {tab === 'vendedores' && esGerente && <VendedoresTab notify={notify} />}
   </FeatureShell>
 }
