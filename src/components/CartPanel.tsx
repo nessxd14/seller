@@ -5,6 +5,7 @@ import type { CartItem as CartItemType, SalesChannel } from '../types'
 import { useBorrador, borradorKey } from '../hooks/useBorrador'
 import { BorradorBanner } from './BorradorBanner'
 import { authSessionProvider, transferService, ventaDirectaService, borradorOperacionService } from '../infrastructure/services'
+import { hasPermission } from '../application/auth/AuthSessionProvider'
 import { CartItem } from './CartItem'
 import { Modal } from './Modal'
 import { EditCartItemModal } from './EditCartItemModal'
@@ -75,7 +76,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // hasta que resuelva la sesión (mismo patrón que actorId en DraftOrderEditor).
   const [usuarioId, setUsuarioId] = useState('anon')
   const [isAdmin, setIsAdmin] = useState(false)
-  useEffect(() => { void authSessionProvider.getSession().then((session) => { if (session) { setUsuarioId(session.user.id); setIsAdmin(session.user.role === 'admin') } }) }, [])
+  useEffect(() => { void authSessionProvider.getSession().then((session) => { if (session) { setUsuarioId(session.user.id); setIsAdmin(hasPermission(session, 'admin')) } }) }, [])
   // Brief J: el borrador de venta y el de traslado viven bajo claves distintas
   // (…:carrito vs …:traslado) — son formularios distintos, restaurar uno con la
   // forma del otro no tiene sentido (venta necesita cliente, traslado necesita
