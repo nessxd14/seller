@@ -1,7 +1,8 @@
 import type { AuthSession, AuthSessionProvider, AuthUser, MockRole } from '../../application/auth/AuthSessionProvider'
 
 export const mockUsers:Array<AuthUser&{label:string}>=[
-  {id:'admin',name:'Andrea Admin',role:'admin',active:true,label:'Admin'},
+  {id:'admin',name:'Andrea Admin',role:'admin',active:true,email:'nessxd14@gmail.com',label:'Admin'},
+  {id:'gerente',name:'Rony Gerente',role:'gerente',active:true,email:'piterali.argana@gmail.com',label:'Gerente'},
   {id:'supervisor',name:'Sergio Supervisor',role:'supervisor',active:true,label:'Supervisor'},
   {id:'cajero',name:'Natalia Cajera',role:'cajero',active:true,label:'Cajero'},
   {id:'vendedor',name:'Mario Mayorista',role:'vendedor_mayoreo',active:true,label:'Vendedor mayoreo'},
