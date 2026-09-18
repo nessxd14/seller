@@ -13,6 +13,8 @@ let reglas: ComisionRegla[] = [
   { id: 'r2', tipo: 'NOMBRE', patron: 'clip', accion: 'INCLUIR', porcentajeBp: 100, prioridad: 200, activo: true, nota: 'Seed inicial', creadoPor: 'migracion', creadoEn: '2026-09-12T00:00:00Z' },
   // Fase 2, 3.8: regla con 0 matches — así se ve el estado "invisible" que hay que detectar.
   { id: 'r3', tipo: 'MARCA', patron: 'MARCA-INEXISTENTE', accion: 'INCLUIR', porcentajeBp: 100, prioridad: 100, activo: true, nota: null, creadoPor: 'migracion', creadoEn: '2026-09-12T00:00:00Z' },
+  // Fase 3, 1.1: "limpieza" al 0,5%, prioridad baja para ganar sobre cualquier otra regla.
+  { id: 'r4', tipo: 'DESCRIPCION', patron: 'limpieza', accion: 'INCLUIR', porcentajeBp: 50, prioridad: 10, activo: true, nota: 'Seed Fase 3', creadoPor: 'migracion', creadoEn: '2026-09-24T00:00:00Z' },
 ]
 
 let vendedores: ComisionVendedor[] = [
@@ -25,17 +27,25 @@ const perfilesDisponibles = [{ id: 'p3', nombre: 'Gabriel', email: 'gabrieloni62
 // Fechas relativas a hoy (no fijas) para que el período por defecto de la página
 // (últimos 30 días) siempre las incluya, sin importar cuándo se corra el mock.
 let mockDevengo: ComisionDevengoRow[] = [
-  { id: '1', origen: 'PEDIDO', documentoId: '101', vendedorEmail: 'nessxd14@gmail.com', clienteNombre: 'Librería San Marcos', fecha: sumarDiasIso(hoyLocal(), -20), baseComisionableCents: 500000, totalDocumentoCents: 800000, porcentajeBp: 100, montoCents: 5000, estado: 'POTENCIAL', liquidacionId: null, liquidacionFecha: null },
-  { id: '2', origen: 'VTD', documentoId: '55', vendedorEmail: 'nessxd14@gmail.com', clienteNombre: 'Cliente de mostrador', fecha: sumarDiasIso(hoyLocal(), -10), baseComisionableCents: 150000, totalDocumentoCents: 150000, porcentajeBp: 100, montoCents: 1500, estado: 'DEVENGADA', liquidacionId: null, liquidacionFecha: null },
-  { id: '3', origen: 'PEDIDO', documentoId: '102', vendedorEmail: 'piterali.argana@gmail.com', clienteNombre: 'Colegio Nueva Esperanza', fecha: sumarDiasIso(hoyLocal(), -5), baseComisionableCents: 1200000, totalDocumentoCents: 1500000, porcentajeBp: 100, montoCents: 12000, estado: 'DEVENGADA', liquidacionId: null, liquidacionFecha: null },
-  { id: '4', origen: 'PEDIDO', documentoId: '103', vendedorEmail: 'piterali.argana@gmail.com', clienteNombre: 'Ferretería El Constructor', fecha: sumarDiasIso(hoyLocal(), -25), baseComisionableCents: 300000, totalDocumentoCents: 400000, porcentajeBp: 100, montoCents: 3000, estado: 'LIQUIDADA', liquidacionId: 'l1', liquidacionFecha: sumarDiasIso(hoyLocal(), -2) },
+  { id: '1', origen: 'PEDIDO', documentoId: '101', vendedorEmail: 'nessxd14@gmail.com', clienteNombre: 'Librería San Marcos', fecha: sumarDiasIso(hoyLocal(), -20), baseComisionableCents: 500000, totalDocumentoCents: 800000, porcentajeBp: 100, montoCents: 5000, estado: 'POTENCIAL', liquidacionId: null, liquidacionFecha: null, tienePersonalizadoComisionable: false },
+  { id: '2', origen: 'VTD', documentoId: '55', vendedorEmail: 'nessxd14@gmail.com', clienteNombre: 'Cliente de mostrador', fecha: sumarDiasIso(hoyLocal(), -10), baseComisionableCents: 150000, totalDocumentoCents: 150000, porcentajeBp: 100, montoCents: 1500, estado: 'DEVENGADA', liquidacionId: null, liquidacionFecha: null, tienePersonalizadoComisionable: false },
+  { id: '3', origen: 'PEDIDO', documentoId: '102', vendedorEmail: 'piterali.argana@gmail.com', clienteNombre: 'Colegio Nueva Esperanza', fecha: sumarDiasIso(hoyLocal(), -5), baseComisionableCents: 1200000, totalDocumentoCents: 1500000, porcentajeBp: 100, montoCents: 12000, estado: 'DEVENGADA', liquidacionId: null, liquidacionFecha: null, tienePersonalizadoComisionable: false },
+  { id: '4', origen: 'PEDIDO', documentoId: '103', vendedorEmail: 'piterali.argana@gmail.com', clienteNombre: 'Ferretería El Constructor', fecha: sumarDiasIso(hoyLocal(), -25), baseComisionableCents: 300000, totalDocumentoCents: 400000, porcentajeBp: 100, montoCents: 3000, estado: 'LIQUIDADA', liquidacionId: 'l1', liquidacionFecha: sumarDiasIso(hoyLocal(), -2), tienePersonalizadoComisionable: false },
+  // Fase 3: pedido con líneas personalizadas comisionables (una vía "limpieza", otra vía
+  // una regla NOMBRE existente) — para ejercitar el ícono de la fila y el desglose.
+  { id: '5', origen: 'PEDIDO', documentoId: '104', vendedorEmail: 'nessxd14@gmail.com', clienteNombre: 'Ferretería El Constructor', fecha: sumarDiasIso(hoyLocal(), -3), baseComisionableCents: 90000, totalDocumentoCents: 250000, porcentajeBp: 75, montoCents: 675, estado: 'POTENCIAL', liquidacionId: null, liquidacionFecha: null, tienePersonalizadoComisionable: true },
 ]
 
 const mockLineas: Record<string, ComisionLineaDevengo[]> = {
   '1': [
-    { productoId: '10', productoNombre: 'Cuaderno TUKI 50 hojas', marca: 'TUKI', subtotalCents: 300000, porcentajeBp: 100, comisiona: true },
-    { productoId: '11', productoNombre: 'Bolígrafo BIC azul', marca: 'BIC', subtotalCents: 200000, porcentajeBp: null, comisiona: false },
-    { productoId: null, productoNombre: 'Ítem personalizado', marca: null, subtotalCents: 300000, porcentajeBp: null, comisiona: false },
+    { productoId: '10', productoNombre: 'Cuaderno TUKI 50 hojas', marca: 'TUKI', subtotalCents: 300000, porcentajeBp: 100, comisiona: true, esPersonalizado: false, reglaTipo: 'MARCA', reglaPatron: 'TUKI' },
+    { productoId: '11', productoNombre: 'Bolígrafo BIC azul', marca: 'BIC', subtotalCents: 200000, porcentajeBp: null, comisiona: false, esPersonalizado: false, reglaTipo: null, reglaPatron: null },
+    { productoId: null, productoNombre: 'Ítem personalizado', marca: null, subtotalCents: 300000, porcentajeBp: null, comisiona: false, esPersonalizado: true, reglaTipo: null, reglaPatron: null },
+  ],
+  '5': [
+    { productoId: null, productoNombre: 'GUANTES PARA LIMPIEZA', marca: null, subtotalCents: 45000, porcentajeBp: 50, comisiona: true, esPersonalizado: true, reglaTipo: 'DESCRIPCION', reglaPatron: 'limpieza' },
+    { productoId: null, productoNombre: 'CINTA DE EMBALAJE DE 100 YARDA', marca: null, subtotalCents: 45000, porcentajeBp: 100, comisiona: true, esPersonalizado: true, reglaTipo: 'NOMBRE', reglaPatron: 'cinta de embalaje' },
+    { productoId: null, productoNombre: 'PILA NORMAL AA', marca: null, subtotalCents: 160000, porcentajeBp: null, comisiona: false, esPersonalizado: true, reglaTipo: null, reglaPatron: null },
   ],
 }
 
@@ -88,7 +98,8 @@ export class MockComisionesRepository implements ComisionesRepository {
   async deleteRegla(id: string): Promise<void> { reglas = reglas.filter((r) => r.id !== id) }
   async getReglaConteo(): Promise<Record<string, number>> {
     // r3 (MARCA-INEXISTENTE) queda deliberadamente en 0 — ver comentario del seed arriba.
-    return Object.fromEntries(reglas.map((r) => [r.id, r.id === 'r3' ? 0 : 12]))
+    // r4 (limpieza) cuenta líneas personalizadas, no productos — ver migración Fase 3.
+    return Object.fromEntries(reglas.map((r) => [r.id, r.id === 'r3' ? 0 : r.id === 'r4' ? 1 : 12]))
   }
   async listVendedores(): Promise<ComisionVendedor[]> { return vendedores }
   async setVendedorActivo(perfilId: string, activo: boolean): Promise<void> {

@@ -23,6 +23,10 @@ export interface ComisionDevengoRow {
   estado: ComisionEstado
   liquidacionId: string | null
   liquidacionFecha: string | null
+  // Fase 3, Parte 2 — al menos una línea de este documento es personalizada (sin
+  // producto_id) y comisiona. Se congela junto con el resto en comision_registrar_pedido
+  // / se completa en el backfill; no se recalcula recorriendo líneas en el cliente.
+  tienePersonalizadoComisionable: boolean
 }
 
 // Brief Fase 2, 3.1: "qué falta para cobrar" — hermes.partida_abierta/pago tienen su
@@ -47,6 +51,11 @@ export interface ComisionLineaDevengo {
   subtotalCents: number
   porcentajeBp: number | null // null = no matcheó ninguna regla
   comisiona: boolean
+  // Fase 3, Parte 2 — auditar antes de pagar: una comisión sobre texto libre depende de
+  // cómo alguien escribió la descripción, no de un catálogo controlado.
+  esPersonalizado: boolean
+  reglaTipo: ComisionRegla['tipo'] | null
+  reglaPatron: string | null
 }
 
 export interface ComisionLiquidacion {
@@ -73,7 +82,10 @@ export interface ComisionVendedorTotal {
 
 export interface ComisionRegla {
   id: string
-  tipo: 'MARCA' | 'NOMBRE'
+  // Fase 3: DESCRIPCION matchea pedido_linea.descripcion (ILIKE) — para líneas
+  // personalizadas ("limpieza" → 0,5%). MARCA sobre descripción usa límite de palabra en
+  // el backend (comision_regla_ganadora_personalizada), no ILIKE — ver migración.
+  tipo: 'MARCA' | 'NOMBRE' | 'DESCRIPCION'
   patron: string
   accion: 'INCLUIR' | 'EXCLUIR'
   porcentajeBp: number
