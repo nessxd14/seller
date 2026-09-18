@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, PenLine, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { comisionesService } from '../../infrastructure/services'
 import type {
   ComisionDevengoRow, ComisionEstado, ComisionLineaDevengo, ComisionLiquidacion, ComisionOrigen, ComisionProductoHuerfano,
@@ -47,6 +47,16 @@ function labelSeguimiento(row: ComisionDevengoRow, seg: ComisionSeguimiento | un
   return 'Esperando cobro'
 }
 
+// Fase 3, Parte 2: qué regla matcheó una línea — "limpieza · 0,5%" para el paraguas de
+// limpieza, "cinta de embalaje · 1%" para una regla NOMBRE existente aplicada sobre
+// texto libre, etc. Sin esto solo se ve el número, no de dónde salió — justo lo que hay
+// que poder auditar antes de pagar una comisión sobre una descripción tipeada a mano.
+const reglaLabel = (l: ComisionLineaDevengo): string => {
+  if (!l.comisiona) return 'No'
+  if (l.reglaPatron) return `Sí · ${l.reglaPatron} · ${pct(l.porcentajeBp ?? 0)}`
+  return `Sí · ${pct(l.porcentajeBp ?? 0)}`
+}
+
 function LineasDevengo({ devengoId }: { devengoId: string }) {
   const [lineas, setLineas] = useState<ComisionLineaDevengo[] | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -59,8 +69,9 @@ function LineasDevengo({ devengoId }: { devengoId: string }) {
     <div className="feature-table reports-table reports-table-comision-lineas">
       <div className="table-head"><span>Producto</span><span>Marca</span><span>Subtotal</span><span>Comisiona</span></div>
       {lineas.map((l, i) => <article key={l.productoId ?? `custom-${i}`} className={l.comisiona ? '' : 'comision-linea-no-comisiona'}>
-        <span>{l.productoNombre}</span><span>{l.marca ?? '—'}</span><span>{bs(l.subtotalCents)}</span>
-        <span>{l.comisiona ? `Sí · ${pct(l.porcentajeBp ?? 0)}` : 'No'}</span>
+        <span>{l.esPersonalizado && <span title="Ítem personalizado"><PenLine size={12} className="comision-icono-personalizado" /></span>} {l.productoNombre}</span>
+        <span>{l.marca ?? '—'}</span><span>{bs(l.subtotalCents)}</span>
+        <span>{reglaLabel(l)}</span>
       </article>)}
     </div>
   </div>
@@ -117,7 +128,8 @@ function DevengoTable({ rows, showVendedor, nombrePorEmail, seguimiento }: {
         <article className={row.estado === 'POTENCIAL' ? 'comision-potencial clickable-row' : 'clickable-row'} onClick={() => setExpandido(expandido === row.id ? null : row.id)}>
           {showVendedor && <span>{nombrePorEmail[row.vendedorEmail] ?? row.vendedorEmail}</span>}
           <span>{row.origen === 'PEDIDO' ? 'Pedido' : 'Venta directa'}</span>
-          <span>{row.documentoId}</span><span>{row.clienteNombre ?? '—'}</span><span>{fecha(row.fecha)}</span><span>{bs(row.baseComisionableCents)}</span>
+          <span>{row.documentoId}{row.tienePersonalizadoComisionable && <span title="Tiene líneas personalizadas que comisionan — conviene revisar antes de liquidar"><PenLine size={12} className="comision-icono-personalizado" /></span>}</span>
+          <span>{row.clienteNombre ?? '—'}</span><span>{fecha(row.fecha)}</span><span>{bs(row.baseComisionableCents)}</span>
           <span>{pct(row.porcentajeBp)}</span><span>{bs(row.montoCents)}</span>
           <span>{labelSeguimiento(row, seguimiento[row.id])}</span>
         </article>
@@ -188,9 +200,9 @@ function ReglasTab({ notify }: { notify: (message: string) => void }) {
       <button className="secondary-button" onClick={() => { setEditingId(null); setForm(emptyReglaForm) }}><Plus size={14} /> Nueva regla</button>
     </div>
     {form && <div className="modal-body form-grid">
-      <label>Tipo<select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as ComisionReglaInput['tipo'] })}><option value="MARCA">Marca</option><option value="NOMBRE">Nombre</option></select></label>
+      <label>Tipo<select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as ComisionReglaInput['tipo'] })}><option value="MARCA">Marca</option><option value="NOMBRE">Nombre</option><option value="DESCRIPCION">Descripción (líneas personalizadas)</option></select></label>
       <label>Acción<select value={form.accion} onChange={(e) => setForm({ ...form, accion: e.target.value as ComisionReglaInput['accion'] })}><option value="INCLUIR">Incluir</option><option value="EXCLUIR">Excluir</option></select></label>
-      <label>Patrón<input value={form.patron} onChange={(e) => setForm({ ...form, patron: e.target.value })} placeholder={form.tipo === 'MARCA' ? 'Ej. ROARI' : 'Ej. clip'} /></label>
+      <label>Patrón<input value={form.patron} onChange={(e) => setForm({ ...form, patron: e.target.value })} placeholder={form.tipo === 'MARCA' ? 'Ej. ROARI' : form.tipo === 'DESCRIPCION' ? 'Ej. limpieza' : 'Ej. clip'} /></label>
       <label>Porcentaje<input type="number" step="0.01" value={form.porcentajeBp / 100} onChange={(e) => setForm({ ...form, porcentajeBp: Math.round(Number(e.target.value) * 100) })} /></label>
       <label>Prioridad<input type="number" value={form.prioridad} onChange={(e) => setForm({ ...form, prioridad: Number(e.target.value) })} /></label>
       <label>Activa<input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} /></label>
@@ -198,7 +210,7 @@ function ReglasTab({ notify }: { notify: (message: string) => void }) {
       <div className="modal-actions"><button className="secondary-button" onClick={() => { setForm(null); setEditingId(null) }}>Cancelar</button><button className="primary-button" onClick={save}>Guardar</button></div>
     </div>}
     {status === 'loading' ? <FeatureState type="skeleton" text="Cargando reglas" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar las reglas" /> : <div className="feature-table reports-table reports-table-comision-reglas">
-      <div className="table-head"><span>Tipo</span><span>Patrón</span><span>Acción</span><span>%</span><span>Prioridad</span><span>Productos</span><span>Activa</span><span></span></div>
+      <div className="table-head"><span>Tipo</span><span>Patrón</span><span>Acción</span><span>%</span><span>Prioridad</span><span>Coincidencias</span><span>Activa</span><span></span></div>
       {reglas.map((r) => {
         const n = conteo[r.id] ?? 0
         return <article key={r.id}><span>{r.tipo}</span><span>{r.patron}</span><span>{r.accion}</span><span>{pct(r.porcentajeBp)}</span><span>{r.prioridad}</span>

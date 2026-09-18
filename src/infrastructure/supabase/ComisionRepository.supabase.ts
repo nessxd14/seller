@@ -31,6 +31,7 @@ const toDevengoRow = (row: Record<string, unknown>): ComisionDevengoRow => {
     estado: row.estado as ComisionDevengoRow['estado'],
     liquidacionId: row.liquidacion_id === null || row.liquidacion_id === undefined ? null : String(row.liquidacion_id),
     liquidacionFecha: liquidacion?.creado_en ?? null,
+    tienePersonalizadoComisionable: Boolean(row.tiene_personalizado_comisionable),
   }
 }
 
@@ -123,6 +124,9 @@ export class SupabaseComisionesRepository implements ComisionesRepository {
       subtotalCents: numericToCents(num(row.subtotal)),
       porcentajeBp: row.porcentaje === null || row.porcentaje === undefined ? null : fracToBp(row.porcentaje),
       comisiona: Boolean(row.comisiona),
+      esPersonalizado: Boolean(row.es_personalizado),
+      reglaTipo: (row.regla_tipo as ComisionRegla['tipo'] | null) ?? null,
+      reglaPatron: (row.regla_patron as string | null) ?? null,
     }))
   }
 
