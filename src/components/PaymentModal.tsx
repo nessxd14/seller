@@ -1,5 +1,5 @@
 import { Banknote, CreditCard, QrCode, Shuffle, Smartphone } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { usePos } from '../context/PosContext'
 import { Modal } from './Modal'
 import { featureFlags } from '../config/featureFlags'
@@ -145,6 +145,24 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
 
   const confirm = () => { if (featureFlags.supabase) void confirmSupabase(); else setDone(true) }
 
+  // Brief hotkeys — Tarea 5: Enter confirma el cobro, pero solo pasando por el mismo
+  // botón que un clic usaría — así el botón deshabilitado (caja cerrada, pago inválido,
+  // envío en curso) sigue bloqueando el atajo exactamente igual que bloquea el clic.
+  // Enter dentro de un <textarea> conserva su comportamiento nativo (no hay ninguno en
+  // este modal hoy, pero la guarda es la misma que el resto del POS usa).
+  useEffect(() => {
+    if (done) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' || event.target instanceof HTMLTextAreaElement) return
+      const button = document.querySelector<HTMLButtonElement>('[data-pos-action="confirm-payment"]')
+      if (!button || button.disabled) return
+      event.preventDefault()
+      button.click()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [done])
+
   if (done) return <Modal title="¡Cobro confirmado!" subtitle={featureFlags.supabase ? (result ? `Venta #${result.saleId}` : undefined) : "Operación completada localmente"} onClose={() => { newOperation(); onClose() }}><div className="success-state"><span>✓</span><h3>Bs {money(featureFlags.supabase && result ? result.totalCents / 100 : total)}</h3><p>{
     // Si el cajero reintentó tras una respuesta perdida, registrar_venta detectó la
     // misma clave de idempotencia y no creó una segunda venta — hay que decirlo
@@ -154,5 +172,5 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
       : 'Esta es una simulación. No se registró ningún pago real.'
   }</p>{cargoResult && cargoResult.cubiertoPorSaldo && <p className="saldo-cubierto-msg">Cubierto con saldo a favor. Saldo restante: Bs {money(cargoResult.saldoResultante)}</p>}</div><footer className="modal-actions"><button className="primary-button full-button" onClick={() => { newOperation(); onClose() }}>Finalizar y nueva operación</button></footer></Modal>
 
-  return <Modal title="Registrar cobro" subtitle="Selecciona un método de pago" onClose={onClose} wide><div className="payment-total"><span>Total a cobrar</span><strong>Bs {money(total)}</strong></div><div className="modal-body"><label className="field-label">Método de pago</label><div className="payment-methods">{methods.map(({ id, label, icon: Icon }) => <button key={id} className={method === id ? 'active' : ''} onClick={() => setMethod(id)}><Icon /><span>{label}</span></button>)}</div>{method === 'mixto' ? <><div className="mixed-fields"><label>Efectivo (Bs)<NumberField min={0} step={0.01} value={mixedCash} onCommit={setMixedCash} /></label><label>{mixedMethod === 'qr' ? 'QR' : 'Transferencia'} (Bs)<div className="mixed-method-row"><select value={mixedMethod} onChange={(e) => setMixedMethod(e.target.value as 'qr' | 'transferencia')}><option value="qr">QR</option><option value="transferencia">Transferencia</option></select><NumberField min={0} step={0.01} value={mixedDigital} onCommit={setMixedDigital} /></div></label></div><div className={`mixed-status ${paymentValid ? 'valid' : ''}`}><span>Suma del pago</span><strong>Bs {money(mixedSum)}</strong><small>{paymentValid ? 'El monto coincide con el total' : `Faltan Bs ${money(Math.max(0, total - mixedSum))}`}</small></div></> : <div className="payment-fields"><label>Monto recibido (Bs)<NumberField min={0} step={0.01} value={received} onCommit={setReceived} /></label><div><span>{method === 'efectivo' ? 'Cambio' : 'Diferencia'}</span><strong>Bs {money(method === 'efectivo' ? Math.max(0, received - total) : Math.max(0, total - received))}</strong></div></div>}{!featureFlags.supabase && <p className="mock-note">Modo demostración: el pago no tendrá efecto contable ni movimiento de caja.</p>}{featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder cobrar.</p>}{error && <p className="mock-note payment-error">{error}</p>}</div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!paymentValid || submitting || (featureFlags.supabase && !sessionId)} onClick={confirm}>{submitting ? 'Procesando…' : 'Confirmar cobro'}</button></footer></Modal>
+  return <Modal title="Registrar cobro" subtitle="Selecciona un método de pago" onClose={onClose} wide><div className="payment-total"><span>Total a cobrar</span><strong>Bs {money(total)}</strong></div><div className="modal-body"><label className="field-label">Método de pago</label><div className="payment-methods">{methods.map(({ id, label, icon: Icon }) => <button key={id} className={method === id ? 'active' : ''} onClick={() => setMethod(id)}><Icon /><span>{label}</span></button>)}</div>{method === 'mixto' ? <><div className="mixed-fields"><label>Efectivo (Bs)<NumberField min={0} step={0.01} value={mixedCash} onCommit={setMixedCash} /></label><label>{mixedMethod === 'qr' ? 'QR' : 'Transferencia'} (Bs)<div className="mixed-method-row"><select value={mixedMethod} onChange={(e) => setMixedMethod(e.target.value as 'qr' | 'transferencia')}><option value="qr">QR</option><option value="transferencia">Transferencia</option></select><NumberField min={0} step={0.01} value={mixedDigital} onCommit={setMixedDigital} /></div></label></div><div className={`mixed-status ${paymentValid ? 'valid' : ''}`}><span>Suma del pago</span><strong>Bs {money(mixedSum)}</strong><small>{paymentValid ? 'El monto coincide con el total' : `Faltan Bs ${money(Math.max(0, total - mixedSum))}`}</small></div></> : <div className="payment-fields"><label>Monto recibido (Bs)<NumberField min={0} step={0.01} value={received} onCommit={setReceived} /></label><div><span>{method === 'efectivo' ? 'Cambio' : 'Diferencia'}</span><strong>Bs {money(method === 'efectivo' ? Math.max(0, received - total) : Math.max(0, total - received))}</strong></div></div>}{!featureFlags.supabase && <p className="mock-note">Modo demostración: el pago no tendrá efecto contable ni movimiento de caja.</p>}{featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder cobrar.</p>}{error && <p className="mock-note payment-error">{error}</p>}</div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button data-pos-action="confirm-payment" className="primary-button" disabled={!paymentValid || submitting || (featureFlags.supabase && !sessionId)} onClick={confirm}>{submitting ? 'Procesando…' : 'Confirmar cobro'}</button></footer></Modal>
 }

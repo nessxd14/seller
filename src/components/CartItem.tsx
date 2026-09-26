@@ -1,5 +1,5 @@
 import { AlertTriangle, Info, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePos } from '../context/PosContext'
 import type { CartItem as CartItemType, SalesChannel } from '../types'
 import { ProductVisual } from './ProductVisual'
@@ -50,8 +50,15 @@ function QtyControl({ quantity, onChange }: { quantity: number; onChange: (next:
 }
 
 export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTransfer, trasladoDisponible }: { item: CartItemType; onEdit: () => void; originStock?: StockControlInfo; onSetOrigin?: (location: 'Tienda' | 'Almacén') => void; onRequestTransfer?: (shortfall: number) => void; trasladoDisponible?: number }) {
-  const { channel, mode, updateQuantity, updateItem, removeItem } = usePos()
+  const { channel, mode, updateQuantity, updateItem, removeItem, selectedLineId, setSelectedLineId } = usePos()
   const lineTotal = ventaLineTotalCents(item) / 100
+
+  // Brief hotkeys — Tarea 3b: línea seleccionada del carrito. Un clic en la línea la
+  // selecciona; ↑/↓/+/-/Supr (en PosPage.tsx) operan sobre lo que esté seleccionado acá.
+  const articleRef = useRef<HTMLElement>(null)
+  const isSelected = selectedLineId === item.id
+  useEffect(() => { if (isSelected) articleRef.current?.scrollIntoView({ block: 'nearest' }) }, [isSelected])
+  const select = () => setSelectedLineId(item.id)
 
   // TAREA 3.2: presentations are loaded per product, on demand, when the line first mounts —
   // never in bulk (the `presentacion` table has 1000+ rows and PostgREST truncates past 1000).
@@ -142,7 +149,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
   if (mode === 'traslado') {
     const disponible = trasladoDisponible ?? 0
     const noAlcanza = cantidadBase > disponible
-    return <article className="cart-item"><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} /><div className="cart-item-main">
+    return <article ref={articleRef} className={`cart-item ${isSelected ? 'cart-item-selected' : ''}`} onClick={select}><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} /><div className="cart-item-main">
       <div className="cart-title"><div><h4 title={item.nombre}>{item.nombre}</h4><span className="cart-item-sku">{item.sku}</span></div>
         <button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button>
       </div>
@@ -159,7 +166,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
     </div></article>
   }
 
-  return <article className="cart-item"><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} /><div className="cart-item-main"><div className="cart-title"><div>
+  return <article ref={articleRef} className={`cart-item ${isSelected ? 'cart-item-selected' : ''}`} onClick={select}><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} /><div className="cart-item-main"><div className="cart-title"><div>
       <h4 title={item.nombre}>{item.nombre}</h4>
       {item.isCustomItem && <span className="custom-item-badge">Personalizado — solo cotización</span>}
       <div className="cart-price-row">
