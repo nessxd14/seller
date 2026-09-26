@@ -35,6 +35,7 @@ import './pos-pedidos-segmento.css'
 import './styles/pos-solicitante.css'
 import './styles/pos-documentos-diferenciados.css'
 import './pos-glassmorphism.css'
+import './pos-hotkeys.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

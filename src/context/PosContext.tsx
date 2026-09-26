@@ -69,12 +69,21 @@ interface PosState {
   channel: SalesChannel
   setChannel: (channel: SalesChannel) => void
   cart: CartItem[]
-  addProduct: (product: Product) => void
+  addProduct: (product: Product, quantity?: number) => void
   addCustomItem: (input: { descripcion: string; cantidad: number; precio: number }) => void
   updateQuantity: (id: number, quantity: number) => void
   updateItem: (id: number, values: Partial<CartItem>) => void
   removeItem: (id: number) => void
   clearCart: () => void
+  // Brief hotkeys — Tarea 3b: línea seleccionada del carrito (↑/↓/+/-/Supr operan sobre
+  // ella). Vive acá, no en CartPanel, porque el atajo global de PosPage.tsx también
+  // necesita leerla y moverla.
+  selectedLineId: number | null
+  setSelectedLineId: (id: number | null) => void
+  // Brief hotkeys — Tarea 3c: deshacer el último addProduct (Ctrl+Z). Resta la cantidad
+  // agregada la última vez (quitando la línea si llega a 0) y devuelve el nombre del
+  // producto para el toast, o null si no hay nada que deshacer.
+  undoLastAdd: () => string | null
   discount: number
   setDiscount: (value: number) => void
   subtotal: number
@@ -121,6 +130,12 @@ export function PosProvider({ children }: { children: ReactNode }) {
     () => sessionStorage.getItem(OPERACION_ID_KEY) ?? nuevoOperacionId(),
   )
   const [customer, setCustomer] = useState<CartCustomer | null>(null)
+  // Brief hotkeys — Tarea 3b: por defecto no hay selección; addProduct la mueve a la
+  // línea recién tocada. Se limpia sola si el carrito queda vacío (línea eliminada,
+  // operación nueva, etc.) — ver el efecto más abajo.
+  const [selectedLineId, setSelectedLineId] = useState<number | null>(null)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza la selección con un dato externo a este estado (cart.length se vacía por muchos caminos: checkout, suspender, cancelar, Supr de la última línea); si no se limpia acá queda apuntando a un id que ya no existe en el carrito.
+  useEffect(() => { if (!cart.length) setSelectedLineId(null) }, [cart.length])
   // TAREA 1 (Tanda 4): acreedor = tiene cuenta corriente en Hermes (aparece en la
   // respuesta de consultar_saldos), sin mirar el monto — un acreedor con saldo 0 sigue
   // siendo acreedor. Se consulta UNA vez al seleccionar el cliente (nunca por producto,
@@ -172,6 +187,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setCart(draft.cart)
     setVtdUbicacionId(draft.vtdUbicacionId)
     setVtdPrecobrado(draft.vtdPrecobrado)
+    setSelectedLineId(null)
+    setUndoStack([])
   }
   const loadTrasladoDraft = (draft: { cart: CartItem[]; trasladoMotivo: TransferMotivo; trasladoOrigenId: number; trasladoDestinoId: number }) => {
     setMode('traslado')
@@ -179,6 +196,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setTrasladoMotivoState(draft.trasladoMotivo)
     setTrasladoOrigenId(draft.trasladoOrigenId)
     setTrasladoDestinoId(draft.trasladoDestinoId)
+    setSelectedLineId(null)
+    setUndoStack([])
   }
 
   const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
@@ -206,12 +225,35 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setDiscount(0)
   }
 
-  const addProduct = (product: Product) => setCart((items) => {
-    const existing = items.find((item) => item.id === product.id)
-    return existing
-      ? items.map((item) => item.id === product.id ? { ...item, cantidad: item.cantidad + 1 } : item)
-      : [...items, { ...product, cantidad: 1, precioAplicado: getPrice(product, channel), descuento: 0, ubicacion: defaultOrigenFor(channel, esAcreedor), origenManual: false, observacion: '', motivoPrecio: '' }]
-  })
+  // Brief hotkeys — Tarea 3b/3c: cada agregado deja rastro en selectedLineId (la línea
+  // recién tocada pasa a ser la seleccionada, lista para +/-/Supr) y en undoStack (últimos
+  // ~20 agregados, para Ctrl+Z). quantity default 1 mantiene el comportamiento de siempre
+  // para todo el código existente que llama addProduct(product) sin segundo argumento.
+  const [undoStack, setUndoStack] = useState<{ id: number; quantity: number }[]>([])
+  const addProduct = (product: Product, quantity = 1) => {
+    const qty = Math.max(1, Math.floor(quantity))
+    setCart((items) => {
+      const existing = items.find((item) => item.id === product.id)
+      return existing
+        ? items.map((item) => item.id === product.id ? { ...item, cantidad: item.cantidad + qty } : item)
+        : [...items, { ...product, cantidad: qty, precioAplicado: getPrice(product, channel), descuento: 0, ubicacion: defaultOrigenFor(channel, esAcreedor), origenManual: false, observacion: '', motivoPrecio: '' }]
+    })
+    setUndoStack((stack) => [...stack.slice(-19), { id: product.id, quantity: qty }])
+    setSelectedLineId(product.id)
+  }
+  const undoLastAdd = (): string | null => {
+    if (!undoStack.length) return null
+    const last = undoStack[undoStack.length - 1]
+    const existing = cart.find((item) => item.id === last.id)
+    setUndoStack((stack) => stack.slice(0, -1))
+    if (!existing) return null
+    const nextQty = existing.cantidad - last.quantity
+    setCart((items) => nextQty > 0
+      ? items.map((item) => item.id === last.id ? { ...item, cantidad: nextQty } : item)
+      : items.filter((item) => item.id !== last.id))
+    if (nextQty <= 0) setSelectedLineId((current) => current === last.id ? null : current)
+    return existing.nombre
+  }
 
   // Brief S11 Bloque C: ítem sin producto de catálogo — sin SKU, sin stock, sin origen
   // (no tiene sentido validar stock de algo que no está en el catálogo). id negativo y
@@ -263,6 +305,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setTrasladoDestinoId(SUCURSAL_TIENDA)
     setVtdUbicacionId(null)
     setVtdPrecobrado(false)
+    setSelectedLineId(null)
+    setUndoStack([])
   }
   const newOperation = () => {
     resetOperationState()
@@ -293,9 +337,11 @@ export function PosProvider({ children }: { children: ReactNode }) {
     // suspendieron — no hay que recalcular nada, solo evitar que quede pegado el
     // `esAcreedor` de la sesión anterior.
     setEsAcreedor(false)
+    setSelectedLineId(null)
+    setUndoStack([])
   }
 
-  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, addCustomItem, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft }}>{children}</PosContext.Provider>
+  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, addCustomItem, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, selectedLineId, setSelectedLineId, undoLastAdd }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {

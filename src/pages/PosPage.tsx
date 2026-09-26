@@ -13,6 +13,8 @@ import { CustomersPage } from '../features/customers/CustomersPage'
 import { CashPage } from '../features/cash/CashPage'
 import { SuspendedSalesPage, type SuspendedSale } from '../features/suspended-sales/SuspendedSalesPage'
 import { removeSuspendedSale } from '../infrastructure/local/suspendedSales'
+import { ShortcutsModal } from '../components/ShortcutsModal'
+import { parseQuantityScan } from '../domain/sales/scanQuantity'
 import { ProductsPage } from '../features/products/ProductsPage'
 import { InventoryPage } from '../features/inventory/InventoryPage'
 import { TransfersPage, type PendingTransferRequest } from '../features/transfers/TransfersPage'
@@ -55,7 +57,7 @@ const PERMISOS_MODULO: Record<string, (s: AuthSession | null) => boolean> = {
 }
 
 function PosContent() {
-  const { newOperation, cart, loadSuspendedSale, addProduct, mode } = usePos()
+  const { newOperation, cart, loadSuspendedSale, addProduct, mode, updateQuantity, removeItem, selectedLineId, setSelectedLineId, undoLastAdd } = usePos()
   // Brief S3 Parte A: /pedidos/:id, /cotizaciones/:id, /ventas/:id deben sobrevivir un
   // refresco — si el load arranca directo en una de esas URLs, hay que montar el módulo
   // que sabe abrir ese detalle (OrdersPage/QuotationsPage/ReportsPage), no el catálogo
@@ -74,6 +76,7 @@ function PosContent() {
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransferRequest | null>(null)
   const [pagoModalOpen, setPagoModalOpen] = useState(false)
   const [ambiguousIds, setAmbiguousIds] = useState<number[] | null>(null)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2800) }
   const handleNew = () => { if (cart.length && !window.confirm('¿Crear una nueva operación y limpiar el carrito actual?')) return; newOperation(); setSearch(''); setCategory('Todos'); notify('Nueva operación lista') }
   useEffect(() => {
@@ -83,26 +86,115 @@ function PosContent() {
     // cualquier futuro campo enriquecido con el mismo problema.
     const isEditableTarget = (target: EventTarget | null) =>
       target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)
+    const click = (selector: string) => document.querySelector<HTMLButtonElement>(selector)?.click()
+    const searchInput = () => document.querySelector<HTMLInputElement>('.global-search input')
     const onKeyDown = (event: KeyboardEvent) => {
-      // F2/F8/F9 no deben dispararse con un modal abierto (Cobrar, Anticipo, etc. ya
+      // F2/F8/F9/etc. no deben dispararse con un modal abierto (Cobrar, Anticipo, etc. ya
       // atienden su propio teclado) — .modal-backdrop es el portal común a todos ellos.
+      // La excepción es F1/'?' (abre el panel de atajos): preventDefault siempre, pero la
+      // acción de abrir el panel solo corre si no hay OTRO modal ya abierto.
       const modalOpen = Boolean(document.querySelector('.modal-backdrop'))
-      if (event.key === 'F2' && !modalOpen) { event.preventDefault(); document.querySelector<HTMLInputElement>('.global-search input')?.focus() }
-      else if (event.key === '/' && !modalOpen && !isEditableTarget(event.target)) { event.preventDefault(); document.querySelector<HTMLInputElement>('.global-search input')?.focus() }
+
+      // --- Ayuda ---------------------------------------------------------------
+      // F1: Chrome abre su propia ayuda si no se hace preventDefault. '?' es el
+      // atajo alcanzable sin tecla de función, solo fuera de campos editables.
+      if (event.key === 'F1') { event.preventDefault(); if (!modalOpen) setShortcutsOpen(true) }
+      else if (event.key === '?' && !modalOpen && !isEditableTarget(event.target)) { event.preventDefault(); setShortcutsOpen(true) }
+
+      // --- Búsqueda --------------------------------------------------------------
+      if (event.key === 'F2' && !modalOpen) { event.preventDefault(); searchInput()?.focus() }
+      else if (event.key === '/' && !modalOpen && !isEditableTarget(event.target)) { event.preventDefault(); searchInput()?.focus() }
+
+      // --- Operación ---------------------------------------------------------------
+      // Ctrl+N: Chrome lo reserva para "nueva ventana" y nunca lo entrega a la página —
+      // se mantiene el handler igual, pero Alt+N es el atajo documentado.
       if (event.ctrlKey && event.key.toLowerCase() === 'n') { event.preventDefault(); handleNew() }
-      if (event.key === 'F8' && !modalOpen) { event.preventDefault(); document.querySelector<HTMLButtonElement>('[data-pos-action="suspend"]')?.click() }
-      if (event.key === 'F9' && !modalOpen) { event.preventDefault(); document.querySelector<HTMLButtonElement>('[data-pos-action="pay"]')?.click() }
-      if (event.key === 'Enter' && event.target === document.querySelector('.global-search input')) {
-        const normalized = search.trim().toLowerCase()
+      if (event.altKey && event.key.toLowerCase() === 'n' && !modalOpen) { event.preventDefault(); handleNew() }
+      // Ctrl+Shift+Backspace cancela la venta actual (mismo flujo que Nueva operación).
+      // Nunca Ctrl+Backspace solo — ese borra una palabra dentro de un campo de texto.
+      if (event.ctrlKey && event.shiftKey && event.key === 'Backspace' && !modalOpen) { event.preventDefault(); handleNew() }
+      if (event.key === 'F8' && !modalOpen) { event.preventDefault(); click('[data-pos-action="suspend"]') }
+      // F9 o Ctrl+Enter abren el paso de cierre del modo activo — Ctrl+Enter funciona
+      // incluso con foco en el buscador, así que va aparte del Enter simple de abajo.
+      if ((event.key === 'F9' || (event.ctrlKey && event.key === 'Enter')) && !modalOpen) {
+        event.preventDefault()
+        if (mode === 'traslado') click('[data-pos-action="solicitar-traslado"]')
+        else if (mode === 'ventaDirecta') click('[data-pos-action="abrir-venta-directa"]')
+        else click('[data-pos-action="pay"]')
+      }
+      // F6 abre el selector de cliente. Ambiente sandbox: no fue posible confirmar en vivo
+      // si Chrome-on-Windows entrega F6 a la página (Chrome lo reserva en algunos builds
+      // para ciclar el foco entre barra de direcciones/página) — Alt+C queda cableado en
+      // paralelo como respaldo siempre activo, sin depender de detectarlo en runtime.
+      if ((event.key === 'F6' || (event.altKey && event.key.toLowerCase() === 'c')) && !modalOpen) {
+        event.preventDefault()
+        click('.customer-select')
+      }
+      // F7 enfoca el descuento general. Mismo respaldo que F6: Alt+U cableado en paralelo.
+      // Si el resumen está colapsado, la fila del descuento se expande antes de enfocar.
+      if ((event.key === 'F7' || (event.altKey && event.key.toLowerCase() === 'u')) && !modalOpen) {
+        event.preventDefault()
+        const toggle = document.querySelector<HTMLButtonElement>('.cart-chrome-toggle')
+        if (toggle?.getAttribute('aria-pressed') === 'true') toggle.click()
+        requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[aria-label="Descuento general"]')?.focus())
+      }
+      // F10 agrega un ítem personalizado (solo modo Venta). Mismo respaldo: Alt+I.
+      if ((event.key === 'F10' || (event.altKey && event.key.toLowerCase() === 'i')) && !modalOpen && mode === 'venta') {
+        event.preventDefault()
+        click('[data-pos-action="custom-item"]')
+      }
+
+      // --- Modos ---------------------------------------------------------------
+      if (event.altKey && event.key.toLowerCase() === 'v' && !modalOpen) { event.preventDefault(); click('[data-pos-action="mode-venta"]') }
+      if (event.altKey && event.key.toLowerCase() === 't' && !modalOpen) { event.preventDefault(); click('[data-pos-action="mode-traslado"]') }
+      if (event.altKey && event.key.toLowerCase() === 'r' && !modalOpen && featureFlags.ventaDirectaAlmacen) { event.preventDefault(); click('[data-pos-action="mode-venta-directa"]') }
+
+      // --- Carrito ---------------------------------------------------------------
+      // Activos fuera de campos editables, o con foco en el buscador si está vacío —
+      // así siguen andando justo después de escanear sin romper la escritura normal
+      // (los SKU llevan '-', y +/- también son parte de texto libre en otros campos).
+      const inEmptySearch = event.target === searchInput() && search.trim() === ''
+      const cartShortcutsActive = !modalOpen && (!isEditableTarget(event.target) || inEmptySearch)
+      if (cartShortcutsActive && cart.length && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+        event.preventDefault()
+        const ids = cart.map((item) => item.id)
+        const current = selectedLineId != null ? ids.indexOf(selectedLineId) : -1
+        const next = event.key === 'ArrowUp' ? Math.max(0, (current < 0 ? ids.length : current) - 1) : Math.min(ids.length - 1, current + 1)
+        setSelectedLineId(ids[next])
+      }
+      if (cartShortcutsActive && selectedLineId != null && (event.key === '+' || event.key === '-')) {
+        event.preventDefault()
+        const item = cart.find((line) => line.id === selectedLineId)
+        if (item) updateQuantity(selectedLineId, item.cantidad + (event.key === '+' ? 1 : -1))
+      }
+      if (cartShortcutsActive && selectedLineId != null && event.key === 'Delete') {
+        event.preventDefault()
+        const ids = cart.map((item) => item.id)
+        const removedIndex = ids.indexOf(selectedLineId)
+        removeItem(selectedLineId)
+        const remaining = ids.filter((id) => id !== selectedLineId)
+        setSelectedLineId(remaining[removedIndex] ?? remaining[removedIndex - 1] ?? null)
+      }
+      if (cartShortcutsActive && event.ctrlKey && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        const nombre = undoLastAdd()
+        if (nombre) notify(`Deshecho: ${nombre}`)
+      }
+
+      if (event.key === 'Enter' && !event.ctrlKey && event.target === searchInput()) {
+        const raw = search.trim()
+        const parsed = parseQuantityScan(raw)
+        if (!parsed) { event.preventDefault(); notify('Cantidad inválida'); return }
+        const { quantity, code } = parsed
+        const normalized = code.toLowerCase()
         if (featureFlags.supabase) {
           event.preventDefault()
-          const codigo = search.trim()
           void (async () => {
-            const resolved = await supabaseProductRepository.resolveScannedCode(codigo).catch(() => ({ kind: 'not_found' as const }))
+            const resolved = await supabaseProductRepository.resolveScannedCode(code).catch(() => ({ kind: 'not_found' as const }))
             if (resolved.kind === 'found') {
-              addProduct(resolved.product)
+              addProduct(resolved.product, quantity)
               setSearch('')
-              notify(`${resolved.product.nombre} agregado`)
+              notify(quantity > 1 ? `${quantity} × ${resolved.product.nombre} agregado` : `${resolved.product.nombre} agregado`)
             } else if (resolved.kind === 'ambiguous') {
               setAmbiguousIds(resolved.productIds)
               setSearch('')
@@ -112,7 +204,7 @@ function PosContent() {
           })()
         } else {
           const exact = products.find((product) => [product.codigoBarra, product.sku, product.codigoFabrica, product.nombre].some((value) => value.toLowerCase() === normalized))
-          if (exact) { event.preventDefault(); addProduct(exact); setSearch(''); notify(`${exact.nombre} agregado`) }
+          if (exact) { event.preventDefault(); addProduct(exact, quantity); setSearch(''); notify(quantity > 1 ? `${quantity} × ${exact.nombre} agregado` : `${exact.nombre} agregado`) }
         }
       }
     }
@@ -165,7 +257,7 @@ function PosContent() {
   if(conflictDemo)return <div className="integration-demo-page"><IntegrationState kind="conflict" onReload={()=>setConflictDemo(false)} onKeepCopy={()=>{setConflictDemo(false);notify('Copia local conservada')}} onCancel={()=>setConflictDemo(false)}/></div>
   if (featureFlags.supabase && !sessionLoaded) return null
   if (featureFlags.supabase && !session) return <LoginScreen />
-  return <div className={`app-shell pos-root ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`} data-modo={mode}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} onRegistrarPago={() => setPagoModalOpen(true)} user={session?.user} onOpenSettings={() => navigate('Configuración')} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}{pagoModalOpen && <PagoModal onClose={() => setPagoModalOpen(false)} />}{ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onPick={(product) => { addProduct(product); setAmbiguousIds(null); notify(`${product.nombre} agregado`) }} onClose={() => setAmbiguousIds(null)} />}</div>
+  return <div className={`app-shell pos-root ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`} data-modo={mode}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} onRegistrarPago={() => setPagoModalOpen(true)} user={session?.user} onOpenSettings={() => navigate('Configuración')} onOpenShortcuts={() => setShortcutsOpen(true)} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}{pagoModalOpen && <PagoModal onClose={() => setPagoModalOpen(false)} />}{ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onPick={(product) => { addProduct(product); setAmbiguousIds(null); notify(`${product.nombre} agregado`) }} onClose={() => setAmbiguousIds(null)} />}{shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}</div>
 }
 
 export function PosPage() { return <PosProvider><CashSessionProvider><PosContent /></CashSessionProvider></PosProvider> }
