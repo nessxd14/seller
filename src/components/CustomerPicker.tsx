@@ -158,10 +158,11 @@ export function CustomerPicker({ channel, notify }: { channel: 'retail' | 'mayor
 
   const label = customer ? (customer.name) : 'Cliente de mostrador'
   const sub = customer?.documento ? customer.documento : undefined
+  const requiresCustomer = channel !== 'retail' && !customer
 
   return <div className="customer-picker" ref={rootRef}>
-    <button type="button" className={`customer-select ${channel !== 'retail' && !customer ? 'required' : ''}`} onClick={() => setExpanded((v) => !v)}>
-      <CircleUserRound /><span><small>CLIENTE</small><strong>{label}{sub ? ` · ${sub}` : ''}</strong></span><ChevronDown className={expanded ? 'chevron-open' : ''} />
+    <button type="button" className={`customer-select ${requiresCustomer ? 'required' : ''}`} aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
+      <CircleUserRound /><span><small>CLIENTE{requiresCustomer ? ' · OBLIGATORIO' : ''}</small><strong>{requiresCustomer ? 'Selecciona un cliente' : label}{sub ? ` · ${sub}` : ''}</strong></span><ChevronDown className={expanded ? 'chevron-open' : ''} />
     </button>
     {expanded && <div className="customer-picker-panel">
       {creating ? <div className="customer-new-form">
