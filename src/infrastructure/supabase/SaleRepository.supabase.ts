@@ -3,6 +3,7 @@ import type { MutationContext, SalePortRecord, SaleRepository } from '../../appl
 import { NotFoundError } from '../../application/errors/AppError'
 import { centsToNumeric, locationToSucursalId, methodToMetodoPago, numericToCents } from './mappers'
 import { getOpenSession } from './CashRepository.supabase'
+import type { VentaTicketRecord } from '../../application/shared/models'
 
 type EstadoVenta = 'ABIERTA' | 'COMPLETADA' | 'ANULADA'
 
@@ -32,6 +33,63 @@ const rowToSale = (row: VentaRow): SalePortRecord => ({
   version: 1,
   updatedAt: new Date().toISOString(),
 })
+
+// Brief Caja-1 B1: el ticket post-venta (VentaTicket.tsx) se arma desde la venta YA
+// GUARDADA — numero, líneas y venta_pago reales — nunca desde el carrito. Mismo patrón
+// de fetch que VentaDirectaRepository.supabase.ts's fetchVtdById (header + cliente +
+// venta_linea + producto + venta_pago), pero con el detalle de pago por método/recibido/
+// estado_verificacion que ese repositorio no expone (basta con paidCents ahí).
+export async function getTicket(id: string): Promise<VentaTicketRecord | null> {
+  const numericId = Number(id)
+  if (!Number.isFinite(numericId)) return null
+  const { data: header, error: headerError } = await supabase
+    .from('venta')
+    .select('id, numero, estado, creado_en, creado_por, subtotal, descuento_total, total, cliente(nombre, documento), sesion_caja(caja(nombre))')
+    .eq('id', numericId)
+    .maybeSingle()
+  if (headerError) throw headerError
+  if (!header) return null
+  const [{ data: lineas, error: lineasError }, { data: pagos, error: pagosError }] = await Promise.all([
+    supabase.from('venta_linea').select('id, cantidad, cantidad_presentacion, precio_unitario, producto(nombre, sku_interno), presentacion(nombre)').eq('venta_id', numericId),
+    supabase.from('venta_pago').select('metodo, monto, recibido, estado_verificacion').eq('venta_id', numericId),
+  ])
+  if (lineasError) throw lineasError
+  if (pagosError) throw pagosError
+
+  type HeaderRow = { id: number; numero: string | null; estado: string; creado_en: string; creado_por: string | null; subtotal: number | string; descuento_total: number | string; total: number | string; cliente?: { nombre: string; documento: string } | null; sesion_caja?: { caja?: { nombre: string } | null } | null }
+  type LineaRow = { id: number; cantidad: number | string; cantidad_presentacion: number | string | null; precio_unitario: number | string; producto?: { nombre: string; sku_interno: string | null } | null; presentacion?: { nombre: string } | null }
+  type PagoRow = { metodo: string; monto: number | string; recibido: number | string | null; estado_verificacion: string }
+  const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
+  const h = header as unknown as HeaderRow
+
+  return {
+    ventaId: String(h.id),
+    numero: h.numero,
+    estado: h.estado,
+    creadoEn: h.creado_en,
+    cajero: h.creado_por ?? undefined,
+    cajaNombre: h.sesion_caja?.caja?.nombre,
+    clienteNombre: h.cliente?.nombre,
+    clienteNit: h.cliente?.documento,
+    lineas: ((lineas ?? []) as unknown as LineaRow[]).map((l) => {
+      const cantidad = num(l.cantidad_presentacion ?? l.cantidad)
+      const precioUnitarioBs = num(l.precio_unitario)
+      return {
+        id: String(l.id),
+        nombre: l.producto?.nombre ?? '',
+        sku: l.producto?.sku_interno ?? '',
+        cantidad,
+        presentacionNombre: l.presentacion?.nombre,
+        precioUnitarioBs,
+        subtotalBs: Math.round(cantidad * precioUnitarioBs * 100) / 100,
+      }
+    }),
+    subtotalBs: num(h.subtotal),
+    descuentoBs: num(h.descuento_total),
+    totalBs: num(h.total),
+    pagos: ((pagos ?? []) as PagoRow[]).map((p) => ({ metodo: p.metodo, montoBs: num(p.monto), recibidoBs: p.recibido != null ? num(p.recibido) : undefined, estadoVerificacion: p.estado_verificacion })),
+  }
+}
 
 export class SupabaseSaleRepository implements SaleRepository {
   async getById(id: string): Promise<SalePortRecord | null> {
@@ -65,7 +123,7 @@ export class SupabaseSaleRepository implements SaleRepository {
   }
 
   async checkout(
-    input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number },
+    input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number; receivedCents?: number }>; cashSessionId: string; customerId?: string; discountCents?: number },
     context: MutationContext & { idempotencyKey: string }
   ) {
     const actor = context.actorId ?? 'pos'
@@ -85,7 +143,14 @@ export class SupabaseSaleRepository implements SaleRepository {
       // means the RPC falls back to its automatic Tienda(2)-then-Almacén(1) resolution.
       ...(line.sourceLocation ? { sucursal_origen_id: locationToSucursalId(line.sourceLocation) } : {}),
     }))
-    const pagos = input.payments.map((payment) => ({ metodo: methodToMetodoPago(payment.method), monto: centsToNumeric(payment.amountCents) }))
+    // Brief Caja-1 A2: "recibido" solo entra en el pago si vino en el input — mandar la
+    // clave siempre (incluso undefined) confundiría "no se cobró en efectivo" con "no
+    // se registró cuánto entregó", así que solo se agrega cuando hay un valor real.
+    const pagos = input.payments.map((payment) => ({
+      metodo: methodToMetodoPago(payment.method),
+      monto: centsToNumeric(payment.amountCents),
+      ...(payment.receivedCents != null ? { recibido: centsToNumeric(payment.receivedCents) } : {}),
+    }))
     const { data, error } = await supabase.rpc('registrar_venta', {
       p_lineas: lineas,
       p_pagos: pagos,
@@ -96,9 +161,10 @@ export class SupabaseSaleRepository implements SaleRepository {
       p_idempotencia: context.idempotencyKey,
     })
     if (error) throw error
-    const result = data as { venta_id: number; subtotal: number | string; descuento_total: number | string; total: number | string; reintento?: boolean }
+    const result = data as { venta_id: number; numero?: string; subtotal: number | string; descuento_total: number | string; total: number | string; reintento?: boolean }
     return {
       saleId: String(result.venta_id),
+      numero: result.numero,
       subtotalCents: numericToCents(num(result.subtotal)),
       discountCents: numericToCents(num(result.descuento_total)),
       totalCents: numericToCents(num(result.total)),

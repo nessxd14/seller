@@ -31,3 +31,10 @@ export const borradorOperacionService = featureFlags.supabase ? supabaseServices
 export const configService = featureFlags.supabase ? supabaseServices.configService : mockServices.configService
 export const reportsService = featureFlags.supabase ? supabaseServices.reportsService : mockServices.reportsService
 export const comisionesService = featureFlags.supabase ? supabaseServices.comisionesService : mockServices.comisionesService
+
+// Brief Caja-1: solo tiene implementación Supabase — el modo mock sigue con el flujo
+// simple de abrir/cerrar caja de siempre (ver CashPage.tsx), así que nunca debería
+// llegar a llamar nada de acá; el throw es la señal clara si algún día lo hace.
+export const turnoService = featureFlags.supabase ? supabaseServices.turnoService : new Proxy({} as typeof supabaseServices.turnoService, {
+  get() { return () => { throw new Error('turnoService no está disponible en modo mock — CashPage.tsx debe usar el flujo mock de siempre.') } },
+})

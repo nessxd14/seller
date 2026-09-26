@@ -1,0 +1,65 @@
+/* Brief Caja-1 — turno de cajero. Reusa los tokens del estándar visual (--orange,
+   --charcoal, --cream, --line, --glass-border, --glass-shadow, --glass-orange) y las
+   clases .cash-hero/.cash-methods/.cash-movements/.cash-empty/.close-cash-button ya
+   existentes (src/phase11.css) — acá solo lo que esas clases no cubren. */
+
+.turno-tabs { display: flex; gap: 6px; }
+.turno-tabs button {
+  border: 1px solid var(--line, #e9e5dc);
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6e6a63;
+}
+.turno-tabs button.active { background: var(--glass-orange, var(--orange)); color: #fff; border-color: transparent; }
+
+.turno-abrir .denomination-count { margin: 18px auto; max-width: 420px; text-align: left; }
+
+.denomination-count { display: grid; gap: 16px; }
+.denomination-group h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted, #77746d); }
+.denomination-row { display: grid; grid-template-columns: 70px 1fr 100px; align-items: center; gap: 10px; padding: 5px 0; }
+.denomination-label { font-size: 13px; font-weight: 600; }
+.denomination-subtotal { text-align: right; font-size: 13px; }
+.denomination-total { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line, #e9e5dc); padding-top: 10px; font-size: 14px; }
+.denomination-total strong { font-size: 18px; }
+
+.turno-ticket-row, .turno-gasto-row, .turno-revision-row, .turno-faltante-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid #eee;
+  font-size: 12px;
+}
+.turno-ticket-row small, .turno-gasto-row small, .turno-revision-row small { display: block; color: #96928a; margin-top: 2px; }
+.turno-ticket-row button, .turno-gasto-row button, .turno-revision-row button, .turno-faltante-row button {
+  border: 1px solid #ddd8cf;
+  background: #fff;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.turno-gasto-row div, .turno-faltante-row div { display: flex; gap: 6px; }
+
+.qr-pendiente-chip {
+  background: #fff2de;
+  color: #a76a19;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 10px;
+  width: max-content;
+}
+
+.ticket-numero-hero { font-size: 13px; color: #6e6a63; margin: 4px 0 0; }
+.ticket-numero-hero strong { color: #24231f; }
+
+.status-dot-off { background: #c65a4d !important; box-shadow: 0 0 0 4px #c65a4d20 !important; }
+
+.supervision-panel .cash-hero { grid-column: 1 / -1; }

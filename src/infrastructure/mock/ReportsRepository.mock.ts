@@ -15,8 +15,8 @@ const paginate = <T>(items: T[], page: PageRequest): Page<T> => {
 }
 
 const mockVentas: VentaRow[] = [
-  { ventaId: '1', fecha: '2026-07-20', vendedor: 'Natalia Cajera', clienteId: null, cliente: null, subtotalCents: 15000, descuentoTotalCents: 0, totalCents: 15000, sesionCajaId: '1', metodos: 'EFECTIVO' },
-  { ventaId: '2', fecha: '2026-07-22', vendedor: 'Andrea Admin', clienteId: 'c1', cliente: 'Librería San Marcos', subtotalCents: 42000, descuentoTotalCents: 2000, totalCents: 40000, sesionCajaId: '1', metodos: 'QR' },
+  { ventaId: '1', fecha: '2026-07-20', vendedor: 'Natalia Cajera', clienteId: null, cliente: null, subtotalCents: 15000, descuentoTotalCents: 0, totalCents: 15000, sesionCajaId: '1', metodos: 'EFECTIVO', numero: 'VTA-2026-00001' },
+  { ventaId: '2', fecha: '2026-07-22', vendedor: 'Andrea Admin', clienteId: 'c1', cliente: 'Librería San Marcos', subtotalCents: 42000, descuentoTotalCents: 2000, totalCents: 40000, sesionCajaId: '1', metodos: 'QR', numero: 'VTA-2026-00002' },
 ]
 const mockProductosVendidos: ProductoVendidoRow[] = [
   { productoId: '1', producto: 'Cuaderno TUKI 50 hojas', skuInterno: 'CUA-TUK-050', marca: 'TUKI', fecha: '2026-07-20', canal: 'retail', cantidadBase: 10, importeCents: 15000 },
