@@ -11,6 +11,11 @@ npm run dev
 
 Vite mostrará la URL local (normalmente `http://localhost:5173`).
 
+Para probar la interfaz sin conectar Supabase, crea un archivo `.env.local` con
+`VITE_POS_MODE=mock`. Este archivo se ignora en Git. Para usar los datos reales,
+quita esa variable y configura `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`
+según `.env.example`.
+
 ## Validación
 
 ```bash

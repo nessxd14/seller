@@ -34,6 +34,7 @@ import './pos-reparto-pago.css'
 import './pos-pedidos-segmento.css'
 import './styles/pos-solicitante.css'
 import './styles/pos-documentos-diferenciados.css'
+import './pos-glassmorphism.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

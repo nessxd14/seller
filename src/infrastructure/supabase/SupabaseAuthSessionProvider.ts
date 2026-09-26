@@ -1,5 +1,6 @@
 import type { AuthSession, AuthSessionProvider, AuthUser, MockRole } from '../../application/auth/AuthSessionProvider'
 import { supabase } from './supabaseClient'
+import { featureFlags } from '../../config/featureFlags'
 
 interface PerfilRow {
   id: string
@@ -26,6 +27,8 @@ export class SupabaseAuthSessionProvider implements AuthSessionProvider {
   private listeners = new Set<(session: AuthSession | null) => void>()
 
   constructor() {
+    // El proveedor se importa también en modo mock; no debe crear el cliente real.
+    if (!featureFlags.supabase) return
     // Brief I: un 401 de una consulta cualquiera (JWT vencido, red caída, lo que
     // sea) NO es motivo para expulsar — solo un SIGNED_OUT real de GoTrueClient
     // (logout explícito, o refresco de token fallado de verdad: eso también lo
