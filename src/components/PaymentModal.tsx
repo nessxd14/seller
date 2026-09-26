@@ -4,13 +4,18 @@ import { usePos } from '../context/PosContext'
 import { Modal } from './Modal'
 import { featureFlags } from '../config/featureFlags'
 import { useCashSession } from '../context/CashSessionContext'
-import { saleService, authSessionProvider } from '../infrastructure/services'
+import { saleService, authSessionProvider, turnoService } from '../infrastructure/services'
 import type { SaleCheckoutPayment } from '../application/ports/repositories'
 import { registrarCargoSaldo, HermesHttpError } from '../infrastructure/hermes/client'
 import { pendienteSyncHermesRepository } from '../infrastructure/supabase/PendienteSyncHermesRepository'
 import { netUnitPriceCents } from '../domain/sales/ventaPricing'
 import { NumberField } from './NumberField'
 import { VentaTicket } from './VentaTicket'
+
+// Brief Caja-2 B1: pasado este umbral sin VERIFICADO, se le ofrece al cajero seguir
+// esperando o dejar la venta retenida (QR pendiente en "Mis tickets").
+const QR_HOLD_TIMEOUT_S = 90
+const QR_HOLD_POLL_MS = 3000
 
 const allMethods = [
   { id: 'efectivo', label: 'Efectivo', icon: Banknote },
@@ -23,7 +28,7 @@ const money = (value: number) => value.toLocaleString('es-BO', { minimumFraction
 const posMethod = (id: string): 'cash' | 'qr' | 'transfer' => (id === 'qr' ? 'qr' : id === 'transferencia' ? 'transfer' : 'cash')
 
 export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => void; onCheckoutSuccess?: () => void }) {
-  const { cart, discount, total, newOperation, customer, operationId } = usePos()
+  const { cart, discount, total, newOperation, customer, operationId, notifyVentaCompletada } = usePos()
   const { sessionId } = useCashSession()
   // Crédito has no metodo_pago equivalent in the real backend; only shown in mock mode.
   const methods = allMethods.filter((m) => m.id !== 'credito' || (featureFlags.credit && !featureFlags.supabase))
@@ -53,6 +58,31 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
   const [cargoResult, setCargoResult] = useState<{ cubiertoPorSaldo: boolean; saldoResultante: number } | null | undefined>(undefined)
   const mixedSum = Math.round((mixedCash + mixedDigital + Number.EPSILON) * 100) / 100
   const paymentValid = method === 'mixto' ? Math.abs(mixedSum - total) < 0.005 : received >= total
+
+  // Brief Caja-2 B1: mientras el banco está en línea, una venta retail con QR queda
+  // "Esperando confirmación del QR…" en vez de ir directo a la pantalla confirmada.
+  // null = sin retención (venta sin QR, banco offline, o ya verificada/vencida).
+  const [holdPhase, setHoldPhase] = useState<'esperando' | 'vencida' | null>(null)
+  const [holdElapsedS, setHoldElapsedS] = useState(0)
+  const [holdQrAmountCents, setHoldQrAmountCents] = useState(0)
+  const [bankOfflineNotice, setBankOfflineNotice] = useState(false)
+
+  // Brief Caja-2 B1: mientras se espera, un poll cada 3 s a venta_pago.estado_verificacion
+  // — hasta VERIFICADO (pasa a la pantalla confirmada) o hasta los 90 s (ofrece seguir
+  // esperando / dejar retenida).
+  useEffect(() => {
+    if (holdPhase !== 'esperando' || !result) return
+    const startedAt = Date.now()
+    const interval = window.setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000)
+      setHoldElapsedS(elapsed)
+      if (elapsed >= QR_HOLD_TIMEOUT_S) { setHoldPhase('vencida'); return }
+      void turnoService.estadoPagoQr(result.saleId)
+        .then((estado) => { if (estado === 'VERIFICADO') { setHoldPhase(null); setDone(true) } })
+        .catch(() => { /* red caída — se sigue esperando, el próximo tick reintenta */ })
+    }, QR_HOLD_POLL_MS)
+    return () => window.clearInterval(interval)
+  }, [holdPhase, result])
 
   const buildPayments = (): SaleCheckoutPayment[] => {
     if (method === 'mixto') {
@@ -112,6 +142,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
     setSubmitting(true)
     setError('')
     try {
+      const payments = buildPayments()
       const checkout = await saleService.checkout({
         lines: cart.map((item) => ({
           productId: String(item.id),
@@ -123,7 +154,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
           sourceLocation: item.ubicacion,
           presentacionId: item.presentacionId,
         })),
-        payments: buildPayments(),
+        payments,
         cashSessionId: sessionId,
         discountCents: Math.round(discount * 100),
         // TAREA 4: NIT/cliente is always optional — customer may be null ("Cliente de
@@ -144,12 +175,37 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
           : method === 'mixto' && mixedCashRecibido > 0 ? Math.max(0, mixedCashRecibido - mixedCash)
             : null,
       )
-      setDone(true)
+      // Brief Caja-2 B3: /end 'completada' apenas registrar_venta confirma, antes de
+      // decidir si esta venta queda retenida (B1) o va directo a la pantalla confirmada
+      // — la auditoría de DVR ya no tiene nada que ver con eso.
+      notifyVentaCompletada({ numero: checkout.numero, totalBs: checkout.totalCents / 100 })
       // TAREA 4 (Tanda 3): el caché de stock de origen del carrito (CartPanel's originStock)
       // no se invalidaba nunca — vendías 5 de 5 unidades, volvías a agregar el producto y
       // seguía diciendo que había 5. Se invalida entero acá, apenas la venta se confirma.
       onCheckoutSuccess?.()
       void syncHermesCargo(checkout.saleId, checkout.totalCents)
+
+      // Brief Caja-2 B1 (decisión 24): scope retail-only (este modal solo se usa en el
+      // Cobrar de Venta, nunca en Mayoreo ni VTD) — con un pago QR y el banco en línea,
+      // se retiene el ticket hasta VERIFICADO en vez de ir directo a la pantalla
+      // confirmada. Sin QR en el pago, o banco offline/caído, nunca se retiene: un
+      // scraper caído no puede frenar al cajero.
+      const qrAmountCents = payments.filter((p) => p.method === 'qr').reduce((sum, p) => sum + p.amountCents, 0)
+      if (qrAmountCents > 0) {
+        setHoldQrAmountCents(qrAmountCents)
+        try {
+          const estado = await turnoService.estadoBancoQr()
+          if (estado.enLinea) {
+            setHoldElapsedS(0)
+            setHoldPhase('esperando')
+            return
+          }
+          setBankOfflineNotice(true)
+        } catch {
+          setBankOfflineNotice(true)
+        }
+      }
+      setDone(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar la venta')
     } finally {
@@ -177,6 +233,29 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [done])
 
+  // Brief Caja-2 B1: "Esperando confirmación del QR…" — el ticket queda retenido hasta
+  // VERIFICADO (o hasta que el cajero, pasados 90 s, elija seguir esperando o dejar la
+  // venta retenida). Nunca bloquea si el banco está offline — eso se resuelve arriba,
+  // en confirmSupabase, antes de llegar acá.
+  if (holdPhase === 'esperando' || holdPhase === 'vencida') {
+    const dejarRetenida = () => { newOperation(); onClose() }
+    return <Modal title="Esperando confirmación del QR…" subtitle={result?.numero ? `Ticket ${result.numero}` : undefined} onClose={dejarRetenida}>
+      <div className="success-state qr-hold-state">
+        <p>Monto QR: Bs {money(holdQrAmountCents / 100)}</p>
+        <p className="qr-hold-elapsed">{holdElapsedS}s</p>
+        {holdPhase === 'vencida' && <>
+          <p className="mock-note">No se recibió confirmación del banco todavía.</p>
+          <p className="qr-hold-warning">No entregues la mercadería hasta que el gerente confirme el pago.</p>
+        </>}
+      </div>
+      <footer className="modal-actions">
+        {holdPhase === 'vencida'
+          ? <><button className="secondary-button" onClick={() => { setHoldElapsedS(0); setHoldPhase('esperando') }}>Seguir esperando</button><button className="primary-button full-button" onClick={dejarRetenida}>Dejar retenida</button></>
+          : <button className="secondary-button full-button" onClick={dejarRetenida}>Dejar retenida</button>}
+      </footer>
+    </Modal>
+  }
+
   if (done) return <Modal title="¡Cobro confirmado!" subtitle={featureFlags.supabase ? (result ? `Venta #${result.saleId}` : undefined) : "Operación completada localmente"} onClose={() => { newOperation(); onClose() }}><div className="success-state"><span>✓</span>
     {/* Brief Caja-1 B1: el número de ticket real (VTA-2026-NNNNN), asignado por
         _registrar_venta_nucleo — no confundir con operationNumber (contador por
@@ -184,6 +263,9 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
     {featureFlags.supabase && result?.numero && <p className="ticket-numero-hero">Ticket N° <strong>{result.numero}</strong></p>}
     <h3>Bs {money(featureFlags.supabase && result ? result.totalCents / 100 : total)}</h3>
     {cambioBs != null && cambioBs > 0 && <p>Cambio: Bs {money(cambioBs)}</p>}
+    {/* Brief Caja-2 B1: banco offline no frena al cajero — imprime igual, con el
+        (pendiente) de siempre en el ticket, y el gerente lo verifica después. */}
+    {bankOfflineNotice && <p className="qr-offline-notice">Banco sin conexión: el QR queda pendiente y lo verifica el gerente.</p>}
     <p>{
     // Si el cajero reintentó tras una respuesta perdida, registrar_venta detectó la
     // misma clave de idempotencia y no creó una segunda venta — hay que decirlo

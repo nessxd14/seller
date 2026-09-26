@@ -391,3 +391,30 @@ export interface CajaFaltanteRecord {
   creadoEn: string
 }
 
+// Brief Caja-2 — estado del scraper BNB QR (worker_latido), consumido por B1 (retener
+// el ticket QR hasta que el banco confirme) y B2 (header de Supervisión).
+export interface EstadoBancoQr {
+  ultimoLatido: string | null
+  minutosDesde: number | null
+  enLinea: boolean
+}
+
+// Brief Caja-2 B2 — un pago QR/transferencia todavía PENDIENTE de verificación, de un
+// turno abierto o EN_REVISION (los cerrados sin diferencia ya no aparecen acá).
+export interface PagoPorVerificar {
+  ventaPagoId: string
+  ventaId: string
+  numero: string | null
+  metodo: 'QR' | 'TRANSFERENCIA'
+  montoBs: number
+  creadoEn: string
+}
+
+// Brief Caja-2 B2 — movimiento bancario BNB QR todavía sin vincular a ningún venta_pago.
+export interface MovimientoBancoQr {
+  id: string
+  bancoId: string
+  importeBs: number
+  fechaTransaccion: string
+}
+

@@ -6,6 +6,7 @@ import { moneyFromDecimal } from '../domain/common/money'
 import type { TransferMotivo } from '../application/shared/models'
 import { featureFlags } from '../config/featureFlags'
 import { consultarSaldos } from '../infrastructure/hermes/client'
+import { auditEnd, auditStart } from '../lib/auditoriaDvr'
 
 // Brief J: 1 = Almacén Central, 2 = Tienda (mismos ids que SUCURSAL_ALMACEN_ID/
 // SUCURSAL_TIENDA_ID en infrastructure/supabase/mappers.ts — no se importan de ahí
@@ -116,6 +117,13 @@ interface PosState {
   vtdPrecobrado: boolean
   setVtdPrecobrado: (value: boolean) => void
   loadVtdDraft: (draft: { cart: CartItem[]; vtdUbicacionId: number | null; vtdPrecobrado: boolean }) => void
+  // Brief Caja-2 B3 — auditoría DVR: PaymentModal llama esto apenas registrar_venta
+  // confirma (antes de cualquier lógica de retención QR de B1), y CartPanel.suspend()
+  // lo llama antes de guardar el borrador. Ambos marcan la operación como "ya cerrada"
+  // para que el reset de estado que sigue (newOperation/clearOperation) no mande un
+  // /end 'cancelada' duplicado — ver resetOperationState más abajo.
+  notifyVentaCompletada: (input: { numero?: string; totalBs: number }) => void
+  notifyVentaSuspendida: () => void
 }
 
 const PosContext = createContext<PosState | null>(null)
@@ -147,6 +155,27 @@ export function PosProvider({ children }: { children: ReactNode }) {
   // consultarSaldos, que resuelve después de que el componente ya pudo re-renderizar.
   const channelRef = useRef(channel)
   useEffect(() => { channelRef.current = channel }, [channel])
+
+  // Brief Caja-2 B3 — auditoría DVR: el cajero autenticado, para mandarlo en /start.
+  // Se resuelve una vez y se cachea en un ref — auditStart es fire-and-forget y no
+  // puede esperar una promesa de sesión cada vez que el carrito pasa de 0 a 1 línea.
+  // Import dinámico (no estático) a propósito: PosContext se mantiene libre de una
+  // dependencia dura al stack de infraestructura (mismo criterio que ya documenta este
+  // archivo para SUCURSAL_ALMACEN/SUCURSAL_TIENDA) — un import estático de
+  // infrastructure/services arrastraría todo el módulo de Supabase, y en tests que
+  // montan PosProvider sin mockear esa capa (p.ej. sin VITE_SUPABASE_URL) reventaría
+  // el render solo por resolver el email del cajero para una telemetría best-effort.
+  const cajeroEmailRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    void import('../infrastructure/services')
+      .then((m) => m.authSessionProvider.getSession())
+      .then((s) => { cajeroEmailRef.current = s?.user.email ?? undefined })
+      .catch(() => { /* sin sesión disponible — auditStart sale sin cajeroId, no es un fallo */ })
+  }, [])
+  // true cuando la operación en curso ya emitió su propio /end (checkout confirmado o
+  // suspendida) — así resetOperationState (más abajo) no manda un /end 'cancelada'
+  // extra para la misma operación cuando newOperation()/clearOperation() la resetea.
+  const operationEndedRef = useRef(false)
   const recomputeOrigenes = (nextChannel: SalesChannel, nextEsAcreedor: boolean) => {
     const origen = defaultOrigenFor(nextChannel, nextEsAcreedor)
     // Solo las líneas que el cajero NO tocó a mano (origenManual) — ver el campo en types.ts.
@@ -168,6 +197,19 @@ export function PosProvider({ children }: { children: ReactNode }) {
   }
 
   const [mode, setMode] = useState<PosMode>('venta')
+  const modeRef = useRef(mode)
+  useEffect(() => { modeRef.current = mode }, [mode])
+  const cartLengthRef = useRef(0)
+  useEffect(() => {
+    // Brief Caja-2 B3: "Cart goes from 0 to ≥ 1 lines (Venta mode only)" -> /start.
+    // Cubre también reanudar una venta suspendida (loadSuspendedSale también pasa por
+    // 0 -> N) con el mismo operationId, tal como pide el brief.
+    if (cartLengthRef.current === 0 && cart.length >= 1 && modeRef.current === 'venta') {
+      operationEndedRef.current = false
+      auditStart({ transactionId: operationId, cajeroId: cajeroEmailRef.current })
+    }
+    cartLengthRef.current = cart.length
+  }, [cart.length, operationId])
   const [trasladoMotivo, setTrasladoMotivoState] = useState<TransferMotivo>('REPOSICION')
   const [trasladoOrigenId, setTrasladoOrigenId] = useState(SUCURSAL_ALMACEN)
   const [trasladoDestinoId, setTrasladoDestinoId] = useState(SUCURSAL_TIENDA)
@@ -295,6 +337,14 @@ export function PosProvider({ children }: { children: ReactNode }) {
   // operationId — antes solo hacía clearCart(), y una venta suspendida con cliente
   // institucional dejaba al próximo carrito pegado a ese cliente y canal.
   const resetOperationState = () => {
+    // Brief Caja-2 B3: "New operation / cancel sale while the cart had lines" -> /end
+    // 'cancelada' — pero no cuando la operación ya se cerró por su cuenta (checkout
+    // confirmado vía notifyVentaCompletada, o venta suspendida vía notifyVentaSuspendida),
+    // que ya mandaron su propio /end antes de llegar acá.
+    if (modeRef.current === 'venta' && cart.length > 0 && !operationEndedRef.current) {
+      auditEnd({ transactionId: operationId, reason: 'cancelada' })
+    }
+    operationEndedRef.current = false
     clearCart()
     setChannelState('retail')
     setCustomer(null)
@@ -312,6 +362,14 @@ export function PosProvider({ children }: { children: ReactNode }) {
     resetOperationState()
     setOperationNumber((number) => number + 1)
     setOperationId(nuevoOperacionId())
+  }
+  const notifyVentaCompletada = (input: { numero?: string; totalBs: number }) => {
+    operationEndedRef.current = true
+    auditEnd({ transactionId: operationId, reason: 'completada', totalBs: input.totalBs, numero: input.numero })
+  }
+  const notifyVentaSuspendida = () => {
+    operationEndedRef.current = true
+    auditEnd({ transactionId: operationId, reason: 'suspendida' })
   }
   const totals = useMemo(() => {
     const subtotalCents = cart.reduce((sum, item) => sum + ventaLineTotalCents(item), 0)
@@ -341,7 +399,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setUndoStack([])
   }
 
-  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, addCustomItem, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, selectedLineId, setSelectedLineId, undoLastAdd }}>{children}</PosContext.Provider>
+  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, addCustomItem, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, selectedLineId, setSelectedLineId, undoLastAdd, notifyVentaCompletada, notifyVentaSuspendida }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {
