@@ -267,6 +267,13 @@ export const turnoService = {
   faltantesPendientes: turnoRepository.listFaltantesPendientes,
   subirComprobante: turnoRepository.subirComprobante,
   comprobanteUrl: turnoRepository.getComprobanteUrl,
+  // Brief Caja-2 — fuentes externas: verificación de pagos QR/transferencia.
+  estadoBancoQr: turnoRepository.estadoBancoQr,
+  estadoPagoQr: turnoRepository.getEstadoPagoQr,
+  pagosPorVerificar: turnoRepository.listPagosPorVerificar,
+  movimientosBancoSinVincular: turnoRepository.listMovimientosBancoSinVincular,
+  vincularPagoQr: turnoRepository.vincularPagoQr,
+  verificarPagoManual: turnoRepository.verificarPagoManual,
 }
 
 export const borradorOperacionService = {

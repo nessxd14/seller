@@ -52,7 +52,7 @@ type CartBorradorEstado =
   | { mode: 'ventaDirecta'; cart: CartItemType[]; vtdUbicacionId: number | null; vtdPrecobrado: boolean }
 
 export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, onRequestTransfer }: { notify: (message: string) => void; onOpenDraftOrder: (draft: QuoteDraft) => void; onGoToCash: () => void; sellerName?: string; onRequestTransfer?: (request: PendingTransferRequest) => void }) {
-  const { channel, cart, subtotal, total, discount, setDiscount, operationNumber, operationId, clearOperation, loadSuspendedSale, updateItem, addCustomItem, customer, mode, setMode, trasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft } = usePos()
+  const { channel, cart, subtotal, total, discount, setDiscount, operationNumber, operationId, clearOperation, loadSuspendedSale, updateItem, addCustomItem, customer, mode, setMode, trasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, notifyVentaSuspendida } = usePos()
   const { sessionId } = useCashSession()
   const cashClosed = channel === 'retail' && featureFlags.supabase && !sessionId
   const [editing, setEditing] = useState<CartItemType | null>(null)
@@ -234,6 +234,10 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       customerDocument: customer?.documento,
     }, featureFlags.supabase ? stripStockFields : undefined)
     setHasSuspended(true)
+    // Brief Caja-2 B3: marca la operación como cerrada por su cuenta (POST /end
+    // reason:'suspendida') ANTES de clearOperation(), para que ese reset no la vuelva a
+    // cerrar como 'cancelada'.
+    notifyVentaSuspendida()
     // Brief S3: clearOperation (no clearCart) — suspender también tiene que soltar
     // cliente/canal/modo, o la próxima venta arranca pegada al cliente institucional
     // de la venta que se acaba de guardar para después.

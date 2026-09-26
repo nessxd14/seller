@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "vitest run src",
+    "test": "vitest run src api",
     "test:e2e": "playwright test",
     "preview": "vite preview",
     "bootstrap:clientes": "node --env-file=.env scripts/bootstrap_clientes.mjs"

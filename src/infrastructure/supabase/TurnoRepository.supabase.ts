@@ -3,7 +3,7 @@
 // directo a las RPCs de db/migrations/2026-09-27_caja_turno_cajero.sql. Ver
 // featureFlags.supabase en CashPage.tsx — este repositorio solo se usa ahí.
 import { supabase } from './supabaseClient'
-import type { CajaFaltanteRecord, CajaGastoRecord, Denominaciones, TurnoEstado, TurnoResumen, TurnoSesion, TurnoTicket } from '../../application/shared/models'
+import type { CajaFaltanteRecord, CajaGastoRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoEstado, TurnoResumen, TurnoSesion, TurnoTicket } from '../../application/shared/models'
 
 // Brief: "hoy solo hay una caja habilitada operando este POS" — mismo criterio que
 // CAJA_ID en CashRepository.supabase.ts (verificado contra la tabla `caja`: una sola
@@ -237,4 +237,82 @@ export async function subirComprobante(sesionId: string, file: File): Promise<st
   const { error } = await supabase.storage.from('caja-comprobantes').upload(path, file, { upsert: true })
   if (error) throw error
   return path
+}
+
+// ── Brief Caja-2 — fuentes externas: verificación de pagos QR/transferencia ────────
+
+export async function estadoBancoQr(): Promise<EstadoBancoQr> {
+  const { data, error } = await supabase.rpc('estado_banco_qr')
+  if (error) throw error
+  const r = data as { ultimo_latido: string | null; minutos_desde: number | string | null; en_linea: boolean }
+  return { ultimoLatido: r.ultimo_latido, minutosDesde: r.minutos_desde != null ? num(r.minutos_desde) : null, enLinea: r.en_linea }
+}
+
+// Brief Caja-2 B1: poll de PaymentModal mientras espera la confirmación del banco —
+// una sola fila porque la venta recién cobrada tiene, como mucho, un pago QR.
+export async function getEstadoPagoQr(ventaId: string): Promise<string | null> {
+  const { data, error } = await supabase.from('venta_pago').select('estado_verificacion').eq('venta_id', Number(ventaId)).eq('metodo', 'QR').maybeSingle()
+  if (error) throw error
+  return (data as { estado_verificacion: string } | null)?.estado_verificacion ?? null
+}
+
+// Brief Caja-2 B2 — columna izquierda de Supervisión: pagos PENDIENTE de turnos
+// abiertos o EN_REVISION (los turnos ya CERRADOS sin diferencia no interesan acá).
+// Dos pasos (sesiones relevantes, después pagos) en vez de un filtro anidado de
+// PostgREST de dos niveles — mismo patrón que misTickets, más fácil de leer y de
+// mockear en tests que un `.in('venta.sesion_caja.estado', ...)`.
+export async function listPagosPorVerificar(): Promise<PagoPorVerificar[]> {
+  const { data: sesiones, error: sesionesError } = await supabase.from('sesion_caja').select('id').in('estado', ['ABIERTA', 'EN_REVISION'])
+  if (sesionesError) throw sesionesError
+  const sesionIds = ((sesiones ?? []) as { id: number }[]).map((s) => s.id)
+  if (!sesionIds.length) return []
+
+  const { data: ventas, error: ventasError } = await supabase.from('venta').select('id, numero').in('sesion_caja_id', sesionIds)
+  if (ventasError) throw ventasError
+  const ventaRows = (ventas ?? []) as { id: number; numero: string | null }[]
+  const ventaIds = ventaRows.map((v) => v.id)
+  if (!ventaIds.length) return []
+  const numeroPorVenta = new Map(ventaRows.map((v) => [v.id, v.numero]))
+
+  const { data: pagos, error: pagosError } = await supabase
+    .from('venta_pago')
+    .select('id, venta_id, metodo, monto, creado_en')
+    .eq('estado_verificacion', 'PENDIENTE')
+    .in('venta_id', ventaIds)
+    .order('creado_en', { ascending: true })
+  if (pagosError) throw pagosError
+  type Row = { id: number; venta_id: number; metodo: string; monto: number | string; creado_en: string }
+  return ((pagos ?? []) as Row[]).map((r) => ({
+    ventaPagoId: String(r.id),
+    ventaId: String(r.venta_id),
+    numero: numeroPorVenta.get(r.venta_id) ?? null,
+    metodo: r.metodo as 'QR' | 'TRANSFERENCIA',
+    montoBs: num(r.monto),
+    creadoEn: r.creado_en,
+  }))
+}
+
+// Brief Caja-2 B2 — columna derecha de Supervisión: movimientos bancarios de las
+// últimas 48h que todavía no calzaron con ningún pago.
+export async function listMovimientosBancoSinVincular(): Promise<MovimientoBancoQr[]> {
+  const desde = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('banco_qr_movimiento')
+    .select('id, banco_id, importe, fecha_transaccion')
+    .is('venta_pago_id', null)
+    .gte('fecha_transaccion', desde)
+    .order('fecha_transaccion', { ascending: false })
+  if (error) throw error
+  type Row = { id: number; banco_id: string; importe: number | string; fecha_transaccion: string }
+  return ((data ?? []) as Row[]).map((r) => ({ id: String(r.id), bancoId: r.banco_id, importeBs: num(r.importe), fechaTransaccion: r.fecha_transaccion }))
+}
+
+export async function vincularPagoQr(ventaPagoId: string, bancoMovId: string): Promise<void> {
+  const { error } = await supabase.rpc('vincular_pago_qr', { p_venta_pago_id: Number(ventaPagoId), p_banco_mov_id: Number(bancoMovId) })
+  if (error) throw error
+}
+
+export async function verificarPagoManual(ventaPagoId: string, referencia: string | null, aprobar: boolean): Promise<void> {
+  const { error } = await supabase.rpc('verificar_pago_manual', { p_venta_pago_id: Number(ventaPagoId), p_referencia: referencia, p_aprobar: aprobar })
+  if (error) throw error
 }

@@ -63,3 +63,50 @@
 .status-dot-off { background: #c65a4d !important; box-shadow: 0 0 0 4px #c65a4d20 !important; }
 
 .supervision-panel .cash-hero { grid-column: 1 / -1; }
+
+/* Brief Caja-2 B1 — retención de la venta con QR mientras se espera al banco. */
+.qr-hold-state { display: grid; gap: 6px; text-align: center; }
+.qr-hold-elapsed { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.qr-hold-warning { color: #a13a2f; font-weight: 600; }
+.qr-offline-notice {
+  background: #fff2de;
+  color: #a76a19;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Brief Caja-2 B2 — "Pagos por verificar" dentro de Supervisión. */
+.pagos-verificar { grid-column: 1 / -1; }
+.pagos-verificar header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.banco-estado { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 10px; }
+.banco-estado-online { background: #e4f6e8; color: #1f7a3d; }
+.banco-estado-offline { background: #fbe4e1; color: #a13a2f; }
+.pagos-verificar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 10px; }
+.pagos-verificar-col h4 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted, #77746d); }
+.pago-verificar-row, .movimiento-banco-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid #eee;
+  font-size: 12px;
+}
+.pago-verificar-row small, .movimiento-banco-row small { display: block; color: #96928a; margin-top: 2px; }
+.pago-sugerencia, .pago-verificar-acciones { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pago-sugerencia button, .pago-verificar-acciones button {
+  border: 1px solid #ddd8cf;
+  background: #fff;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 11px;
+}
+.sugerencia-fuerte, .sugerencia-debil { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 8px; }
+.sugerencia-fuerte { background: #e4f6e8; color: #1f7a3d; }
+.sugerencia-debil { background: #fff2de; color: #a76a19; }
+
+@media (max-width: 720px) {
+  .pagos-verificar-grid { grid-template-columns: 1fr; }
+}

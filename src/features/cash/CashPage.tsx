@@ -2,7 +2,8 @@ import { ArrowDownLeft, ArrowUpRight, Calculator, LockKeyhole, Printer, WalletCa
 import { useEffect, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
 import { hasPermission } from '../../application/auth/AuthSessionProvider'
-import type { CajaFaltanteRecord, CajaGastoRecord, CashSessionRecord, Denominaciones, TurnoResumen, TurnoSesion, TurnoTicket } from '../../application/shared/models'
+import type { CajaFaltanteRecord, CajaGastoRecord, CashSessionRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoResumen, TurnoSesion, TurnoTicket } from '../../application/shared/models'
+import { sugerirPagosQr, type SugerenciaQr } from '../../domain/cash/qrSuggestions'
 import { authSessionProvider, cashService, sensitiveOperations, turnoService, ventaDirectaService } from '../../infrastructure/services'
 import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
@@ -230,17 +231,25 @@ function SupervisionPanel({ notify }: { notify: (message: string) => void }) {
   const [enRevision, setEnRevision] = useState<TurnoSesion[]>([])
   const [faltantes, setFaltantes] = useState<CajaFaltanteRecord[]>([])
   const [arqueoOpen, setArqueoOpen] = useState(false)
+  // Brief Caja-2 B2 — "Pagos por verificar".
+  const [estadoBanco, setEstadoBanco] = useState<EstadoBancoQr | null>(null)
+  const [pagosPorVerificar, setPagosPorVerificar] = useState<PagoPorVerificar[]>([])
+  const [movimientosSinVincular, setMovimientosSinVincular] = useState<MovimientoBancoQr[]>([])
 
   const load = async () => {
     const abierta = await turnoService.getSesionAbierta()
     setSesion(abierta)
-    const [r, g, rev, f] = await Promise.all([
+    const [r, g, rev, f, banco, pagos, movimientos] = await Promise.all([
       abierta ? turnoService.resumen(abierta.id) : Promise.resolve(null),
       turnoService.gastosPendientes(),
       turnoService.turnosEnRevision(),
       turnoService.faltantesPendientes(),
+      turnoService.estadoBancoQr(),
+      turnoService.pagosPorVerificar(),
+      turnoService.movimientosBancoSinVincular(),
     ])
     setResumen(r); setGastos(g); setEnRevision(rev); setFaltantes(f)
+    setEstadoBanco(banco); setPagosPorVerificar(pagos); setMovimientosSinVincular(movimientos)
   }
   // Brief: "auto-refrescando cada 15 s"
   useEffect(() => {
@@ -292,6 +301,35 @@ function SupervisionPanel({ notify }: { notify: (message: string) => void }) {
     }
   }
 
+  // Brief Caja-2 B2 — sugerencias con la regla tolerante de Caja ROARI (±2%, mín. Bs 1,
+  // ≤10 min); un clic sobre una sugerencia fuerte o débil hace vincular_pago_qr.
+  const sugerencias: SugerenciaQr[] = sugerirPagosQr(
+    pagosPorVerificar.filter((p) => p.metodo === 'QR').map((p) => ({ ventaPagoId: p.ventaPagoId, montoBs: p.montoBs, creadoEn: p.creadoEn })),
+    movimientosSinVincular.map((m) => ({ id: m.id, importeBs: m.importeBs, fechaTransaccion: m.fechaTransaccion })),
+  )
+  const sugerenciaPara = (ventaPagoId: string) => sugerencias.find((s) => s.pago.ventaPagoId === ventaPagoId)
+
+  const vincular = async (ventaPagoId: string, bancoMovId: string) => {
+    try {
+      await turnoService.vincularPagoQr(ventaPagoId, bancoMovId)
+      notify('Pago vinculado y verificado')
+      await load()
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo vincular el pago')
+    }
+  }
+  const verificarManual = async (ventaPagoId: string, aprobar: boolean) => {
+    const referencia = aprobar ? (window.prompt('Referencia del pago:') ?? '') : null
+    if (aprobar && !referencia?.trim()) { notify('La referencia es obligatoria para verificar manualmente'); return }
+    try {
+      await turnoService.verificarPagoManual(ventaPagoId, referencia, aprobar)
+      notify(aprobar ? 'Pago verificado' : 'Pago rechazado')
+      await load()
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo resolver el pago')
+    }
+  }
+
   return <div className="cash-layout turno-layout supervision-panel">
     <section className="cash-hero">
       <div><span>TURNO EN VIVO</span><h2>{sesion ? sesion.cajaNombre : 'Caja Tienda'}</h2><p>{sesion ? `${sesion.abiertaPor ?? 'Cajero'} · desde ${new Date(sesion.abiertaEn).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })}` : 'Sin turno abierto'}</p></div>
@@ -323,6 +361,42 @@ function SupervisionPanel({ notify }: { notify: (message: string) => void }) {
         <div><button type="button" onClick={() => void resolverFaltante(f.id, 'REPUESTO')}>Repuesto</button><button type="button" onClick={() => void resolverFaltante(f.id, 'CONDONADO')}>Condonado</button></div>
       </div>) : <FeatureState type="empty" text="Sin faltantes pendientes" />}
     </section>
+    <section className="cash-movements pagos-verificar">
+      <header>
+        <h3>Pagos por verificar</h3>
+        {estadoBanco && (estadoBanco.enLinea
+          ? <span className="banco-estado banco-estado-online">Banco: en línea{estadoBanco.minutosDesde != null ? ` (hace ${Math.round(estadoBanco.minutosDesde * 60)} s)` : ''}</span>
+          : <span className="banco-estado banco-estado-offline">Banco: sin datos{estadoBanco.minutosDesde != null ? ` hace ${Math.round(estadoBanco.minutosDesde)} min` : ''}</span>)}
+      </header>
+      <div className="pagos-verificar-grid">
+        <div className="pagos-verificar-col">
+          <h4>Pagos pendientes</h4>
+          {pagosPorVerificar.length ? pagosPorVerificar.map((p) => {
+            const sugerencia = p.metodo === 'QR' ? sugerenciaPara(p.ventaPagoId) : undefined
+            return <div key={p.ventaPagoId} className="pago-verificar-row">
+              <span>{p.numero ?? `#${p.ventaId}`}<small>{metodoLabel[p.metodo] ?? p.metodo} · {new Date(p.creadoEn).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })}</small></span>
+              <b>Bs {bs(p.montoBs)}</b>
+              {sugerencia && sugerencia.candidatos.length > 0 && <div className="pago-sugerencia">
+                <span className={sugerencia.fuerza === 'fuerte' ? 'sugerencia-fuerte' : 'sugerencia-debil'}>{sugerencia.fuerza === 'fuerte' ? 'Coincidencia fuerte' : 'Coincidencia débil'}</span>
+                {sugerencia.candidatos.map((c) => <button key={c.movimiento.id} type="button" onClick={() => void vincular(p.ventaPagoId, c.movimiento.id)}>Vincular Bs {bs(c.movimiento.importeBs)} · {new Date(c.movimiento.fechaTransaccion).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</button>)}
+              </div>}
+              <div className="pago-verificar-acciones">
+                <button type="button" onClick={() => void verificarManual(p.ventaPagoId, true)}>Verificar manual</button>
+                <button type="button" onClick={() => void verificarManual(p.ventaPagoId, false)}>Rechazar</button>
+              </div>
+            </div>
+          }) : <FeatureState type="empty" text="Sin pagos pendientes de verificar" />}
+        </div>
+        <div className="pagos-verificar-col">
+          <h4>Movimientos bancarios sin vincular (48h)</h4>
+          {movimientosSinVincular.length ? movimientosSinVincular.map((m) => <div key={m.id} className="movimiento-banco-row">
+            <span>{m.bancoId}<small>{new Date(m.fechaTransaccion).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })}</small></span>
+            <b>Bs {bs(m.importeBs)}</b>
+          </div>) : <FeatureState type="empty" text="Sin movimientos sueltos" />}
+        </div>
+      </div>
+    </section>
+
     {arqueoOpen && <CerrarTurnoModal onClose={() => setArqueoOpen(false)} onConfirm={confirmarArqueo} />}
   </div>
 }
