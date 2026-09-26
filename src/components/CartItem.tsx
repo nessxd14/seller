@@ -32,7 +32,7 @@ const heredadoKeyForChannel = (channel: SalesChannel): 'mayoreo' | 'instituciona
 function QtyControl({ quantity, onChange }: { quantity: number; onChange: (next: number) => void }) {
   const [editing, setEditing] = useState(false)
   return <div className="qty-control">
-    <button type="button" disabled={quantity <= 1} onClick={() => onChange(quantity - 1)}><Minus /></button>
+    <button type="button" aria-label="Disminuir cantidad" disabled={quantity <= 1} onClick={() => onChange(quantity - 1)}><Minus /></button>
     {editing
       ? <NumberField
           className="qty-value-input"
@@ -44,8 +44,8 @@ function QtyControl({ quantity, onChange }: { quantity: number; onChange: (next:
           value={quantity}
           onCommit={(next) => { onChange(next); setEditing(false) }}
         />
-      : <button type="button" className="qty-value" onClick={() => setEditing(true)}>{quantity}</button>}
-    <button type="button" onClick={() => onChange(quantity + 1)}><Plus /></button>
+      : <button type="button" className="qty-value" aria-label={`Editar cantidad: ${quantity}`} onClick={() => setEditing(true)}>{quantity}</button>}
+    <button type="button" aria-label="Aumentar cantidad" onClick={() => onChange(quantity + 1)}><Plus /></button>
   </div>
 }
 
@@ -190,12 +190,10 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
         {showInheritedBadge && <span className="price-heredado-icon" title="Este canal no tiene precio propio configurado: se usa el precio de mostrador. No es un precio negociado."><Info aria-label="Precio heredado, no negociado" /></span>}
         {isUnpriced && <small className="price-heredado-badge price-overridden-badge" title="Esta línea no tiene precio configurado en ningún canal. Escribí un precio para poder cobrarla.">sin precio</small>}
       </div>
-    </div><button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button></div>
-    {/* TAREA 2 (Tanda 4) + TAREA B.2/B.3/B.5 (Tanda 5): ubicación → presentación →
-        contador → equivalencia → editar → total, todo en una sola fila. El selector de
-        presentación se muestra siempre, deshabilitado cuando hay una sola. El total y
-        "Editar" (ahora solo ícono) se mudan acá desde su propia fila — .line-total lleva
-        margin-left:auto en el CSS para quedar pegado al borde derecho. */}
+    </div><button className="edit-link" onClick={onEdit} aria-label={`Editar ${item.nombre}`} title="Editar"><Pencil /></button><button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button></div>
+    {/* Ubicación, presentación, cantidad e importe comparten la fila de controles.
+        Editar y eliminar están junto al nombre. Las equivalencias y advertencias
+        conservan su propia línea para no desplazar los controles. */}
     <div className="cart-line-controls">
       {/* Brief S11 Bloque C: sin origen ni presentación — un ítem personalizado no está
           en el catálogo, no tiene sentido elegir sucursal ni unidad de venta para algo
@@ -212,7 +210,6 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
       </select>}
       <QtyControl quantity={item.cantidad} onChange={onQuantityChange} />
       {!item.isCustomItem && factor !== 1 && <small className="line-equivalence">{fmtQty(item.cantidad)} {item.presentacionNombre} = {fmtQty(cantidadBase)} u</small>}
-      <button className="edit-link" onClick={onEdit} aria-label={`Editar ${item.nombre}`} title="Editar"><Pencil /></button>
       <strong className="line-total">Bs {money(lineTotal)}</strong>
     </div>
     {/* TAREA B.4: ícono + texto corto, sin envolver — el enlace sigue siendo una acción.

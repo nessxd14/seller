@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Info, X } from 'lucide-react'
-import { createPortal } from 'react-dom'
+import { Info } from 'lucide-react'
+import { Modal } from './Modal'
 import type { Product, SalesChannel } from '../types'
 import { getPrice } from '../data/products'
 import { getStockByProduct, listPresentations } from '../infrastructure/services'
@@ -51,13 +51,7 @@ export function ProductInfoPopover({ product }: { product: Product }) {
       aria-label={`Más información sobre ${product.nombre}`}
       onClick={(event) => { event.stopPropagation(); setOpen(true) }}
     ><Info /></button>
-    {open && createPortal(
-      <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { event.stopPropagation(); setOpen(false) } }}>
-        <section className="modal product-info-popover" role="dialog" aria-modal="true" aria-label={product.nombre} onMouseDown={(event) => event.stopPropagation()}>
-          <header>
-            <div><h2>{product.nombre}</h2><p>{product.categoria}{product.sku ? ` · SKU ${product.sku}` : ''}</p></div>
-            <button onClick={(event) => { event.stopPropagation(); setOpen(false) }} aria-label="Cerrar"><X /></button>
-          </header>
+    {open && <Modal title={product.nombre} subtitle={`${product.categoria}${product.sku ? ` · SKU ${product.sku}` : ''}`} onClose={() => setOpen(false)} className="product-info-popover">
           <div className="modal-body product-info-body">
             <section>
               <h4>Presentaciones</h4>
@@ -87,9 +81,6 @@ export function ProductInfoPopover({ product }: { product: Product }) {
               <p className="product-info-empty">Ficha técnica: no disponible aún.</p>
             </section>
           </div>
-        </section>
-      </div>,
-      document.body
-    )}
+    </Modal>}
   </>
 }

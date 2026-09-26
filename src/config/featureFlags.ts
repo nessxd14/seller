@@ -4,7 +4,9 @@ export const featureFlags = {
   cash: true,
   credit: true,
   printing: true,
-  supabase: true,
+  // La copia local de pruebas puede usar los repositorios mock sin credenciales.
+  // Si no se configura este modo, se conserva el backend Supabase existente.
+  supabase: import.meta.env.VITE_POS_MODE !== 'mock',
   // Cargo automático a la cuenta del cliente en Hermes al confirmar una venta.
   // APAGADO a propósito (2026-08-01): registrar_cargo_saldo inserta un
   // movimiento_cuenta tipo CARGO (deuda), pero en este POS toda venta se cobra

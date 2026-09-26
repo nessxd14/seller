@@ -1,5 +1,6 @@
 import { MapPin } from 'lucide-react'
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { configService } from '../infrastructure/services'
 import type { SucursalSummary } from '../application/ports/configRepository'
 
@@ -39,6 +40,8 @@ export function OriginPin({ value, options, onChange, ariaLabel }: {
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
 
@@ -50,11 +53,37 @@ export function OriginPin({ value, options, onChange, ariaLabel }: {
   useEffect(() => {
     if (!open) return
     const onClickOutside = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false)
+      if (rootRef.current && !rootRef.current.contains(event.target as Node) && !popoverRef.current?.contains(event.target as Node)) setOpen(false)
     }
     document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [open])
+
+  // El carrito desplaza y recorta su contenido: el menú se posiciona fuera de él.
+  // En los editores modales conserva su contenedor y su gestión de foco existente.
+  useLayoutEffect(() => {
+    if (!open || !portalTarget) return
+    const reposition = () => {
+      const trigger = triggerRef.current
+      const popover = popoverRef.current
+      if (!trigger || !popover) return
+      const rect = trigger.getBoundingClientRect()
+      const width = Math.min(220, window.innerWidth - 24)
+      popover.style.width = `${width}px`
+      const height = popover.offsetHeight
+      const below = rect.bottom + 6
+      const top = below + height > window.innerHeight - 12 ? rect.top - height - 6 : below
+      popover.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))}px`
+      popover.style.top = `${Math.max(12, top)}px`
+    }
+    reposition()
+    window.addEventListener('resize', reposition)
+    window.addEventListener('scroll', reposition, true)
+    return () => {
+      window.removeEventListener('resize', reposition)
+      window.removeEventListener('scroll', reposition, true)
+    }
+  }, [open, portalTarget])
 
   useEffect(() => {
     if (!open) return
@@ -93,20 +122,8 @@ export function OriginPin({ value, options, onChange, ariaLabel }: {
     }
   }
 
-  return <div className="origin-pin-root" ref={rootRef}>
-    <button
-      type="button"
-      ref={triggerRef}
-      className="origin-pin-trigger"
-      aria-haspopup="listbox"
-      aria-expanded={open}
-      aria-label={ariaLabel}
-      onClick={() => setOpen((v) => !v)}
-    >
-      <MapPin /><span>{nameFor(value)}</span>
-    </button>
-    {open && (
-      <div className="origin-pin-popover" role="listbox" aria-label={ariaLabel}>
+  const popover = open && (
+      <div ref={popoverRef} className="origin-pin-popover" role="listbox" aria-label={ariaLabel} style={portalTarget ? { position: 'fixed', right: 'auto', bottom: 'auto', zIndex: 90 } : undefined}>
         {options.map((option, index) => (
           <button
             type="button"
@@ -128,7 +145,21 @@ export function OriginPin({ value, options, onChange, ariaLabel }: {
           </button>
         ))}
       </div>
-    )}
+    )
+  return <div className="origin-pin-root" ref={rootRef}>
+    <button
+      type="button"
+      ref={triggerRef}
+      className="origin-pin-trigger"
+      aria-haspopup="listbox"
+      aria-expanded={open}
+      aria-label={ariaLabel}
+      title={nameFor(value)}
+      onClick={() => { setPortalTarget(rootRef.current?.closest('.cart-panel') ? document.body : null); setOpen((v) => !v) }}
+    >
+      <MapPin /><span>{nameFor(value)}</span>
+    </button>
+    {portalTarget ? createPortal(popover, portalTarget) : popover}
   </div>
 }
 
