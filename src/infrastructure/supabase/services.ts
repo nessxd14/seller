@@ -5,7 +5,7 @@ import { orderRepository } from './OrderRepository.supabase'
 import { customerRepository } from './CustomerRepository.supabase'
 import { productRepository as supabaseProductRepository, getStockByProduct as supabaseGetStockByProduct, getStockBySucursalBatch as supabaseGetStockBySucursalBatch, listPresentations as supabaseListPresentations, listIdentifiersForProducts as supabaseListLineIdentifiers, listBrands as supabaseListBrands, listFrecuentes as supabaseListFrecuentes } from './ProductRepository.supabase'
 import { cashRepository, getAdvancesForOrder, getOpenSession } from './CashRepository.supabase'
-import { saleRepository } from './SaleRepository.supabase'
+import { saleRepository, getTicket } from './SaleRepository.supabase'
 import { supabaseAuthSessionProvider } from './SupabaseAuthSessionProvider'
 import { transferRepository, type CreateTransferInput } from './TransferRepository.supabase'
 import type { TransferEstado, TransferRecord } from '../../application/shared/models'
@@ -20,6 +20,8 @@ import { ventaDirectaRepository, getUbicacionVentasDirectas } from './VentaDirec
 import type { VentaDirectaAbrirLine, SaleCheckoutPayment } from '../../application/ports/repositories'
 import type { BorradorOperacionTipo, VentaDirectaRecord } from '../../application/shared/models'
 import { borradorOperacionRepository } from './BorradorOperacionRepository.supabase'
+import * as turnoRepository from './TurnoRepository.supabase'
+import type { Denominaciones } from '../../application/shared/models'
 
 export const configService = configRepository
 export const reportsService = reportsRepository
@@ -184,7 +186,7 @@ export const saleService = {
    * cantidad, descuento, cliente, caja) da una huella distinta y por lo tanto una venta
    * nueva; el mismo contenido reusa la clave, que es exactamente el reintento legítimo.
    */
-  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number; operationId: string }) {
+  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number; receivedCents?: number }>; cashSessionId: string; customerId?: string; discountCents?: number; operationId: string }) {
     const actorId = await currentActorId()
     const aggregateId = `${input.operationId}:${checkoutFingerprint({ ...input, discountCents: input.discountCents ?? 0 })}`
     const result = await sensitiveOperations.execute('checkout', aggregateId, (idempotencyKey) =>
@@ -199,6 +201,7 @@ export const saleService = {
     }
     return result
   },
+  getTicket,
 }
 
 export const ventaDirectaService = {
@@ -244,6 +247,26 @@ export const ventaDirectaService = {
     const actorId = await currentActorId()
     return ventaDirectaRepository.anular(id, cashSessionId, { actorId })
   },
+}
+
+export const turnoService = {
+  getSesionAbierta: turnoRepository.getSesionAbierta,
+  getUltimaSesionCerrada: turnoRepository.getUltimaSesionCerrada,
+  abrir: (denominaciones: Denominaciones) => turnoRepository.abrirTurno(denominaciones),
+  registrarMovimiento: (input: { sesionId: string; subtipo: 'GASTO' | 'REMESA' | 'INYECCION'; montoBs: number; motivo: string; comprobantePath?: string }) =>
+    turnoRepository.registrarMovimientoTurno({ ...input, idempotencyKey: crypto.randomUUID() }),
+  resolverGasto: turnoRepository.resolverGasto,
+  cerrar: turnoRepository.cerrarTurno,
+  revisar: turnoRepository.revisarTurno,
+  arqueoSorpresa: turnoRepository.registrarArqueoSorpresa,
+  resumen: turnoRepository.getResumenTurno,
+  faltantesResolver: turnoRepository.faltantesResolver,
+  misTickets: turnoRepository.misTickets,
+  gastosPendientes: turnoRepository.listGastosPendientes,
+  turnosEnRevision: turnoRepository.listTurnosEnRevision,
+  faltantesPendientes: turnoRepository.listFaltantesPendientes,
+  subirComprobante: turnoRepository.subirComprobante,
+  comprobanteUrl: turnoRepository.getComprobanteUrl,
 }
 
 export const borradorOperacionService = {

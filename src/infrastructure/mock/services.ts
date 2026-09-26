@@ -129,7 +129,13 @@ export const saleService = {
     for (const payment of input.payments) {
       current = await rawCashService.addMovement(current, 'income', payment.amountCents, 'Venta mock', payment.method)
     }
-    return { saleId: crypto.randomUUID(), subtotalCents, discountCents, totalCents, isRetry: false }
+    return { saleId: crypto.randomUUID(), numero: undefined as string | undefined, subtotalCents, discountCents, totalCents, isRetry: false }
+  },
+  // Brief Caja-1 B1: sin equivalente mock — el modo mock no persiste `venta`/`venta_pago`
+  // reales (PaymentModal ni siquiera llama a este checkout hoy, ver comentario arriba),
+  // así que no hay nada que releer para un ticket. Mantiene la forma del facade.
+  async getTicket() {
+    return null
   },
 }
 

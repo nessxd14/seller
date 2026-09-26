@@ -294,3 +294,100 @@ export interface CashSessionRecord {
   differenceCents?: number
 }
 
+// Brief Caja-1 — turno de cajero (abrir_turno/cerrar_turno/resumen_turno, ver
+// db/migrations/2026-09-27_caja_turno_cajero.sql). Reemplaza CashSessionRecord SOLO en
+// el camino Supabase de CashPage; el modo mock sigue con el flujo simple de arriba —
+// ver comentario al tope de CashPage.tsx.
+export type TurnoEstado = 'ABIERTA' | 'CERRADA' | 'EN_REVISION'
+
+// Bs, no centavos — el resto del módulo de caja (registrar_venta, PaymentModal, etc.)
+// ya trabaja en centavos, pero denominaciones/apertura/cierre de turno son montos
+// enteros o con un solo decimal (la moneda de 0.5 Bs) que se escriben tal cual en el
+// formulario de conteo — convertir a centavos acá solo agregaría redondeos sin aportar
+// nada, ya que _total_denominaciones tampoco los usa.
+export type Denominaciones = Record<string, number>
+
+export interface TurnoSesion {
+  id: string
+  cajaId: number
+  cajaNombre: string
+  estado: TurnoEstado
+  aperturaBs: number
+  cajeroId?: string
+  abiertaPor?: string
+  abiertaEn: string
+  cerradaPor?: string
+  cerradaEn?: string
+  diferenciaRelevoBs?: number | null
+}
+
+export interface TurnoResumen {
+  aperturaBs: number
+  ventasPorMetodo: Record<string, number>
+  anticiposPorMetodo: Record<string, number>
+  anulacionesPorMetodo: Record<string, number>
+  gastosPorEstado: Record<string, number>
+  remesasBs: number
+  inyeccionesBs: number
+  cantidadVentas: number
+  pagosPendientesVerificacion: number
+  pagosRechazados: { ventaId: string; numero: string | null; metodo: string; montoBs: number }[]
+  diferenciaRelevoBs: number | null
+  // null para cajero (blind count, oculto server-side) — nunca undefined: la ausencia
+  // del dato es una señal, no un descuido de tipado.
+  esperadoEfectivoBs: number | null
+}
+
+export interface TurnoTicket {
+  ventaId: string
+  numero: string | null
+  totalBs: number
+  creadoEn: string
+  metodos: { metodo: string; montoBs: number; estadoVerificacion: string }[]
+}
+
+export interface CajaGastoRecord {
+  id: string
+  sesionCajaId?: string
+  montoBs: number
+  motivo: string
+  comprobantePath?: string
+  estado: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO'
+  registradoPor?: string
+  registradoEn: string
+  resueltoPor?: string
+  resueltoEn?: string
+  notaResolucion?: string
+}
+
+// Brief Caja-1 B1 — ticket post-venta: se arma desde la venta YA GUARDADA (numero +
+// líneas + venta_pago), nunca desde el carrito (ver VentaTicket.tsx) — así se puede
+// reimprimir después sin depender de que el carrito siga con esos datos.
+export interface VentaTicketPago { metodo: string; montoBs: number; recibidoBs?: number; estadoVerificacion: string }
+export interface VentaTicketLinea { id: string; nombre: string; sku: string; cantidad: number; presentacionNombre?: string; precioUnitarioBs: number; subtotalBs: number }
+export interface VentaTicketRecord {
+  ventaId: string
+  numero: string | null
+  estado: string
+  creadoEn: string
+  cajaNombre?: string
+  cajero?: string
+  clienteNombre?: string
+  clienteNit?: string
+  lineas: VentaTicketLinea[]
+  subtotalBs: number
+  descuentoBs: number
+  totalBs: number
+  pagos: VentaTicketPago[]
+}
+
+export interface CajaFaltanteRecord {
+  id: string
+  sesionCajaId: string
+  cajeroId?: string
+  origen: 'ARQUEO' | 'GASTO_RECHAZADO'
+  montoBs: number
+  estado: 'PENDIENTE' | 'REPUESTO' | 'CONDONADO'
+  creadoEn: string
+}
+

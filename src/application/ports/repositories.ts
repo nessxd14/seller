@@ -48,8 +48,12 @@ export interface OrderRepository {
   save(value:OrderView & Partial<Versioned>,context:MutationContext):Promise<OrderView & Versioned>
 }
 export interface SaleCheckoutLine { productId:string; quantity:number; unitPriceCents:number; listPriceCents?:number; sourceLocation?:'Tienda'|'Almacén'; presentacionId?:number }
-export interface SaleCheckoutPayment { method:'cash'|'qr'|'transfer'; amountCents:number }
-export interface SaleCheckoutResult { saleId:string; subtotalCents:number; discountCents:number; totalCents:number; isRetry?:boolean }
+// Brief Caja-1 A2: receivedCents — el efectivo que entregó el cliente, solo tiene
+// sentido para 'cash'. Opcional: nada obliga a mandarlo (Pago mixto puede no incluir
+// el campo "Recibido" para la porción de efectivo).
+export interface SaleCheckoutPayment { method:'cash'|'qr'|'transfer'; amountCents:number; receivedCents?:number }
+// Brief Caja-1 A1: numero — VTA-2026-NNNNN, asignado atómicamente por _registrar_venta_nucleo.
+export interface SaleCheckoutResult { saleId:string; numero?:string; subtotalCents:number; discountCents:number; totalCents:number; isRetry?:boolean }
 export interface SaleRepository {
   getById(id:string):Promise<SalePortRecord|null>
   confirm(id:string,context:MutationContext&{idempotencyKey:string}):Promise<SalePortRecord>

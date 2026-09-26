@@ -31,6 +31,7 @@ export class SupabaseReportsRepository implements ReportsRepository {
       totalCents: numericToCents(num(row.total)),
       sesionCajaId: row.sesion_caja_id === null ? null : String(row.sesion_caja_id),
       metodos: row.metodos ?? '',
+      numero: row.numero ?? null,
     }))
     return { items, page: input.page.page, pageSize: input.page.pageSize, total: count ?? 0 }
   }

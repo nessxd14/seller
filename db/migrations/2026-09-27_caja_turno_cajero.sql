@@ -1043,6 +1043,33 @@ revoke all on function public.app_puede_revertir_venta(bigint, text) from anon, 
 grant execute on function public.app_puede_revertir_venta(bigint, text) to authenticated, service_role;
 
 -- ============================================================================
+-- B1 (Reportes): v_reporte_ventas necesita `numero` para que la lista de ventas del
+-- reporte muestre VTA-2026-NNNNN / VTD-2026-NNNNN en vez de un id crudo. Mismo cuerpo
+-- que la vista viva (verificado con pg_get_viewdef) — `numero` se agrega al FINAL de
+-- la lista de columnas a propósito: CREATE OR REPLACE VIEW no permite reordenar ni
+-- insertar en medio de las columnas existentes (solo agregar al final), verificado
+-- contra la base viva.
+-- ============================================================================
+
+create or replace view v_reporte_ventas as
+ SELECT v.id AS venta_id,
+    v.completado_en::date AS fecha,
+    v.creado_por AS vendedor,
+    v.cliente_id,
+    c.nombre AS cliente,
+    v.subtotal,
+    v.descuento_total,
+    v.total,
+    v.sesion_caja_id,
+    ( SELECT string_agg(DISTINCT vp.metodo::text, '+'::text) AS string_agg
+           FROM venta_pago vp
+          WHERE vp.venta_id = v.id) AS metodos,
+    v.numero
+   FROM venta v
+     LEFT JOIN cliente c ON c.id = v.cliente_id
+  WHERE v.estado = 'COMPLETADA'::estado_venta;
+
+-- ============================================================================
 -- Legacy: abrir_caja / cerrar_caja / registrar_movimiento se dejan intactas en
 -- esta migración — el frontend actualmente desplegado las sigue usando hasta que
 -- este PR se mergee y despliegue. TODO cleanup: una vez confirmado el despliegue
