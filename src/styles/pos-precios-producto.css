@@ -1,0 +1,57 @@
+/* Pestaña "Precios" del modal de producto — historial interactivo (ECharts) + tabla. */
+.product-modal-tabs { margin-bottom: 14px; }
+
+.precios-tab { display: flex; flex-direction: column; gap: 14px; }
+
+.precios-header { display: flex; flex-direction: column; gap: 10px; }
+.precios-window-selector { display: flex; gap: 6px; }
+.precios-window-selector button { border: 1px solid #e0dbd2; background: #fff; border-radius: 14px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+.precios-window-selector button.active { background: #1d1d1b; color: #fff; border-color: #1d1d1b; }
+
+.precios-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.precios-card { border: 1px solid #e9e5dd; border-top-width: 3px; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
+.precios-card strong { font-size: 13px; }
+.precios-card-ultimo { border: 0; background: transparent; text-align: left; padding: 0; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.precios-card-ultimo:disabled { cursor: default; }
+.precios-card-ultimo span:first-child { font-size: 10px; color: #8d8a84; text-transform: uppercase; letter-spacing: .04em; }
+.precios-card-ultimo-value { font-size: 12px; color: #1d1d1b; }
+.precios-card-ultimo:not(:disabled):hover .precios-card-ultimo-value { text-decoration: underline; }
+.precios-card-stats { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: #706d66; }
+.precios-delta-chip { align-self: flex-start; border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
+.precios-delta-chip.positive { background: #edf8ef; color: #397649; }
+.precios-delta-chip.negative { background: #fbeae7; color: #a74739; }
+
+.precios-chart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
+.precios-chips, .precios-quick-range { display: flex; gap: 6px; }
+.precios-chips button, .precios-quick-range button { border: 1px solid #e0dbd2; background: #fff; border-radius: 14px; padding: 5px 11px; font-size: 11px; cursor: pointer; }
+.precios-chips button.active { background: #1d1d1b; color: #fff; border-color: #1d1d1b; }
+.precios-chips button.atipicos.active { background: #706d66; border-color: #706d66; }
+
+.precios-cliente-filter { position: relative; min-width: 220px; }
+.precios-cliente-filter input { width: 100%; border: 1px solid #e0dbd2; border-radius: 10px; padding: 6px 10px; font-size: 12px; }
+.precios-cliente-dropdown { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; right: 0; background: #fff; border: 1px solid #e0dbd2; border-radius: 10px; box-shadow: 0 8px 20px #30291e14; display: flex; flex-direction: column; max-height: 220px; overflow: auto; }
+.precios-cliente-dropdown button { text-align: left; border: 0; background: transparent; padding: 8px 10px; font-size: 12px; cursor: pointer; }
+.precios-cliente-dropdown button:hover { background: #f5f4f1; }
+.precios-cliente-dropdown button.clear { color: #a74739; }
+.precios-cliente-dropdown button.close-picker { color: #8d8a84; border-top: 1px solid #ece8e0; }
+
+.precios-chart-host { width: 100%; height: 320px; }
+@media (min-width: 900px) { .precios-chart-host { height: 420px; } }
+
+.precios-table-toolbar { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: #706d66; }
+.precios-table-toolbar button { display: flex; align-items: center; gap: 6px; border: 1px solid #e0dbd2; background: #fff; border-radius: 10px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+
+.precios-table.feature-table .table-head, .precios-table.feature-table article {
+  grid-template-columns: 90px 110px minmax(120px, 1fr) 100px 100px 80px 120px 90px 80px 110px 70px;
+}
+.precios-sortable { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; user-select: none; }
+.precios-row-outlier { opacity: .55; }
+.precios-row-selected { background: #fff3ef; }
+.precios-open-link { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--orange, #ff5a2f); font-size: 11px; cursor: pointer; padding: 0; }
+
+/* Brief B — precio sugerido en el editor de pedido/cotización (línea + modal). */
+.precio-sugerido-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+.precio-sugerido-hint button { border: 0; background: transparent; padding: 0; font-size: 11px; color: #706d66; cursor: pointer; text-align: left; }
+.precio-sugerido-hint button:hover { text-decoration: underline; color: #1d1d1b; }
+.precio-sugerido-hint button strong { color: #1d1d1b; font-weight: 700; }
+.precio-sugerido-chip { background: #fff3ef; color: #9b5a30; border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: 600; }

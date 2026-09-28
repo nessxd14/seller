@@ -37,6 +37,7 @@ import './styles/pos-documentos-diferenciados.css'
 import './pos-glassmorphism.css'
 import './styles/pos-caja-turno.css'
 import './pos-hotkeys.css'
+import './styles/pos-precios-producto.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
