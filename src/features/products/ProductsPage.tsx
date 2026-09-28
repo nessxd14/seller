@@ -1,11 +1,16 @@
-import { Boxes, ChevronLeft, ChevronRight, Search } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { Boxes, ChevronLeft, ChevronRight, Search, TrendingUp } from 'lucide-react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { Product } from '../../types'
 import { productRepository, getStockByProduct } from '../../infrastructure/services'
 import type { StockByLocation } from '../../infrastructure/supabase/ProductRepository.supabase'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
 import { ProductVisual } from '../../components/ProductVisual'
+import { featureFlags } from '../../config/featureFlags'
+
+// Precios tab (ECharts + historial/resumen RPCs) is lazy — no reason to pay for the
+// chart library in the main bundle when most modal opens never touch this tab.
+const PreciosTab = lazy(() => import('./PreciosTab').then((m) => ({ default: m.PreciosTab })))
 
 const bs = (value: number) => `Bs ${value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -30,6 +35,7 @@ export function ProductsPage({ notify }: { notify: (message: string) => void }) 
   const [selected, setSelected] = useState<Product | null>(null)
   const [stock, setStock] = useState<{ onHand: StockByLocation[]; saldoDisponible: number } | null>(null)
   const [stockLoading, setStockLoading] = useState(false)
+  const [modalTab, setModalTab] = useState<'general' | 'precios'>('general')
 
   const runSearch = (value: string, pageNumber: number) => {
     setStatus('loading')
@@ -51,6 +57,7 @@ export function ProductsPage({ notify }: { notify: (message: string) => void }) 
 
   const openProduct = (product: Product) => {
     setSelected(product)
+    setModalTab('general')
     setStock(null)
     setStockLoading(true)
     void getStockByProduct(product.id).then((result) => setStock(result)).catch(() => notify('No se pudo cargar el stock')).finally(() => setStockLoading(false))
@@ -70,10 +77,20 @@ export function ProductsPage({ notify }: { notify: (message: string) => void }) 
       </article>)}
       <div className="pagination-bar"><span>Página {page} de {totalPages} · {total} productos</span><button disabled={page <= 1} onClick={() => goToPage(page - 1)}><ChevronLeft size={14} /></button><button disabled={page >= totalPages} onClick={() => goToPage(page + 1)}><ChevronRight size={14} /></button></div>
     </div>}
-    {selected && <Modal title={selected.nombre} subtitle={`SKU ${selected.sku}`} onClose={() => setSelected(null)}><div className="modal-body">
-      <div className="customer-metrics"><div><span>Retail</span><strong>{bs(selected.precioRetail)}</strong></div><div><span>Mayoreo</span><strong>{bs(selected.precioMayoreo)}</strong></div><div><span>Institucional</span><strong>{bs(selected.precioInstitucional)}</strong></div><div><span>Corporativo</span><strong>{bs(selected.precioCorporativo)}</strong></div></div>
-      <h3><Boxes size={14} /> Disponibilidad</h3>
-      {stockLoading ? <FeatureState type="loading" text="Cargando stock" /> : stock ? <div className="stock-breakdown"><div className="stock-total"><span>Saldo disponible</span><strong>{stock.saldoDisponible}</strong></div><div className="stock-by-location">{stock.onHand.length ? stock.onHand.map((row) => <div key={row.ubicacionId}><span>{locationLabel(row)}</span><strong>{row.cantidadBase}</strong></div>) : <span className="empty-hint">Sin stock registrado</span>}</div></div> : <span className="empty-hint">Sin información de stock</span>}
-    </div></Modal>}
+    {selected && <Modal title={selected.nombre} subtitle={`SKU ${selected.sku}`} onClose={() => setSelected(null)} wide={modalTab === 'precios'}>
+      {featureFlags.supabase && <div className="channel-tabs product-modal-tabs">
+        <button type="button" className={modalTab === 'general' ? 'active' : ''} onClick={() => setModalTab('general')}><Boxes /><span>General</span></button>
+        <button type="button" className={modalTab === 'precios' ? 'active' : ''} onClick={() => setModalTab('precios')}><TrendingUp /><span>Precios</span></button>
+      </div>}
+      {modalTab === 'precios' && featureFlags.supabase ? <div className="modal-body">
+        <Suspense fallback={<FeatureState type="loading" text="Cargando gráfico de precios" />}>
+          <PreciosTab productId={selected.id} productName={selected.nombre} />
+        </Suspense>
+      </div> : <div className="modal-body">
+        <div className="customer-metrics"><div><span>Retail</span><strong>{bs(selected.precioRetail)}</strong></div><div><span>Mayoreo</span><strong>{bs(selected.precioMayoreo)}</strong></div><div><span>Institucional</span><strong>{bs(selected.precioInstitucional)}</strong></div><div><span>Corporativo</span><strong>{bs(selected.precioCorporativo)}</strong></div></div>
+        <h3><Boxes size={14} /> Disponibilidad</h3>
+        {stockLoading ? <FeatureState type="loading" text="Cargando stock" /> : stock ? <div className="stock-breakdown"><div className="stock-total"><span>Saldo disponible</span><strong>{stock.saldoDisponible}</strong></div><div className="stock-by-location">{stock.onHand.length ? stock.onHand.map((row) => <div key={row.ubicacionId}><span>{locationLabel(row)}</span><strong>{row.cantidadBase}</strong></div>) : <span className="empty-hint">Sin stock registrado</span>}</div></div> : <span className="empty-hint">Sin información de stock</span>}
+      </div>}
+    </Modal>}
   </FeatureShell>
 }

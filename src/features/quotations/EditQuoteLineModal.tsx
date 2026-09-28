@@ -5,6 +5,8 @@ import { NumberField } from '../../components/NumberField'
 import { formatMoney, money } from '../../domain/common/money'
 import type { OriginPinOption, OriginLocation } from '../../components/OriginPin'
 import type { LineIdentifiers } from '../../components/LineIdentifiersRow'
+import type { PrecioSugerido } from '../../infrastructure/supabase/PreciosRepository.supabase'
+import { PrecioSugeridoHint } from './PrecioSugeridoHint'
 
 export type LinePresentation = { id: number; nombre: string; factorUnidadBase: number; esBase: boolean }
 export type LineStock = { tienda: number; almacen: number }
@@ -39,7 +41,7 @@ const toFormState = (line: WorkflowLine): FormState => ({
  * con toda la edición de la línea junta y un bloque de solo lectura con los datos reales de
  * catálogo debajo.
  */
-export function EditQuoteLineModal({ line, presentations, stock, identifiers, basePriceCents, originOptions, actorId, onClose, onSave }: {
+export function EditQuoteLineModal({ line, presentations, stock, identifiers, basePriceCents, originOptions, actorId, precioSugerido, onClose, onSave }: {
   line: WorkflowLine
   presentations: LinePresentation[]
   stock?: LineStock
@@ -47,6 +49,9 @@ export function EditQuoteLineModal({ line, presentations, stock, identifiers, ba
   basePriceCents: number
   originOptions: OriginPinOption[]
   actorId: string
+  // Brief B: solo lectura acá — ya viene resuelto (fetch + debounce + caché) desde
+  // DraftOrderEditor, que es quien conoce cliente/categoría del borrador completo.
+  precioSugerido?: PrecioSugerido | null
   onClose: () => void
   onSave: (patch: Partial<WorkflowLine>) => void
 }) {
@@ -99,6 +104,7 @@ export function EditQuoteLineModal({ line, presentations, stock, identifiers, ba
           </label>
         )}
         <label>Precio unitario (Bs)<NumberField value={form.precioUnitario} min={0} step={0.5} onCommit={(precioUnitario) => setForm((f) => ({ ...f, precioUnitario }))} /></label>
+        <div className="full"><PrecioSugeridoHint sugerido={precioSugerido} unitPriceCents={Math.round(form.precioUnitario * 100)} onApply={(precioBs) => setForm((f) => ({ ...f, precioUnitario: precioBs }))} /></div>
         <label>Descuento (%)<NumberField value={form.descuento} min={0} max={100} onCommit={(descuento) => setForm((f) => ({ ...f, descuento }))} /></label>
         <label>Nombre para el cliente<input value={form.maskName} placeholder={line.name} onChange={(e) => setForm((f) => ({ ...f, maskName: e.target.value }))} /></label>
         <label>Origen

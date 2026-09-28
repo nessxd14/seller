@@ -23,6 +23,9 @@ import { AutoriaBadge } from '../../components/AutoriaBadge'
 import { SolicitanteField } from '../../components/SolicitanteField'
 import { evaluarTope } from '../../infrastructure/supabase/ContactoCliente.supabase'
 import { evaluarCredito } from '../../infrastructure/hermes/client'
+import { precioSugerido as fetchPrecioSugerido, type PrecioSugerido } from '../../infrastructure/supabase/PreciosRepository.supabase'
+import { channelToCategoria } from '../../infrastructure/supabase/mappers'
+import { PrecioSugeridoHint } from './PrecioSugeridoHint'
 
 type EditableChannel = QuoteDraft['channel']
 
@@ -91,6 +94,11 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // Base (per-base-unit) price captured at add-time, used to suggest a price when the
   // presentation changes; keyed by line id so overrides via PricePopover aren't disturbed.
   const [basePriceCentsByLine, setBasePriceCentsByLine] = useState<Record<string, number>>({})
+  // Brief B (precio sugerido): último precio cobrado a este cliente + mediana de la
+  // categoría, por línea. Cacheado por (productId, clienteId, categoria, presentacionId)
+  // durante la vida del editor — mismo criterio que presentationsByProduct de arriba.
+  const [precioSugeridoByLine, setPrecioSugeridoByLine] = useState<Record<string, PrecioSugerido | null>>({})
+  const precioSugeridoCacheRef = useRef<Map<string, Promise<PrecioSugerido>>>(new Map())
   // Item 2.2: barra/fábrica/marca, batch-fetched per productId set so a multi-line
   // quote/order doesn't trigger an identifier lookup per line render.
   const [identifiersByProduct, setIdentifiersByProduct] = useState<Record<string, LineIdentifiers>>({})
@@ -324,6 +332,39 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     void listLineIdentifiers(missing).then((result) => setIdentifiersByProduct((prev) => ({ ...prev, ...result })))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogLines])
+
+  // Brief B: se dispara cuando se agrega una línea o cambia su presentación, y el
+  // borrador tiene cliente y/o categoría — debounce 250ms, cacheado por línea de arriba.
+  // Nunca bloquea el guardado ni muestra toast: un error de la RPC solo se loguea.
+  useEffect(() => {
+    if (!featureFlags.supabase || readOnly) return
+    const categoria = channelToCategoria(value.channel)
+    const clienteId = value.customerId ? Number(value.customerId) : undefined
+    const handle = setTimeout(() => {
+      catalogLines.forEach((line) => {
+        const productId = Number(line.productId)
+        if (!Number.isFinite(productId)) return
+        const cacheKey = `${productId}:${clienteId ?? ''}:${categoria}:${line.presentacionId ?? ''}`
+        const cache = precioSugeridoCacheRef.current
+        let promise = cache.get(cacheKey)
+        if (!promise) {
+          promise = fetchPrecioSugerido(productId, { clienteId, categoria, presentacionId: line.presentacionId })
+          cache.set(cacheKey, promise)
+        }
+        promise
+          .then((result) => setPrecioSugeridoByLine((prev) => ({ ...prev, [line.id]: result })))
+          .catch((err) => { cache.delete(cacheKey); console.error('precio_sugerido falló', err) })
+      })
+    }, 250)
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- catalogLines identity changes every render; keyed manually below to avoid re-firing on unrelated line edits
+  }, [catalogLines.map((l) => `${l.id}:${l.productId}:${l.presentacionId ?? ''}`).join('|'), value.customerId, value.channel, readOnly])
+
+  const applySuggestedPrice = (lineId: string, precioBs: number) => {
+    const line = value.lines.find((l) => l.id === lineId)
+    const unitPriceCents = Math.round(precioBs * 100)
+    updateLine(lineId, { unitPriceCents, priceOverridden: unitPriceCents !== (line?.listPriceCents ?? unitPriceCents) })
+  }
 
   // Item 2: stock validation against the currently selected origin only. Base-unit quantity
   // = quantity * factorUnidadBase (item 3's presentation math folded in here).
@@ -583,6 +624,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                     {!readOnly && <button type="button" aria-label={`Quitar ${line.name}`} onClick={(e) => { e.stopPropagation(); removeLine(line.id) }}><X /></button>}
                   </div>
                 </div>
+                {!readOnly && <PrecioSugeridoHint sugerido={precioSugeridoByLine[line.id]} unitPriceCents={line.unitPriceCents} onApply={(bs) => applySuggestedPrice(line.id, bs)} />}
                 {stockError && <small className="line-stock-error">{stockError}</small>}
                 {editLineModalId === line.id && (
                   // Modal se porta con createPortal fuera del DOM de esta fila, pero React
@@ -598,6 +640,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                       basePriceCents={basePriceCentsByLine[line.id] ?? line.unitPriceCents}
                       originOptions={originOptions}
                       actorId={actorId}
+                      precioSugerido={precioSugeridoByLine[line.id]}
                       onClose={() => setEditLineModalId(null)}
                       onSave={(patch) => updateLine(line.id, patch)}
                     />
