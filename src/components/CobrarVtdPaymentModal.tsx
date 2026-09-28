@@ -29,7 +29,8 @@ export function CobrarVtdPaymentModal({ ventas, submitting, error, onClose, onCo
   const [mixedMethod, setMixedMethod] = useState<'qr' | 'transferencia'>('qr')
   const [mixedDigital, setMixedDigital] = useState(total)
   const mixedSum = Math.round((mixedCash + mixedDigital + Number.EPSILON) * 100) / 100
-  const paymentValid = method === 'mixto' ? Math.abs(mixedSum - total) < 0.005 : received >= total
+  const mixedRecibidoInsuficiente = mixedCashRecibido > 0 && mixedCashRecibido < mixedCash
+  const paymentValid = method === 'mixto' ? Math.abs(mixedSum - total) < 0.005 && !mixedRecibidoInsuficiente : received >= total
 
   const posMethod = (id: string): 'cash' | 'qr' | 'transfer' => (id === 'qr' ? 'qr' : id === 'transferencia' ? 'transfer' : 'cash')
 
@@ -56,7 +57,8 @@ export function CobrarVtdPaymentModal({ ventas, submitting, error, onClose, onCo
                 <label>Recibido en efectivo (Bs)<NumberField min={0} step={0.01} value={mixedCashRecibido} onCommit={setMixedCashRecibido} /></label>
                 <label>{mixedMethod === 'qr' ? 'QR' : 'Transferencia'} (Bs)<div className="mixed-method-row"><select value={mixedMethod} onChange={(e) => setMixedMethod(e.target.value as 'qr' | 'transferencia')}><option value="qr">QR</option><option value="transferencia">Transferencia</option></select><NumberField min={0} step={0.01} value={mixedDigital} onCommit={setMixedDigital} /></div></label>
               </div>
-              <div className={`mixed-status ${paymentValid ? 'valid' : ''}`}><span>Suma del pago</span><strong>Bs {money(mixedSum)}</strong><small>{paymentValid ? 'El monto coincide con el total' : `Faltan Bs ${money(Math.max(0, total - mixedSum))}`}</small></div>
+              {mixedRecibidoInsuficiente && <p className="mock-note payment-error">El recibido no puede ser menor al efectivo</p>}
+              <div className={`mixed-status ${paymentValid ? 'valid' : ''}`}><span>Suma del pago</span><strong>Bs {money(mixedSum)}</strong><small>{Math.abs(mixedSum - total) >= 0.005 ? `Faltan Bs ${money(Math.max(0, total - mixedSum))}` : 'El monto coincide con el total'}</small></div>
             </>
           : <div className="payment-fields"><label>Monto recibido (Bs)<NumberField min={0} step={0.01} value={received} onCommit={setReceived} /></label><div><span>{method === 'efectivo' ? 'Cambio' : 'Diferencia'}</span><strong>Bs {money(method === 'efectivo' ? Math.max(0, received - total) : Math.max(0, total - received))}</strong></div></div>}
         {error && <p className="mock-note payment-error">{error}</p>}

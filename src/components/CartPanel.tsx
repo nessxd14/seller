@@ -423,7 +423,10 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   const [vtdCobroPaymentOpen, setVtdCobroPaymentOpen] = useState(false)
   const [vtdCobroSubmitting, setVtdCobroSubmitting] = useState(false)
   const [vtdCobroError, setVtdCobroError] = useState('')
-  const [vtdCobroTicket, setVtdCobroTicket] = useState<VentaDirectaRecord | null>(null)
+  // Brief: cada ticket VTD es la autorización de entrega para Almacén — con varios VTD
+  // cobrados juntos hacen falta TODOS, uno por uno (cola: cerrar uno abre el siguiente),
+  // no solo cuando se cobra un único VTD.
+  const [vtdCobroTicketQueue, setVtdCobroTicketQueue] = useState<VentaDirectaRecord[]>([])
   const vtdCobroTotal = vtdCobroSeleccionadas.reduce((sum, v) => sum + v.totalBs, 0)
   const vtdCobroMixto = mode === 'venta' && cart.length > 0 && vtdCobroSeleccionadas.length > 0
   const agregarVtdCobro = (ventas: VtdPorCobrar[]) => {
@@ -442,13 +445,11 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
         ? 'Este cobro ya estaba registrado. No se cobró dos veces.'
         : `VTD cobrada — Bs ${money(resultado.totalBs)}${resultado.cambioBs > 0 ? ` · Cambio Bs ${money(resultado.cambioBs)}` : ''}`)
       if (resultado.pendienteVerificacion) notify('Pago QR/transferencia pendiente de verificación del gerente')
-      // Brief: "abrir el preview del ticket VTD marcado PAGADO" — solo cuando es un único
-      // VTD (con varios a la vez no hay un ticket único que mostrar; se reimprimen desde
-      // la bandeja de Venta Directa).
-      if (vtdCobroSeleccionadas.length === 1) {
-        const actualizado = await ventaDirectaService.getById(vtdCobroSeleccionadas[0].ventaId)
-        if (actualizado) setVtdCobroTicket(actualizado)
-      }
+      // Brief: "abrir el preview del ticket VTD marcado PAGADO" — para cada VTD cobrado,
+      // uno por uno (cola), no solo el primero: cada ticket es la autorización de entrega
+      // que Almacén necesita.
+      const actualizados = await Promise.all(vtdCobroSeleccionadas.map((v) => ventaDirectaService.getById(v.ventaId)))
+      setVtdCobroTicketQueue(actualizados.filter((v): v is VentaDirectaRecord => v != null))
       setVtdCobroSeleccionadas([])
     } catch (error) {
       setVtdCobroError(error instanceof Error ? error.message : 'No se pudo cobrar la venta directa')
@@ -538,7 +539,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     {vtdResult && <VtdTicketPreviewModal venta={vtdResult} onClose={() => setVtdResult(null)} />}
     {vtdCobroPickerOpen && <CobrarVtdPickerModal yaSeleccionadas={vtdCobroSeleccionadas.map((v) => v.ventaId)} onClose={() => setVtdCobroPickerOpen(false)} onAdd={agregarVtdCobro} />}
     {vtdCobroPaymentOpen && <CobrarVtdPaymentModal ventas={vtdCobroSeleccionadas} submitting={vtdCobroSubmitting} error={vtdCobroError} onClose={() => setVtdCobroPaymentOpen(false)} onConfirm={(payments) => void confirmarCobroVtd(payments)} />}
-    {vtdCobroTicket && <VtdTicketPreviewModal venta={vtdCobroTicket} onClose={() => setVtdCobroTicket(null)} />}
+    {vtdCobroTicketQueue.length > 0 && <VtdTicketPreviewModal venta={vtdCobroTicketQueue[0]} onClose={() => setVtdCobroTicketQueue((queue) => queue.slice(1))} />}
     {guardarBorradorOpen && <GuardarBorradorModal submitting={guardandoBorrador} error={guardarBorradorError} onClose={() => setGuardarBorradorOpen(false)} onConfirm={(titulo) => void guardarBorrador(titulo)} />}
     {anticipoOpen && <AnticipoModal onClose={() => setAnticipoOpen(false)} notify={notify} />}
     {reviewOpen && <CartReview items={cart} channel={channel} originStock={originStock} customer={customer} subtotal={subtotal} discount={discount} total={total} onClose={() => setReviewOpen(false)} onCheckout={() => { setReviewOpen(false); setPaymentOpen(true) }} />}

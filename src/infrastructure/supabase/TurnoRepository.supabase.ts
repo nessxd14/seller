@@ -184,7 +184,9 @@ export async function misTickets(sesionId: string): Promise<TurnoTicket[]> {
   if (movError) throw movError
   const ids = Array.from(new Set(((movimientos ?? []) as { venta_id: number | null }[]).map((m) => m.venta_id).filter((id): id is number => id != null)))
   if (!ids.length) return []
-  const { data: ventas, error } = await supabase.from('venta').select('id, numero, total, creado_en').in('id', ids).order('creado_en', { ascending: false })
+  // Brief: sin filtro por estado COMPLETADA — un VTD cobrado puede seguir ABIERTA (sin
+  // entregar) y debe aparecer igual; solo se excluye una venta anulada después del cobro.
+  const { data: ventas, error } = await supabase.from('venta').select('id, numero, total, creado_en').in('id', ids).neq('estado', 'ANULADA').order('creado_en', { ascending: false })
   if (error) throw error
   const rows = (ventas ?? []) as { id: number; numero: string | null; total: number | string; creado_en: string }[]
   const { data: pagos, error: pagosError } = await supabase.from('venta_pago').select('venta_id, metodo, monto, estado_verificacion').in('venta_id', ids)
