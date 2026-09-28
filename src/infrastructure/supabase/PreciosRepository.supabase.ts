@@ -9,6 +9,10 @@ import type { PrecioCategoria, PrecioFuente } from '../../domain/pricing/categor
 const num = (value: number | string | null | undefined): number => (value == null ? 0 : Number(value))
 
 export interface HistorialPrecioRow {
+  // Posición en el resultado de la RPC — un mismo documento puede repetir producto_id
+  // más de una vez (p. ej. unidad + CAJA en el mismo pedido), así que fuente+documentoId
+  // solo no alcanza para una key única (ver rowKey en PreciosTab.tsx).
+  idx: number
   fuente: PrecioFuente
   documentoId: number
   numero: string
@@ -44,7 +48,8 @@ interface HistorialPrecioRawRow {
   atipico: boolean
 }
 
-const rowToHistorial = (row: HistorialPrecioRawRow): HistorialPrecioRow => ({
+const rowToHistorial = (row: HistorialPrecioRawRow, idx: number): HistorialPrecioRow => ({
+  idx,
   fuente: row.fuente,
   documentoId: row.documento_id,
   numero: row.numero,
@@ -73,7 +78,7 @@ export const historialPrecios = async (
     p_hasta: opts?.hasta ?? null,
   })
   if (error) throw error
-  return ((data ?? []) as HistorialPrecioRawRow[]).map(rowToHistorial)
+  return ((data ?? []) as HistorialPrecioRawRow[]).map((row, idx) => rowToHistorial(row, idx))
 }
 
 export interface ResumenPreciosProducto {

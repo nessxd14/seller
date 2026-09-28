@@ -28,10 +28,13 @@ const symbolFor = (fuente: PrecioFuente): string => (fuente === 'VENTA' ? 'diamo
 // Symbol used for atípicos (grey ✕), independent of categoría/fuente.
 const CROSS_SYMBOL = 'path://M4,4 L26,26 M26,4 L4,26'
 
-const rowKey = (row: HistorialPrecioRow) => `${row.fuente}-${row.documentoId}`
+// idx (posición en el resultado de la RPC) hace la key única cuando un mismo documento
+// repite producto_id en más de una línea (p. ej. unidad + CAJA en el mismo pedido) —
+// fuente+documentoId solo no alcanza ahí.
+const rowKey = (row: HistorialPrecioRow) => `${row.fuente}-${row.documentoId}-${row.idx}`
 
 type SortKey = 'fecha' | 'cliente' | 'categoria' | 'precioUnitario' | 'precioUnidadBase' | 'vsLista'
-type ChartDatum = { value: [number, number]; symbol: string; symbolSize: number; itemStyle: { color: string; opacity: number }; row: HistorialPrecioRow }
+type ChartDatum = { value: [number, number]; symbol: string; symbolSize: number; itemStyle: { color: string; opacity: number; borderColor?: string; borderWidth?: number }; row: HistorialPrecioRow }
 
 export function PreciosTab({ productId, productName }: { productId: number; productName: string }) {
   const [dias, setDias] = useState(90)
@@ -177,7 +180,10 @@ export function PreciosTab({ productId, productName }: { productId: number; prod
         value: [new Date(r.fecha).getTime(), r.precioUnidadBase],
         symbol: CROSS_SYMBOL,
         symbolSize: 14,
-        itemStyle: { color: '#94a3b8', opacity: opacityFor(r) },
+        // El path de la ✕ son dos trazos abiertos (M...L... M...L..., sin closepath) —
+        // rellenarlos con `color` no dibuja nada (área de relleno nula). Se traza con
+        // borderColor/borderWidth en su lugar, que sí sigue el trazo aunque esté abierto.
+        itemStyle: { color: 'transparent', borderColor: '#94a3b8', borderWidth: 2, opacity: opacityFor(r) },
         row: r,
       })),
       color: '#94a3b8',
