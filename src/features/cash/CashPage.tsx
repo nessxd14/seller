@@ -150,10 +150,20 @@ function MiTurnoPanel({ sesion, isManager, notify, onClosed }: { sesion: TurnoSe
           para cajero), nunca recalculado acá. */}
       {isManager && <footer><span>Efectivo esperado</span><strong>{resumen?.esperadoEfectivoBs != null ? formatMoney(money(Math.round(resumen.esperadoEfectivoBs * 100))) : '—'}</strong>{resumen?.diferenciaRelevoBs ? <small>Relevo: {resumen.diferenciaRelevoBs >= 0 ? '+' : ''}{bs(resumen.diferenciaRelevoBs)}</small> : null}</footer>}
     </section>
-    {resumen && <section className="cash-methods"><h3>Ventas por método</h3>
-      {Object.keys(resumen.ventasPorMetodo).length
-        ? Object.entries(resumen.ventasPorMetodo).map(([m, v]) => <div key={m}><span>{metodoLabel[m] ?? m}</span><strong>Bs {bs(v)}</strong></div>)
-        : <FeatureState type="empty" text="Sin ventas todavía en este turno" />}
+    {resumen && <section className="cash-methods"><h3>Mostrador (VTA)</h3>
+      {Object.keys(resumen.ventasRetailPorMetodo).length
+        ? Object.entries(resumen.ventasRetailPorMetodo).map(([m, v]) => <div key={m}><span>{metodoLabel[m] ?? m}</span><strong>Bs {bs(v)}</strong></div>)
+        : <FeatureState type="empty" text="Sin ventas de mostrador todavía en este turno" />}
+    </section>}
+    {resumen && <section className="cash-methods"><h3>Ventas directas (VTD)</h3>
+      {Object.keys(resumen.ventasVtdPorMetodo).length
+        ? <>{Object.entries(resumen.ventasVtdPorMetodo).map(([m, v]) => <div key={m}><span>{metodoLabel[m] ?? m}</span><strong>Bs {bs(v)}</strong></div>)}<div><span>Cobradas</span><strong>{resumen.cantidadVtdCobradas}</strong></div></>
+        : <FeatureState type="empty" text="Sin VTD cobradas todavía en este turno" />}
+    </section>}
+    {resumen && resumen.vtdPorCobrar.cantidad > 0 && <section className="cash-methods vtd-por-cobrar-card">
+      <h3>VTD por cobrar</h3>
+      <p className="vtd-por-cobrar-info">{resumen.vtdPorCobrar.cantidad} venta{resumen.vtdPorCobrar.cantidad > 1 ? 's' : ''} · Bs {bs(resumen.vtdPorCobrar.totalBs)}</p>
+      <small>Informativo — fuera del arqueo</small>
     </section>}
     {resumen && <section className="cash-methods"><h3>Gastos, remesas e inyecciones</h3>
       <div><span>Gastos aprobados</span><strong>Bs {bs(resumen.gastosPorEstado.aprobado ?? 0)}</strong></div>

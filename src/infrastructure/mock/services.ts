@@ -207,4 +207,12 @@ export const ventaDirectaService = {
   anular(id: string): Promise<VentaDirectaRecord> {
     return ventaDirectaMockRepository.anular(id)
   },
+  listPorCobrar() {
+    return ventaDirectaMockRepository.listPorCobrar()
+  },
+  async cobrarVtd(input: Parameters<typeof ventaDirectaMockRepository.cobrarVtd>[0]) {
+    return sensitiveOperations.execute('cobrar_vtd', `${input.sesionCajaId}:${input.ventaIds.slice().sort().join(',')}`, () =>
+      ventaDirectaMockRepository.cobrarVtd(input),
+    )
+  },
 }

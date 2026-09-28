@@ -129,6 +129,10 @@ export async function getResumenTurno(sesionId: string): Promise<TurnoResumen> {
   const r = data as {
     apertura: number | string
     ventas: Record<string, number | string>
+    ventas_retail: Record<string, number | string>
+    ventas_vtd: Record<string, number | string>
+    cantidad_vtd_cobradas: number
+    vtd_por_cobrar: { cantidad: number; total: number | string } | null
     anticipos: Record<string, number | string>
     anulaciones: Record<string, number | string>
     gastos: Record<string, number | string>
@@ -145,6 +149,10 @@ export async function getResumenTurno(sesionId: string): Promise<TurnoResumen> {
   return {
     aperturaBs: num(r.apertura),
     ventasPorMetodo: mapAmounts(r.ventas),
+    ventasRetailPorMetodo: mapAmounts(r.ventas_retail),
+    ventasVtdPorMetodo: mapAmounts(r.ventas_vtd),
+    cantidadVtdCobradas: r.cantidad_vtd_cobradas ?? 0,
+    vtdPorCobrar: { cantidad: r.vtd_por_cobrar?.cantidad ?? 0, totalBs: num(r.vtd_por_cobrar?.total) },
     anticiposPorMetodo: mapAmounts(r.anticipos),
     anulacionesPorMetodo: mapAmounts(r.anulaciones),
     gastosPorEstado: mapAmounts(r.gastos),
@@ -165,12 +173,22 @@ export async function faltantesResolver(faltanteId: string, estado: 'REPUESTO' |
 
 // ── Lecturas directas (listas de apoyo para Supervisión y "Mis tickets") ───────────
 
+// Brief Caja VTD: "el turno de los tickets" es dónde se COBRÓ, no dónde se creó. Para VTA
+// (registrar_venta) ambas sesiones son la misma, así que el comportamiento de siempre no
+// cambia; para VTD postcobrado, la venta pudo abrirse en un turno anterior y cobrarse
+// recién en este — movimiento_caja(tipo=VENTA) es lo único que registra ESE momento (ver
+// _registrar_venta_nucleo y cobrar_vtd, ambos insertan ahí en la misma transacción del
+// cobro). Un VTD abierto en este turno pero todavía sin cobrar nunca aparece acá.
 export async function misTickets(sesionId: string): Promise<TurnoTicket[]> {
-  const { data: ventas, error } = await supabase.from('venta').select('id, numero, total, creado_en').eq('sesion_caja_id', Number(sesionId)).eq('estado', 'COMPLETADA').order('creado_en', { ascending: false })
+  const { data: movimientos, error: movError } = await supabase.from('movimiento_caja').select('venta_id').eq('sesion_caja_id', Number(sesionId)).eq('tipo', 'VENTA')
+  if (movError) throw movError
+  const ids = Array.from(new Set(((movimientos ?? []) as { venta_id: number | null }[]).map((m) => m.venta_id).filter((id): id is number => id != null)))
+  if (!ids.length) return []
+  // Brief: sin filtro por estado COMPLETADA — un VTD cobrado puede seguir ABIERTA (sin
+  // entregar) y debe aparecer igual; solo se excluye una venta anulada después del cobro.
+  const { data: ventas, error } = await supabase.from('venta').select('id, numero, total, creado_en').in('id', ids).neq('estado', 'ANULADA').order('creado_en', { ascending: false })
   if (error) throw error
   const rows = (ventas ?? []) as { id: number; numero: string | null; total: number | string; creado_en: string }[]
-  const ids = rows.map((r) => r.id)
-  if (!ids.length) return []
   const { data: pagos, error: pagosError } = await supabase.from('venta_pago').select('venta_id, metodo, monto, estado_verificacion').in('venta_id', ids)
   if (pagosError) throw pagosError
   const pagosRows = (pagos ?? []) as { venta_id: number; metodo: string; monto: number | string; estado_verificacion: string }[]
