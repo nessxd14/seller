@@ -16,7 +16,8 @@ const { getSession, getResumenTurno, sesionAbierta, cajeroSession, gerenteSessio
     cajeroId: 'u1', abiertaPor: 'natalia@roari.com', abiertaEn: new Date().toISOString(), diferenciaRelevoBs: null,
   }
   const resumenBase: Omit<TurnoResumen, 'esperadoEfectivoBs'> = {
-    aperturaBs: 500, ventasPorMetodo: { EFECTIVO: 200 }, anticiposPorMetodo: {}, anulacionesPorMetodo: {},
+    aperturaBs: 500, ventasPorMetodo: { EFECTIVO: 200 }, ventasRetailPorMetodo: { EFECTIVO: 200 }, ventasVtdPorMetodo: {},
+    cantidadVtdCobradas: 0, vtdPorCobrar: { cantidad: 0, totalBs: 0 }, anticiposPorMetodo: {}, anulacionesPorMetodo: {},
     gastosPorEstado: {}, remesasBs: 0, inyeccionesBs: 0, cantidadVentas: 1, pagosPendientesVerificacion: 0,
     pagosRechazados: [], diferenciaRelevoBs: null,
   }
@@ -53,7 +54,7 @@ describe('CashPage — conteo ciego (Brief Caja-1 B3)', () => {
     // Un cajero no tiene permiso cash_supervise, así que ni siquiera ve la etiqueta
     // "Efectivo esperado" (el bloque entero es isManager-only) — y por supuesto
     // tampoco ningún monto ni la palabra "diferencia" en el resto de la pantalla.
-    await waitFor(() => expect(screen.queryByText(/Ventas por método/)).toBeTruthy())
+    await waitFor(() => expect(screen.queryByText(/Mostrador \(VTA\)/)).toBeTruthy())
     expect(document.body.textContent).not.toMatch(/esperad/i)
     expect(document.body.textContent).not.toMatch(/diferenc/i)
   })
@@ -65,5 +66,27 @@ describe('CashPage — conteo ciego (Brief Caja-1 B3)', () => {
 
     await waitFor(() => expect(screen.getByText('Caja Tienda')).toBeTruthy())
     await waitFor(() => expect(document.body.textContent).toMatch(/Bs\s*700/))
+  })
+})
+
+// Brief Caja VTD tarea 2: "Mostrador (VTA)" y "Ventas directas (VTD)" reemplazan la
+// sección única, y "VTD por cobrar" es informativo — nunca entra al arqueo.
+describe('CashPage — resumen VTA/VTD (Brief Caja VTD)', () => {
+  it('separa ventas de mostrador y VTD, y muestra la tarjeta VTD por cobrar', async () => {
+    getSession.mockResolvedValue(gerenteSession)
+    getResumenTurno.mockResolvedValue({
+      ...resumenBase,
+      ventasRetailPorMetodo: { EFECTIVO: 150 },
+      ventasVtdPorMetodo: { QR: 300 },
+      cantidadVtdCobradas: 2,
+      vtdPorCobrar: { cantidad: 3, totalBs: 450 },
+      esperadoEfectivoBs: 700,
+    })
+    render(<CashSessionProvider><CashPage notify={() => {}} /></CashSessionProvider>)
+
+    await waitFor(() => expect(screen.getByText('Mostrador (VTA)')).toBeTruthy())
+    expect(screen.getByText('Ventas directas (VTD)')).toBeTruthy()
+    expect(screen.getByText('VTD por cobrar')).toBeTruthy()
+    expect(document.body.textContent).toMatch(/3 ventas · Bs\s*450/)
   })
 })

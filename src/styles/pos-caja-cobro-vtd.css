@@ -1,0 +1,34 @@
+/* Brief Caja VTD — cobro de VTD por caja + resumen de turno por origen (VTA/VTD). */
+
+/* Tarea 3: "+ Agregar VTD" — verde, junto a "+ Ítem personalizado" (naranja). */
+.vtd-cobro-add-link { margin-left: 10px; border: 0; background: transparent; color: #2f9e5b; font-weight: 700; font-size: 11px; padding: 0; cursor: pointer }
+.vtd-cobro-add-link:disabled { color: #a7cbb4; cursor: not-allowed }
+
+/* Líneas de VTD seleccionadas dentro del carrito — verdes, de solo lectura. */
+.vtd-cobro-line { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid #e3f3e8; background: #f3fbf5; margin: 0 -20px; padding-inline: 20px }
+.vtd-cobro-line span { flex: 1; font-size: 12px; color: #1f6b3c; font-weight: 600 }
+.vtd-cobro-line b { font-size: 12px; color: #1f6b3c }
+.vtd-cobro-line button { border: 0; background: transparent; color: #1f6b3c; font-size: 16px; line-height: 1; padding: 0 2px; cursor: pointer }
+
+.vtd-cobro-pay-button { background: #2f9e5b; box-shadow: 0 8px 18px #2f9e5b26 }
+.vtd-cobro-pay-button:hover { background: #26804a }
+
+/* Modal de selección de VTD por cobrar. */
+.vtd-cobro-picker { display: flex; flex-direction: column; gap: 12px }
+.vtd-cobro-search { display: flex; align-items: center; gap: 8px; border: 1px solid #e0dbd2; border-radius: 10px; padding: 9px 12px; color: #8b877f }
+.vtd-cobro-search input { border: 0; outline: 0; flex: 1; font-size: 12px; background: transparent }
+.vtd-cobro-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto }
+.vtd-cobro-lista li label { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #ebe7df; border-radius: 10px; cursor: pointer }
+.vtd-cobro-lista li label:has(input:checked) { border-color: #2f9e5b; background: #f3fbf5 }
+.vtd-cobro-item-info { flex: 1; display: flex; flex-direction: column; gap: 2px }
+.vtd-cobro-item-info strong { font-size: 12px }
+.vtd-cobro-item-info span:not(.vtd-modo-tag) { font-size: 11px; color: #8b877f }
+.vtd-cobro-item-info .vtd-modo-tag { align-self: flex-start; margin-top: 2px }
+
+/* Resumen de caja: "VTD por cobrar" — informativo, fuera del arqueo. */
+.vtd-por-cobrar-card { background: #fffaf0 }
+.vtd-por-cobrar-info { font-size: 13px; font-weight: 700; color: #8a5b0f; margin: 4px 0 0 }
+.vtd-por-cobrar-card small { color: #a08a5e; font-size: 11px }
+
+/* VTD histórico (previo a la migración, sin pago) — nunca "POR COBRAR". */
+.vtd-modo-tag.vtd-modo-historica { background: #f1eee8; color: #77746d }

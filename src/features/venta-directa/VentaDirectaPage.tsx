@@ -79,7 +79,14 @@ export function VentaDirectaPage({ notify }: { notify: (message: string) => void
                 <article className={`vtd-card ${vieja ? 'vtd-card-vieja' : ''}`} key={venta.id}>
                   <div className="vtd-card-top">
                     <strong>{venta.numero}</strong>
-                    <span className={`vtd-modo-tag ${venta.modo === 'PRECOBRADO' ? 'pagado' : 'por-cobrar'}`}>{venta.modo === 'PRECOBRADO' ? 'PAGADO' : 'POR COBRAR'}</span>
+                    {/* Brief Caja VTD: un VTD histórico (previo a la migración, sin pago) nunca
+                        se regulariza acá — "POR COBRAR" prometería una acción que no existe
+                        para él. cobroExigible=false es la única señal, nunca se recalcula. */}
+                    {venta.modo === 'PRECOBRADO'
+                      ? <span className="vtd-modo-tag pagado">PAGADO</span>
+                      : venta.cobroExigible
+                        ? <span className="vtd-modo-tag por-cobrar">POR COBRAR</span>
+                        : <span className="vtd-modo-tag vtd-modo-historica">Histórica</span>}
                   </div>
                   {vieja && <p className="vtd-card-aviso"><AlertTriangle size={11} /> Abierta hace {antiguedad} min</p>}
                   <ul className="vtd-card-lines">

@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient'
 import type { MutationContext, VentaDirectaAbrirLine, VentaDirectaRepository } from '../../application/ports/repositories'
-import type { VentaDirectaRecord, VtdEstado, VtdLine } from '../../application/shared/models'
+import type { CobrarVtdResultado, VentaDirectaRecord, VtdEstado, VtdLine, VtdPorCobrar } from '../../application/shared/models'
 import type { SaleCheckoutPayment } from '../../application/ports/repositories'
 import { NotFoundError } from '../../application/errors/AppError'
 import { centsToNumeric, methodToMetodoPago, numericToCents, SUCURSAL_ALMACEN_ID } from './mappers'
@@ -18,6 +18,10 @@ interface VentaRow {
   creado_por: string | null
   creado_en: string
   completado_en: string | null
+  // Brief Caja VTD — 2026-09-28_caja_cobro_vtd.sql: false solo en VTD históricos sin pago
+  // (nunca regularizados). Ausente en filas anteriores a la migración... no debería pasar,
+  // pero `?? true` cubre ese caso degradando a "exigible" en vez de ocultar el cobro.
+  cobro_exigible?: boolean | null
   cliente?: { nombre: string } | null
 }
 
@@ -65,6 +69,7 @@ const rowToVtd = (header: VentaRow, lines: VentaLineaRow[], pagos: VentaPagoRow[
     discountCents: numericToCents(num(header.descuento_total)),
     totalCents: numericToCents(num(header.total)),
     paidCents,
+    cobroExigible: header.cobro_exigible ?? true,
     creadoPor: header.creado_por ?? undefined,
     creadoEn: header.creado_en,
     completadoEn: header.completado_en ?? undefined,
@@ -184,6 +189,60 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
     const updated = await fetchVtdById(numericId)
     if (!updated) throw new NotFoundError('No se pudo releer la venta directa anulada')
     return updated
+  }
+
+  // Brief Caja VTD — bandeja "Agregar VTD" del carrito: VTD exigibles, no anulados, sin
+  // pago. security_invoker: la vista ya filtra por lo que el cajero puede ver.
+  async listPorCobrar(): Promise<VtdPorCobrar[]> {
+    const { data, error } = await supabase.from('v_vtd_por_cobrar').select('*')
+    if (error) throw error
+    type Row = {
+      venta_id: number; numero: string | null; estado: 'ABIERTA' | 'COMPLETADA'; cliente_id: number | null
+      cliente_nombre: string | null; total: number | string; creado_por: string | null; creado_en: string
+      sesion_creacion_id: number | null
+    }
+    return ((data ?? []) as Row[]).map((r) => ({
+      ventaId: String(r.venta_id),
+      numero: r.numero,
+      estado: r.estado,
+      clienteId: r.cliente_id != null ? String(r.cliente_id) : undefined,
+      clienteNombre: r.cliente_nombre ?? undefined,
+      totalBs: num(r.total),
+      creadoPor: r.creado_por ?? undefined,
+      creadoEn: r.creado_en,
+      sesionCreacionId: r.sesion_creacion_id != null ? String(r.sesion_creacion_id) : undefined,
+    }))
+  }
+
+  // Brief Caja VTD — cobrar_vtd: cobro de uno o más VTD postcobrados en un solo recibo.
+  // No toca Kardex (eso sigue siendo completar_venta, desde la bandeja de Venta Directa).
+  async cobrarVtd(input: { ventaIds: string[]; sesionCajaId: string; pagos: SaleCheckoutPayment[] }, context: MutationContext & { idempotencyKey: string }): Promise<CobrarVtdResultado> {
+    const { data, error } = await supabase.rpc('cobrar_vtd', {
+      p_venta_ids: input.ventaIds.map(Number),
+      p_sesion_caja_id: Number(input.sesionCajaId),
+      p_pagos: input.pagos.map((p) => ({
+        metodo: methodToMetodoPago(p.method),
+        monto: centsToNumeric(p.amountCents),
+        ...(p.receivedCents != null ? { recibido: centsToNumeric(p.receivedCents) } : {}),
+        ...(p.referencia ? { referencia: p.referencia } : {}),
+      })),
+      p_idempotencia: context.idempotencyKey,
+    })
+    if (error) throw error
+    type Result = {
+      reintento?: boolean; sesion_caja_id: number
+      ventas: { venta_id: number; numero: string | null; total: number | string; estado: string }[]
+      total: number | string; cambio?: number | string; pendiente_verificacion?: boolean
+    }
+    const r = data as Result
+    return {
+      reintento: r.reintento === true,
+      sesionCajaId: String(r.sesion_caja_id),
+      ventas: (r.ventas ?? []).map((v) => ({ ventaId: String(v.venta_id), numero: v.numero, totalBs: num(v.total), estado: v.estado })),
+      totalBs: num(r.total),
+      cambioBs: r.cambio != null ? num(r.cambio) : 0,
+      pendienteVerificacion: r.pendiente_verificacion === true,
+    }
   }
 }
 

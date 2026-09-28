@@ -247,6 +247,27 @@ export const ventaDirectaService = {
     const actorId = await currentActorId()
     return ventaDirectaRepository.anular(id, cashSessionId, { actorId })
   },
+  // Brief Caja VTD: "Agregar VTD" desde el carrito de venta — lista v_vtd_por_cobrar.
+  async listPorCobrar() {
+    return ventaDirectaRepository.listPorCobrar()
+  },
+  /**
+   * Brief Caja VTD: p_idempotencia es obligatorio en cobrar_vtd — un idempotencyKey por
+   * intento de cobro (mismo criterio que checkout/abrir): un doble clic/reintento de red
+   * reusa la clave (cobrar_vtd responde `reintento: true` y no cobra dos veces).
+   */
+  async cobrarVtd(input: { ventaIds: string[]; sesionCajaId: string; pagos: SaleCheckoutPayment[] }) {
+    const actorId = await currentActorId()
+    const aggregateId = `${input.sesionCajaId}:${checkoutFingerprint({
+      lines: input.ventaIds.map((id) => ({ productId: id, quantity: 1, unitPriceCents: 0 })),
+      discountCents: 0,
+      cashSessionId: input.sesionCajaId,
+      payments: input.pagos.map((p) => ({ method: p.method, amountCents: p.amountCents })),
+    })}`
+    return sensitiveOperations.execute('cobrar_vtd', aggregateId, (idempotencyKey) =>
+      ventaDirectaRepository.cobrarVtd(input, { actorId, idempotencyKey }),
+    )
+  },
 }
 
 export const turnoService = {

@@ -36,6 +36,7 @@ import './styles/pos-solicitante.css'
 import './styles/pos-documentos-diferenciados.css'
 import './pos-glassmorphism.css'
 import './styles/pos-caja-turno.css'
+import './styles/pos-caja-cobro-vtd.css'
 import './pos-hotkeys.css'
 
 createRoot(document.getElementById('root')!).render(

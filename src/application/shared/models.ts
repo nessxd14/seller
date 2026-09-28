@@ -252,10 +252,37 @@ export interface VentaDirectaRecord {
   discountCents: number
   totalCents: number
   paidCents: number
+  // Brief Caja VTD: false solo para VTD históricos (existían antes de la migración
+  // 2026-09-28_caja_cobro_vtd.sql sin pago) — nunca regularizados, nunca "POR COBRAR".
+  // true para todo VTD nuevo, sin importar si ya se cobró.
+  cobroExigible: boolean
   creadoPor?: string
   creadoEn: string
   completadoEn?: string
   lines: VtdLine[]
+}
+
+// Brief Caja VTD — fila de v_vtd_por_cobrar: VTD exigible, no anulado, sin pago.
+export interface VtdPorCobrar {
+  ventaId: string
+  numero: string | null
+  estado: 'ABIERTA' | 'COMPLETADA'
+  clienteId?: string
+  clienteNombre?: string
+  totalBs: number
+  creadoPor?: string
+  creadoEn: string
+  sesionCreacionId?: string
+}
+
+// Brief Caja VTD — resultado de la RPC cobrar_vtd.
+export interface CobrarVtdResultado {
+  reintento: boolean
+  sesionCajaId: string
+  ventas: { ventaId: string; numero: string | null; totalBs: number; estado: string }[]
+  totalBs: number
+  cambioBs: number
+  pendienteVerificacion: boolean
 }
 
 // Brief S1 — borrador_operacion. Guardado explícito ("tipo Instagram"), distinto del
@@ -324,6 +351,13 @@ export interface TurnoSesion {
 export interface TurnoResumen {
   aperturaBs: number
   ventasPorMetodo: Record<string, number>
+  // Brief Caja VTD: desglose de `ventasPorMetodo` en mostrador (VTA) vs venta directa
+  // cobrada en este turno (VTD) — ver resumen_turno en 2026-09-28_caja_cobro_vtd.sql.
+  ventasRetailPorMetodo: Record<string, number>
+  ventasVtdPorMetodo: Record<string, number>
+  cantidadVtdCobradas: number
+  // Informativo, fuera del arqueo — nunca suma a esperadoEfectivoBs.
+  vtdPorCobrar: { cantidad: number; totalBs: number }
   anticiposPorMetodo: Record<string, number>
   anulacionesPorMetodo: Record<string, number>
   gastosPorEstado: Record<string, number>
