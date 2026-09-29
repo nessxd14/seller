@@ -1,5 +1,5 @@
 import { AlertTriangle, Info, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { usePos } from '../context/PosContext'
 import type { CartItem as CartItemType, SalesChannel } from '../types'
 import { ProductVisual } from './ProductVisual'
@@ -10,6 +10,7 @@ import { isLineBlocking, isLineUnderstocked, type StockControlInfo } from '../do
 import { isLineUnpriced } from '../domain/sales/priceCheck'
 import { OriginPin, buildOriginOptions } from './OriginPin'
 import { NumberField } from './NumberField'
+import { focusPosSearch } from '../lib/focusPosSearch'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
@@ -31,7 +32,12 @@ const heredadoKeyForChannel = (channel: SalesChannel): 'mayoreo' | 'instituciona
  */
 function QtyControl({ quantity, onChange }: { quantity: number; onChange: (next: number) => void }) {
   const [editing, setEditing] = useState(false)
-  return <div className="qty-control">
+  // Enter/Escape en el editor devuelven el foco al buscador (flujo solo teclado); un blur
+  // por clic en otro lado no lo toca.
+  const onEditorKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (editing && (event.key === 'Enter' || event.key === 'Escape') && event.target instanceof HTMLInputElement) focusPosSearch()
+  }
+  return <div className="qty-control" onKeyDown={onEditorKeyDown}>
     <button type="button" aria-label="Disminuir cantidad" disabled={quantity <= 1} onClick={() => onChange(quantity - 1)}><Minus /></button>
     {editing
       ? <NumberField
@@ -44,12 +50,12 @@ function QtyControl({ quantity, onChange }: { quantity: number; onChange: (next:
           value={quantity}
           onCommit={(next) => { onChange(next); setEditing(false) }}
         />
-      : <button type="button" className="qty-value" aria-label={`Editar cantidad: ${quantity}`} onClick={() => setEditing(true)}>{quantity}</button>}
+      : <button type="button" className="qty-value" data-line-action="qty" aria-label={`Editar cantidad: ${quantity}`} onClick={() => setEditing(true)}>{quantity}</button>}
     <button type="button" aria-label="Aumentar cantidad" onClick={() => onChange(quantity + 1)}><Plus /></button>
   </div>
 }
 
-export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTransfer, trasladoDisponible }: { item: CartItemType; onEdit: () => void; originStock?: StockControlInfo; onSetOrigin?: (location: 'Tienda' | 'Almacén') => void; onRequestTransfer?: (shortfall: number) => void; trasladoDisponible?: number }) {
+export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTransfer, trasladoDisponible }: { item: CartItemType; onEdit: (viaKeyboard: boolean) => void; originStock?: StockControlInfo; onSetOrigin?: (location: 'Tienda' | 'Almacén') => void; onRequestTransfer?: (shortfall: number) => void; trasladoDisponible?: number }) {
   const { channel, mode, updateQuantity, updateItem, removeItem, selectedLineId, setSelectedLineId } = usePos()
   const lineTotal = ventaLineTotalCents(item) / 100
 
@@ -98,7 +104,11 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
 
   const [editing, setEditing] = useState(false)
   const [draftValue, setDraftValue] = useState('')
-  const startEdit = () => { setDraftValue(String(item.precioAplicado)); setEditing(true) }
+  // Enter/Escape devuelven el foco al buscador; ese blur sintético no debe volver a
+  // confirmar el precio (rompería Escape), por eso el flag.
+  const skipBlurCommit = useRef(false)
+  const startEdit = () => { skipBlurCommit.current = false; setDraftValue(String(item.precioAplicado)); setEditing(true) }
+  const exitWithKeyboard = (apply: () => void) => { skipBlurCommit.current = true; apply(); focusPosSearch() }
   const commit = () => {
     const parsed = Number(draftValue)
     // TAREA B: committing via the inline editor IS the definition of "manually modified" —
@@ -179,11 +189,13 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
               autoFocus
               value={draftValue}
               onChange={(e) => setDraftValue(e.target.value)}
-              onBlur={commit}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit() } else if (e.key === 'Escape') { e.preventDefault(); cancelEdit() } }}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={() => { if (skipBlurCommit.current) { skipBlurCommit.current = false; return } commit() }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); exitWithKeyboard(commit) } else if (e.key === 'Escape') { e.preventDefault(); exitWithKeyboard(cancelEdit) } }}
             />
           : <button
               type="button"
+              data-line-action="price"
               className={`price-inline-display ${isOverridden ? 'price-overridden' : ''}`}
               onClick={startEdit}
               title={isOverridden ? `Precio de lista: Bs ${money(channelListPrice)}` : undefined}
@@ -197,7 +209,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
         {showInheritedBadge && <span className="price-heredado-icon" title="Este canal no tiene precio propio configurado: se usa el precio de mostrador. No es un precio negociado."><Info aria-label="Precio heredado, no negociado" /></span>}
         {isUnpriced && <small className="price-heredado-badge price-overridden-badge" title="Esta línea no tiene precio configurado en ningún canal. Escribí un precio para poder cobrarla.">sin precio</small>}
       </div>
-    </div><button className="edit-link" onClick={onEdit} aria-label={`Editar ${item.nombre}`} title="Editar"><Pencil /></button><button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button></div>
+    </div><button className="edit-link" data-line-action="edit" onClick={(e) => onEdit(e.detail === 0)} aria-label={`Editar ${item.nombre}`} title="Editar"><Pencil /></button><button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button></div>
     {/* Ubicación, presentación, cantidad e importe comparten la fila de controles.
         Editar y eliminar están junto al nombre. Las equivalencias y advertencias
         conservan su propia línea para no desplazar los controles. */}

@@ -15,6 +15,7 @@ import { SuspendedSalesPage, type SuspendedSale } from '../features/suspended-sa
 import { removeSuspendedSale } from '../infrastructure/local/suspendedSales'
 import { ShortcutsModal } from '../components/ShortcutsModal'
 import { parseQuantityScan } from '../domain/sales/scanQuantity'
+import { resolveActiveLineId } from '../domain/sales/activeLine'
 import { ProductsPage } from '../features/products/ProductsPage'
 import { InventoryPage } from '../features/inventory/InventoryPage'
 import { TransfersPage, type PendingTransferRequest } from '../features/transfers/TransfersPage'
@@ -162,10 +163,39 @@ function PosContent() {
         const next = event.key === 'ArrowUp' ? Math.max(0, (current < 0 ? ids.length : current) - 1) : Math.min(ids.length - 1, current + 1)
         setSelectedLineId(ids[next])
       }
-      if (cartShortcutsActive && selectedLineId != null && (event.key === '+' || event.key === '-')) {
+      // Línea objetivo de +/-, F4, *, F3: la seleccionada o, si no hay, la última (se
+      // resalta antes de actuar). Supr nunca cae a la última: no se borra lo que no se ve.
+      const cartIds = cart.map((item) => item.id)
+      const runOnActiveLine = (action: string) => {
+        const targetId = resolveActiveLineId(cartIds, selectedLineId, { fallbackToLast: true })
+        if (targetId == null) return
+        if (targetId === selectedLineId) { click(`.cart-item-selected [data-line-action="${action}"]`); return }
+        setSelectedLineId(targetId)
+        requestAnimationFrame(() => click(`.cart-item-selected [data-line-action="${action}"]`))
+      }
+      if (cartShortcutsActive && cart.length && (event.key === '+' || event.key === '-')) {
         event.preventDefault()
-        const item = cart.find((line) => line.id === selectedLineId)
-        if (item) updateQuantity(selectedLineId, item.cantidad + (event.key === '+' ? 1 : -1))
+        const targetId = resolveActiveLineId(cartIds, selectedLineId, { fallbackToLast: true })
+        const item = cart.find((line) => line.id === targetId)
+        if (item && targetId != null) {
+          if (targetId !== selectedLineId) setSelectedLineId(targetId)
+          updateQuantity(targetId, item.cantidad + (event.key === '+' ? 1 : -1))
+        }
+      }
+      // F4 / Alt+P: precio en línea (sin precios en traslado). '*' / Alt+Q: cantidad.
+      // F3 / Alt+L: editor completo de la línea. Las teclas Alt van en paralelo por el mismo
+      // motivo que F6/F7/F10; F3 es "buscar siguiente" en Chrome (preventDefault lo anula).
+      if (cartShortcutsActive && cart.length && (event.key === 'F4' || (event.altKey && event.key.toLowerCase() === 'p')) && mode !== 'traslado') {
+        event.preventDefault()
+        runOnActiveLine('price')
+      }
+      if (cartShortcutsActive && cart.length && (event.key === '*' || (event.altKey && event.key.toLowerCase() === 'q'))) {
+        event.preventDefault()
+        runOnActiveLine('qty')
+      }
+      if (cartShortcutsActive && cart.length && (event.key === 'F3' || (event.altKey && event.key.toLowerCase() === 'l')) && mode !== 'traslado') {
+        event.preventDefault()
+        runOnActiveLine('edit')
       }
       if (cartShortcutsActive && selectedLineId != null && event.key === 'Delete') {
         event.preventDefault()
