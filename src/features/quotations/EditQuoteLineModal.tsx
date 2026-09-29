@@ -106,6 +106,7 @@ export function EditQuoteLineModal({ line, presentations, stock, identifiers, ba
           </label>
         )}
         <label>Precio unitario (Bs)<NumberField value={form.precioUnitario} min={0} step={0.5} onCommit={(precioUnitario) => setForm((f) => ({ ...f, precioUnitario }))} /></label>
+        <div className="full"><PrecioSugeridoHint sugerido={precioSugerido} unitPriceCents={Math.round(form.precioUnitario * 100)} onApply={(precioBs) => setForm((f) => ({ ...f, precioUnitario: precioBs }))} /></div>
         <label>Descuento (%)<NumberField value={form.descuento} min={0} max={100} onCommit={(descuento) => setForm((f) => ({ ...f, descuento }))} /></label>
         {precioSugerido && <div className="full"><PrecioSugeridoHint sugerido={precioSugerido} unitPriceCents={Math.round(form.precioUnitario * 100)} onApply={(precioBs) => setForm((f) => ({ ...f, precioUnitario: precioBs }))} /></div>}
         </div></section>
