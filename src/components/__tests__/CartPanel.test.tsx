@@ -46,6 +46,14 @@ function Wrapper({ withCatalogItem }: { withCatalogItem: boolean }) {
   </PosProvider>
 }
 
+function SeedCustom({ precio }: { precio: number }) {
+  const { addCustomItem } = usePos()
+  useEffect(() => { addCustomItem({ descripcion: 'SELLO AUTOMATICO', cantidad: 2, precio, unidadMedida: 'JUEGO' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return null
+}
+
 function SeedCart({ withCatalogItem }: { withCatalogItem: boolean }) {
   const { addProduct } = usePos()
   useEffect(() => {
@@ -89,5 +97,22 @@ describe('CartPanel — cobro de VTD desde el carrito (Brief Caja VTD)', () => {
     // El botón "Cobrar" normal (retail) también queda bloqueado mientras haya VTD elegidas.
     const cobrarButton = screen.getByRole('button', { name: /^Cobrar/ }) as HTMLButtonElement
     expect(cobrarButton.disabled).toBe(true)
+  })
+})
+
+describe('CartPanel — ítems personalizados se pueden cobrar', () => {
+  const renderCustom = (precio: number) => render(<PosProvider><CashSessionProvider><SeedCustom precio={precio} /><CartPanel notify={() => {}} onOpenDraftOrder={() => {}} onGoToCash={() => {}} /></CashSessionProvider></PosProvider>)
+
+  it('con precio > 0, Cobrar queda habilitado y no hay aviso de "solo cotizar"', async () => {
+    renderCustom(15)
+    const cobrar = await screen.findByRole('button', { name: /^Cobrar/ }) as HTMLButtonElement
+    await waitFor(() => expect(cobrar.disabled).toBe(false))
+    expect(screen.queryByText(/solo se pueden cotizar/)).toBeNull()
+  })
+
+  it('con precio 0, Cobrar queda deshabilitado (línea sin precio)', async () => {
+    renderCustom(0)
+    const cobrar = await screen.findByRole('button', { name: /^Cobrar/ }) as HTMLButtonElement
+    expect(cobrar.disabled).toBe(true)
   })
 })

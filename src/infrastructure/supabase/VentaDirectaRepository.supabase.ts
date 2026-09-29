@@ -27,7 +27,8 @@ interface VentaRow {
 
 interface VentaLineaRow {
   id: number
-  producto_id: number
+  producto_id: number | null
+  descripcion?: string | null
   presentacion_id: number | null
   cantidad_presentacion: number | string | null
   cantidad: number | string
@@ -42,8 +43,8 @@ const num = (v: number | string | null | undefined): number => (v == null ? 0 : 
 
 const lineaRowToVtdLine = (row: VentaLineaRow): VtdLine => ({
   id: String(row.id),
-  productId: String(row.producto_id),
-  name: row.producto?.nombre ?? '',
+  productId: String(row.producto_id ?? ''),
+  name: row.producto?.nombre ?? row.descripcion ?? '',
   sku: row.producto?.sku_interno ?? '',
   presentacionId: row.presentacion_id ?? undefined,
   presentacionNombre: row.presentacion?.nombre,

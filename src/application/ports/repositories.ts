@@ -47,7 +47,7 @@ export interface OrderRepository {
   getById(id:string):Promise<(OrderView & Versioned)|null>
   save(value:OrderView & Partial<Versioned>,context:MutationContext):Promise<OrderView & Versioned>
 }
-export interface SaleCheckoutLine { productId:string; quantity:number; unitPriceCents:number; listPriceCents?:number; sourceLocation?:'Tienda'|'Almacén'; presentacionId?:number }
+export interface SaleCheckoutLine { productId:string; quantity:number; unitPriceCents:number; listPriceCents?:number; sourceLocation?:'Tienda'|'Almacén'; presentacionId?:number; isCustomItem?:boolean; description?:string; unitOfMeasure?:string }
 // Brief Caja-1 A2: receivedCents — el efectivo que entregó el cliente, solo tiene
 // sentido para 'cash'. Opcional: nada obliga a mandarlo (Pago mixto puede no incluir
 // el campo "Recibido" para la porción de efectivo).

@@ -15,6 +15,8 @@ export interface WorkflowLine {
   // Optional Supabase-backed extensions (all optional so mock consumers are unaffected):
   listPriceCents?: number
   isCustomItem?: boolean
+  // Solo ítems personalizados; null/undefined en filas históricas (no se inventa 'UNIDAD').
+  unitOfMeasure?: string
   note?: string
   sourceLocation?: 'Tienda' | 'Almacén'
   priceOverridden?: boolean

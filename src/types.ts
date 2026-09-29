@@ -60,4 +60,6 @@ export interface CartItem extends Product {
   // SKU/stock real (los campos de Product, incluida descripcion, quedan en placeholders
   // vacíos/cero); no se puede vender por registrar_venta (no tiene producto_id), solo cotizar.
   isCustomItem?: boolean
+  // Unidad de medida (normalizeUnit) — solo se usa cuando isCustomItem.
+  unidadMedida?: string
 }

@@ -64,4 +64,10 @@ describe('checkoutFingerprint', () => {
     const reordered: CheckoutFingerprintInput = { ...baseInput, payments: [{ method: 'qr', amountCents: 1400 }, { method: 'cash', amountCents: 1000 }] }
     expect(checkoutFingerprint(multiPago)).toBe(checkoutFingerprint(reordered))
   })
+
+  it('dos ítems personalizados distintos (productId vacío) dan huellas distintas', () => {
+    const custom = (description: string, unitOfMeasure: string): CheckoutFingerprintInput => ({ ...baseInput, lines: [{ productId: '', isCustomItem: true, description, unitOfMeasure, quantity: 1, unitPriceCents: 500 }] })
+    expect(checkoutFingerprint(custom('SELLO', 'JUEGO'))).not.toBe(checkoutFingerprint(custom('CINTA', 'JUEGO')))
+    expect(checkoutFingerprint(custom('SELLO', 'JUEGO'))).not.toBe(checkoutFingerprint(custom('SELLO', 'PAR')))
+  })
 })

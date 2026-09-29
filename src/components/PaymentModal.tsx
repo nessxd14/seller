@@ -144,7 +144,17 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
     try {
       const payments = buildPayments()
       const checkout = await saleService.checkout({
-        lines: cart.map((item) => ({
+        lines: cart.map((item) => item.isCustomItem ? {
+          // Ítem personalizado: sin producto, presentación ni origen — el id negativo del
+          // carrito nunca debe llegar al RPC.
+          productId: '',
+          isCustomItem: true,
+          description: item.nombre,
+          unitOfMeasure: item.unidadMedida,
+          quantity: item.cantidad,
+          unitPriceCents: netUnitPriceCents(item),
+          listPriceCents: Math.round(item.precioAplicado * 100),
+        } : ({
           productId: String(item.id),
           quantity: item.cantidad,
           unitPriceCents: netUnitPriceCents(item),

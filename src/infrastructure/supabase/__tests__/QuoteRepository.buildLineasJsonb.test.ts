@@ -23,6 +23,7 @@ describe('buildLineasJsonb — serialización carrito/cotización → payload de
         unitPriceCents: 25000,
         discountBasisPoints: 500,
         isCustomItem: true,
+        unitOfMeasure: 'METRO',
         note: 'Cotizado a pedido del cliente',
       }),
     ]
@@ -31,12 +32,18 @@ describe('buildLineasJsonb — serialización carrito/cotización → payload de
       {
         es_personalizado: true,
         descripcion: 'Servicio de instalación',
+        unidad_medida: 'METRO',
         cantidad_base: 1,
         precio_unitario: 250,
         descuento_pct: 5,
         nota: 'Cotizado a pedido del cliente',
       },
     ])
+  })
+
+  it('ítem personalizado histórico sin unidad: unidad_medida null (no se inventa UNIDAD)', () => {
+    const payload = buildLineasJsonb([baseLine({ productId: '', isCustomItem: true })], 'mayoreo', 'cristian') as Record<string, unknown>[]
+    expect(payload[0].unidad_medida).toBeNull()
   })
 
   it('línea de catálogo real: lleva producto_id y sucursal de origen', () => {

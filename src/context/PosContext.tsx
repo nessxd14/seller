@@ -7,6 +7,7 @@ import type { TransferMotivo } from '../application/shared/models'
 import { featureFlags } from '../config/featureFlags'
 import { consultarSaldos } from '../infrastructure/hermes/client'
 import { auditEnd, auditStart } from '../lib/auditoriaDvr'
+import { normalizeUnit } from '../domain/sales/unitOfMeasure'
 
 // Brief J: 1 = Almacén Central, 2 = Tienda (mismos ids que SUCURSAL_ALMACEN_ID/
 // SUCURSAL_TIENDA_ID en infrastructure/supabase/mappers.ts — no se importan de ahí
@@ -71,7 +72,7 @@ interface PosState {
   setChannel: (channel: SalesChannel) => void
   cart: CartItem[]
   addProduct: (product: Product, quantity?: number) => void
-  addCustomItem: (input: { descripcion: string; cantidad: number; precio: number }) => void
+  addCustomItem: (input: { descripcion: string; cantidad: number; precio: number; unidadMedida?: string }) => void
   updateQuantity: (id: number, quantity: number) => void
   updateItem: (id: number, values: Partial<CartItem>) => void
   removeItem: (id: number) => void
@@ -302,9 +303,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
   // único por Date.now(), para que nunca choque con un id de producto real (siempre
   // positivo) y el resto del código que indexa el carrito por item.id (Maps de stock,
   // updateItem, removeItem) siga funcionando sin ramas nuevas. No se puede vender por
-  // registrar_venta (no tiene producto_id) — CartPanel deshabilita Cobrar cuando hay uno;
-  // sí se puede cotizar (crear_cotizacion/crear_pedido ya soportan es_personalizado).
-  const addCustomItem = (input: { descripcion: string; cantidad: number; precio: number }) => {
+  // registrar_venta como línea es_personalizado (sin producto_id, sin kardex);
+  // también se puede cotizar (crear_cotizacion/crear_pedido soportan es_personalizado).
+  const addCustomItem = (input: { descripcion: string; cantidad: number; precio: number; unidadMedida?: string }) => {
     const id = -(Date.now() + Math.floor(Math.random() * 1000))
     const item: CartItem = {
       id, sku: '', codigoBarra: '', codigoFabrica: '', nombre: input.descripcion, descripcion: input.descripcion,
@@ -313,7 +314,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       stockTienda: 0, stockAlmacen: 0,
       cantidad: Math.max(1, Math.floor(input.cantidad)), precioAplicado: Math.max(0, input.precio), descuento: 0,
       ubicacion: 'Tienda', observacion: '', motivoPrecio: '', origenManual: true, precioModificado: true,
-      isCustomItem: true,
+      isCustomItem: true, unidadMedida: normalizeUnit(input.unidadMedida),
     }
     setCart((items) => [...items, item])
   }
