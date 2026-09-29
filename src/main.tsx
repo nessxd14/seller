@@ -35,6 +35,12 @@ import './pos-pedidos-segmento.css'
 import './styles/pos-solicitante.css'
 import './styles/pos-documentos-diferenciados.css'
 import './pos-glassmorphism.css'
+import './styles/pos-caja-turno.css'
+import './styles/pos-caja-cobro-vtd.css'
+import './pos-hotkeys.css'
+import './styles/pos-precios-producto.css'
+import './styles/commercial-forms.css'
+import './styles/management.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -1,11 +1,16 @@
-import { Boxes, ChevronLeft, ChevronRight, Search } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { Boxes, ChevronLeft, ChevronRight, Info, Search, TrendingUp } from 'lucide-react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { Product } from '../../types'
 import { productRepository, getStockByProduct } from '../../infrastructure/services'
 import type { StockByLocation } from '../../infrastructure/supabase/ProductRepository.supabase'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
 import { ProductVisual } from '../../components/ProductVisual'
+import { featureFlags } from '../../config/featureFlags'
+
+// Precios tab (ECharts + historial/resumen RPCs) is lazy — no reason to pay for the
+// chart library in the main bundle when most modal opens never touch this tab.
+const PreciosTab = lazy(() => import('./PreciosTab').then((m) => ({ default: m.PreciosTab })))
 
 const bs = (value: number) => `Bs ${value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -30,10 +35,14 @@ export function ProductsPage({ notify }: { notify: (message: string) => void }) 
   const [selected, setSelected] = useState<Product | null>(null)
   const [stock, setStock] = useState<{ onHand: StockByLocation[]; saldoDisponible: number } | null>(null)
   const [stockLoading, setStockLoading] = useState(false)
+  const [modalTab, setModalTab] = useState<'general' | 'precios'>('general')
+  const stockRequestRef = useRef(0)
+  const searchRequestRef = useRef(0)
 
   const runSearch = (value: string, pageNumber: number) => {
+    const request = ++searchRequestRef.current
     setStatus('loading')
-    return productRepository.search({ query: value, active: true, page: { page: pageNumber, pageSize: PAGE_SIZE } }).then((result) => { setProducts(result.items); setTotal(result.total); setStatus('ready') }).catch(() => setStatus('error'))
+    return productRepository.search({ query: value, active: true, page: { page: pageNumber, pageSize: PAGE_SIZE } }).then((result) => { if (request === searchRequestRef.current) { setProducts(result.items); setTotal(result.total); setStatus('ready') } }).catch(() => { if (request === searchRequestRef.current) setStatus('error') })
   }
 
   // Debounced search on typing; Enter bypasses the debounce for barcode-scanner input.
@@ -41,7 +50,7 @@ export function ProductsPage({ notify }: { notify: (message: string) => void }) 
   useEffect(() => {
     let cancelled = false
     const handle = setTimeout(() => { if (!cancelled) { setPage(1); void runSearch(query, 1) } }, 300)
-    return () => { cancelled = true; clearTimeout(handle) }
+    return () => { cancelled = true; clearTimeout(handle); searchRequestRef.current += 1 }
   }, [query])
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -50,14 +59,16 @@ export function ProductsPage({ notify }: { notify: (message: string) => void }) 
   const filtered = useMemo(() => products, [products])
 
   const openProduct = (product: Product) => {
+    const requestId = ++stockRequestRef.current
     setSelected(product)
+    setModalTab('general')
     setStock(null)
     setStockLoading(true)
-    void getStockByProduct(product.id).then((result) => setStock(result)).catch(() => notify('No se pudo cargar el stock')).finally(() => setStockLoading(false))
+    void getStockByProduct(product.id).then((result) => { if (stockRequestRef.current === requestId) setStock(result) }).catch(() => { if (stockRequestRef.current === requestId) notify('No se pudo cargar el stock') }).finally(() => { if (stockRequestRef.current === requestId) setStockLoading(false) })
   }
 
   return <FeatureShell eyebrow="CATÁLOGO" title="Productos" subtitle="Precios por canal y disponibilidad de inventario">
-    <div className="feature-toolbar"><label><Search /><input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); void runSearch(query, 1) } }} placeholder="Buscar por nombre o SKU... (Enter para buscar de inmediato)" /></label></div>
+    <div className="feature-toolbar"><label><Search /><input aria-label="Buscar producto por nombre, SKU o código de barras" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); void runSearch(query, 1) } }} placeholder="Nombre, SKU o código de barras…" /></label></div>
     {status === 'loading' ? <FeatureState type="skeleton" text="Cargando productos" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.length ? <FeatureState type={query ? 'no-results' : 'empty'} text="No hay productos" /> : <div className="feature-table products-table sticky-head">
       <div className="table-head"><span>Producto</span><span>Marca</span><span>Retail</span><span>Mayoreo</span><span>Institucional</span><span>Corporativo</span></div>
       {filtered.map((product) => <article key={product.id} className="clickable-row" onClick={() => openProduct(product)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') openProduct(product) }}>
@@ -70,10 +81,39 @@ export function ProductsPage({ notify }: { notify: (message: string) => void }) 
       </article>)}
       <div className="pagination-bar"><span>Página {page} de {totalPages} · {total} productos</span><button disabled={page <= 1} onClick={() => goToPage(page - 1)}><ChevronLeft size={14} /></button><button disabled={page >= totalPages} onClick={() => goToPage(page + 1)}><ChevronRight size={14} /></button></div>
     </div>}
-    {selected && <Modal title={selected.nombre} subtitle={`SKU ${selected.sku}`} onClose={() => setSelected(null)}><div className="modal-body">
-      <div className="customer-metrics"><div><span>Retail</span><strong>{bs(selected.precioRetail)}</strong></div><div><span>Mayoreo</span><strong>{bs(selected.precioMayoreo)}</strong></div><div><span>Institucional</span><strong>{bs(selected.precioInstitucional)}</strong></div><div><span>Corporativo</span><strong>{bs(selected.precioCorporativo)}</strong></div></div>
-      <h3><Boxes size={14} /> Disponibilidad</h3>
-      {stockLoading ? <FeatureState type="loading" text="Cargando stock" /> : stock ? <div className="stock-breakdown"><div className="stock-total"><span>Saldo disponible</span><strong>{stock.saldoDisponible}</strong></div><div className="stock-by-location">{stock.onHand.length ? stock.onHand.map((row) => <div key={row.ubicacionId}><span>{locationLabel(row)}</span><strong>{row.cantidadBase}</strong></div>) : <span className="empty-hint">Sin stock registrado</span>}</div></div> : <span className="empty-hint">Sin información de stock</span>}
-    </div></Modal>}
+    {selected && <Modal title="Ficha del producto" subtitle="Consulta sus precios y disponibilidad." onClose={() => setSelected(null)} wide className="commercial-modal product-detail-modal">
+      {featureFlags.supabase && <div className="channel-tabs product-modal-tabs" aria-label="Vista de producto">
+        <button type="button" aria-pressed={modalTab === 'general'} className={modalTab === 'general' ? 'active' : ''} onClick={() => setModalTab('general')}><Boxes /><span>Información general</span></button>
+        <button type="button" aria-pressed={modalTab === 'precios'} className={modalTab === 'precios' ? 'active' : ''} onClick={() => setModalTab('precios')}><TrendingUp /><span>Historial de precios</span></button>
+      </div>}
+      {modalTab === 'precios' && featureFlags.supabase ? <div className="modal-body">
+        <Suspense fallback={<FeatureState type="loading" text="Cargando gráfico de precios" />}>
+          <PreciosTab productId={selected.id} productName={selected.nombre} />
+        </Suspense>
+      </div> : <div className="modal-body">
+        <div className="product-detail-hero">
+          <ProductVisual type={selected.imagen} color={selected.color} imagenUrl={selected.imagenUrl} />
+          <div><p>{selected.categoria || 'Catálogo de productos'}</p><h3>{selected.nombre}</h3><div className="product-identity-tags"><span>SKU {selected.sku}</span>{selected.codigoBarra && <span>{selected.codigoBarra}</span>}</div></div>
+        </div>
+        <div className="commercial-section-heading"><span className="section-icon"><TrendingUp /></span><div><h3>Precios por canal</h3><p>Importes en bolivianos por unidad base.</p></div></div>
+        <div className="product-price-grid">
+          {([
+            ['retail', 'Retail', selected.precioRetail], ['mayoreo', 'Mayoreo', selected.precioMayoreo],
+            ['institucional', 'Institucional', selected.precioInstitucional], ['corporativo', 'Corporativo', selected.precioCorporativo],
+          ] as const).map(([channel, label, price]) => <div className="product-price-card" key={channel}><span>{label}</span><strong>{bs(price)}</strong>{channel !== 'retail' && selected.preciosHeredados?.[channel] && <small className="price-heredado-badge" title="Se utiliza el precio de Retail para este canal">Precio de Retail</small>}</div>)}
+        </div>
+        <div className="product-detail-columns">
+          <section className="commercial-section">
+            <div className="commercial-section-heading"><span className="section-icon"><Boxes /></span><div><h3>Disponibilidad</h3><p>Existencias en unidades base.</p></div></div>
+            {stockLoading ? <FeatureState type="loading" text="Cargando stock" /> : stock ? <div className="stock-breakdown"><div className="stock-total"><span>Saldo disponible</span><strong>{stock.saldoDisponible.toLocaleString('es-BO')}</strong></div><div className="stock-by-location">{stock.onHand.length ? stock.onHand.map((row) => <div key={row.ubicacionId}><span>{locationLabel(row)}</span><strong>{row.cantidadBase.toLocaleString('es-BO')}</strong></div>) : <span className="empty-hint">Sin stock registrado</span>}</div></div> : <p className="product-info-empty" role="status">No se pudo consultar la disponibilidad. <button className="secondary-button" onClick={() => openProduct(selected)}>Reintentar</button></p>}
+          </section>
+          <section className="commercial-section">
+            <div className="commercial-section-heading"><span className="section-icon"><Info /></span><div><h3>Identificación</h3><p>Datos de referencia del catálogo.</p></div></div>
+            <dl className="product-meta-list"><div><dt>SKU</dt><dd>{selected.sku || 'Sin código'}</dd></div><div><dt>Código de barras</dt><dd>{selected.codigoBarra || 'No registrado'}</dd></div><div><dt>Marca / categoría</dt><dd>{selected.categoria || 'No registrada'}</dd></div><div><dt>Producto</dt><dd>{selected.nombre}</dd></div></dl>
+          </section>
+        </div>
+      </div>}
+      <footer className="modal-actions"><button className="secondary-button" onClick={() => setSelected(null)}>Cerrar ficha</button></footer>
+    </Modal>}
   </FeatureShell>
 }

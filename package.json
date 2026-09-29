@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "vitest run src",
+    "test": "vitest run src api",
     "test:e2e": "playwright test",
     "preview": "vite preview",
     "bootstrap:clientes": "node --env-file=.env scripts/bootstrap_clientes.mjs"
@@ -15,6 +15,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
     "@vitejs/plugin-react": "^6.0.4",
+    "echarts": "^6.1.0",
     "lucide-react": "^1.25.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",

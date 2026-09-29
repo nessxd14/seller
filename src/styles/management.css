@@ -1,0 +1,134 @@
+/* Clientes y Comisiones comparten la jerarquía visual de los formularios comerciales. */
+.management-page { --management-muted: #827a6d; }
+.management-page .feature-header { margin-bottom: 24px; }
+.management-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 24px; }
+.management-stats > div { display: grid; gap: 8px; align-content: start; padding: 22px; border: 1px solid #e7e1d7; border-radius: 15px; background: #fffefa; }
+.management-stats span { color: #716858; font-size: 12px; font-weight: 600; }
+.management-stats strong { font-size: 28px; letter-spacing: -.8px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.management-stats small { color: var(--management-muted); font-size: 11px; line-height: 1.6; }
+.management-page .feature-toolbar { flex-wrap: wrap; gap: 10px; padding: 15px; border: 1px solid #e7e1d7; border-radius: 13px; background: #fffefa; margin-bottom: 22px; }
+.management-page .feature-toolbar > label:has(input:not([type=date])) { flex: 1 1 240px; min-width: 0; }
+.management-page .feature-toolbar :is(input, select) { min-width: 0; min-height: 40px; border-radius: 8px; font-size: 12px; }
+.management-page .feature-toolbar select { border: 1px solid #e2ddd3; padding: 9px 12px; background: #fff; max-width: 100%; }
+.management-page .feature-toolbar button { min-height: 40px; border-radius: 8px; }
+.management-list-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 24px 0 14px; }
+.management-list-heading h2 { font-size: 15px; margin: 0; color: #38342d; }
+.management-list-heading p { font-size: 12px; color: #827a6d; margin: 7px 0; line-height: 1.6; }
+.management-list-heading > span { font-size: 11px; color: #827a6d; text-align: right; }
+.management-page .customer-grid { grid-template-columns: repeat(auto-fill, minmax(min(290px, 100%), 1fr)); gap: 16px; }
+.customers-page .customer-card { display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 20px; border: 1px solid #e6e0d6; border-radius: 15px; box-shadow: 0 3px 10px #45371f04; text-align: left; background: #fffefa; transition: border-color .15s, box-shadow .15s; min-width: 0; }
+.customers-page .customer-card:hover { border-color: #d5ac89; box-shadow: 0 8px 24px #45371f0d; }
+.customers-page .customer-card-heading { display: flex; align-items: center; gap: 12px; width: 100%; }
+.customers-page .customer-card-heading > div:nth-child(2) { min-width: 0; flex: 1; }
+.customers-page .customer-card-heading strong { display: block; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.customers-page .customer-card-heading span { font-size: 11px; color: #827a6d; margin-top: 4px; display: block; }
+.customers-page .customer-avatar, .customer-modal .customer-avatar { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 13px; background: #f4ece1; color: #aa6a37; }
+.customers-page .customer-card-heading .customer-card-arrow { align-self: start; font-size: 18px; color: #b4a38e; }
+.customers-page .customer-card-contact { display: grid; gap: 9px; padding: 18px 0; }
+.customers-page .customer-card-contact > span { display: flex; align-items: center; gap: 9px; font-size: 11px; color: #797266; overflow-wrap: anywhere; }
+.customers-page .customer-card-contact svg { width: 13px; height: 13px; flex-shrink: 0; color: #a49886; }
+.customers-page .customer-card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.customers-page .customer-card-tags > span { border-radius: 5px; padding: 5px 7px; background: #f2efe8; color: #796f60; font-size: 10px; }
+.customers-page .customer-card footer { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid #eee9df; padding-top: 14px; margin-top: auto; width: 100%; font-size: 11px; }
+.customers-page .customer-card footer strong { font-size: 14px; }
+.modal.customer-modal.wide { width: min(900px, calc(100vw - 40px)); }
+.commercial-modal .customer-editor { display: grid; gap: 16px; flex: 1; overflow-y: auto; padding: 24px; min-height: 0; background: #f8f6f0; }
+.customer-editor .form-grid { padding: 0; }
+.form-footer-hint { margin-right: auto; font-size: 11px; color: #8b8174; }
+.customer-profile-hero { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.customer-profile-hero > div:nth-child(2) { flex: 1; min-width: 0; }
+.customer-profile-hero .summary-eyebrow { color: #a87545; }
+.customer-profile-hero h3 { font-size: 22px; letter-spacing: -.5px; margin: 6px 0; overflow-wrap: anywhere; }
+.customer-profile-hero p { font-size: 12px; color: #827a6d; margin: 0; }
+.customer-profile-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.customer-profile-columns .profile-details p { font-size: 12px; display: flex; align-items: center; gap: 9px; line-height: 1.6; overflow-wrap: anywhere; }
+.customer-profile-columns .profile-details svg { width: 16px; flex-shrink: 0; color: #a1917a; }
+.customer-business-name { display: flex; align-items: center; gap: 8px; font-size: 12px; border-top: 1px solid #eee9df; padding-top: 15px; }
+.customer-modal .customer-metrics { margin: 16px 0; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.customer-modal .customer-metrics > div { border: 1px solid #e6e1d7; background: #f0ece3; border-radius: 12px; padding: 18px; }
+.customer-modal .customer-metrics strong { overflow-wrap: anywhere; font-size: 22px; }
+.commission-tabs { display: flex; gap: 5px; padding: 5px; background: #ede8df; border: 1px solid #e3ddd2; border-radius: 12px; margin-bottom: 22px; width: fit-content; max-width: 100%; overflow-x: auto; }
+.commission-tabs button { border: 0; border-radius: 8px; background: transparent; white-space: nowrap; color: #786e5f; font-size: 12px; padding: 12px 20px; }
+.commission-tabs button.active { background: #fffefa; color: #ad5124; box-shadow: 0 2px 5px #4b331012; font-weight: 650; }
+.commission-stats > div:nth-child(1) { background: #f3f7fa; border-color: #dce6eb; }
+.commission-stats > div:nth-child(2) { background: #edf5ed; border-color: #d7e5d6; }
+.commission-stats > div:nth-child(2) strong { color: #326445; }
+.commission-stats > div:nth-child(3) { background: #2c2924; border-color: #2c2924; color: #fff; }
+.commission-stats > div:nth-child(3) :is(span, small) { color: #d3c7b6; }
+.commission-team-summary { border: 1px solid #e4ded4; border-radius: 12px; background: #fffefa; margin-bottom: 18px; overflow: hidden; }
+.commission-team-summary summary { padding: 15px 18px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.commission-team-summary summary span { color: #8a7d6b; font-weight: 400; margin-left: 15px; font-size: 11px; }
+.commissions-page .feature-table { border: 1px solid #e6e0d6; border-radius: 12px; overflow-x: auto; margin-bottom: 20px; background: #fffefa; }
+.commissions-page .feature-table .table-head { background: #f0ece4; color: #796f5f; font-size: 10px; padding: 13px 16px; }
+.commissions-page .feature-table article { font-size: 12px; padding: 17px 16px; border-bottom: 1px solid #eee9e0; line-height: 1.5; }
+.commissions-page .feature-table article:last-child { border-bottom: 0; }
+.commissions-page .feature-table article > span { min-width: 0; overflow-wrap: anywhere; }
+.commissions-page .feature-table .clickable-row:hover { background: #f9f4e9; }
+.commissions-page .feature-table .clickable-row:focus-visible { outline: 2px solid #bd702d; outline-offset: -3px; }
+.commission-status-cell { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.commission-status { font-size: 10px; font-weight: 500; padding: 4px 7px; border-radius: 5px; background: #ede9e2; color: #6e6559; }
+.commission-status.state-potencial { background: #e1edf5; color: #346989; }
+.commission-status.state-devengada { background: #e0efdf; color: #3d7249; }
+.commission-status.state-anulada { background: #f7e2db; color: #a35640; }
+.commission-status-cell small { font-size: 10px; line-height: 1.6; color: #867b6a; }
+.commissions-page .commission-team-table > :is(.table-head, article) { grid-template-columns: 2fr 1fr 1.3fr 1.3fr; min-width: 550px; }
+.commissions-page .commission-vendors-table > :is(.table-head, article) { grid-template-columns: 1.2fr 1.5fr .8fr .5fr 1fr; min-width: 720px; }
+.commissions-page .commission-history-table > :is(.table-head, article) { grid-template-columns: 1.5fr .8fr 1fr 1fr .6fr .6fr; min-width: 750px; }
+.commissions-page :is(.reports-table-comisiones, .reports-table-comisiones-equipo) > .table-head, .commissions-page .comision-fila-expandible { min-width: 850px; }
+.commissions-page .reports-table-comision-reglas > :is(.table-head, article) { min-width: 750px; }
+.commissions-page .reports-table-liquidar > :is(.table-head, article) { min-width: 520px; }
+.commissions-page .reports-table-comision-huerfanos > :is(.table-head, article) { min-width: 580px; }
+.commissions-page .settings-section { border: 1px solid #e6e0d6; background: #fffefa; padding: 22px; border-radius: 15px; margin-top: 24px; }
+.commissions-page .settings-section > header h2 { font-size: 16px; }
+.commissions-page .settings-section > header p { color: #827a6d; font-size: 12px; line-height: 1.6; }
+.commercial-modal .management-checkbox { flex-direction: row; align-items: center; gap: 12px; }
+.commercial-modal .management-checkbox input { width: 18px; min-height: 18px; accent-color: #c56b31; }
+.commission-rule-preview { padding: 15px; background: #eee9df; border-radius: 10px; color: #776446; font-size: 12px; line-height: 1.7; }
+.commission-payment-panel { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; background: #fffefa; border: 1px solid #e6e0d6; padding: 24px; border-radius: 15px; }
+.commission-payment-summary { background: #2c2924; color: #fff; display: grid; gap: 13px; align-content: start; padding: 24px; border-radius: 12px; }
+.commission-payment-summary span, .commission-payment-summary small { font-size: 12px; color: #d9cbb6; }
+.commission-payment-summary strong { font-size: 28px; letter-spacing: -.7px; overflow-wrap: anywhere; }
+.commission-payment-panel fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.commission-payment-panel input { border-radius: 9px; min-height: 42px; }
+.commission-payment-panel .modal-actions { padding: 0; margin: 5px 0 0; border: 0; }
+.commissions-page input[type=checkbox] { width: 18px; height: 18px; accent-color: #ba652d; }
+
+/* Icono lateral sobre la fotografía, consistente con el catálogo de Inventario. */
+.product-visual { position: relative; }
+.product-visual .product-image-expand { position: absolute; top: 3px; left: 3px; z-index: 2; width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 0; cursor: zoom-in; padding: 7px; color: #4f483e; }
+.product-visual .product-image-expand svg { width: 30px; height: 30px; padding: 7px; background: #fffffff0; border: 1px solid #ffffff; border-radius: 8px; box-shadow: 0 2px 8px #392b2020; transform: none; filter: none; }
+.product-visual .product-image-expand:hover svg { background: #fff2e1; color: #a65b29; }
+.product-visual .product-image-expand:focus-visible { outline: 2px solid #bd702d; border-radius: 10px; }
+.modal.product-image-modal.wide { width: min(1000px, calc(100vw - 40px)); }
+.commercial-modal .product-image-stage { position: relative; display: grid; place-items: center; background: #f3f1eb; min-height: 250px; padding: 18px; }
+.product-image-stage > img { display: block; width: 100%; height: min(62dvh, 680px); object-fit: contain; }
+.product-image-status { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 12px; color: #857965; font-size: 12px; }
+.image-viewer-hint { margin-right: auto; color: #8b8174; font-size: 11px; }
+.scan-feedback { font-size: 11px; margin: 9px 0; color: #776d5d; }
+.scan-feedback.error { color: #ab4a32; }
+@media (max-width: 1000px) {
+  .commission-payment-panel { grid-template-columns: 1fr; }
+  .management-stats > div { padding: 17px; }
+  .management-stats strong { font-size: 24px; }
+}
+@media (max-width: 700px) {
+  .management-stats { gap: 8px; }
+  .management-stats > div { padding: 12px; }
+  .management-stats span { font-size: 10px; }
+  .management-stats small { font-size: 10px; }
+  .management-stats strong { font-size: 21px; }
+  .commission-stats { grid-template-columns: 1fr; }
+  .commission-tabs { width: 100%; }
+  .commission-tabs button { padding: 12px; }
+  .management-list-heading { align-items: flex-start; }
+  .management-list-heading > span { max-width: 48%; line-height: 1.5; }
+  .customer-profile-columns { grid-template-columns: 1fr; }
+  .customer-profile-hero { flex-wrap: wrap; }
+  .customer-profile-hero h3 { font-size: 18px; }
+  .commercial-modal .customer-editor { padding: 16px; }
+  .form-footer-hint { display: none; }
+  .commission-team-summary summary span { display: block; margin: 8px 0 0; }
+  .commissions-page .settings-section { padding: 14px; }
+  .commission-payment-panel { padding: 16px; }
+  .image-viewer-hint { max-width: 45%; line-height: 1.5; }
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Plus, Search, X } from 'lucide-react'
 import type { Product } from '../types'
 import { agruparPorFamilia, esGrupoSinFamilia } from '../domain/catalog/agruparPorFamilia'
+import { isExactProductCode } from '../domain/catalog/productSearch'
 
 export interface ProductQuickAddChip { productId: number; nombre: string; cantidad: number }
 
@@ -33,7 +34,8 @@ export function ProductQuickAdd({
   // búsqueda nueva. Los productos colapsados quedan fuera de `plano` (navegación por
   // teclado) hasta que se despliegan — flechas nunca deben aterrizar en algo invisible.
   const [mostrarSinFamilia, setMostrarSinFamilia] = useState(false)
-  const plano = grupos.flatMap((g) => esGrupoSinFamilia(g.key) && !mostrarSinFamilia ? [] : g.productos)
+  const collapsed = (g: typeof grupos[number]) => esGrupoSinFamilia(g.key) && !mostrarSinFamilia && g.productos.length > 8 && !g.productos.some((product) => isExactProductCode(product, value))
+  const plano = grupos.flatMap((g) => collapsed(g) ? [] : g.productos)
   // El resaltado se reinicia cada vez que cambia el set de resultados — evita quedar
   // apuntando a un índice que ya no existe (p. ej. de 8 resultados a 2).
   // eslint-disable-next-line react-hooks/set-state-in-effect -- resincroniza el índice resaltado con el set de resultados que llega desde afuera (prop), no hay nada que "no necesitar" acá
@@ -42,7 +44,7 @@ export function ProductQuickAdd({
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setResaltado((i) => Math.min(i + 1, Math.max(0, plano.length - 1))) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setResaltado((i) => Math.max(i - 1, 0)) }
-    else if (e.key === 'Enter') { e.preventDefault(); const producto = plano[resaltado]; if (producto) onAdd(producto) }
+    else if (e.key === 'Enter') { e.preventDefault(); if (loading) return; const exact = plano.filter((product) => isExactProductCode(product, value)); const producto = exact.length === 1 ? exact[0] : plano[resaltado]; if (producto) onAdd(producto) }
     else if (e.key === 'Escape') { e.preventDefault(); onValueChange(''); inputRef.current?.blur() }
   }
 
@@ -58,14 +60,14 @@ export function ProductQuickAdd({
           ))}
         </div>
       )}
-      <div className="quick-add-input"><Search size={14} /><input ref={inputRef} placeholder={placeholder ?? 'Buscar producto por nombre o SKU…'} value={value} onChange={(e) => onValueChange(e.target.value)} onKeyDown={onKeyDown} /></div>
+      <div className="quick-add-input"><Search size={14} /><input ref={inputRef} aria-label="Buscar producto para agregar" placeholder={placeholder ?? 'Nombre, SKU o código de barras…'} value={value} onChange={(e) => onValueChange(e.target.value)} onKeyDown={onKeyDown} />{value && <button type="button" className="quick-add-clear" aria-label="Limpiar búsqueda de productos" onClick={() => { onValueChange(''); inputRef.current?.focus() }}><X size={14} /></button>}</div>
       {value && (
         <div className="quick-add-results">
           {loading && <span className="empty-hint">Buscando…</span>}
-          {!loading && !plano.length && <span className="empty-hint">Sin resultados</span>}
+          {!loading && !results.length && <span className="empty-hint">Sin resultados</span>}
           {!loading && grupos.map((grupo) => {
             const sinFamilia = esGrupoSinFamilia(grupo.key)
-            if (sinFamilia && !mostrarSinFamilia) {
+            if (collapsed(grupo)) {
               return <button key={grupo.key} type="button" className="quick-add-sin-familia-toggle" onClick={() => setMostrarSinFamilia(true)}>
                 Otros (sin familia) · {grupo.productos.length} <ChevronDown size={12} />
               </button>

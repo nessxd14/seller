@@ -5,7 +5,7 @@ import { orderRepository } from './OrderRepository.supabase'
 import { customerRepository } from './CustomerRepository.supabase'
 import { productRepository as supabaseProductRepository, getStockByProduct as supabaseGetStockByProduct, getStockBySucursalBatch as supabaseGetStockBySucursalBatch, listPresentations as supabaseListPresentations, listIdentifiersForProducts as supabaseListLineIdentifiers, listBrands as supabaseListBrands, listFrecuentes as supabaseListFrecuentes } from './ProductRepository.supabase'
 import { cashRepository, getAdvancesForOrder, getOpenSession } from './CashRepository.supabase'
-import { saleRepository } from './SaleRepository.supabase'
+import { saleRepository, getTicket } from './SaleRepository.supabase'
 import { supabaseAuthSessionProvider } from './SupabaseAuthSessionProvider'
 import { transferRepository, type CreateTransferInput } from './TransferRepository.supabase'
 import type { TransferEstado, TransferRecord } from '../../application/shared/models'
@@ -20,6 +20,8 @@ import { ventaDirectaRepository, getUbicacionVentasDirectas } from './VentaDirec
 import type { VentaDirectaAbrirLine, SaleCheckoutPayment } from '../../application/ports/repositories'
 import type { BorradorOperacionTipo, VentaDirectaRecord } from '../../application/shared/models'
 import { borradorOperacionRepository } from './BorradorOperacionRepository.supabase'
+import * as turnoRepository from './TurnoRepository.supabase'
+import type { Denominaciones } from '../../application/shared/models'
 
 export const configService = configRepository
 export const reportsService = reportsRepository
@@ -184,7 +186,7 @@ export const saleService = {
    * cantidad, descuento, cliente, caja) da una huella distinta y por lo tanto una venta
    * nueva; el mismo contenido reusa la clave, que es exactamente el reintento legítimo.
    */
-  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>; cashSessionId: string; customerId?: string; discountCents?: number; operationId: string }) {
+  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number; receivedCents?: number }>; cashSessionId: string; customerId?: string; discountCents?: number; operationId: string }) {
     const actorId = await currentActorId()
     const aggregateId = `${input.operationId}:${checkoutFingerprint({ ...input, discountCents: input.discountCents ?? 0 })}`
     const result = await sensitiveOperations.execute('checkout', aggregateId, (idempotencyKey) =>
@@ -199,6 +201,7 @@ export const saleService = {
     }
     return result
   },
+  getTicket,
 }
 
 export const ventaDirectaService = {
@@ -244,6 +247,54 @@ export const ventaDirectaService = {
     const actorId = await currentActorId()
     return ventaDirectaRepository.anular(id, cashSessionId, { actorId })
   },
+  // Brief Caja VTD: "Agregar VTD" desde el carrito de venta — lista v_vtd_por_cobrar.
+  async listPorCobrar() {
+    return ventaDirectaRepository.listPorCobrar()
+  },
+  /**
+   * Brief Caja VTD: p_idempotencia es obligatorio en cobrar_vtd — un idempotencyKey por
+   * intento de cobro (mismo criterio que checkout/abrir): un doble clic/reintento de red
+   * reusa la clave (cobrar_vtd responde `reintento: true` y no cobra dos veces).
+   */
+  async cobrarVtd(input: { ventaIds: string[]; sesionCajaId: string; pagos: SaleCheckoutPayment[] }) {
+    const actorId = await currentActorId()
+    const aggregateId = `${input.sesionCajaId}:${checkoutFingerprint({
+      lines: input.ventaIds.map((id) => ({ productId: id, quantity: 1, unitPriceCents: 0 })),
+      discountCents: 0,
+      cashSessionId: input.sesionCajaId,
+      payments: input.pagos.map((p) => ({ method: p.method, amountCents: p.amountCents })),
+    })}`
+    return sensitiveOperations.execute('cobrar_vtd', aggregateId, (idempotencyKey) =>
+      ventaDirectaRepository.cobrarVtd(input, { actorId, idempotencyKey }),
+    )
+  },
+}
+
+export const turnoService = {
+  getSesionAbierta: turnoRepository.getSesionAbierta,
+  getUltimaSesionCerrada: turnoRepository.getUltimaSesionCerrada,
+  abrir: (denominaciones: Denominaciones) => turnoRepository.abrirTurno(denominaciones),
+  registrarMovimiento: (input: { sesionId: string; subtipo: 'GASTO' | 'REMESA' | 'INYECCION'; montoBs: number; motivo: string; comprobantePath?: string }) =>
+    turnoRepository.registrarMovimientoTurno({ ...input, idempotencyKey: crypto.randomUUID() }),
+  resolverGasto: turnoRepository.resolverGasto,
+  cerrar: turnoRepository.cerrarTurno,
+  revisar: turnoRepository.revisarTurno,
+  arqueoSorpresa: turnoRepository.registrarArqueoSorpresa,
+  resumen: turnoRepository.getResumenTurno,
+  faltantesResolver: turnoRepository.faltantesResolver,
+  misTickets: turnoRepository.misTickets,
+  gastosPendientes: turnoRepository.listGastosPendientes,
+  turnosEnRevision: turnoRepository.listTurnosEnRevision,
+  faltantesPendientes: turnoRepository.listFaltantesPendientes,
+  subirComprobante: turnoRepository.subirComprobante,
+  comprobanteUrl: turnoRepository.getComprobanteUrl,
+  // Brief Caja-2 — fuentes externas: verificación de pagos QR/transferencia.
+  estadoBancoQr: turnoRepository.estadoBancoQr,
+  estadoPagoQr: turnoRepository.getEstadoPagoQr,
+  pagosPorVerificar: turnoRepository.listPagosPorVerificar,
+  movimientosBancoSinVincular: turnoRepository.listMovimientosBancoSinVincular,
+  vincularPagoQr: turnoRepository.vincularPagoQr,
+  verificarPagoManual: turnoRepository.verificarPagoManual,
 }
 
 export const borradorOperacionService = {

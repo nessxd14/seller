@@ -1,4 +1,4 @@
-import type { BorradorOperacionRecord, BorradorOperacionTipo, CashSessionRecord, CustomerRecord, OrderView, QuoteDraft, VentaDirectaRecord } from '../shared/models'
+import type { BorradorOperacionRecord, BorradorOperacionTipo, CashSessionRecord, CobrarVtdResultado, CustomerRecord, OrderView, QuoteDraft, VentaDirectaRecord, VtdPorCobrar } from '../shared/models'
 import type { Product } from '../../types'
 import type { CategoriaPedido } from '../../domain/orders/segmentoPedido'
 
@@ -48,8 +48,13 @@ export interface OrderRepository {
   save(value:OrderView & Partial<Versioned>,context:MutationContext):Promise<OrderView & Versioned>
 }
 export interface SaleCheckoutLine { productId:string; quantity:number; unitPriceCents:number; listPriceCents?:number; sourceLocation?:'Tienda'|'Almacén'; presentacionId?:number }
-export interface SaleCheckoutPayment { method:'cash'|'qr'|'transfer'; amountCents:number }
-export interface SaleCheckoutResult { saleId:string; subtotalCents:number; discountCents:number; totalCents:number; isRetry?:boolean }
+// Brief Caja-1 A2: receivedCents — el efectivo que entregó el cliente, solo tiene
+// sentido para 'cash'. Opcional: nada obliga a mandarlo (Pago mixto puede no incluir
+// el campo "Recibido" para la porción de efectivo).
+// referencia: solo relevante para cobrar_vtd/TRANSFERENCIA (ver VentaDirectaRepository.cobrarVtd) — registrar_venta/checkout no lo usa.
+export interface SaleCheckoutPayment { method:'cash'|'qr'|'transfer'; amountCents:number; receivedCents?:number; referencia?:string }
+// Brief Caja-1 A1: numero — VTA-2026-NNNNN, asignado atómicamente por _registrar_venta_nucleo.
+export interface SaleCheckoutResult { saleId:string; numero?:string; subtotalCents:number; discountCents:number; totalCents:number; isRetry?:boolean }
 export interface SaleRepository {
   getById(id:string):Promise<SalePortRecord|null>
   confirm(id:string,context:MutationContext&{idempotencyKey:string}):Promise<SalePortRecord>
@@ -89,6 +94,10 @@ export interface VentaDirectaRepository {
   // obligatorio (rechazo/cambio de cantidad) — la RPC lo exige apenas alguna línea cambia.
   ajustar(id:string,ajustes:Array<{lineaId:string;cantidadPresentacion:number}>,cashSessionId:string|undefined,motivo:string,context:MutationContext):Promise<VentaDirectaRecord>
   anular(id:string,cashSessionId:string|undefined,context:MutationContext):Promise<VentaDirectaRecord>
+  // Brief Caja VTD: cobro de VTD postcobrado por caja — cobrar_vtd, independiente de
+  // abrir_venta/completar_venta (no toca Kardex). listPorCobrar lee v_vtd_por_cobrar.
+  listPorCobrar():Promise<VtdPorCobrar[]>
+  cobrarVtd(input:{ventaIds:string[];sesionCajaId:string;pagos:SaleCheckoutPayment[]},context:MutationContext&{idempotencyKey:string}):Promise<CobrarVtdResultado>
 }
 
 // Brief S1 — borrador_operacion: guardado explícito y cross-device, distinto de

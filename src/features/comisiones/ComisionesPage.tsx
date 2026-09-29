@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, PenLine, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { comisionesService } from '../../infrastructure/services'
 import type {
@@ -9,6 +9,8 @@ import type { ReportDateRange } from '../../application/ports/reportsRepository'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { formatMoney, money } from '../../domain/common/money'
 import { hoyLocal, sumarDiasIso } from '../../domain/common/fechas'
+import { Modal } from '../../components/Modal'
+import { coincideBusqueda } from '../../domain/customers/textSearch'
 import { buildCsv, downloadCsv } from '../../domain/common/csv'
 
 type Tab = 'mias' | 'equipo' | 'liquidar' | 'reglas' | 'vendedores'
@@ -97,8 +99,7 @@ function DevengoTable({ rows, showVendedor, nombrePorEmail, seguimiento }: {
     })
   }, [rows, sortKey, sortDir])
 
-  const totalBase = rows.reduce((sum, r) => sum + r.baseComisionableCents, 0)
-  const totalComision = rows.reduce((sum, r) => sum + r.montoCents, 0)
+  const totalEstado = (estado: ComisionEstado) => rows.filter((r) => r.estado === estado).reduce((sum, r) => sum + r.montoCents, 0)
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
   const pageRows = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
@@ -109,12 +110,12 @@ function DevengoTable({ rows, showVendedor, nombrePorEmail, seguimiento }: {
   const sortIcon = (key: SortKey) => sortKey !== key ? null : sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
 
   return <>
-    <div className="reports-stat-tiles">
-      <div><span>Documentos</span><strong>{rows.length}</strong></div>
-      <div><span>Base comisionable</span><strong>{bs(totalBase)}</strong></div>
-      <div><span>Comisión</span><strong>{bs(totalComision)}</strong></div>
+    <div className="management-stats commission-stats">
+      <div><span>Potencial</span><strong>{bs(totalEstado('POTENCIAL'))}</strong><small>Pendiente de cumplir las condiciones de cobro</small></div>
+      <div><span>Disponible para liquidar</span><strong>{bs(totalEstado('DEVENGADA'))}</strong><small>Comisiones devengadas</small></div>
+      <div><span>Ya liquidado</span><strong>{bs(totalEstado('LIQUIDADA'))}</strong><small>Liquidaciones registradas</small></div>
     </div>
-    <p className="settings-note">Las filas en azul (POTENCIAL) todavía no son cobrables — pasan a devengadas cuando la partida del documento se cobra al 100%, o al instante en ventas directas.</p>
+    <div className="management-list-heading"><h2>Detalle de comisiones</h2><span>{rows.length} documentos · Selecciona una fila para ver sus productos</span></div>
     <div className={`feature-table reports-table${showVendedor ? ' reports-table-comisiones-equipo' : ' reports-table-comisiones'}`}>
       <div className="table-head">
         {showVendedor && <span>Vendedor</span>}
@@ -125,20 +126,20 @@ function DevengoTable({ rows, showVendedor, nombrePorEmail, seguimiento }: {
         <button className="table-head-sort" onClick={() => toggleSort('estado')}>Qué falta para cobrar {sortIcon('estado')}</button>
       </div>
       {pageRows.map((row) => <div key={row.id} className="comision-fila-expandible">
-        <article className={row.estado === 'POTENCIAL' ? 'comision-potencial clickable-row' : 'clickable-row'} onClick={() => setExpandido(expandido === row.id ? null : row.id)}>
+        <article role="button" tabIndex={0} aria-expanded={expandido === row.id} aria-label={`Ver productos de ${row.documentoId}`} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandido(expandido === row.id ? null : row.id) } }} className={row.estado === 'POTENCIAL' ? 'comision-potencial clickable-row' : 'clickable-row'} onClick={() => setExpandido(expandido === row.id ? null : row.id)}>
           {showVendedor && <span>{nombrePorEmail[row.vendedorEmail] ?? row.vendedorEmail}</span>}
           <span>{row.origen === 'PEDIDO' ? 'Pedido' : 'Venta directa'}</span>
           <span>{row.documentoId}{row.tienePersonalizadoComisionable && <span title="Tiene líneas personalizadas que comisionan — conviene revisar antes de liquidar"><PenLine size={12} className="comision-icono-personalizado" /></span>}</span>
           <span>{row.clienteNombre ?? '—'}</span><span>{fecha(row.fecha)}</span><span>{bs(row.baseComisionableCents)}</span>
           <span>{pct(row.porcentajeBp)}</span><span>{bs(row.montoCents)}</span>
-          <span>{labelSeguimiento(row, seguimiento[row.id])}</span>
+          <span className="commission-status-cell"><b className={`commission-status state-${row.estado.toLowerCase()}`}>{({ POTENCIAL: 'Potencial', DEVENGADA: 'Devengada', LIQUIDADA: 'Liquidada', ANULADA: 'Anulada' })[row.estado]}</b><small>{labelSeguimiento(row, seguimiento[row.id])}</small></span>
         </article>
         {expandido === row.id && <LineasDevengo devengoId={row.id} />}
       </div>)}
     </div>
     <div className="pagination-bar"><span>Página {page} de {totalPages} · {sorted.length} registros</span>
-      <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}><ChevronLeft size={14} /></button>
-      <button disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}><ChevronRight size={14} /></button>
+      <button aria-label="Página anterior" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}><ChevronLeft size={14} /></button>
+      <button aria-label="Página siguiente" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}><ChevronRight size={14} /></button>
     </div>
   </>
 }
@@ -151,10 +152,10 @@ function EquipoTotales({ rows, nombrePorEmail }: { rows: ComisionDevengoRow[]; n
     porVendedor.set(row.vendedorEmail, actual)
   }
   const entries = [...porVendedor.entries()].sort((a, b) => b[1].comision - a[1].comision)
-  return <div className="feature-table reports-table">
+  return <details className="commission-team-summary"><summary>Resumen por vendedor <span>{entries.length} vendedores · incluye todos los estados filtrados</span></summary><div className="feature-table reports-table commission-team-table">
     <div className="table-head"><span>Vendedor</span><span>Documentos</span><span>Base comisionable</span><span>Comisión</span></div>
     {entries.map(([email, t]) => <article key={email}><span>{nombrePorEmail[email] ?? email}</span><span>{t.documentos}</span><span>{bs(t.base)}</span><span>{bs(t.comision)}</span></article>)}
-  </div>
+  </div></details>
 }
 
 const emptyReglaForm: ComisionReglaInput = { tipo: 'MARCA', patron: '', accion: 'INCLUIR', porcentajeBp: 100, prioridad: 100, activo: true, nota: null, creadoPor: null }
@@ -168,6 +169,8 @@ function ReglasTab({ notify }: { notify: (message: string) => void }) {
   const [huerfanos, setHuerfanos] = useState<ComisionProductoHuerfano[]>([])
   const [huerfanosStatus, setHuerfanosStatus] = useState<'loading' | 'ready' | 'error'>('loading')
 
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const load = () => {
@@ -182,33 +185,35 @@ function ReglasTab({ notify }: { notify: (message: string) => void }) {
   }, [dates])
 
   const save = async () => {
-    if (!form || !form.patron.trim()) return
+    if (!form || !form.patron.trim() || saving) return
+    setSaving(true); setSaveError('')
     try {
       await (editingId ? comisionesService.updateRegla(editingId, form) : comisionesService.createRegla(form))
       notify(editingId ? 'Regla actualizada' : 'Regla creada')
       setForm(null); setEditingId(null); load()
-    } catch { notify('No se pudo guardar la regla') }
+    } catch { setSaveError('No se pudo guardar la regla. Revisa los datos e intenta nuevamente.') } finally { setSaving(false) }
   }
-  const editRegla = (r: ComisionRegla) => { setEditingId(r.id); setForm({ tipo: r.tipo, patron: r.patron, accion: r.accion, porcentajeBp: r.porcentajeBp, prioridad: r.prioridad, activo: r.activo, nota: r.nota, creadoPor: r.creadoPor }) }
+  const editRegla = (r: ComisionRegla) => { setSaveError(''); setEditingId(r.id); setForm({ tipo: r.tipo, patron: r.patron, accion: r.accion, porcentajeBp: r.porcentajeBp, prioridad: r.prioridad, activo: r.activo, nota: r.nota, creadoPor: r.creadoPor }) }
   const removeRegla = async (id: string) => { if (!confirm('¿Eliminar esta regla?')) return; try { await comisionesService.deleteRegla(id); notify('Regla eliminada'); load() } catch { notify('No se pudo eliminar') } }
   // Fase 2, 3.8: atajo desde un huérfano — precarga el formulario con MARCA=esa marca,
   // en vez de mandar al gerente a tipearla a mano en un formulario vacío.
-  const crearReglaParaMarca = (marca: string) => { setEditingId(null); setForm({ ...emptyReglaForm, tipo: 'MARCA', patron: marca }) }
+  const crearReglaParaMarca = (marca: string) => { setSaveError(''); setEditingId(null); setForm({ ...emptyReglaForm, tipo: 'MARCA', patron: marca }) }
 
   return <>
+    <div className="management-list-heading"><div><h2>Reglas de comisión</h2><p>Define qué productos participan y el porcentaje que les corresponde.</p></div></div>
     <div className="feature-toolbar">
-      <button className="secondary-button" onClick={() => { setEditingId(null); setForm(emptyReglaForm) }}><Plus size={14} /> Nueva regla</button>
+      <button className="secondary-button" onClick={() => { setSaveError(''); setEditingId(null); setForm(emptyReglaForm) }}><Plus size={14} /> Nueva regla</button>
     </div>
-    {form && <div className="modal-body form-grid">
+    {form && <Modal title={editingId ? 'Editar regla' : 'Nueva regla de comisión'} subtitle="Configura la coincidencia y su participación en las comisiones." className="commercial-modal commission-rule-modal" wide onClose={() => { if (!saving) setForm(null) }}><form id="commission-rule" className="modal-body" onSubmit={(e) => { e.preventDefault(); void save() }}><section className="commercial-section"><div className="commercial-section-heading"><div><h3>Coincidencia y cálculo</h3><p>El patrón se aplica al campo seleccionado.</p></div></div><div className="form-grid">
       <label>Tipo<select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as ComisionReglaInput['tipo'] })}><option value="MARCA">Marca</option><option value="NOMBRE">Nombre</option><option value="DESCRIPCION">Descripción (líneas personalizadas)</option></select></label>
       <label>Acción<select value={form.accion} onChange={(e) => setForm({ ...form, accion: e.target.value as ComisionReglaInput['accion'] })}><option value="INCLUIR">Incluir</option><option value="EXCLUIR">Excluir</option></select></label>
-      <label>Patrón<input value={form.patron} onChange={(e) => setForm({ ...form, patron: e.target.value })} placeholder={form.tipo === 'MARCA' ? 'Ej. ROARI' : form.tipo === 'DESCRIPCION' ? 'Ej. limpieza' : 'Ej. clip'} /></label>
-      <label>Porcentaje<input type="number" step="0.01" value={form.porcentajeBp / 100} onChange={(e) => setForm({ ...form, porcentajeBp: Math.round(Number(e.target.value) * 100) })} /></label>
-      <label>Prioridad<input type="number" value={form.prioridad} onChange={(e) => setForm({ ...form, prioridad: Number(e.target.value) })} /></label>
-      <label>Activa<input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} /></label>
-      <label className="full">Nota<input value={form.nota ?? ''} onChange={(e) => setForm({ ...form, nota: e.target.value || null })} /></label>
-      <div className="modal-actions"><button className="secondary-button" onClick={() => { setForm(null); setEditingId(null) }}>Cancelar</button><button className="primary-button" onClick={save}>Guardar</button></div>
-    </div>}
+      <label>Patrón *<input autoFocus required value={form.patron} onChange={(e) => setForm({ ...form, patron: e.target.value })} placeholder={form.tipo === 'MARCA' ? 'Ej. ROARI' : form.tipo === 'DESCRIPCION' ? 'Ej. limpieza' : 'Ej. clip'} /></label>
+      <label>Porcentaje (%)<input required min="0" max="100" disabled={form.accion === 'EXCLUIR'} type="number" step="0.01" value={form.porcentajeBp / 100} onChange={(e) => setForm({ ...form, porcentajeBp: Math.round(Number(e.target.value) * 100) })} /></label>
+      <label>Prioridad<input required type="number" value={form.prioridad} onChange={(e) => setForm({ ...form, prioridad: Number(e.target.value) })} /></label>
+      <label className="management-checkbox">Regla activa<input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} /></label>
+      <label className="full">Nota interna<input placeholder="Describe el motivo o alcance de esta regla" value={form.nota ?? ''} onChange={(e) => setForm({ ...form, nota: e.target.value || null })} /></label>
+      </div></section><p className="commission-rule-preview">{form.accion === 'EXCLUIR' ? 'Los productos que coincidan quedarán excluidos de comisión.' : 'Comisión del ' + pct(form.porcentajeBp) + ' para las coincidencias de esta regla.'}</p>{saveError && <p className="field-error" role="alert">{saveError}</p>}</form><footer className="modal-actions"><button className="secondary-button" disabled={saving} onClick={() => { setForm(null); setEditingId(null) }}>Cancelar</button><button form="commission-rule" type="submit" className="primary-button" disabled={saving || !form.patron.trim()}>{saving ? 'Guardando…' : 'Guardar regla'}</button></footer>
+    </Modal>}
     {status === 'loading' ? <FeatureState type="skeleton" text="Cargando reglas" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar las reglas" /> : <div className="feature-table reports-table reports-table-comision-reglas">
       <div className="table-head"><span>Tipo</span><span>Patrón</span><span>Acción</span><span>%</span><span>Prioridad</span><span>Coincidencias</span><span>Activa</span><span></span></div>
       {reglas.map((r) => {
@@ -222,7 +227,7 @@ function ReglasTab({ notify }: { notify: (message: string) => void }) {
     </div>}
 
     <section className="settings-section">
-      <header><h2>Productos huérfanos</h2><p>Productos con ventas en el período que no matchean ninguna regla</p></header>
+      <header><h2>Productos sin regla</h2><p>Revisa los productos vendidos en el período que todavía no coinciden con una regla.</p></header>
       <div className="feature-toolbar reports-toolbar">
         <label className="reports-date-label">Desde<input type="date" value={dates.from} onChange={(e) => setDates({ ...dates, from: e.target.value })} /></label>
         <label className="reports-date-label">Hasta<input type="date" value={dates.to} onChange={(e) => setDates({ ...dates, to: e.target.value })} /></label>
@@ -257,13 +262,13 @@ function VendedoresTab({ notify }: { notify: (message: string) => void }) {
   if (status === 'error') return <FeatureState type="error" text="No se pudieron cargar los vendedores" />
   return <>
     <div className="feature-toolbar">
-      <select value={seleccion} onChange={(e) => setSeleccion(e.target.value)}>
+      <select aria-label="Agregar vendedor" value={seleccion} onChange={(e) => setSeleccion(e.target.value)}>
         <option value="">Agregar vendedor…</option>
         {disponibles.map((p) => <option key={p.id} value={p.id}>{p.nombre} ({p.email})</option>)}
       </select>
       <button className="secondary-button" onClick={() => void agregar()} disabled={!seleccion}><Plus size={14} /> Agregar</button>
     </div>
-    <div className="feature-table reports-table">
+    <div className="feature-table reports-table commission-vendors-table">
       <div className="table-head"><span>Nombre</span><span>Email</span><span>Desde</span><span>Activo</span><span></span></div>
       {vendedores.map((v) => <article key={v.perfilId}><span>{v.nombre}</span><span>{v.email}</span><span>{fecha(v.desde)}</span><span className={`status-chip ${v.activo ? 'ok' : 'problem'}`}>{v.activo ? 'Sí' : 'No'}</span>
         <span><button className="secondary-button" onClick={() => void toggle(v.perfilId, !v.activo)}>{v.activo ? 'Dar de baja' : 'Reactivar'}</button></span>
@@ -276,6 +281,9 @@ function VendedoresTab({ notify }: { notify: (message: string) => void }) {
 // DEVENGADA sin liquidar, tilda ("seleccionar todos" incluido), ve el total y confirma.
 function LiquidarTab({ notify, vendedores }: { notify: (message: string) => void; vendedores: ComisionVendedor[] }) {
   const [vendedorEmail, setVendedorEmail] = useState('')
+  const [saving, setSaving] = useState(false)
+  const queueRequest = useRef(0)
+  const submitting = useRef(false)
   const [cola, setCola] = useState<ComisionDevengoRow[]>([])
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set())
@@ -284,10 +292,12 @@ function LiquidarTab({ notify, vendedores }: { notify: (message: string) => void
   const [historialStatus, setHistorialStatus] = useState<'loading' | 'ready' | 'error'>('loading')
 
   const cargarCola = (email: string) => {
+    const request = ++queueRequest.current
+    setSeleccion(new Set()); setCola([])
     if (!email) { setCola([]); setStatus('idle'); return }
     setStatus('loading')
     void comisionesService.getEquipo({ dates: { from: '2000-01-01', to: hoyLocal() }, filtros: { vendedorEmail: email, estado: 'DEVENGADA' } })
-      .then((rows) => { setCola(rows); setSeleccion(new Set()); setStatus('ready') }).catch(() => setStatus('error'))
+      .then((rows) => { if (request === queueRequest.current) { setCola(rows); setStatus('ready') } }).catch(() => { if (request === queueRequest.current) setStatus('error') })
   }
   const cargarHistorial = () => {
     setHistorialStatus('loading')
@@ -300,7 +310,8 @@ function LiquidarTab({ notify, vendedores }: { notify: (message: string) => void
   const totalSeleccionado = cola.filter((r) => seleccion.has(r.id)).reduce((sum, r) => sum + r.montoCents, 0)
 
   const confirmar = async () => {
-    if (!seleccion.size) return
+    if (!seleccion.size || status !== 'ready' || submitting.current) return
+    submitting.current = true; setSaving(true)
     try {
       await comisionesService.crearLiquidacion({
         vendedorEmail, devengoIds: [...seleccion],
@@ -310,7 +321,7 @@ function LiquidarTab({ notify, vendedores }: { notify: (message: string) => void
       notify('Liquidación registrada')
       setForm({ medioPago: '', referencia: '', comprobanteUrl: '', nota: '' })
       cargarCola(vendedorEmail); cargarHistorial()
-    } catch { notify('No se pudo registrar la liquidación') }
+    } catch { notify('No se pudo registrar la liquidación') } finally { submitting.current = false; setSaving(false) }
   }
   const anular = async (id: string) => {
     if (!confirm('¿Anular esta liquidación? Sus devengos vuelven a la cola.')) return
@@ -319,34 +330,34 @@ function LiquidarTab({ notify, vendedores }: { notify: (message: string) => void
   }
 
   return <>
+    <div className="management-list-heading"><div><h2>Preparar liquidación</h2><p>Elige un vendedor y selecciona las comisiones devengadas que vas a liquidar.</p></div></div>
     <div className="feature-toolbar">
-      <select value={vendedorEmail} onChange={(e) => { setVendedorEmail(e.target.value); cargarCola(e.target.value) }}>
+      <select aria-label="Vendedor a liquidar" disabled={saving} value={vendedorEmail} onChange={(e) => { setVendedorEmail(e.target.value); cargarCola(e.target.value) }}>
         <option value="">Elegí un vendedor…</option>
         {vendedores.map((v) => <option key={v.perfilId} value={v.email}>{v.nombre} ({v.email})</option>)}
       </select>
     </div>
+    {status === 'idle' && <FeatureState type="empty" text="Selecciona un vendedor para comenzar" />}
     {status === 'loading' && <FeatureState type="skeleton" text="Cargando devengos" />}
     {status === 'error' && <FeatureState type="error" text="No se pudo cargar la cola" />}
     {status === 'ready' && (!cola.length ? <FeatureState type="empty" text="Este vendedor no tiene devengos pendientes de liquidar" /> : <>
       <div className="feature-table reports-table reports-table-liquidar">
-        <div className="table-head"><span><input type="checkbox" checked={seleccion.size === cola.length} onChange={toggleTodos} /></span><span>Origen</span><span>Documento</span><span>Fecha</span><span>Comisión</span></div>
-        {cola.map((row) => <article key={row.id}><span><input type="checkbox" checked={seleccion.has(row.id)} onChange={() => toggleFila(row.id)} /></span>
+        <div className="table-head"><span><input aria-label="Seleccionar todas las comisiones" disabled={saving} type="checkbox" checked={seleccion.size === cola.length} onChange={toggleTodos} /></span><span>Origen</span><span>Documento</span><span>Fecha</span><span>Comisión</span></div>
+        {cola.map((row) => <article key={row.id}><span><input aria-label={`Seleccionar ${row.documentoId}`} disabled={saving} type="checkbox" checked={seleccion.has(row.id)} onChange={() => toggleFila(row.id)} /></span>
           <span>{row.origen === 'PEDIDO' ? 'Pedido' : 'Venta directa'}</span><span>{row.documentoId}</span><span>{fecha(row.fecha)}</span><span>{bs(row.montoCents)}</span>
         </article>)}
       </div>
-      <div className="modal-body form-grid">
+      <div className="commission-payment-panel"><div className="commission-payment-summary"><span>Importe seleccionado</span><strong>{bs(totalSeleccionado)}</strong><small>{seleccion.size} de {cola.length} documentos</small></div><fieldset disabled={saving} className="form-grid">
         <label>Medio de pago<input value={form.medioPago} onChange={(e) => setForm({ ...form, medioPago: e.target.value })} placeholder="Ej. TRANSFERENCIA" /></label>
         <label>Referencia<input value={form.referencia} onChange={(e) => setForm({ ...form, referencia: e.target.value })} /></label>
         <label className="full">Nota<input value={form.nota} onChange={(e) => setForm({ ...form, nota: e.target.value })} /></label>
-        <div className="modal-actions"><strong>Total a liquidar: {bs(totalSeleccionado)}</strong>
-          <button className="primary-button" disabled={!seleccion.size} onClick={confirmar}>Confirmar liquidación</button>
-        </div>
+        <div className="modal-actions full"><button className="primary-button" disabled={!seleccion.size || saving} onClick={confirmar}>{saving ? 'Registrando…' : 'Confirmar liquidación'}</button></div></fieldset>
       </div>
     </>)}
 
     <section className="settings-section">
       <header><h2>Historial de liquidaciones</h2></header>
-      {historialStatus === 'loading' ? <FeatureState type="skeleton" text="Cargando historial" /> : historialStatus === 'error' ? <FeatureState type="error" text="No se pudo cargar" /> : !historial.length ? <FeatureState type="empty" text="Todavía no se registraron liquidaciones" /> : <div className="feature-table reports-table">
+      {historialStatus === 'loading' ? <FeatureState type="skeleton" text="Cargando historial" /> : historialStatus === 'error' ? <FeatureState type="error" text="No se pudo cargar" /> : !historial.length ? <FeatureState type="empty" text="Todavía no se registraron liquidaciones" /> : <div className="feature-table reports-table commission-history-table">
         <div className="table-head"><span>Vendedor</span><span>Fecha</span><span>Monto</span><span>Medio</span><span>Estado</span><span></span></div>
         {historial.map((l) => <article key={l.id}><span>{l.vendedorEmail}</span><span>{fecha(l.creadoEn.slice(0, 10))}</span><span>{bs(l.montoTotalCents)}</span><span>{l.medioPago ?? '—'}</span>
           <span className={`status-chip ${l.anuladoEn ? 'problem' : 'ok'}`}>{l.anuladoEn ? 'Anulada' : 'Vigente'}</span>
@@ -369,29 +380,33 @@ export function ComisionesPage({ notify, vendedorEmail, esGerente }: { notify: (
   const [seguimiento, setSeguimiento] = useState<Record<string, ComisionSeguimiento>>({})
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [vendedores, setVendedores] = useState<ComisionVendedor[]>([])
+  const reportRequest = useRef(0)
   const dates: ReportDateRange = useMemo(() => ({ from, to }), [from, to])
 
   useEffect(() => { void comisionesService.listVendedores().then(setVendedores).catch(() => setVendedores([])) }, [])
   const nombrePorEmail = useMemo(() => Object.fromEntries(vendedores.map((v) => [v.email, v.nombre])), [vendedores])
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
+    const request = ++reportRequest.current
     if (tab !== 'mias' && tab !== 'equipo') return
+    if (!from || !to || from > to) { setStatus('error'); return }
     setStatus('loading')
     const filtros = { estado: filtroEstado || undefined, origen: filtroOrigen || undefined, vendedorEmail: tab === 'equipo' ? (filtroVendedor || undefined) : undefined }
     const load = tab === 'mias' ? comisionesService.getMisComisiones({ vendedorEmail, dates, filtros }) : comisionesService.getEquipo({ dates, filtros })
     void Promise.all([load, comisionesService.getSeguimiento(dates)])
       .then(([result, seg]) => {
+        if (request !== reportRequest.current) return
         setRows(result)
         setSeguimiento(Object.fromEntries(seg.map((s) => [s.devengoId, s])))
         setStatus('ready')
-      }).catch(() => setStatus('error'))
-  }
+      }).catch(() => { if (request === reportRequest.current) setStatus('error') })
+  }, [tab, from, to, filtroEstado, filtroOrigen, filtroVendedor, vendedorEmail, dates])
   // Fase 2: sigue sin realtime (fuera de alcance) — refetch al montar/cambiar filtros +
   // botón manual de refrescar.
-  useEffect(() => { void Promise.resolve().then(refresh) }, [tab, dates, vendedorEmail, filtroEstado, filtroOrigen, filtroVendedor])
+  useEffect(() => { void Promise.resolve().then(refresh); return () => { reportRequest.current += 1 } }, [refresh])
 
   const rowsFiltradas = filtroCliente.trim()
-    ? rows.filter((r) => (r.clienteNombre ?? '').toLowerCase().includes(filtroCliente.trim().toLowerCase()))
+    ? rows.filter((r) => coincideBusqueda([r.clienteNombre, r.documentoId, nombrePorEmail[r.vendedorEmail], r.vendedorEmail].filter(Boolean).join(' '), filtroCliente))
     : rows
 
   const exportCsv = () => {
@@ -408,36 +423,36 @@ export function ComisionesPage({ notify, vendedorEmail, esGerente }: { notify: (
     notify('CSV exportado')
   }
 
-  return <FeatureShell eyebrow="COMERCIAL" title="Comisiones" subtitle="Comisión por vendedor, sobre pedidos y ventas directas ya completados"
-    action={(tab === 'mias' || tab === 'equipo') ? <button className="secondary-button" onClick={exportCsv} disabled={!rowsFiltradas.length}><Download size={14} /> Exportar CSV</button> : undefined}>
-    <div className="feature-toolbar">
-      <button className={tab === 'mias' ? 'active' : ''} onClick={() => setTab('mias')}>Mis comisiones</button>
-      {esGerente && <button className={tab === 'equipo' ? 'active' : ''} onClick={() => setTab('equipo')}>Equipo</button>}
-      {esGerente && <button className={tab === 'liquidar' ? 'active' : ''} onClick={() => setTab('liquidar')}>Liquidar</button>}
-      {esGerente && <button className={tab === 'reglas' ? 'active' : ''} onClick={() => setTab('reglas')}>Reglas</button>}
-      {esGerente && <button className={tab === 'vendedores' ? 'active' : ''} onClick={() => setTab('vendedores')}>Vendedores</button>}
+  return <FeatureShell className="management-page commissions-page" eyebrow="GESTIÓN COMERCIAL" title="Comisiones" subtitle="Sigue cada comisión, revisa sus productos y organiza las liquidaciones."
+    action={(tab === 'mias' || tab === 'equipo') ? <button className="secondary-button" onClick={exportCsv} disabled={status !== 'ready' || !rowsFiltradas.length}><Download size={14} /> Exportar CSV</button> : undefined}>
+    <div className="commission-tabs" role="group" aria-label="Secciones de comisiones">
+      <button className={tab === 'mias' ? 'active' : ''} aria-pressed={tab === 'mias'} onClick={() => setTab('mias')}>Mis comisiones</button>
+      {esGerente && <button className={tab === 'equipo' ? 'active' : ''} aria-pressed={tab === 'equipo'} onClick={() => setTab('equipo')}>Equipo</button>}
+      {esGerente && <button className={tab === 'liquidar' ? 'active' : ''} aria-pressed={tab === 'liquidar'} onClick={() => setTab('liquidar')}>Liquidar</button>}
+      {esGerente && <button className={tab === 'reglas' ? 'active' : ''} aria-pressed={tab === 'reglas'} onClick={() => setTab('reglas')}>Reglas</button>}
+      {esGerente && <button className={tab === 'vendedores' ? 'active' : ''} aria-pressed={tab === 'vendedores'} onClick={() => setTab('vendedores')}>Vendedores</button>}
     </div>
 
     {(tab === 'mias' || tab === 'equipo') && <>
       <div className="feature-toolbar reports-toolbar">
         <label className="reports-date-label">Desde<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
         <label className="reports-date-label">Hasta<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
-        <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value as ComisionEstado | '')}>
+        <select aria-label="Estado de comisión" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value as ComisionEstado | '')}>
           <option value="">Todos los estados</option>
-          <option value="POTENCIAL">Potencial</option><option value="DEVENGADA">Devengada</option><option value="LIQUIDADA">Liquidada</option>
+          <option value="POTENCIAL">Potencial</option><option value="DEVENGADA">Devengada</option><option value="LIQUIDADA">Liquidada</option><option value="ANULADA">Anulada</option>
         </select>
-        <select value={filtroOrigen} onChange={(e) => setFiltroOrigen(e.target.value as ComisionOrigen | '')}>
+        <select aria-label="Origen del documento" value={filtroOrigen} onChange={(e) => setFiltroOrigen(e.target.value as ComisionOrigen | '')}>
           <option value="">Pedido y venta directa</option>
           <option value="PEDIDO">Pedido</option><option value="VTD">Venta directa</option>
         </select>
-        {tab === 'equipo' && <select value={filtroVendedor} onChange={(e) => setFiltroVendedor(e.target.value)}>
+        {tab === 'equipo' && <select aria-label="Filtrar vendedor" value={filtroVendedor} onChange={(e) => setFiltroVendedor(e.target.value)}>
           <option value="">Todos los vendedores</option>
           {vendedores.map((v) => <option key={v.perfilId} value={v.email}>{v.nombre}</option>)}
         </select>}
-        <label className="reports-date-label"><input placeholder="Buscar cliente…" value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} /></label>
-        <button className="secondary-button" onClick={refresh}><RefreshCw size={14} /> Refrescar</button>
+        <label className="reports-date-label"><input aria-label="Buscar cliente, documento o vendedor" placeholder="Cliente, documento o vendedor…" value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} /></label>
+        <button className="secondary-button" disabled={status === 'loading'} onClick={refresh}><RefreshCw size={14} /> Refrescar</button>
       </div>
-      {status === 'loading' ? <FeatureState type="skeleton" text="Cargando comisiones" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar las comisiones" /> : !rowsFiltradas.length ? <FeatureState type="empty" text="Sin comisiones para los filtros seleccionados" /> : tab === 'mias' ? <DevengoTable rows={rowsFiltradas} showVendedor={false} nombrePorEmail={nombrePorEmail} seguimiento={seguimiento} /> : <>
+      {status === 'loading' ? <FeatureState type="skeleton" text="Cargando comisiones" /> : status === 'error' ? <FeatureState type="error" text={from && to && from <= to ? "No se pudieron cargar las comisiones" : "Revisa las fechas: Desde debe ser anterior o igual a Hasta"} /> : !rowsFiltradas.length ? <FeatureState type="empty" text="Sin comisiones para los filtros seleccionados" /> : tab === 'mias' ? <DevengoTable rows={rowsFiltradas} showVendedor={false} nombrePorEmail={nombrePorEmail} seguimiento={seguimiento} /> : <>
         <EquipoTotales rows={rowsFiltradas} nombrePorEmail={nombrePorEmail} />
         <DevengoTable rows={rowsFiltradas} showVendedor nombrePorEmail={nombrePorEmail} seguimiento={seguimiento} />
       </>}

@@ -18,6 +18,9 @@ export interface VentaRow {
   totalCents: number
   sesionCajaId: string | null
   metodos: string
+  // Brief Caja-1 B1: VTA-2026-NNNNN / VTD-2026-NNNNN — null en ventas viejas, previas a
+  // la numeración (mismo fallback "#<id>" que SaleDetailModal ya usa).
+  numero: string | null
 }
 export interface ProductoVendidoRow {
   productoId: string

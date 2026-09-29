@@ -11,7 +11,7 @@ vi.mock('../../infrastructure/services', () => ({
   productRepository: { search: vi.fn().mockResolvedValue({ items: [], total: 0 }), getById: vi.fn().mockResolvedValue(null) },
   getStockByProduct: vi.fn().mockResolvedValue({}),
   listPresentations: vi.fn().mockResolvedValue([]),
-  listLineIdentifiers: vi.fn().mockResolvedValue({}),
+  listLineIdentifiers: vi.fn().mockResolvedValue({ p1: {} }),
   authSessionProvider: { getSession: vi.fn().mockResolvedValue(null) },
 }))
 vi.mock('../../infrastructure/supabase/ContactoCliente.supabase', () => ({
@@ -20,6 +20,7 @@ vi.mock('../../infrastructure/supabase/ContactoCliente.supabase', () => ({
 vi.mock('../../infrastructure/hermes/client', () => ({
   evaluarCredito: vi.fn().mockResolvedValue(undefined),
 }))
+vi.mock('../../config/featureFlags', () => ({ featureFlags: { supabase: false } }))
 
 afterEach(cleanup)
 
@@ -30,6 +31,7 @@ const baseQuote: QuoteDraft = {
   customerName: 'Cliente Uno',
   channel: 'mayoreo',
   status: 'draft',
+  conditionPago: 'CONTADO',
   validUntil: '',
   terms: '',
   notes: '',
@@ -57,6 +59,27 @@ describe('DraftOrderEditor — candado de doble envío', () => {
     })
 
     expect(onSave).toHaveBeenCalledTimes(1)
-    resolveSave()
+    await act(async () => { resolveSave() })
+  })
+
+  it('no permite crear un pedido sin cliente y muestra qué falta', async () => {
+    const onCreateOrder = vi.fn()
+    render(<DraftOrderEditor quote={{ ...baseQuote, customerId: '', customerName: '' }} onClose={() => {}} onSave={vi.fn()} onCreateOrder={onCreateOrder} />)
+    const button = await screen.findByRole('button', { name: 'Crear pedido' })
+    expect((button as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(button)
+    expect(onCreateOrder).not.toHaveBeenCalled()
+    expect(screen.getByText('Selecciona un cliente de la lista para asociar el documento.')).toBeTruthy()
+  })
+
+  it('confirma cantidad con Enter sin abrir el editor de línea y guarda el total actualizado', async () => {
+    const onSave = vi.fn()
+    render(<DraftOrderEditor quote={baseQuote} onClose={() => {}} onSave={onSave} />)
+    const quantity = await screen.findByRole('spinbutton', { name: 'Cantidad Producto 1' })
+    fireEvent.change(quantity, { target: { value: '3' } })
+    fireEvent.keyDown(quantity, { key: 'Enter' })
+    expect(screen.queryByRole('dialog', { name: 'Editar producto' })).toBeNull()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Guardar como cotización' })) })
+    expect(onSave.mock.calls[0][0].lines[0].quantity).toBe(3)
   })
 })

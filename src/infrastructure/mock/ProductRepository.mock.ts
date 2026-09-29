@@ -1,15 +1,15 @@
 import type { ProductRepository, Page, PageRequest } from '../../application/ports/repositories'
 import type { Product } from '../../types'
 import { products } from '../../data/products'
+import { cleanProductQuery, isExactProductCode, matchesProductQuery } from '../../domain/catalog/productSearch'
 
 export class MockProductRepository implements ProductRepository {
   async search(input: { query?: string; category?: string; active?: boolean; page: PageRequest }): Promise<Page<Product>> {
     const { query, category, page } = input
-    const normalized = (query ?? '').toLowerCase().trim()
     const filtered = products.filter((product) =>
-      (!normalized || `${product.nombre} ${product.sku}`.toLowerCase().includes(normalized)) &&
+      matchesProductQuery(product, query ?? '') &&
       (!category || category === 'Todos' || product.categoria === category)
-    )
+    ).sort((a, b) => Number(isExactProductCode(b, query ?? '')) - Number(isExactProductCode(a, query ?? '')))
     const start = (page.page - 1) * page.pageSize
     return { items: filtered.slice(start, start + page.pageSize), page: page.page, pageSize: page.pageSize, total: filtered.length }
   }
@@ -20,6 +20,12 @@ export class MockProductRepository implements ProductRepository {
 
   async findBySku(sku: string): Promise<Product | null> {
     return products.find((product) => product.sku === sku) ?? null
+  }
+
+  async resolveScannedCode(codigo: string): Promise<{ kind: 'found'; product: Product } | { kind: 'ambiguous'; productIds: number[] } | { kind: 'not_found' }> {
+    const matches = products.filter((product) => isExactProductCode(product, cleanProductQuery(codigo)))
+    if (matches.length > 1) return { kind: 'ambiguous', productIds: matches.map((product) => product.id) }
+    return matches[0] ? { kind: 'found', product: matches[0] } : { kind: 'not_found' }
   }
 }
 

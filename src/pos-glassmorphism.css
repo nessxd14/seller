@@ -10,6 +10,10 @@
   --glass-border: rgba(255, 255, 255, .72);
   --glass-shadow: 0 12px 34px rgba(48, 41, 30, .10);
   --glass-orange: linear-gradient(135deg, #f26b2b, #dc5519);
+  /* Brief hotkeys — Tarea 3b: color de acento reutilizado por la línea de carrito
+     seleccionada (ver pos-hotkeys.css). Alias de --orange para no introducir un
+     segundo valor de marca a mantener en paralelo. */
+  --pos-acento: var(--orange);
 }
 
 body {

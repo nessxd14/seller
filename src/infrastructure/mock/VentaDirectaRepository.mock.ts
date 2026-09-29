@@ -1,4 +1,5 @@
-import type { VentaDirectaRecord, VtdLine } from '../../application/shared/models'
+import type { CobrarVtdResultado, VentaDirectaRecord, VtdLine, VtdPorCobrar } from '../../application/shared/models'
+import type { SaleCheckoutPayment } from '../../application/ports/repositories'
 import { LocalStorageRepository } from './localStore'
 import { products } from '../../data/products'
 
@@ -54,6 +55,7 @@ export const ventaDirectaMockRepository = {
       discountCents,
       totalCents,
       paidCents,
+      cobroExigible: true,
       creadoPor: actor,
       creadoEn: now(),
       lines: buildLines(input.lines),
@@ -95,5 +97,41 @@ export const ventaDirectaMockRepository = {
     const existing = await store.get(id)
     if (!existing) throw new Error('Venta directa no encontrada')
     return store.save({ ...existing, estado: 'ANULADA' })
+  },
+  // Brief Caja VTD: réplica simple de v_vtd_por_cobrar — exigible, no anulado, sin pago.
+  async listPorCobrar(): Promise<VtdPorCobrar[]> {
+    const all = await store.list()
+    return all
+      .filter((v) => v.cobroExigible && v.estado !== 'ANULADA' && v.paidCents === 0)
+      .map((v) => ({
+        ventaId: v.id, numero: v.numero, estado: v.estado as 'ABIERTA' | 'COMPLETADA',
+        clienteId: v.customerId, clienteNombre: v.customerName, totalBs: v.totalCents / 100,
+        creadoPor: v.creadoPor, creadoEn: v.creadoEn, sesionCreacionId: v.sesionCajaId,
+      }))
+  },
+  // Réplica simple de cobrar_vtd: exige que la suma de pagos calce con el total exacto.
+  async cobrarVtd(input: { ventaIds: string[]; sesionCajaId: string; pagos: SaleCheckoutPayment[] }): Promise<CobrarVtdResultado> {
+    const ventas = await Promise.all(input.ventaIds.map((id) => store.get(id)))
+    const faltante = ventas.findIndex((v) => !v)
+    if (faltante !== -1) throw new Error(`Venta directa ${input.ventaIds[faltante]} no encontrada`)
+    const found = ventas as VentaDirectaRecord[]
+    const anulada = found.find((v) => v.estado === 'ANULADA')
+    if (anulada) throw new Error(`${anulada.numero} está anulada`)
+    const yaCobrada = found.find((v) => v.paidCents > 0)
+    if (yaCobrada) throw new Error(`${yaCobrada.numero} ya está cobrada`)
+    const totalCents = found.reduce((sum, v) => sum + v.totalCents, 0)
+    const pagosCents = input.pagos.reduce((sum, p) => sum + p.amountCents, 0)
+    if (pagosCents !== totalCents) throw new Error('El total de los pagos no coincide con el total a cobrar')
+    const recibidoCents = input.pagos.filter((p) => p.method === 'cash').reduce((sum, p) => sum + (p.receivedCents ?? p.amountCents), 0)
+    const efectivoCents = input.pagos.filter((p) => p.method === 'cash').reduce((sum, p) => sum + p.amountCents, 0)
+    for (const venta of found) await store.save({ ...venta, paidCents: venta.totalCents, modo: 'PRECOBRADO' })
+    return {
+      reintento: false,
+      sesionCajaId: input.sesionCajaId,
+      ventas: found.map((v) => ({ ventaId: v.id, numero: v.numero, totalBs: v.totalCents / 100, estado: v.estado })),
+      totalBs: totalCents / 100,
+      cambioBs: Math.max(0, recibidoCents - efectivoCents) / 100,
+      pendienteVerificacion: input.pagos.some((p) => p.method === 'qr' || p.method === 'transfer'),
+    }
   },
 }
