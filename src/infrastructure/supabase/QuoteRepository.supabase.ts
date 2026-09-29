@@ -68,6 +68,7 @@ interface CotizacionLineaRow {
   producto_id: number | null
   es_personalizado: boolean
   descripcion: string | null
+  unidad_medida?: string | null
   nota: string | null
   sucursal_origen_id: number | null
   cantidad_base: number | string
@@ -96,6 +97,7 @@ const lineaRowToWorkflowLine = (row: CotizacionLineaRow): WorkflowLine => ({
   discountBasisPoints: pctToBp(num(row.descuento_pct)),
   listPriceCents: row.precio_lista != null ? numericToCents(num(row.precio_lista)) : undefined,
   isCustomItem: row.es_personalizado,
+  unitOfMeasure: row.es_personalizado ? (row.unidad_medida ?? undefined) : undefined,
   note: row.nota ?? undefined,
   maskName: !row.es_personalizado ? (row.descripcion ?? undefined) : undefined,
   sourceLocation: row.sucursal_origen_id != null ? sucursalIdToLocation(row.sucursal_origen_id) : undefined,
@@ -145,6 +147,7 @@ export const buildLineasJsonb = (lines: WorkflowLine[], channel: QuoteDraft['cha
       return {
         es_personalizado: true,
         descripcion: line.name,
+        unidad_medida: line.unitOfMeasure ?? null,
         cantidad_base: line.quantity,
         precio_unitario: centsToNumeric(line.unitPriceCents),
         descuento_pct: bpToPct(line.discountBasisPoints),

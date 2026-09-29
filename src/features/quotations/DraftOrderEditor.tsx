@@ -17,6 +17,8 @@ import { useBorrador, borradorKey } from '../../hooks/useBorrador'
 import { BorradorBanner } from '../../components/BorradorBanner'
 import { EditQuoteLineModal } from './EditQuoteLineModal'
 import { coincideBusqueda } from '../../domain/customers/textSearch'
+import { formatQtyWithUnit, normalizeUnit } from '../../domain/sales/unitOfMeasure'
+import { UnitOfMeasureField } from '../../components/UnitOfMeasureField'
 import { requiereCotizacionOrigen } from '../../domain/quotations/requiereCotizacionOrigen'
 import { ProductQuickAdd } from '../../components/ProductQuickAdd'
 import { AmbiguousScanPicker } from '../../components/AmbiguousScanPicker'
@@ -113,7 +115,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // TAREA 4 — custom/personalizado item capture modal state. `customModalForm` holds
   // the in-progress (not-yet-confirmed) form fields; cancelling only discards THIS,
   // never items already committed to value.lines via a previous "Agregar otro" round.
-  const emptyCustomForm = { descripcion: '', cantidad: 1, precio: 0, nota: '' }
+  const emptyCustomForm = { descripcion: '', cantidad: 1, precio: 0, nota: '', unidadMedida: 'UNIDAD' }
   const [customModalOpen, setCustomModalOpen] = useState(false)
   const [customModalForm, setCustomModalForm] = useState(emptyCustomForm)
   const [customModalEditingId, setCustomModalEditingId] = useState<string | null>(null)
@@ -293,7 +295,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   }
 
   const openEditCustomModal = (line: WorkflowLine) => {
-    setCustomModalForm({ descripcion: line.name, cantidad: line.quantity, precio: line.unitPriceCents / 100, nota: line.note ?? '' })
+    setCustomModalForm({ descripcion: line.name, cantidad: line.quantity, precio: line.unitPriceCents / 100, nota: line.note ?? '', unidadMedida: line.unitOfMeasure ?? '' })
     setCustomModalEditingId(line.id)
     setCustomModalAddAnother(false)
     setCustomModalCount(0)
@@ -310,6 +312,8 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         quantity: Math.max(1, customModalForm.cantidad),
         unitPriceCents: Math.max(0, Math.round(customModalForm.precio * 100)),
         note: customModalForm.nota,
+        // Fila histórica sin unidad: si el campo sigue vacío no se inventa 'UNIDAD'.
+        unitOfMeasure: customModalForm.unidadMedida.trim() ? normalizeUnit(customModalForm.unidadMedida) : undefined,
       })
       setCustomModalOpen(false)
       return
@@ -323,6 +327,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       unitPriceCents: Math.max(0, Math.round(customModalForm.precio * 100)),
       discountBasisPoints: 0,
       isCustomItem: true,
+      unitOfMeasure: normalizeUnit(customModalForm.unidadMedida),
       note: customModalForm.nota,
     }
     setValue((v) => ({ ...v, lines: [...v.lines, newLine] }))
@@ -668,7 +673,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
               </div>
               <div className="dl-r2">
                 <span className="dl-meta">
-                  <small className="dl-badge">A pedido · {fmtQty(line.quantity)} uds.</small>
+                  <small className="dl-badge">A pedido · {line.unitOfMeasure ? formatQtyWithUnit(line.quantity, line.unitOfMeasure) : `${fmtQty(line.quantity)} uds.`}</small>
                   Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u
                   {line.note && ` · ${line.note}`}
                 </span>
@@ -784,9 +789,11 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
 // otro ítem" keeps the modal open, resets the form, refocuses descripción, and
 // bumps the running "N ítems agregados" counter — all scoped to this one
 // continuous open-modal session (reset whenever the modal is freshly opened).
+type CustomForm = { descripcion: string; cantidad: number; precio: number; nota: string; unidadMedida: string }
+
 function CustomItemModal({ form, setForm, editing, addAnother, setAddAnother, count, descripcionRef, onClose, onConfirm }: {
-  form: { descripcion: string; cantidad: number; precio: number; nota: string }
-  setForm: (updater: (prev: { descripcion: string; cantidad: number; precio: number; nota: string }) => { descripcion: string; cantidad: number; precio: number; nota: string }) => void
+  form: CustomForm
+  setForm: (updater: (prev: CustomForm) => CustomForm) => void
   editing: boolean
   addAnother: boolean
   setAddAnother: (value: boolean) => void
@@ -801,6 +808,7 @@ function CustomItemModal({ form, setForm, editing, addAnother, setAddAnother, co
         <div className="form-grid">
           <label className="full">Descripción<input ref={descripcionRef} autoFocus placeholder="¿Qué necesita el cliente?" value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} /></label>
           <label>Cantidad<NumberField min={1} allowDecimals={false} value={form.cantidad} onCommit={(cantidad) => setForm((f) => ({ ...f, cantidad }))} /></label>
+          <label>Unidad de medida<UnitOfMeasureField value={form.unidadMedida} emptyAllowed={editing} onChange={(unidadMedida) => setForm((f) => ({ ...f, unidadMedida }))} /></label>
           <label>Precio unitario (Bs)<NumberField min={0} value={form.precio} onCommit={(precio) => setForm((f) => ({ ...f, precio }))} /></label>
           <label className="full">Nota<input placeholder="Ej. comprar a proveedor X" value={form.nota} onChange={(e) => setForm((f) => ({ ...f, nota: e.target.value }))} /></label>
         </div>

@@ -12,6 +12,7 @@ import { DocQr } from './DocQr'
 import { featureFlags } from '../config/featureFlags'
 import { resolveNombrePorEmail } from '../infrastructure/supabase/PerfilRepository.supabase'
 import { readDefaultDocPrintFormat, type DocPrintFormat } from './docPrintFormat'
+import { formatQtyWithUnit } from '../domain/sales/unitOfMeasure'
 
 export interface ExportableDoc {
   number: string
@@ -327,7 +328,7 @@ function CotizacionDoc({ doc, vistaCliente, customerDoc, asesorNombre, identifie
               <thead><tr><th>Descripción</th><th>Cant</th><th>P/U</th><th>Total</th></tr></thead>
               <tbody>
                 {customLines.map((line) => (
-                  <tr key={line.id}><td>{line.name}<LineIdentifiersRow isCustomItem /></td><td>{line.quantity}</td><td>{formatMoney(money(line.unitPriceCents))}</td><td>{formatMoney(money(lineTotalCents(line)))}</td></tr>
+                  <tr key={line.id}><td>{line.name}<LineIdentifiersRow isCustomItem /></td><td>{formatQtyWithUnit(line.quantity, line.unitOfMeasure)}</td><td>{formatMoney(money(line.unitPriceCents))}</td><td>{formatMoney(money(lineTotalCents(line)))}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -423,7 +424,7 @@ function PedidoDoc({ doc, customerDoc, asesorNombre, identifiersByProduct }: {
               <thead><tr><th>Descripción</th><th>Cant</th><th>P/U</th><th>Total</th><th>Estado</th></tr></thead>
               <tbody>
                 {customLines.map((line) => (
-                  <tr key={line.id}><td>{line.name}<LineIdentifiersRow isCustomItem /></td><td>{line.quantity}</td><td>{formatMoney(money(line.unitPriceCents))}</td><td>{formatMoney(money(lineTotalCents(line)))}</td><td>{lineaEstadoPedido(line)}</td></tr>
+                  <tr key={line.id}><td>{line.name}<LineIdentifiersRow isCustomItem /></td><td>{formatQtyWithUnit(line.quantity, line.unitOfMeasure)}</td><td>{formatMoney(money(line.unitPriceCents))}</td><td>{formatMoney(money(lineTotalCents(line)))}</td><td>{lineaEstadoPedido(line)}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -643,7 +644,7 @@ function CotizacionRoll({ doc, lines, customerDoc, asesorNombre, subtotalCents }
         return (
           <div className="doc-roll-item" key={line.id}>
             <div className="doc-roll-line">{index + 1}. {displayName.toUpperCase()}</div>
-            <div className="doc-roll-line">{line.presentacionNombre ?? 'Unidad'} × {line.quantity}</div>
+            <div className="doc-roll-line">{line.isCustomItem ? `${formatQtyWithUnit(line.quantity, line.unitOfMeasure)}` : `${line.presentacionNombre ?? 'Unidad'} × ${line.quantity}`}</div>
             <div className="doc-roll-line">P/U {formatMoney(money(line.unitPriceCents))} · Desc {(line.discountBasisPoints / 100).toFixed(1)}%</div>
             <div className="doc-roll-line"><b>Total {formatMoney(money(lineTotalCents(line)))}</b></div>
             <div className="doc-roll-rule" />

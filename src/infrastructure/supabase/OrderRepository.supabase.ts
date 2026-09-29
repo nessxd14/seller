@@ -50,6 +50,7 @@ interface PedidoLineaRow {
   sucursal_origen_id: number | null
   es_personalizado: boolean
   descripcion: string | null
+  unidad_medida?: string | null
   nota: string | null
   precio_lista: number | string | null
   precio_unitario: number | string
@@ -127,6 +128,7 @@ const lineaRowToOrderLine = (row: PedidoLineaRow): OrderLine => {
     discountBasisPoints: bpToPctSafe(num(row.descuento_pct)),
     listPriceCents: row.precio_lista != null ? numericToCents(num(row.precio_lista)) : undefined,
     isCustomItem: row.es_personalizado || row.estado === 'ESPECIAL',
+    unitOfMeasure: row.es_personalizado ? (row.unidad_medida ?? undefined) : undefined,
     note: row.nota ?? undefined,
     sourceLocation: row.sucursal_origen_id != null ? sucursalIdToLocation(row.sucursal_origen_id) : undefined,
     priceOverridden: row.precio_modificado,
@@ -226,6 +228,7 @@ export const buildLineasJsonb = (lines: WorkflowLine[], channel: OrderView['chan
       return {
         es_personalizado: true,
         descripcion: line.name,
+        unidad_medida: line.unitOfMeasure ?? null,
         cantidad_base: line.quantity,
         precio_unitario: centsToNumeric(line.unitPriceCents),
         descuento_pct: bpToPct(line.discountBasisPoints),

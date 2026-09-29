@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient'
-import type { MutationContext, SalePortRecord, SaleRepository } from '../../application/ports/repositories'
+import type { MutationContext, SaleCheckoutLine, SalePortRecord, SaleRepository } from '../../application/ports/repositories'
 import { NotFoundError } from '../../application/errors/AppError'
 import { centsToNumeric, locationToSucursalId, methodToMetodoPago, numericToCents } from './mappers'
 import { getOpenSession } from './CashRepository.supabase'
@@ -50,14 +50,14 @@ export async function getTicket(id: string): Promise<VentaTicketRecord | null> {
   if (headerError) throw headerError
   if (!header) return null
   const [{ data: lineas, error: lineasError }, { data: pagos, error: pagosError }] = await Promise.all([
-    supabase.from('venta_linea').select('id, cantidad, cantidad_presentacion, precio_unitario, producto(nombre, sku_interno), presentacion(nombre)').eq('venta_id', numericId),
+    supabase.from('venta_linea').select('id, cantidad, cantidad_presentacion, precio_unitario, es_personalizado, descripcion, unidad_medida, producto(nombre, sku_interno), presentacion(nombre)').eq('venta_id', numericId),
     supabase.from('venta_pago').select('metodo, monto, recibido, estado_verificacion').eq('venta_id', numericId),
   ])
   if (lineasError) throw lineasError
   if (pagosError) throw pagosError
 
   type HeaderRow = { id: number; numero: string | null; estado: string; creado_en: string; creado_por: string | null; subtotal: number | string; descuento_total: number | string; total: number | string; cliente?: { nombre: string; documento: string } | null; sesion_caja?: { caja?: { nombre: string } | null } | null }
-  type LineaRow = { id: number; cantidad: number | string; cantidad_presentacion: number | string | null; precio_unitario: number | string; producto?: { nombre: string; sku_interno: string | null } | null; presentacion?: { nombre: string } | null }
+  type LineaRow = { id: number; cantidad: number | string; cantidad_presentacion: number | string | null; precio_unitario: number | string; es_personalizado?: boolean; descripcion?: string | null; unidad_medida?: string | null; producto?: { nombre: string; sku_interno: string | null } | null; presentacion?: { nombre: string } | null }
   type PagoRow = { metodo: string; monto: number | string; recibido: number | string | null; estado_verificacion: string }
   const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
   const h = header as unknown as HeaderRow
@@ -76,10 +76,10 @@ export async function getTicket(id: string): Promise<VentaTicketRecord | null> {
       const precioUnitarioBs = num(l.precio_unitario)
       return {
         id: String(l.id),
-        nombre: l.producto?.nombre ?? '',
+        nombre: l.producto?.nombre ?? l.descripcion ?? '',
         sku: l.producto?.sku_interno ?? '',
         cantidad,
-        presentacionNombre: l.presentacion?.nombre,
+        presentacionNombre: l.presentacion?.nombre ?? l.unidad_medida ?? undefined,
         precioUnitarioBs,
         subtotalBs: Math.round(cantidad * precioUnitarioBs * 100) / 100,
       }
@@ -90,6 +90,34 @@ export async function getTicket(id: string): Promise<VentaTicketRecord | null> {
     pagos: ((pagos ?? []) as PagoRow[]).map((p) => ({ metodo: p.metodo, montoBs: num(p.monto), recibidoBs: p.recibido != null ? num(p.recibido) : undefined, estadoVerificacion: p.estado_verificacion })),
   }
 }
+
+// Líneas de p_lineas de registrar_venta. Un ítem personalizado va sin producto_id (el id
+// negativo del carrito nunca debe llegar al RPC, que rechaza cualquier producto_id en una
+// línea personalizada), sin presentacion_id ni sucursal_origen_id: no mueve stock.
+export const buildVentaLineas = (lines: SaleCheckoutLine[]) => lines.map((line) => {
+  if (line.isCustomItem) {
+    return {
+      es_personalizado: true,
+      descripcion: line.description ?? '',
+      unidad_medida: line.unitOfMeasure ?? 'UNIDAD',
+      cantidad_base: line.quantity,
+      precio_unitario: centsToNumeric(line.unitPriceCents),
+      ...(line.listPriceCents != null ? { precio_lista: centsToNumeric(line.listPriceCents) } : {}),
+    }
+  }
+  return {
+    producto_id: Number(line.productId),
+    ...(line.presentacionId != null
+      ? { presentacion_id: line.presentacionId, cantidad_presentacion: line.quantity }
+      : { cantidad_base: line.quantity }),
+    precio_unitario: centsToNumeric(line.unitPriceCents),
+    ...(line.listPriceCents != null ? { precio_lista: centsToNumeric(line.listPriceCents) } : {}),
+    // Optional: forces this line's stock to be taken from the chosen sucursal — registrar_venta
+    // rejects with a clear "Stock insuficiente" error if it doesn't cover the quantity. Absent
+    // means the RPC falls back to its automatic Tienda(2)-then-Almacén(1) resolution.
+    ...(line.sourceLocation ? { sucursal_origen_id: locationToSucursalId(line.sourceLocation) } : {}),
+  }
+})
 
 export class SupabaseSaleRepository implements SaleRepository {
   async getById(id: string): Promise<SalePortRecord | null> {
@@ -123,7 +151,7 @@ export class SupabaseSaleRepository implements SaleRepository {
   }
 
   async checkout(
-    input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number; receivedCents?: number }>; cashSessionId: string; customerId?: string; discountCents?: number },
+    input: { lines: SaleCheckoutLine[]; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number; receivedCents?: number }>; cashSessionId: string; customerId?: string; discountCents?: number },
     context: MutationContext & { idempotencyKey: string }
   ) {
     const actor = context.actorId ?? 'pos'
@@ -131,18 +159,9 @@ export class SupabaseSaleRepository implements SaleRepository {
     // presentation is active, registrar_venta expects presentacion_id + cantidad_presentacion
     // (it resolves factor_unidad_base itself and prices per presentation unit); otherwise
     // cantidad_base — line.quantity is already in whichever unit is active (see PaymentModal).
-    const lineas = input.lines.map((line) => ({
-      producto_id: Number(line.productId),
-      ...(line.presentacionId != null
-        ? { presentacion_id: line.presentacionId, cantidad_presentacion: line.quantity }
-        : { cantidad_base: line.quantity }),
-      precio_unitario: centsToNumeric(line.unitPriceCents),
-      ...(line.listPriceCents != null ? { precio_lista: centsToNumeric(line.listPriceCents) } : {}),
-      // Optional: forces this line's stock to be taken from the chosen sucursal — registrar_venta
-      // rejects with a clear "Stock insuficiente" error if it doesn't cover the quantity. Absent
-      // means the RPC falls back to its automatic Tienda(2)-then-Almacén(1) resolution.
-      ...(line.sourceLocation ? { sucursal_origen_id: locationToSucursalId(line.sourceLocation) } : {}),
-    }))
+    // Cuando hay una presentación no base, registrar_venta espera presentacion_id +
+    // cantidad_presentacion (ver buildVentaLineas); si no, cantidad_base.
+    const lineas = buildVentaLineas(input.lines)
     // Brief Caja-1 A2: "recibido" solo entra en el pago si vino en el input — mandar la
     // clave siempre (incluso undefined) confundiría "no se cobró en efectivo" con "no
     // se registró cuánto entregó", así que solo se agrega cuando hay un valor real.

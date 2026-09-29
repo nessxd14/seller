@@ -14,6 +14,10 @@ export interface CheckoutFingerprintInput {
     unitPriceCents: number
     presentacionId?: number
     sourceLocation?: string
+    // Ítems personalizados: productId es '' para todos, así que se distinguen por texto.
+    isCustomItem?: boolean
+    description?: string
+    unitOfMeasure?: string
   }>
   discountCents: number
   customerId?: string
@@ -43,7 +47,7 @@ const cyrb53 = (texto: string): string => {
 
 export const checkoutFingerprint = (input: CheckoutFingerprintInput): string => {
   const lineas = input.lines
-    .map((l) => [l.productId, l.quantity, l.unitPriceCents, l.presentacionId ?? '', l.sourceLocation ?? ''].join('|'))
+    .map((l) => [l.isCustomItem ? `custom:${l.description ?? ''}:${l.unitOfMeasure ?? ''}` : l.productId, l.quantity, l.unitPriceCents, l.presentacionId ?? '', l.sourceLocation ?? ''].join('|'))
     .sort()
     .join(';')
   // El orden de los métodos de pago no cambia lo que se cobra (mismo criterio que las

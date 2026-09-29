@@ -178,7 +178,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
 
   return <article ref={articleRef} className={`cart-item ${isSelected ? 'cart-item-selected' : ''}`} onClick={select}><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} /><div className="cart-item-main"><div className="cart-title"><div>
       <h4 title={item.nombre}>{item.nombre}</h4>
-      {item.isCustomItem && <span className="custom-item-badge">Personalizado — solo cotización</span>}
+      {item.isCustomItem && <span className="custom-item-badge">Personalizado</span>}
       <div className="cart-price-row">
         {editing
           ? <input
@@ -218,6 +218,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
           en el catálogo, no tiene sentido elegir sucursal ni unidad de venta para algo
           que no existe ahí. */}
       {!item.isCustomItem && onSetOrigin && <OriginPin value={item.ubicacion} options={buildOriginOptions(originStock)} onChange={onSetOrigin} ariaLabel={`Origen ${item.nombre}`} />}
+      {item.isCustomItem && <span className="cart-unidad-plain">{item.unidadMedida ?? 'UNIDAD'}</span>}
       {!item.isCustomItem && <select
         aria-label={`Presentación ${item.nombre}`}
         className="cart-presentacion-select"
