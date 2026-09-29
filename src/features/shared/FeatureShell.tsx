@@ -1,17 +1,17 @@
 import { AlertCircle, LoaderCircle, Search } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-export function FeatureShell({ eyebrow, title, subtitle, action, children }: { eyebrow: string; title: string; subtitle: string; action?: ReactNode; children: ReactNode }) {
-  return <main className="feature-page"><header className="feature-header"><div><span>{eyebrow}</span><h1>{title}</h1><p>{subtitle}</p></div>{action}</header>{children}</main>
+export function FeatureShell({ eyebrow, title, subtitle, action, children, className = '' }: { eyebrow: string; title: string; subtitle: string; action?: ReactNode; children: ReactNode; className?: string }) {
+  return <main className={`feature-page ${className}`}><header className="feature-header"><div><span>{eyebrow}</span><h1>{title}</h1><p>{subtitle}</p></div>{action}</header>{children}</main>
 }
 
 export function FeatureToolbar({ query, onQuery, placeholder, children }: { query: string; onQuery: (value: string) => void; placeholder: string; children?: ReactNode }) {
-  return <div className="feature-toolbar"><label><Search /><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder={placeholder} /></label>{children}</div>
+  return <div className="feature-toolbar"><label><Search /><input aria-label={placeholder} value={query} onChange={(event) => onQuery(event.target.value)} placeholder={placeholder} /></label>{children}</div>
 }
 
 export function FeatureState({ type, text, rows = 4 }: { type: 'loading' | 'skeleton' | 'empty' | 'error' | 'no-results'; text: string; rows?: number }) {
   if (type === 'skeleton') return <div className="feature-state-skeleton" aria-busy="true" aria-label={text}>{Array.from({ length: rows }).map((_, i) => <div key={i} className="skeleton-row"><span className="skeleton-block" /><span className="skeleton-block" /><span className="skeleton-block short" /></div>)}</div>
-  return <div className={`feature-state ${type}`}>{type === 'loading' ? <LoaderCircle className="spin" /> : <AlertCircle />}<strong>{text}</strong><span>{type === 'error' ? 'Intenta nuevamente.' : type === 'no-results' ? 'Ajusta la búsqueda o los filtros.' : 'Los datos mock aparecerán aquí.'}</span></div>
+  return <div className={`feature-state ${type}`}>{type === 'loading' ? <LoaderCircle className="spin" /> : <AlertCircle />}<strong>{text}</strong><span>{type === 'error' ? 'Intenta nuevamente.' : type === 'no-results' ? 'Ajusta la búsqueda o los filtros.' : type === 'loading' ? 'Espera un momento.' : 'Los registros aparecerán aquí cuando estén disponibles.'}</span></div>
 }
 
 export const statusLabel: Record<string, string> = { draft: 'Borrador', sent: 'Enviada', negotiating: 'Negociando', approved: 'Aprobada', rejected: 'Rechazada', expired: 'Vencida', converted: 'Convertida', confirmed: 'Confirmado', awaiting_stock: 'Esperando stock', reserved: 'Reservado', preparing: 'Preparando', ready: 'Listo', dispatched: 'Despachado', delivered: 'Entregado', cancelled: 'Cancelado' }

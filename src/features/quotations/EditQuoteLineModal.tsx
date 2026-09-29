@@ -93,8 +93,10 @@ export function EditQuoteLineModal({ line, presentations, stock, identifiers, ba
   }
 
   return (
-    <Modal title="Editar línea" subtitle={line.name} onClose={onClose}>
-      <div className="modal-body form-grid edit-quote-line-modal">
+    <Modal title="Editar producto" subtitle={line.name} onClose={onClose} className="commercial-modal">
+      <div className="modal-body edit-quote-line-modal">
+        <section className="commercial-section"><div className="commercial-section-heading"><div><h3>Cantidad y precio</h3><p>Ajusta la presentación y el importe de esta línea.</p></div></div>
+        <div className="form-grid">
         <label>Cantidad<NumberField value={form.cantidad} min={1} allowDecimals={false} onCommit={(cantidad) => setForm((f) => ({ ...f, cantidad }))} /></label>
         {presentations.length > 0 && (
           <label>Presentación
@@ -106,6 +108,9 @@ export function EditQuoteLineModal({ line, presentations, stock, identifiers, ba
         <label>Precio unitario (Bs)<NumberField value={form.precioUnitario} min={0} step={0.5} onCommit={(precioUnitario) => setForm((f) => ({ ...f, precioUnitario }))} /></label>
         <div className="full"><PrecioSugeridoHint sugerido={precioSugerido} unitPriceCents={Math.round(form.precioUnitario * 100)} onApply={(precioBs) => setForm((f) => ({ ...f, precioUnitario: precioBs }))} /></div>
         <label>Descuento (%)<NumberField value={form.descuento} min={0} max={100} onCommit={(descuento) => setForm((f) => ({ ...f, descuento }))} /></label>
+        {precioSugerido && <div className="full"><PrecioSugeridoHint sugerido={precioSugerido} unitPriceCents={Math.round(form.precioUnitario * 100)} onApply={(precioBs) => setForm((f) => ({ ...f, precioUnitario: precioBs }))} /></div>}
+        </div></section>
+        <section className="commercial-section"><div className="commercial-section-heading"><div><h3>Entrega y presentación al cliente</h3><p>El nombre de catálogo se conserva como referencia.</p></div></div><div className="form-grid">
         <label>Nombre para el cliente<input value={form.maskName} placeholder={line.name} onChange={(e) => setForm((f) => ({ ...f, maskName: e.target.value }))} /></label>
         <label>Origen
           <select value={form.origen} onChange={(e) => setForm((f) => ({ ...f, origen: e.target.value as OriginLocation }))}>
@@ -116,8 +121,8 @@ export function EditQuoteLineModal({ line, presentations, stock, identifiers, ba
             ))}
           </select>
         </label>
-        <label className="full">Observación<textarea rows={2} value={form.observacion} onChange={(e) => setForm((f) => ({ ...f, observacion: e.target.value }))} /></label>
-
+        <label className="full">Observación<textarea rows={2} placeholder="Indicaciones específicas para este producto" value={form.observacion} onChange={(e) => setForm((f) => ({ ...f, observacion: e.target.value }))} /></label>
+        </div></section>
         <div className="full edit-quote-line-info">
           <div><span>Catálogo</span><strong>{line.name}</strong></div>
           <div><span>SKU</span><strong>{line.sku || '—'}</strong></div>

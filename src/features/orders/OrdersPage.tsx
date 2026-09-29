@@ -363,7 +363,8 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       })}
     </div>}
     {selectedLoading && <Modal title="Cargando pedido" onClose={() => navigate('/')}><FeatureState type="skeleton" text="Cargando pedido" /></Modal>}
-    {selected && <Modal title={selected.number} subtitle={selected.customerName} onClose={() => navigate('/')}><div className="modal-body order-detail">
+    {selected && <Modal title={`Pedido ${selected.number}`} subtitle={selected.customerName} onClose={() => navigate('/')} wide className="commercial-modal product-detail-modal"><div className="modal-body order-detail">
+      <div className="order-overview"><div><span>Total del pedido vigente</span><strong>{formatMoney(money(orderTotal(selected)))}</strong></div><div><span>Ítems del pedido vigente</span><strong>{selected.lines.filter((line) => !lineaInactiva(line.lineStatus)).length}</strong></div><div><span>Anticipos registrados</span><strong>{formatMoney(money(advances.reduce((sum, advance) => sum + advance.amountCents, 0)))}</strong></div></div>
       <div className="panel-top-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={featureFlags.supabase && !sessionId} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button>{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && <button className="secondary-button" onClick={()=>setAddItemsOpen(true)}><PackagePlus /> Agregar ítems</button>}</div>
       <div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong>{statusLabel[selected.status]}</strong></div></div>
       {selected.conditionPago && <div className="autoria-row"><span className="channel-chip">{condicionPagoLabel[selected.conditionPago]}</span>{selected.medioPago && <span className="channel-chip">{metodoPagoLabel[selected.medioPago] ?? selected.medioPago}</span>}</div>}
@@ -391,6 +392,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       {!viewingCurrent && (
         <p className="version-readonly-banner">Estás viendo una versión anterior — no es la vigente, solo lectura. <button type="button" onClick={() => setViewingVersionIndex(null)}>Volver a la vigente</button></p>
       )}
+      <h3>{viewingCurrent ? 'Productos y preparación' : 'Productos de esta versión'}</h3>
       {viewingCurrent ? <>
         {selected.lines.filter((line) => !line.isCustomItem).map((line) => <article key={line.id} className={lineaInactiva(line.lineStatus) ? 'order-line-inactive' : ''}><header><div><strong>{line.name}</strong><small>{line.sku}{line.sourceLocation ? ` · Origen: ${line.sourceLocation}` : ''}</small>{lineaInactiva(line.lineStatus) && <span className="order-line-inactive-badge">{lineaEstadoLabel[line.lineStatus!]}</span>}{line.lineStatus === 'CAMBIADA' && line.replacedByName && <small className="order-line-replacement">→ ahora: {line.replacedByName} × {line.replacedByQuantity}</small>}</div><span>{line.prepared}/{line.quantity} preparadas</span></header><div className="allocation-bars">{line.allocations.map((allocation) => <div key={allocation.location}><span>{allocation.location}</span><b>{allocation.quantity} uds.</b></div>)}</div></article>)}
         {selected.lines.some((line) => line.isCustomItem) && <><h3>Ítems especiales / a pedido</h3>{selected.lines.filter((line) => line.isCustomItem).map((line) => <article key={line.id} className={lineaInactiva(line.lineStatus) ? 'order-line-inactive' : ''}><header><div><strong>{line.name}</strong><small>Personalizado</small>{lineaInactiva(line.lineStatus) && <span className="order-line-inactive-badge">{lineaEstadoLabel[line.lineStatus!]}</span>}{line.lineStatus === 'CAMBIADA' && line.replacedByName && <small className="order-line-replacement">→ ahora: {line.replacedByName} × {line.replacedByQuantity}</small>}</div><span>{line.prepared}/{line.quantity} preparadas</span></header></article>)}</>}
@@ -418,7 +420,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       )}
       <h3>Historial</h3><div className="timeline">{selected.events.map((event,index) => <div key={`${event.at}-${index}`}><CheckCircle2 /><span><strong>{event.label}</strong><small>{event.at} · {event.detail}</small></span></div>)}</div>
       {<><h3>Anticipos</h3>{advances.length ? <div className="timeline">{advances.map((advance) => <div key={advance.id}><HandCoins /><span><strong>{formatMoney(money(advance.amountCents))} · {advance.method ? (metodoPagoLabel[advance.method] ?? advance.method) : '—'}</strong><small>{new Date(advance.at).toLocaleString('es-BO')}</small></span></div>)}</div> : <FeatureState type="empty" text="Sin anticipos registrados" />}{featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar un anticipo.</p>}</>}
-    </div><footer className="modal-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}>Pedido A4</button><button className="secondary-button" onClick={()=>setDeliveryNote(selected)}>Nota de entrega A4</button>{selected.status === 'cancelled' ? <button className="primary-button" onClick={() => setReasonModal({ action: 'restore', order: selected })}><RotateCcw /> Restaurar</button> : <button className="danger-button" disabled={hasDispatchedLines(selected)} title={hasDispatchedLines(selected) ? 'No se puede anular: tiene líneas despachadas' : undefined} onClick={() => setReasonModal({ action: 'cancel', order: selected })}><XCircle /> Anular pedido</button>}{!featureFlags.supabase && <button className="primary-button" disabled={!['preparing','ready'].includes(selected.status)} onClick={() => dispatch(selected)}><Truck /> Despacho parcial</button>}{featureFlags.supabase && <button className="danger-button" onClick={() => void openDeleteCheck(selected)}><Trash2 /> Eliminar pedido</button>}</footer></Modal>}
+    </div><footer className="modal-actions order-footer"><button className="secondary-button" onClick={() => navigate('/')}>Cerrar</button>{selected.status === 'cancelled' ? <button className="primary-button" onClick={() => setReasonModal({ action: 'restore', order: selected })}><RotateCcw /> Restaurar</button> : <button className="danger-button" disabled={hasDispatchedLines(selected)} title={hasDispatchedLines(selected) ? 'No se puede anular: tiene líneas despachadas' : undefined} onClick={() => setReasonModal({ action: 'cancel', order: selected })}><XCircle /> Anular pedido</button>}{!featureFlags.supabase && <button className="primary-button" disabled={!['preparing','ready'].includes(selected.status)} onClick={() => dispatch(selected)}><Truck /> Despacho parcial</button>}{featureFlags.supabase && <button className="danger-button" onClick={() => void openDeleteCheck(selected)}><Trash2 /> Eliminar pedido</button>}</footer></Modal>}
     {advanceOpen && selected && <AdvanceModal onClose={()=>setAdvanceOpen(false)} onConfirm={registerAdvance}/>}
     {addItemsOpen && selected && <AddItemsModal orderNumber={selected.number} channel={selected.channel} onClose={()=>setAddItemsOpen(false)} onConfirm={submitAddItems}/>}
     {reasonModal && <ReasonModal action={reasonModal.action} orderNumber={reasonModal.order.number} onClose={()=>setReasonModal(null)} onConfirm={confirmReason}/>}
@@ -441,7 +443,7 @@ function ReasonModal({ action, orderNumber, onClose, onConfirm }: { action: 'can
   const title = action === 'cancel' ? 'Anular pedido' : 'Restaurar pedido'
   const valid = motivo.trim().length > 0 && confirmed
   const submit = async () => { setSaving(true); try { await onConfirm(motivo.trim()) } finally { setSaving(false) } }
-  return <Modal title={title} subtitle={orderNumber} onClose={onClose}><div className="modal-body form-grid">
+  return <Modal title={title} subtitle={orderNumber} onClose={onClose} className="commercial-modal"><div className="modal-body form-grid">
     <label className="full">Motivo<textarea rows={3} autoFocus placeholder={action === 'cancel' ? 'Ej. cliente canceló el pedido' : 'Ej. anulación por error, se repone'} value={motivo} onChange={(e)=>setMotivo(e.target.value)}/></label>
     <label className="full custom-modal-add-another"><input type="checkbox" checked={confirmed} onChange={(e)=>setConfirmed(e.target.checked)}/> {action === 'cancel' ? `Confirmo que quiero anular ${orderNumber}` : `Confirmo que quiero restaurar ${orderNumber}`}</label>
   </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className={action === 'cancel' ? 'danger-button' : 'primary-button'} disabled={!valid || saving} onClick={()=>void submit()}>{title}</button></footer></Modal>
@@ -456,7 +458,7 @@ function AdvanceModal({onClose,onConfirm}:{onClose:()=>void;onConfirm:(amountCen
   const [amount,setAmount]=useState(0)
   const [method,setMethod]=useState<PosPaymentMethodExt>('cash')
   const valid = amount > 0
-  return <Modal title="Registrar anticipo" onClose={onClose}><div className="modal-body form-grid">
+  return <Modal title="Registrar anticipo" subtitle="Registra el importe recibido y su método de pago." onClose={onClose} className="commercial-modal"><div className="modal-body form-grid">
     <label className="full">Monto (Bs)<NumberField autoFocus min={0} step={0.01} value={amount/100} onCommit={(bs)=>setAmount(Math.round(bs*100))}/></label>
     <label className="full">Método<select value={method} onChange={(e)=>setMethod(e.target.value as PosPaymentMethodExt)}>{metodoAnticipoOrder.map((m) => <option key={m} value={m}>{metodoAnticipoLabels[m]}</option>)}</select></label>
   </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid} onClick={()=>onConfirm(amount,method)}>Confirmar</button></footer></Modal>
@@ -474,21 +476,25 @@ function AddItemsModal({ orderNumber, channel, onClose, onConfirm }: {
   const [productQuery, setProductQuery] = useState('')
   const [productResults, setProductResults] = useState<Product[]>([])
   const [productLoading, setProductLoading] = useState(false)
+  const [searchError, setSearchError] = useState('')
   const [lines, setLines] = useState<WorkflowLine[]>([])
   const [motivo, setMotivo] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
     // eslint-disable-next-line react-hooks/set-state-in-effect -- limpia los resultados en cuanto el término queda vacío, sin esperar al debounce de abajo
+    setSearchError('')
     if (!productQuery.trim()) { setProductResults([]); setProductLoading(false); return }
     setProductLoading(true)
     const handle = setTimeout(() => {
       void productRepository.search({ query: productQuery, active: true, page: { page: 1, pageSize: 100 } }).then((page) => {
+        if (cancelled) return
         setProductResults(page.items)
         setProductLoading(false)
-      })
+      }).catch(() => { if (!cancelled) { setProductResults([]); setProductLoading(false); setSearchError('No se pudo buscar. Intenta nuevamente.') } })
     }, 250)
-    return () => clearTimeout(handle)
+    return () => { cancelled = true; clearTimeout(handle) }
   }, [productQuery])
 
   const addProduct = (product: Product) => {
@@ -511,8 +517,9 @@ function AddItemsModal({ orderNumber, channel, onClose, onConfirm }: {
   const valid = lines.length > 0
   const submit = async () => { setSaving(true); try { await onConfirm(lines, motivo.trim()) } finally { setSaving(false) } }
 
-  return <Modal title="Agregar ítems" subtitle={orderNumber} onClose={onClose}><div className="modal-body form-grid">
+  return <Modal title="Agregar productos al pedido" subtitle={`${orderNumber} · ${channelNames[channel] ?? 'Retail'}`} onClose={onClose} className="commercial-modal"><div className="modal-body form-grid">
     <div className="full">
+      {searchError && <p className="field-error" role="alert">{searchError}</p>}
       <ProductQuickAdd
         value={productQuery}
         onValueChange={setProductQuery}
@@ -524,9 +531,10 @@ function AddItemsModal({ orderNumber, channel, onClose, onConfirm }: {
         onRemoveChip={removeLine}
       />
     </div>
-    {lines.length > 0 && <div className="full timeline">
-      {lines.map((line) => <div key={line.id}><PackagePlus /><span><strong>{line.name} × {line.quantity}</strong><small>{formatMoney(money(line.unitPriceCents * line.quantity))}</small></span></div>)}
-    </div>}
+    {lines.length > 0 ? <div className="full">
+      {lines.map((line) => <div key={line.id} className="order-add-row"><div><strong>{line.name}</strong><small>{line.sku} · {formatMoney(money(line.unitPriceCents))} c/u</small></div><label>Cantidad<NumberField min={1} allowDecimals={false} ariaLabel={`Cantidad ${line.name}`} value={line.quantity} disabled={saving} onCommit={(quantity) => setLines((prev) => prev.map((item) => item.id === line.id ? { ...item, quantity } : item))} /></label><strong>{formatMoney(money(line.unitPriceCents * line.quantity))}</strong><button type="button" disabled={saving} aria-label={`Quitar ${line.name}`} onClick={() => removeLine(Number(line.productId))}><Trash2 /></button></div>)}
+      <div className="commercial-inline-total"><span>Total a agregar · {lines.length} ítem{lines.length === 1 ? '' : 's'}</span><strong>{formatMoney(money(lines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0)))}</strong></div>
+    </div> : <div className="full commercial-empty order-add-empty"><PackagePlus /><strong>Agrega productos al pedido</strong><span>Busca por nombre o SKU y luego ajusta las cantidades.</span></div>}
     <label className="full">Motivo (opcional)<textarea rows={2} placeholder="Ej. el cliente pidió agregar más unidades" value={motivo} onChange={(e)=>setMotivo(e.target.value)}/></label>
   </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid || saving} onClick={()=>void submit()}>{saving ? 'Agregando...' : 'Agregar al pedido'}</button></footer></Modal>
 }

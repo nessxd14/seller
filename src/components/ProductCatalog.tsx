@@ -1,4 +1,4 @@
-import { ChevronDown, PackageOpen, Plus, X } from 'lucide-react'
+import { ChevronDown, LoaderCircle, PackageOpen, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { getPrice, products } from '../data/products'
 import { usePos } from '../context/PosContext'
@@ -9,6 +9,7 @@ import type { Product } from '../types'
 import { ProductInfoPopover } from './ProductInfoPopover'
 import { isLineUnpriced } from '../domain/sales/priceCheck'
 import { agruparPorFamilia, esGrupoSinFamilia } from '../domain/catalog/agruparPorFamilia'
+import { isExactProductCode, matchesProductQuery } from '../domain/catalog/productSearch'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -39,6 +40,8 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   // the exact previous synchronous filtering behavior unchanged. Skipped entirely on
   // the Frecuentes chip: that data comes from listFrecuentes below instead.
   const [remoteProducts, setRemoteProducts] = useState<Product[]>([])
+  const [searchStatus, setSearchStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [searchRetry, setSearchRetry] = useState(0)
   // Brief S2 — item 6: guardia por id de pedido, no solo un booleano `cancelled` —
   // protege contra respuestas que llegan fuera de orden (tipear rápido no debe hacer
   // "saltar" los resultados bajo el cursor con una respuesta vieja que llega tarde).
@@ -46,11 +49,13 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   useEffect(() => {
     if (!featureFlags.supabase || category === 'Frecuentes') return
     const requestId = ++searchIdRef.current
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- oculta coincidencias antiguas al cambiar el término
+    setSearchStatus('loading')
     const handle = setTimeout(() => {
-      void productRepository.search({ query: search, active: true, page: { page: 1, pageSize: 60 } }).then((page) => { if (searchIdRef.current === requestId) setRemoteProducts(page.items) })
+      void productRepository.search({ query: search, active: true, page: { page: 1, pageSize: 60 } }).then((page) => { if (searchIdRef.current === requestId) { setRemoteProducts(page.items); setSearchStatus('ready') } }).catch(() => { if (searchIdRef.current === requestId) { setRemoteProducts([]); setSearchStatus('error') } })
     }, 300)
-    return () => clearTimeout(handle)
-  }, [search, category])
+    return () => { clearTimeout(handle); searchIdRef.current += 1 }
+  }, [search, category, searchRetry])
 
   // TAREA 2 (Tanda 3): los N productos más vendidos de los últimos 30 días — el único
   // chip real además de Todos. Se resuelve igual en ambos backends (mock también expone
@@ -97,8 +102,7 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   // Frecuentes y modo mock filtran texto en el cliente (listFrecuentes no toma query,
   // y el mock nunca llamó a productRepository.search); el resto ya viene filtrado por
   // texto del lado del servidor en productRepository.search.
-  const matchesQuery = (product: Product) =>
-    !query || [product.nombre, product.sku, product.codigoBarra, product.codigoFabrica].some((value) => value.toLowerCase().includes(query))
+  const matchesQuery = (product: Product) => matchesProductQuery(product, query)
   const sourceItems = category === 'Frecuentes' ? frecuentes : featureFlags.supabase ? remoteProducts : products
   const needsClientTextFilter = category === 'Frecuentes' || !featureFlags.supabase
   const filtered = sourceItems.filter((product) => matchesBrand(product) && (!needsClientTextFilter || matchesQuery(product)))
@@ -130,9 +134,9 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
         </select>
       )}</div>
     <div className="section-heading"><div><p>Catálogo de productos</p><span>{filtered.length} productos disponibles</span></div><small>Precios en Bs</small></div>
-    {filtered.length ? grupos.map((grupo) => {
+    {featureFlags.supabase && category !== 'Frecuentes' && searchStatus === 'loading' ? <div className="empty-products" role="status"><LoaderCircle className="spin" /><h3>Buscando productos…</h3></div> : featureFlags.supabase && category !== 'Frecuentes' && searchStatus === 'error' ? <div className="empty-products" role="alert"><PackageOpen /><h3>No se pudo cargar el catálogo</h3><button className="secondary-button" onClick={() => setSearchRetry((n) => n + 1)}>Reintentar</button></div> : filtered.length ? grupos.map((grupo) => {
       const sinFamilia = esGrupoSinFamilia(grupo.key)
-      if (sinFamilia && !mostrarSinFamilia) {
+      if (sinFamilia && !mostrarSinFamilia && grupo.productos.length > 8 && !grupo.productos.some((product) => isExactProductCode(product, query))) {
         return <button key={grupo.key} type="button" className="catalog-sin-familia-toggle" onClick={() => setMostrarSinFamilia(true)}>
           Otros productos (sin familia asignada) · {grupo.productos.length} <ChevronDown size={13} />
         </button>
@@ -143,7 +147,7 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
       <div className="product-grid">{grupo.productos.map((product) => {
         const enCarrito = cart.find((item) => item.id === product.id && !item.isCustomItem)
         return <article className="product-card" key={product.id}>
-          <ProductVisual type={product.imagen} color={product.color} imagenUrl={product.imagenUrl} />
+          <ProductVisual type={product.imagen} color={product.color} imagenUrl={product.imagenUrl} expandable name={product.nombre} />
           <div className="product-info"><div className="stock-pill"><span /> {
             featureFlags.supabase
               ? (stockLoading ? '—' : (stockByProduct.get(product.id)?.tienda ?? 0))

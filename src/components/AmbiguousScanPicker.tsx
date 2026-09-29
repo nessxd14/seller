@@ -15,10 +15,13 @@ export function AmbiguousScanPicker({ productIds, onPick, onClose }: { productId
   const [products, setProducts] = useState<Product[]>([])
   const [identifiers, setIdentifiers] = useState<Record<string, LineIdentifiers>>({})
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reinicia la consulta de candidatos al cambiar el código
     setLoading(true)
+    setError('')
     void Promise.all([
       Promise.all(productIds.map((id) => productRepository.getById(String(id)))).then((results) => results.filter((p): p is Product => p != null)),
       listLineIdentifiers(productIds.map(String)),
@@ -27,15 +30,16 @@ export function AmbiguousScanPicker({ productIds, onPick, onClose }: { productId
       setProducts(foundProducts)
       setIdentifiers(foundIdentifiers)
       setLoading(false)
-    })
+    }).catch(() => { if (!cancelled) { setError('No se pudieron consultar los productos. Cierra e intenta nuevamente.'); setLoading(false) } })
     return () => { cancelled = true }
   }, [productIds])
 
   return (
-    <Modal title="Código en más de un producto" subtitle="Elegí cuál corresponde" onClose={onClose}>
+    <Modal title="Código en más de un producto" subtitle="Elegí cuál corresponde" className="commercial-modal" onClose={onClose}>
       <div className="ambiguous-scan-results">
         {loading && <span className="empty-hint">Buscando…</span>}
-        {!loading && !products.length && <span className="empty-hint">No se encontraron los productos</span>}
+        {error && <p className="field-error" role="alert">{error}</p>}
+        {!loading && !error && !products.length && <span className="empty-hint">No se encontraron los productos</span>}
         {!loading && products.map((product) => {
           const marca = identifiers[String(product.id)]?.marca
           return (

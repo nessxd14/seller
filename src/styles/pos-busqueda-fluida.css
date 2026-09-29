@@ -21,6 +21,7 @@
 }
 .quick-add-input svg { width: 14px; color: #96928a; flex: 0 0 auto }
 .quick-add-input input { border: 0; outline: 0; padding: 9px 0; font-size: 12px; width: 100% }
+.quick-add-clear { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: #f5f2ed; cursor: pointer; }
 
 .quick-add-results {
   position: absolute; top: 100%; left: 0; right: 50%; z-index: 5;

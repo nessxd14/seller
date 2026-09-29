@@ -1,4 +1,4 @@
-import { AlertTriangle, Briefcase, Building2, Minus, Pencil, Plus, Warehouse, X } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Barcode, Briefcase, Building2, Check, FileText, LoaderCircle, Minus, Package, Pencil, Plus, Save, UserRound, Warehouse, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { QuoteDraft, WorkflowLine } from '../../application/shared/models'
 import type { CustomerRecord } from '../../application/shared/models'
@@ -19,6 +19,8 @@ import { EditQuoteLineModal } from './EditQuoteLineModal'
 import { coincideBusqueda } from '../../domain/customers/textSearch'
 import { requiereCotizacionOrigen } from '../../domain/quotations/requiereCotizacionOrigen'
 import { ProductQuickAdd } from '../../components/ProductQuickAdd'
+import { AmbiguousScanPicker } from '../../components/AmbiguousScanPicker'
+import { cleanProductQuery } from '../../domain/catalog/productSearch'
 import { AutoriaBadge } from '../../components/AutoriaBadge'
 import { SolicitanteField } from '../../components/SolicitanteField'
 import { evaluarTope } from '../../infrastructure/supabase/ContactoCliente.supabase'
@@ -71,6 +73,11 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const [productQuery, setProductQuery] = useState('')
   const [productResults, setProductResults] = useState<Product[]>([])
   const [scanSku, setScanSku] = useState('')
+  const [scanError, setScanError] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const scanPendingRef = useRef(false)
+  const [ambiguousIds, setAmbiguousIds] = useState<number[] | null>(null)
+  const [productSearchError, setProductSearchError] = useState('')
   // TAREA T1 (T1): reemplaza PricePopover/MaskPopover — un solo modal completo por línea,
   // fuera del overflow:auto del .modal ancestro (esa era la causa raíz del recorte).
   const [editLineModalId, setEditLineModalId] = useState<string | null>(null)
@@ -124,16 +131,17 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const [productLoading, setProductLoading] = useState(false)
   const productSearchIdRef = useRef(0)
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- limpia los resultados en cuanto el término queda vacío, sin esperar al debounce de abajo
-    if (!productQuery.trim()) { setProductResults([]); setProductLoading(false); return }
     const requestId = ++productSearchIdRef.current
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- limpia los resultados en cuanto el término queda vacío, sin esperar al debounce de abajo
+    setProductSearchError('')
+    if (!productQuery.trim()) { setProductResults([]); setProductLoading(false); return }
     setProductLoading(true)
     const handle = setTimeout(() => {
       void productRepository.search({ query: productQuery, active: true, page: { page: 1, pageSize: 100 } }).then((page) => {
         if (productSearchIdRef.current === requestId) { setProductResults(page.items); setProductLoading(false) }
-      })
+      }).catch(() => { if (productSearchIdRef.current === requestId) { setProductResults([]); setProductLoading(false); setProductSearchError('No se pudo buscar. Intenta nuevamente.') } })
     }, 250)
-    return () => clearTimeout(handle)
+    return () => { clearTimeout(handle); productSearchIdRef.current += 1 }
   }, [productQuery])
 
   // Brief T2 Tarea 3 (único cambio permitido acá al buscador de clientes): normalización
@@ -255,12 +263,16 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   }
 
   const scanBarcode = async () => {
-    const sku = scanSku.trim()
-    if (!sku) return
-    const found = productResults.find((p) => p.sku === sku) ?? (await productRepository.getById(sku).catch(() => null))
-    const product = found ?? productResults.find((p) => p.sku.toLowerCase() === sku.toLowerCase())
-    if (product) addCatalogProduct(product)
-    setScanSku('')
+    const code = cleanProductQuery(scanSku)
+    if (!code || scanPendingRef.current) return
+    scanPendingRef.current = true; setScanning(true); setScanError('')
+    try {
+      const result = await productRepository.resolveScannedCode(code)
+      if (result.kind === 'found') { addCatalogProduct(result.product); setScanSku('') }
+      else if (result.kind === 'ambiguous') setAmbiguousIds(result.productIds)
+      else setScanError(`No encontramos el código ${code}. Revisa el SKU o código de barras.`)
+    } catch { setScanError('No se pudo consultar el código. Intenta nuevamente.') }
+    finally { scanPendingRef.current = false; setScanning(false) }
   }
 
   const updateLine = (id: string, patch: Partial<WorkflowLine>) =>
@@ -444,7 +456,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   }
 
   return (
-    <Modal title={value.id ? `Cotización ${value.number || value.id}` : 'Nueva cotización'} subtitle={readOnly ? 'Solo lectura — esta cotización ya no está en borrador' : 'Editor tipo borrador de pedido'} onClose={onClose} wide escapeToClose={!customModalOpen}>
+    <Modal title={isExistingQuote ? `Cotización ${value.number || value.id}` : 'Nueva cotización / pedido'} subtitle={readOnly ? 'Consulta los datos y productos del documento.' : 'Prepara la propuesta y elige cómo continuar.'} onClose={onClose} wide escapeToClose={!customModalOpen && !editLineModalId} className="commercial-modal document-editor-modal">
       <div className="modal-body quote-editor draft-order-editor">
         {borradorPendiente && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}
         {/* Brief S3 Parte B: autoría — quién creó la cotización. */}
@@ -453,27 +465,37 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             nombre congelado (solicitado_por) se muestra tal cual, sin volver a consultar
             cliente_contacto. */}
         {readOnly && value.solicitanteNombre && <div className="autoria-row"><span>Solicitante: {value.solicitanteNombre}</span></div>}
-        <div className="channel-tabs draft-order-tabs">
+        <div className="document-editor-layout">
+        <div className="document-editor-main">
+        <section className="commercial-section customer-section">
+          <div className="commercial-section-heading"><span className="section-icon"><UserRound /></span><div><h3>Cliente y canal</h3><p>Define a quién va dirigida la propuesta.</p></div><span className="section-step">01</span></div>
+        <div className="channel-tabs draft-order-tabs" aria-label="Canal comercial">
           {channelTabs.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" disabled={readOnly} className={value.channel === id ? 'active' : ''} onClick={() => setChannel(id)}>
+            <button key={id} type="button" aria-pressed={value.channel === id} disabled={readOnly} className={value.channel === id ? 'active' : ''} onClick={() => setChannel(id)}>
               <Icon /><span>{label}</span>
             </button>
           ))}
         </div>
 
         <div className="form-grid">
-          <label className="full">
-            Cliente
+          <div className="full commercial-field">
+            <label htmlFor="document-customer">Cliente <span className="required-mark">*</span></label>
             <div className="customer-search">
               <input
+                id="document-customer"
+                autoComplete="off"
+                aria-expanded={showCustomerPicker && !readOnly}
+                aria-controls={showCustomerPicker && !readOnly ? 'document-customer-results' : undefined}
                 value={showCustomerPicker ? customerQuery : value.customerName}
                 disabled={readOnly}
                 placeholder="Buscar cliente por nombre, documento o correo..."
                 onFocus={() => setShowCustomerPicker(true)}
+                onBlur={(e) => { if (!e.currentTarget.parentElement?.contains(e.relatedTarget)) { setShowCustomerPicker(false); setCustomerQuery('') } }}
+                onKeyDown={(e) => { if (e.key === 'Escape' && showCustomerPicker) { e.preventDefault(); setShowCustomerPicker(false); setCustomerQuery('') } }}
                 onChange={(e) => { setCustomerQuery(e.target.value); setShowCustomerPicker(true) }}
               />
               {showCustomerPicker && !readOnly && (
-                <div className="customer-search-results">
+                <div className="customer-search-results" id="document-customer-results">
                   {filteredCustomers.map((c) => (
                     <button type="button" key={c.id} onClick={() => pickCustomer(c)}>
                       <strong>{c.name}</strong><small>{c.document} · {c.usualChannel}</small>
@@ -484,9 +506,9 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                 </div>
               )}
             </div>
-            {!readOnly && missingCustomer && <small className="line-stock-error">Elegí un cliente en el buscador de arriba — una cotización sin cliente no se puede guardar. "Cliente de mostrador" no cuenta.</small>}
+            {!readOnly && missingCustomer && <small className="field-hint">Selecciona un cliente de la lista para asociar el documento.</small>}
             {value.customerId && <SaldoBadge clienteId={value.customerId} />}
-          </label>
+          </div>
           {/* Brief S-C: solo aparece para clientes institucionales/corporativos — para
               mayorista/retail no ocupa espacio, no queda oculto-pero-deshabilitado. */}
           {!readOnly && featureFlags.supabase && value.customerId && requiereSolicitante && (
@@ -502,30 +524,10 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
               motivo_advertencia se muestra tal cual, sin reescribirlo. */}
           {topeWarning && <div className="full tope-warning-banner" role="status"><AlertTriangle size={14} /><span>{topeWarning}</span></div>}
           {creditoWarning && <div className="full tope-warning-banner" role="status"><AlertTriangle size={14} /><span>{creditoWarning}</span></div>}
-          <label>Vigencia<input type="date" disabled={readOnly} value={value.validUntil} onChange={(e) => setValue((v) => ({ ...v, validUntil: e.target.value }))} /></label>
-          <label>Fecha<input type="date" disabled={readOnly} value={value.documentDate ?? ''} onChange={(e) => setValue((v) => ({ ...v, documentDate: e.target.value || undefined }))} /></label>
-          <label>Descuento general (Bs)<NumberField min={0} disabled={readOnly} value={value.generalDiscountCents / 100} onCommit={(bs) => setValue((v) => ({ ...v, generalDiscountCents: Math.round(bs * 100) }))} /></label>
-          <label>Condición de pago<select disabled={readOnly} value={value.conditionPago ?? ''} onChange={(e) => setValue((v) => ({ ...v, conditionPago: (e.target.value || undefined) as QuoteDraft['conditionPago'] }))}>
-            <option value="">Sin especificar</option>
-            <option value="CONTADO">Contado</option>
-            <option value="CREDITO">Crédito</option>
-          </select>
-          {!readOnly && missingConditionPago && <small className="line-stock-error">Elegí una condición de pago — una cotización sin esto no se puede guardar.</small>}
-          </label>
-          <label>Medio de pago<select disabled={readOnly} value={value.medioPago ?? ''} onChange={(e) => setValue((v) => ({ ...v, medioPago: (e.target.value || undefined) as QuoteDraft['medioPago'] }))}>
-            <option value="">Sin especificar</option>
-            <option value="EFECTIVO">Efectivo</option>
-            <option value="QR">QR</option>
-            <option value="TRANSFERENCIA">Transferencia</option>
-            <option value="SIGEP">SIGEP</option>
-            <option value="CHEQUE">Cheque</option>
-            <option value="DEPOSITO">Depósito</option>
-          </select></label>
-          <label className="full">Asunto<input disabled={readOnly} value={value.asunto ?? ''} onChange={(e) => setValue((v) => ({ ...v, asunto: e.target.value || undefined }))} /></label>
-          <label className="full">Condiciones comerciales<input disabled={readOnly} value={value.terms} onChange={(e) => setValue((v) => ({ ...v, terms: e.target.value }))} /></label>
-          <label className="full">Observaciones<textarea rows={2} disabled={readOnly} value={value.notes} onChange={(e) => setValue((v) => ({ ...v, notes: e.target.value }))} /></label>
         </div>
-
+        </section>
+        <section className="commercial-section document-products-section">
+        <div className="commercial-section-heading"><span className="section-icon"><Package /></span><div><h3>Productos</h3><p>Busca, agrega y ajusta las cantidades.</p></div><span className="section-step">02</span></div>
         {!readOnly && (
           <div className="line-add-controls">
             <ProductQuickAdd
@@ -538,17 +540,21 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
               onAdd={addCatalogProduct}
               onRemoveChip={(productId) => { const line = value.lines.find((l) => l.productId === String(productId) && !l.isCustomItem); if (line) removeLine(line.id) }}
             />
-            <input
-              placeholder="Escanear código (Enter)"
+            <label className="document-scan-field"><Barcode /><input
+              aria-label="Escanear código"
+              placeholder="Código + Enter"
               value={scanSku}
-              onChange={(e) => setScanSku(e.target.value)}
+              readOnly={scanning}
+              aria-busy={scanning}
+              onChange={(e) => { setScanSku(e.target.value); setScanError('') }}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void scanBarcode() } }}
-            />
+            /></label>
           </div>
         )}
-
+        {scanning && <p className="scan-feedback" role="status">Buscando código…</p>}
+        {(scanError || productSearchError) && <p className="scan-feedback error" role="alert">{scanError || productSearchError}</p>}
         <div className="editor-lines draft-lines">
-          <header><strong>Productos</strong></header>
+          <header><strong>Detalle del documento</strong><span>{catalogLines.length} producto{catalogLines.length === 1 ? '' : 's'}</span></header>
           {catalogLines.map((line) => {
             const stock = stockByProduct[line.productId]
             const presentations = presentationsByProduct[line.productId] ?? []
@@ -569,7 +575,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                 key={line.id}
                 className={`draft-line-row presentation-line-row ${stockError ? 'has-stock-error' : ''}`}
                 onClick={() => !readOnly && setEditLineModalId(line.id)}
-                onKeyDown={(e) => { if (!readOnly && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setEditLineModalId(line.id) } }}
+                onKeyDown={(e) => { if (e.target === e.currentTarget && !readOnly && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setEditLineModalId(line.id) } }}
                 role={readOnly ? undefined : 'button'}
                 tabIndex={readOnly ? undefined : 0}
               >
@@ -649,7 +655,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
               </div>
             )
           })}
-          {!catalogLines.length && <div className="empty-hint" style={{ padding: '10px 12px' }}>Sin productos de catálogo.</div>}
+          {!catalogLines.length && <div className="commercial-empty"><Package /><strong>Tu documento empieza aquí</strong><span>Agrega productos desde el buscador o escanea un código.</span></div>}
         </div>
 
         <div className="editor-lines draft-lines custom-lines">
@@ -662,7 +668,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
               </div>
               <div className="dl-r2">
                 <span className="dl-meta">
-                  <small className="dl-badge">A pedido</small>
+                  <small className="dl-badge">A pedido · {fmtQty(line.quantity)} uds.</small>
                   Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u
                   {line.note && ` · ${line.note}`}
                 </span>
@@ -671,14 +677,48 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
               </div>
             </div>
           ))}
-          {!customLines.length && <div className="empty-hint" style={{ padding: '10px 12px' }}>Sin ítems especiales.</div>}
+          {!customLines.length && <div className="custom-items-hint">Para productos personalizados o que debes conseguir por encargo.</div>}
         </div>
-
+        </section>
+        <section className="commercial-section">
+          <div className="commercial-section-heading"><span className="section-icon"><FileText /></span><div><h3>Detalles del documento</h3><p>Fechas, asunto e indicaciones para el cliente.</p></div><span className="section-step">03</span></div>
+          <div className="form-grid">
+            <label>Fecha del documento<input type="date" disabled={readOnly} value={value.documentDate ?? ''} onChange={(e) => setValue((v) => ({ ...v, documentDate: e.target.value || undefined }))} /></label>
+            <label>Válida hasta<input type="date" disabled={readOnly} value={value.validUntil} onChange={(e) => setValue((v) => ({ ...v, validUntil: e.target.value }))} /></label>
+            <label className="full">Asunto <span className="optional-label">Opcional</span><input disabled={readOnly} placeholder="Ej. Material de oficina para septiembre" value={value.asunto ?? ''} onChange={(e) => setValue((v) => ({ ...v, asunto: e.target.value || undefined }))} /></label>
+            <label className="full">Condiciones comerciales<input disabled={readOnly} placeholder="Entrega, plazos y condiciones acordadas" value={value.terms} onChange={(e) => setValue((v) => ({ ...v, terms: e.target.value }))} /></label>
+            <label className="full">Observaciones <span className="optional-label">Opcional</span><textarea rows={3} disabled={readOnly} placeholder="Agrega indicaciones adicionales…" value={value.notes} onChange={(e) => setValue((v) => ({ ...v, notes: e.target.value }))} /></label>
+          </div>
+        </section>
+        </div>
+        <aside className="document-editor-summary" aria-label="Resumen del documento">
+        <div className="document-total-card">
+          <span className="summary-eyebrow">RESUMEN DEL DOCUMENTO</span>
+          <strong className="document-grand-total">{formatMoney(money(totalCents))}</strong>
+          <span>{value.lines.length} ítem{value.lines.length === 1 ? '' : 's'} · {channelTabs.find((channel) => channel.id === value.channel)?.label}</span>
+        </div>
+        <section className="commercial-section summary-payment">
+        <div className="form-grid">
+          <label className="full">Condición de pago <span className="required-mark">*</span><select disabled={readOnly} value={value.conditionPago ?? ''} onChange={(e) => setValue((v) => ({ ...v, conditionPago: (e.target.value || undefined) as QuoteDraft['conditionPago'] }))}>
+            <option value="">Seleccionar condición</option><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option>
+          </select></label>
+          <label className="full">Medio de pago <span className="optional-label">Opcional</span><select disabled={readOnly} value={value.medioPago ?? ''} onChange={(e) => setValue((v) => ({ ...v, medioPago: (e.target.value || undefined) as QuoteDraft['medioPago'] }))}>
+            <option value="">Seleccionar medio</option><option value="EFECTIVO">Efectivo</option><option value="QR">QR</option><option value="TRANSFERENCIA">Transferencia</option><option value="SIGEP">SIGEP</option><option value="CHEQUE">Cheque</option><option value="DEPOSITO">Depósito</option>
+          </select></label>
+          <label className="full">Descuento general (Bs)<NumberField min={0} disabled={readOnly} value={value.generalDiscountCents / 100} onCommit={(bs) => setValue((v) => ({ ...v, generalDiscountCents: Math.round(bs * 100) }))} /></label>
+        </div>
         <div className="totals-footer">
           <div><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
           <div><span>Descuento general</span><strong>-{formatMoney(money(value.generalDiscountCents))}</strong></div>
           <div className="total"><span>Total</span><strong>{formatMoney(money(totalCents))}</strong></div>
         </div>
+        </section>
+        {!readOnly && <div className="document-checklist" aria-label="Requisitos para guardar">
+          <p>Antes de guardar</p>
+          <span className={!missingCustomer ? 'complete' : ''}><Check /> Cliente seleccionado</span>
+          <span className={value.lines.length ? 'complete' : ''}><Check /> Al menos un producto o ítem</span>
+          <span className={!missingConditionPago ? 'complete' : ''}><Check /> Condición de pago definida</span>
+        </div>}
         {/* TAREA 3 (T1): una cotización es un borrador de trabajo — puede tener líneas sin
             stock (se asume que la mercadería se compra para surtirlas). El aviso ya no
             bloquea, solo informa; el bloqueo real sigue en "Convertir a pedido"/"Crear
@@ -691,11 +731,13 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             {selectedCustomer?.name} requiere una cotización de origen para tener pedido — guardá esto como cotización y convertila después, no se puede crear el pedido directo.
           </div>
         )}
-        {saveError && <div className="field-error"><p>{saveError}</p></div>}
+        {saveError && <div className="field-error" role="alert"><p>{saveError}</p></div>}
+        </aside>
+        </div>
       </div>
       <footer className="modal-actions">
-        <button className="secondary-button" onClick={onClose}>Cancelar</button>
-        {!readOnly && <button className="secondary-button" disabled={!value.lines.length || saving || missingCustomer || missingConditionPago} title={missingCustomer ? 'Elegí un cliente para guardar' : missingConditionPago ? 'Elegí una condición de pago para guardar' : undefined} onClick={() => void runAction(onSave)}>Guardar como cotización</button>}
+        <button className="secondary-button document-cancel" disabled={saving} onClick={onClose}>{readOnly ? 'Cerrar' : 'Cancelar'}</button>
+        {!readOnly && <button className="secondary-button" disabled={!value.lines.length || saving || missingCustomer || missingConditionPago} title={missingCustomer ? 'Elegí un cliente para guardar' : missingConditionPago ? 'Elegí una condición de pago para guardar' : undefined} onClick={() => void runAction(onSave)}>{saving ? <LoaderCircle className="spin" /> : <Save />} Guardar como cotización</button>}
         {/* Ronda 5 — TAREA 1: which conversion action shows depends on WHERE this editor
             was opened from, not on the form's current state. Editing an existing
             cotización (isExistingQuote) → only "Convertir a pedido" is offered, since
@@ -710,15 +752,16 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         {!readOnly && !isExistingQuote && onCreateOrder && (
           <button
             className="primary-button"
-            disabled={!value.lines.length || saving || hasStockErrors || requiereCotizacion || missingSolicitante || missingConditionPago}
-            title={requiereCotizacion ? `${selectedCustomer?.name} requiere una cotización de origen — usá "Guardar como cotización"` : missingSolicitante ? 'Elegí un solicitante para crear el pedido' : missingConditionPago ? 'Elegí una condición de pago para crear el pedido' : undefined}
+            disabled={!value.lines.length || saving || hasStockErrors || requiereCotizacion || missingCustomer || missingSolicitante || missingConditionPago}
+            title={missingCustomer ? 'Elegí un cliente para crear el pedido' : requiereCotizacion ? `${selectedCustomer?.name} requiere una cotización de origen — usá "Guardar como cotización"` : missingSolicitante ? 'Elegí un solicitante para crear el pedido' : missingConditionPago ? 'Elegí una condición de pago para crear el pedido' : undefined}
             onClick={() => void runAction(onCreateOrder)}
           >
-            Crear pedido
+            Crear pedido <ArrowRight />
           </button>
         )}
         {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors || missingCustomer || missingSolicitante || missingConditionPago} title={missingCustomer ? 'Elegí un cliente para convertir' : missingSolicitante ? 'Elegí un solicitante para convertir' : missingConditionPago ? 'Elegí una condición de pago para convertir' : undefined} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
       </footer>
+      {ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onClose={() => setAmbiguousIds(null)} onPick={(product) => { addCatalogProduct(product); setAmbiguousIds(null); setScanSku('') }} />}
       {customModalOpen && (
         <CustomItemModal
           form={customModalForm}
@@ -753,14 +796,15 @@ function CustomItemModal({ form, setForm, editing, addAnother, setAddAnother, co
   onConfirm: () => void
 }) {
   return (
-    <Modal title={editing ? 'Editar ítem a pedido' : 'Agregar ítem a pedido'} onClose={onClose}>
+    <Modal title={editing ? 'Editar ítem a pedido' : 'Agregar ítem a pedido'} subtitle="Productos personalizados o solicitados por encargo." onClose={onClose} className="commercial-modal">
       <div className="modal-body custom-item-modal">
         <div className="form-grid">
-          <label className="full">Descripción<input ref={descripcionRef} autoFocus value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} /></label>
+          <label className="full">Descripción<input ref={descripcionRef} autoFocus placeholder="¿Qué necesita el cliente?" value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} /></label>
           <label>Cantidad<NumberField min={1} allowDecimals={false} value={form.cantidad} onCommit={(cantidad) => setForm((f) => ({ ...f, cantidad }))} /></label>
           <label>Precio unitario (Bs)<NumberField min={0} value={form.precio} onCommit={(precio) => setForm((f) => ({ ...f, precio }))} /></label>
           <label className="full">Nota<input placeholder="Ej. comprar a proveedor X" value={form.nota} onChange={(e) => setForm((f) => ({ ...f, nota: e.target.value }))} /></label>
         </div>
+        <div className="commercial-inline-total"><span>Total del ítem</span><strong>{formatMoney(money(Math.round(form.cantidad * form.precio * 100)))}</strong></div>
         {!editing && count > 0 && <p className="custom-modal-counter">{count} ítem{count > 1 ? 's' : ''} agregado{count > 1 ? 's' : ''}</p>}
       </div>
       <footer className="modal-actions">
