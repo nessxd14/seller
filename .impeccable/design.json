@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-02T14:23:48.342Z",
+  "title": "Design System: Cation Caja",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "primary",
+        "canonical": "#2563eb",
+        "tonalRamp": [
+          "oklch(15% 0.2152 262.88)",
+          "oklch(25% 0.2152 262.88)",
+          "oklch(35% 0.2152 262.88)",
+          "oklch(45% 0.2152 262.88)",
+          "oklch(55% 0.2152 262.88)",
+          "oklch(65% 0.2152 262.88)",
+          "oklch(80% 0.2152 262.88)",
+          "oklch(95% 0.2152 262.88)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "ink",
+        "canonical": "#142033",
+        "tonalRamp": [
+          "oklch(15% 0.0404 259.30)",
+          "oklch(25% 0.0404 259.30)",
+          "oklch(35% 0.0404 259.30)",
+          "oklch(45% 0.0404 259.30)",
+          "oklch(55% 0.0404 259.30)",
+          "oklch(65% 0.0404 259.30)",
+          "oklch(80% 0.0404 259.30)",
+          "oklch(95% 0.0404 259.30)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "muted",
+        "canonical": "#526279",
+        "tonalRamp": [
+          "oklch(15% 0.0420 257.42)",
+          "oklch(25% 0.0420 257.42)",
+          "oklch(35% 0.0420 257.42)",
+          "oklch(45% 0.0420 257.42)",
+          "oklch(55% 0.0420 257.42)",
+          "oklch(65% 0.0420 257.42)",
+          "oklch(80% 0.0420 257.42)",
+          "oklch(95% 0.0420 257.42)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "line",
+        "canonical": "#dce5f1",
+        "tonalRamp": [
+          "oklch(15% 0.0190 255.54)",
+          "oklch(25% 0.0190 255.54)",
+          "oklch(35% 0.0190 255.54)",
+          "oklch(45% 0.0190 255.54)",
+          "oklch(55% 0.0190 255.54)",
+          "oklch(65% 0.0190 255.54)",
+          "oklch(80% 0.0190 255.54)",
+          "oklch(95% 0.0190 255.54)"
+        ]
+      },
+      "page": {
+        "role": "neutral",
+        "displayName": "page",
+        "canonical": "#f3f6fa",
+        "tonalRamp": [
+          "oklch(15% 0.0062 255.47)",
+          "oklch(25% 0.0062 255.47)",
+          "oklch(35% 0.0062 255.47)",
+          "oklch(45% 0.0062 255.47)",
+          "oklch(55% 0.0062 255.47)",
+          "oklch(65% 0.0062 255.47)",
+          "oklch(80% 0.0062 255.47)",
+          "oklch(95% 0.0062 255.47)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "surface",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15% 0.0000 89.88)",
+          "oklch(25% 0.0000 89.88)",
+          "oklch(35% 0.0000 89.88)",
+          "oklch(45% 0.0000 89.88)",
+          "oklch(55% 0.0000 89.88)",
+          "oklch(65% 0.0000 89.88)",
+          "oklch(80% 0.0000 89.88)",
+          "oklch(95% 0.0000 89.88)"
+        ]
+      },
+      "summary": {
+        "role": "neutral",
+        "displayName": "summary",
+        "canonical": "#14243c",
+        "tonalRamp": [
+          "oklch(15% 0.0504 258.28)",
+          "oklch(25% 0.0504 258.28)",
+          "oklch(35% 0.0504 258.28)",
+          "oklch(45% 0.0504 258.28)",
+          "oklch(55% 0.0504 258.28)",
+          "oklch(65% 0.0504 258.28)",
+          "oklch(80% 0.0504 258.28)",
+          "oklch(95% 0.0504 258.28)"
+        ]
+      }
+    },
+    "shadows": [
+      {
+        "name": "panel",
+        "value": "0 8px 32px rgba(39,72,121,.06), inset 0 1px 0 #fff",
+        "purpose": "Separación suave del vidrio."
+      },
+      {
+        "name": "toast",
+        "value": "0 8px 28px #14203330",
+        "purpose": "Aviso flotante."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-color",
+        "value": "background-color 140ms ease, color 140ms ease, border-color 140ms ease",
+        "purpose": "Respuesta breve, sin animación de cifras."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "opening-stacked",
+        "value": "1000px"
+      },
+      {
+        "name": "cash-stacked",
+        "value": "700px"
+      },
+      {
+        "name": "mobile",
+        "value": "600px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Acción principal",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Abrir turno o confirmar datos.",
+      "html": "<button class=\"ds-primary\">Abrir mi turno</button>",
+      "css": ".ds-primary{background:#2563eb;color:#fff;min-height:48px;padding:12px 20px;border:1px solid #2563eb;border-radius:12px;font:700 14px sans-serif}.ds-primary:hover{background:#1d4ed8}.ds-primary:focus-visible{outline:3px solid #2563eb;outline-offset:3px}"
+    },
+    {
+      "name": "Actualizar",
+      "kind": "button",
+      "description": "Acción secundaria de consulta.",
+      "html": "<button class=\"ds-refresh\">Actualizar</button>",
+      "css": ".ds-refresh{background:#ffffff99;color:#142033;min-height:44px;padding:8px 12px;border:1px solid #dce5f1;border-radius:10px;font:12px sans-serif}.ds-refresh:hover{background:#eaf2ff}.ds-refresh:focus-visible{outline:3px solid #2563eb;outline-offset:3px}"
+    },
+    {
+      "name": "Campo móvil",
+      "kind": "input",
+      "description": "Entrada legible.",
+      "html": "<label class=\"ds-label\">Correo de Seller<input class=\"ds-input\" type=\"email\"></label>",
+      "css": ".ds-label{display:block;font:600 13px sans-serif;color:#526279}.ds-input{display:block;margin-top:8px;min-height:48px;padding:12px;border:1px solid #cbd9ec;border-radius:12px;font:16px sans-serif;background:#fff;color:#142033}.ds-input:focus-visible{outline:3px solid #2563eb;outline-offset:3px}"
+    },
+    {
+      "name": "Navegación de caja",
+      "kind": "nav",
+      "description": "Vidrio con acción activa cobalto.",
+      "html": "<nav class=\"ds-nav\"><button aria-current=\"page\">En vivo</button><button>Turnos</button><button>Revisión</button></nav>",
+      "css": ".ds-nav{display:flex;gap:4px;padding:5px;border:1px solid #fff;border-radius:16px;background:#ffffffcc;backdrop-filter:blur(16px)}.ds-nav button{min-height:44px;padding:10px 22px;background:none;border:0;border-radius:11px;color:#526279;font:650 13px sans-serif}.ds-nav button[aria-current]{background:#2563eb;color:#fff}.ds-nav button:focus-visible{outline:3px solid #2563eb;outline-offset:3px}"
+    },
+    {
+      "name": "Estado de turno",
+      "kind": "chip",
+      "description": "Estado acompañado de texto.",
+      "html": "<span class=\"ds-status\">En revisión</span>",
+      "css": ".ds-status{display:inline-block;border-radius:8px;padding:6px 9px;background:#fff1d6;color:#85511a;font:650 11px sans-serif}"
+    },
+    {
+      "name": "Panel de caja",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Vidrio blanco con cifras oscuras.",
+      "html": "<section class=\"ds-panel\"><h3>Actividad del turno</h3><p>Anticipo <strong>Bs 350,00</strong></p></section>",
+      "css": ".ds-panel{background:rgba(255,255,255,.78);border:1px solid #fff;border-radius:20px;padding:24px;color:#142033;backdrop-filter:blur(16px);box-shadow:0 8px 32px rgba(39,72,121,.06),inset 0 1px 0 #fff;font:13px sans-serif}.ds-panel h3{margin:0 0 16px;font-size:16px}.ds-panel p{display:flex;justify-content:space-between;gap:16px}.ds-panel strong{font-variant-numeric:tabular-nums}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Caja clara, siempre a mano",
+    "overview": "Azul Claro con Glassmorphism elegido por el usuario. Totales visibles, métodos desplegables y detalles completos de cada movimiento.",
+    "keyCharacteristics": [
+      "Importes alineados y cifras tabulares.",
+      "Vidrio blanco, cobalto y resumen marino.",
+      "Navegación fija y controles táctiles."
+    ],
+    "rules": [],
+    "dos": [
+      "Conservar detalle del gasto y cliente junto al movimiento.",
+      "Dejar totales visibles y métodos desplegables.",
+      "Respetar foco, áreas seguras y controles táctiles."
+    ],
+    "donts": [
+      "Aplicar transparencia a los caracteres o animar cifras.",
+      "Mostrar efectivo esperado al cajero.",
+      "Cambiar el flujo VTD por una mejora visual."
+    ]
+  }
+}

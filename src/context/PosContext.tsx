@@ -8,6 +8,7 @@ import { featureFlags } from '../config/featureFlags'
 import { consultarSaldos } from '../infrastructure/hermes/client'
 import { auditEnd, auditStart } from '../lib/auditoriaDvr'
 import { normalizeUnit } from '../domain/sales/unitOfMeasure'
+import { createUuid } from '../application/shared/createUuid'
 
 // Brief J: 1 = Almacén Central, 2 = Tienda (mismos ids que SUCURSAL_ALMACEN_ID/
 // SUCURSAL_TIENDA_ID en infrastructure/supabase/mappers.ts — no se importan de ahí
@@ -39,7 +40,7 @@ const defaultOrigenFor = (channel: SalesChannel, esAcreedor: boolean): 'Tienda' 
 const OPERACION_ID_KEY = 'roari-operacion-id-v1'
 
 const nuevoOperacionId = () => {
-  const id = crypto.randomUUID()
+  const id = createUuid()
   sessionStorage.setItem(OPERACION_ID_KEY, id)
   return id
 }

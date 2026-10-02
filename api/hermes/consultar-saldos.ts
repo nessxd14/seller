@@ -1,3 +1,4 @@
+import { hermesHeaders } from './_database.js'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 // La extensión .js es obligatoria: package.json declara "type": "module".
 // Sin ella: ERR_MODULE_NOT_FOUND y exit 1 en cada request (ya nos pasó).
@@ -22,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const response = await fetch(`${hermesUrl}/rest/v1/rpc/consultar_saldos`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+      headers: hermesHeaders(serviceKey),
       body: JSON.stringify({ p_cliente_ids: clienteIds }),
     })
     if (!response.ok) { res.status(502).json({ error: `Hermes respondió ${response.status}` }); return }

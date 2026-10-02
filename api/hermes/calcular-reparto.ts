@@ -1,3 +1,4 @@
+import { hermesHeaders } from './_database.js'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 // La extensión .js es obligatoria: package.json declara "type": "module", así
 // que estas funciones corren como ESM y el specifier tiene que apuntar al
@@ -33,7 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // pos_cliente_id como sí hacen proponer_pago/consultar_saldo internamente — así que acá
     // hay que resolver el id interno de Hermes primero, o el filtro no encuentra nada.
     const clienteRes = await fetch(`${hermesUrl}/rest/v1/cliente?pos_cliente_id=eq.${clienteIdNum}&select=id`, {
-      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+      headers: hermesHeaders(serviceKey),
     })
     const clienteRows = await clienteRes.json().catch(() => null)
     const clienteInternoId = Array.isArray(clienteRows) && clienteRows[0]?.id != null ? Number(clienteRows[0].id) : null
@@ -44,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const response = await fetch(`${hermesUrl}/rest/v1/rpc/calcular_imputacion_fifo`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+      headers: hermesHeaders(serviceKey),
       body: JSON.stringify({ p_cliente_id: clienteInternoId, p_monto: montoNum }),
     })
     const data = await response.json().catch(() => null)

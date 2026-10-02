@@ -1,24 +1,17 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Modal } from './Modal'
 import { usePos } from '../context/PosContext'
 import { useCashSession } from '../context/CashSessionContext'
-import { cashService } from '../infrastructure/services'
+import { cashService, sensitiveOperations } from '../infrastructure/services'
+import { createUuid } from '../application/shared/createUuid'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-/**
- * TAREA 1 (Tanda 3): registrar_anticipo acepta p_pedido_id y p_cliente_id ambos NULL-ables
- * — solo exige que venga uno de los dos. cashService.registerPayment ya llama esa RPC con
- * p_cliente_id (y p_pedido_id null cuando no se pasa orderId), así que este modal la reusa
- * en vez de duplicar la llamada — es exactamente lo que "Registrar anticipo" institucional/
- * corporativo necesita: cliente + caja abierta, sin pedido previo.
- *
- * Sin parámetro de idempotencia (no existe en registrar_anticipo, a diferencia de
- * registrar_venta) — alcanza con deshabilitar el botón mientras la promesa está en vuelo.
- */
+/** Cobra y propone un anticipo sin repartirlo a deudas. Conserva la clave al reintentar. */
 export function AnticipoModal({ onClose, notify }: { onClose: () => void; notify: (message: string) => void }) {
   const { customer, total } = usePos()
   const { sessionId } = useCashSession()
+  const operationId = useRef(createUuid())
   const [amount, setAmount] = useState(0)
   const [method, setMethod] = useState<'cash' | 'qr' | 'transfer'>('cash')
   const [submitting, setSubmitting] = useState(false)
@@ -32,15 +25,18 @@ export function AnticipoModal({ onClose, notify }: { onClose: () => void; notify
 
   const submit = async () => {
     if (missingReason || !customer?.id || !sessionId || amount <= 0 || submitting) return
+    const cajaId = sessionId
+    const clienteId = customer.id
     setSubmitting(true)
     setError('')
     try {
-      await cashService.registerPayment({ customerId: customer.id, amountCents: Math.round(amount * 100), method, sessionId })
-      notify(`Anticipo de Bs ${money(amount)} registrado`)
+      const amountCents = Math.round(amount * 100)
+      const huella = JSON.stringify([clienteId, amountCents, method, cajaId, true])
+      await sensitiveOperations.ejecutarIdempotente('register_payment', operationId.current, huella,
+        idempotencyKey => cashService.registerPayment({ customerId: clienteId, amountCents, method, sessionId: cajaId, noImputar: true, idempotencyKey }))
+      notify(`Anticipo de Bs ${money(amount)} registrado. Pendiente de revisión.`)
       onClose()
     } catch (err) {
-      // Los tres mensajes que puede tirar registrar_anticipo (Monto inválido, Cliente
-      // % no existe, La sesión % no está abierta) llegan tal cual en err.message.
       setError(err instanceof Error ? err.message : 'No se pudo registrar el anticipo')
     } finally {
       setSubmitting(false)

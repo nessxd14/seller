@@ -76,7 +76,8 @@ export const cashService = {
   // Mock retail flow has never modeled orden-linked advances against a real pedido table;
   // deliberately kept minimal per the brief ("don't over-build this for mock") — it just
   // records an income movement tagged with the order id in the note.
-  registerAdvance: async (orderId: string, amountCents: number, method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check', sessionId: string) => {
+  registerAdvance: async (orderId: string, amountCents: number, method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check', sessionId: string, idempotencyKey?: string) => {
+    void idempotencyKey
     const session = (await rawCashService.list()).find((s) => s.id === sessionId)
     if (!session) throw new Error('Sesión de caja no encontrada')
     // El mock solo distingue cash/qr/transfer en su store; depósito/SIGEP/cheque se
@@ -95,7 +96,7 @@ export const cashService = {
   // transfer) con la nota indicando el método real. No hay puente a Hermes en modo mock.
   // idempotencyKey: aceptado por forma compartida con el facade de Supabase — el mock no
   // tiene protección de reintento real (no hay tabla movimiento_caja con clave única acá).
-  registerPayment: async (input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string; idempotencyKey?: string }) => {
+  registerPayment: async (input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string; idempotencyKey?: string; noImputar?: boolean; aplicaciones?: Array<{ partidaId: number; monto: number }>; referencia?: string }) => {
     const session = (await rawCashService.list()).find((s) => s.id === input.sessionId)
     if (!session) throw new Error('Sesión de caja no encontrada')
     const mockMethod: 'cash' | 'qr' | 'transfer' = input.method === 'cash' || input.method === 'qr' ? input.method : 'transfer'

@@ -37,6 +37,6 @@ export async function verificarSesionPos(
 
 /** Roles autorizados a mover plata en Hermes. Deliberadamente restrictivo:
  *  agregar un rol acá es una decisión de negocio, no un detalle técnico. */
-const ROLES_MOVIMIENTO = new Set(['admin', 'supervisor', 'cajero'])
+const ROLES_MOVIMIENTO = new Set(['admin', 'gerente', 'cajero'])
 export const puedeMoverSaldo = (sesion: { rol: string; activo: boolean }) =>
   sesion.activo && ROLES_MOVIMIENTO.has(sesion.rol)

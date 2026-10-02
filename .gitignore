@@ -11,3 +11,4 @@ test-results/
 *.tmp
 *.temp
 .DS_Store
+supabase/.temp/

@@ -37,6 +37,7 @@ const { orderHeaderOnly, attentionHeaderOnly, getByIdMock, marcarVistaMock } = v
 vi.mock('../../infrastructure/services', () => ({
   orderService: { list: vi.fn().mockResolvedValue([orderHeaderOnly, attentionHeaderOnly]), getById: (id: string) => getByIdMock(id), save: vi.fn(), partialDispatch: vi.fn(), cancel: vi.fn(), restore: vi.fn() },
   cashService: { list: vi.fn().mockResolvedValue([]), getOpenSession: vi.fn().mockResolvedValue(null), getAdvancesForOrder: vi.fn().mockResolvedValue([]) },
+  turnoService: { getSesionAbierta: vi.fn().mockResolvedValue(null) },
   authSessionProvider: { getSession: vi.fn().mockResolvedValue(null) },
   productRepository: { search: vi.fn().mockResolvedValue({ items: [], total: 0 }), getById: vi.fn().mockResolvedValue(null) },
   sensitiveOperations: { execute: vi.fn() },

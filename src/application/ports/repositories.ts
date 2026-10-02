@@ -78,7 +78,7 @@ export interface CashRepository {
   close(id:string,countedCents:number,context:MutationContext&{idempotencyKey:string}):Promise<CashSessionRecord & Versioned>
   addMovement(sessionId:string,input:{type:'income'|'expense';method:'cash'|'qr'|'transfer';amountCents:number;note:string},context:MutationContext&{idempotencyKey:string}):Promise<CashSessionRecord & Versioned>
   registerAdvance(input:{orderId:string;amountCents:number;method:'cash'|'qr'|'transfer'|'deposit'|'sigep'|'check';sessionId:string},context:MutationContext&{idempotencyKey:string}):Promise<{movementId:string}>
-  registerPayment(input:{customerId:string;orderId?:string;amountCents:number;method:'cash'|'qr'|'transfer'|'deposit'|'sigep'|'check';sessionId:string},context:MutationContext&{idempotencyKey:string}):Promise<{movementId:string}>
+  registerPayment(input:{customerId:string;orderId?:string;amountCents:number;method:'cash'|'qr'|'transfer'|'deposit'|'sigep'|'check';sessionId:string; noImputar?: boolean; aplicaciones?: Array<{ partidaId: number; monto: number }>; referencia?: string},context:MutationContext&{idempotencyKey:string}):Promise<{movementId:string; pagoId?:string; saldoProvisional?:number}>
 }
 // Brief VTD: abrir_venta/completar_venta/ajustar_venta_abierta/anular_venta — deliberadamente
 // separado de SaleRepository (registrar_venta es atómico crea+cobra; acá el punto entero es

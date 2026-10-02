@@ -1,36 +1,38 @@
-# ROARI POS — Fase 1
+# Seller · Cation
 
-Interfaz desktop-first del nuevo punto de venta de ROARI. Funciona enteramente con datos mock locales; no incluye backend, autenticación, persistencia de inventario ni integraciones externas.
+Punto de venta conectado a Cation: ventas, clientes, pedidos, VTD y turnos de caja. El modo Supabase comparte autenticación y cartera con el conciliador; el modo mock conserva datos demostrativos locales.
 
 ## Ejecutar localmente
 
-```bash
+```powershell
 npm install
-npm run dev
+npm run dev -- --host 0.0.0.0 --port 5180 --strictPort
 ```
 
-Vite mostrará la URL local (normalmente `http://localhost:5173`).
+Configura `.env.local` según `.env.example`, con la URL y la clave publicable del proyecto Cation. Para una demostración aislada usa `VITE_POS_MODE=mock`; en ese modo no se registran cobros reales.
 
-Para probar la interfaz sin conectar Supabase, crea un archivo `.env.local` con
-`VITE_POS_MODE=mock`. Este archivo se ignora en Git. Para usar los datos reales,
-quita esa variable y configura `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`
-según `.env.example`.
+La copia local se actualizó el 2 de octubre de 2026 hasta `origin/main`, commit `73363d7`. Sobre esa versión están los cambios locales de integración y caja.
+
+## Caja y conciliador
+
+[Guía de integración y pruebas locales](INTEGRACION_HERMES_CATION.md).
+
+Caja móvil está en [nessxd14/caja-roari](https://github.com/nessxd14/caja-roari). En desarrollo conjunto, la carpeta contigua `../caja-cation` usa los componentes y repositorios de `src/features/cash`. Para compilar por separado, Caja incluye un snapshot con el commit de Seller y hashes de sus archivos. Consulta los mismos turnos y movimientos; no duplica cobros.
 
 ## Validación
 
-```bash
+```powershell
+npm test
+npm run test:integration
 npm run lint
 npm run build
+npx playwright test --config playwright.cash.config.ts
 ```
 
-La venta suspendida se almacena solo en `localStorage`. Los cobros, pedidos, cotizaciones y anticipos son demostrativos.
+La última orden requiere la carpeta contigua de Caja y sus dependencias. Las pruebas financieras de integración usan PostgreSQL aislado con PGlite; las de navegador interceptan Supabase y usan datos sintéticos.
 
-## Dominio — Fase 2A
+## Dominio y diseño
 
-La capa independiente de React está en `src/domain/`. Define dinero en centavos, entidades, estados, reglas puras, contratos de repositorio y adaptadores mock. La documentación funcional comienza en `docs/domain/DOMAIN_OVERVIEW.md` y las decisiones pendientes del negocio están en `docs/domain/OPEN_QUESTIONS.md`.
+El dominio independiente de React está en `src/domain/`. La documentación funcional comienza en `docs/domain/DOMAIN_OVERVIEW.md`.
 
-```bash
-npm test
-```
-
-Esta fase no crea tablas ni conecta Supabase, Zakaeus u otros servicios externos.
+`PRODUCT.md`, `DESIGN.md` y `.impeccable/design.json` describen el alcance y el diseño compartido de caja. El resto del POS conserva sus pantallas existentes.

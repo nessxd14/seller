@@ -41,6 +41,8 @@ import './pos-hotkeys.css'
 import './styles/pos-precios-producto.css'
 import './styles/commercial-forms.css'
 import './styles/management.css'
+import '@fontsource-variable/manrope'
+import './styles/cash-workspace.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

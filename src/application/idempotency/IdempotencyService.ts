@@ -1,3 +1,5 @@
+import { createUuid } from '../shared/createUuid'
+
 export type SensitiveOperation = 'confirm_sale'|'convert_quote'|'confirm_order'|'register_payment'|'open_cash'|'close_cash'|'dispatch'|'cancel'|'return'|'checkout'|'abrir_venta_directa'|'cobrar_vtd'
 
 export interface IdempotencyService {
@@ -18,7 +20,7 @@ export class LocalIdempotencyService implements IdempotencyService {
     const key=this.key(operation,aggregateId)
     const existing=this.storage.getItem(key)
     if(existing)return existing
-    const value=crypto.randomUUID()
+    const value=createUuid()
     this.storage.setItem(key,value)
     return value
   }

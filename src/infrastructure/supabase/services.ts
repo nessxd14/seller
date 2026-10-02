@@ -1,5 +1,6 @@
 import type { CashSessionRecord, CustomerRecord, OrderView, QuoteDraft } from '../../application/shared/models'
 import { supabase } from './supabaseClient'
+import { createUuid } from '../../application/shared/createUuid'
 import { quoteRepository } from './QuoteRepository.supabase'
 import { orderRepository } from './OrderRepository.supabase'
 import { customerRepository } from './CustomerRepository.supabase'
@@ -157,16 +158,16 @@ export const cashService = {
     const actorId = await currentActorId()
     return cashRepository.addMovement(sessionId, { type, method, amountCents, note }, { actorId })
   },
-  async registerAdvance(orderId: string, amountCents: number, method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check', sessionId: string): Promise<{ movementId: string }> {
+  async registerAdvance(orderId: string, amountCents: number, method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check', sessionId: string, idempotencyKey: string = createUuid()): Promise<{ movementId: string; pagoId?: string }> {
     const actorId = await currentActorId()
-    return cashRepository.registerAdvance({ orderId, amountCents, method, sessionId }, { actorId })
+    return cashRepository.registerAdvance({ orderId, amountCents, method, sessionId }, { actorId, idempotencyKey })
   },
-  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string; idempotencyKey?: string }): Promise<{ movementId: string }> {
+  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string; idempotencyKey?: string; noImputar?: boolean; aplicaciones?: Array<{ partidaId: number; monto: number }>; referencia?: string }): Promise<{ movementId: string; pagoId?: string }> {
     const actorId = await currentActorId()
     // Brief S5: si el llamador (PagoModal, vía sensitiveOperations.ejecutarIdempotente) no
     // manda una clave estable, se genera una al vuelo — mismo comportamiento que antes de
     // este brief, un pago sin protección de reintento.
-    return cashRepository.registerPayment(input, { actorId, idempotencyKey: input.idempotencyKey ?? crypto.randomUUID() })
+    return cashRepository.registerPayment(input, { actorId, idempotencyKey: input.idempotencyKey ?? createUuid() })
   },
   getAdvancesForOrder,
   // Backend truth is authoritative (esperado_efectivo comes from cerrar_caja's RPC
@@ -271,11 +272,13 @@ export const ventaDirectaService = {
 }
 
 export const turnoService = {
+  list: turnoRepository.listTurnos,
+  movimientos: turnoRepository.listMovimientosTurno,
   getSesionAbierta: turnoRepository.getSesionAbierta,
   getUltimaSesionCerrada: turnoRepository.getUltimaSesionCerrada,
   abrir: (denominaciones: Denominaciones) => turnoRepository.abrirTurno(denominaciones),
-  registrarMovimiento: (input: { sesionId: string; subtipo: 'GASTO' | 'REMESA' | 'INYECCION'; montoBs: number; motivo: string; comprobantePath?: string }) =>
-    turnoRepository.registrarMovimientoTurno({ ...input, idempotencyKey: crypto.randomUUID() }),
+  registrarMovimiento: (input: { sesionId: string; subtipo: 'GASTO' | 'REMESA' | 'INYECCION'; montoBs: number; motivo: string; comprobantePath?: string; idempotencyKey?: string }) =>
+    turnoRepository.registrarMovimientoTurno({ ...input, idempotencyKey: input.idempotencyKey ?? createUuid() }),
   resolverGasto: turnoRepository.resolverGasto,
   cerrar: turnoRepository.cerrarTurno,
   revisar: turnoRepository.revisarTurno,

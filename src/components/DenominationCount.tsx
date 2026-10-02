@@ -10,7 +10,7 @@ const MONEDAS = [5, 2, 1, 0.5] as const
 
 const bs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export function DenominationCount({ value, onChange }: { value: Denominaciones; onChange: (next: Denominaciones) => void }) {
+export function DenominationCount({ value, onChange, disabled = false }: { value: Denominaciones; onChange: (next: Denominaciones) => void; disabled?: boolean }) {
   const total = [...BILLETES, ...MONEDAS].reduce((sum, d) => sum + (value[String(d)] ?? 0) * d, 0)
   const setQty = (key: number, qty: number) => onChange({ ...value, [String(key)]: Math.max(0, Math.floor(qty)) })
   const row = (d: number) => {
@@ -18,14 +18,14 @@ export function DenominationCount({ value, onChange }: { value: Denominaciones; 
     const qty = value[key] ?? 0
     return <div className="denomination-row" key={key}>
       <span className="denomination-label">Bs {d}</span>
-      <NumberField ariaLabel={`Cantidad de billetes/monedas de ${d}`} min={0} allowDecimals={false} value={qty} onCommit={(next) => setQty(d, next)} />
+      <NumberField ariaLabel={`Cantidad de billetes/monedas de ${d}`} disabled={disabled} min={0} allowDecimals={false} selectOnFocus value={qty} onCommit={(next) => setQty(d, next)} />
       <strong className="denomination-subtotal">Bs {bs(qty * d)}</strong>
     </div>
   }
   return <div className="denomination-count">
-    <div className="denomination-group"><h4>Billetes</h4>{BILLETES.map(row)}</div>
-    <div className="denomination-group"><h4>Monedas</h4>{MONEDAS.map(row)}</div>
-    <div className="denomination-total"><span>Total contado</span><strong>Bs {bs(total)}</strong></div>
+    <div className="denomination-group"><h4>Billetes</h4><div className="denomination-head"><span>Valor</span><span>Cantidad</span><span>Subtotal</span></div>{BILLETES.map(row)}</div>
+    <div className="denomination-group"><h4>Monedas</h4><div className="denomination-head"><span>Valor</span><span>Cantidad</span><span>Subtotal</span></div>{MONEDAS.map(row)}</div>
+    <div className="denomination-total" aria-live="polite"><span>Total contado</span><strong>Bs {bs(total)}</strong></div>
   </div>
 }
 
