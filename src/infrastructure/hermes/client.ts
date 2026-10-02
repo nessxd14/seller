@@ -1,8 +1,35 @@
 import { supabase } from '../supabase/supabaseClient'
 
-// La credencial de Hermes nunca toca este archivo ni ningún otro que corra en el
-// navegador — vive solo en api/hermes/*.ts, del lado del servidor de Vercel. Acá solo
-// se llama a esos dos endpoints propios, como a cualquier otro endpoint del POS.
+// Consulta la misma base del POS con su sesión y permisos, sin puente entre proyectos.
+async function consultarHermesLocal(url: string, options: RequestInit): Promise<Response> {
+  const body = JSON.parse(String(options.body ?? '{}'))
+  const operations: Record<string, string> = {
+    'consultar-saldo': 'saldo', 'consultar-saldos': 'saldos',
+    'consultar-saldos-similares': 'similares', 'evaluar-credito': 'credito',
+    'verificar-cliente': 'existe', 'calcular-reparto': 'reparto',
+  }
+  const operation = operations[url.split('/').pop() ?? '']
+  const { data, error } = await supabase.rpc('consultar_hermes_pos', {
+    p_operacion: operation,
+    p_cliente_ids: body.clienteIds ?? body.posIds ?? [body.clienteId],
+    p_monto: body.monto ?? null,
+  })
+  if (error) return Response.json({ error: error.message }, { status: 502 })
+  if (operation === 'saldo') return Response.json(data ? {
+    saldoConfirmado: data.saldo_confirmado, saldoProvisional: data.saldo_provisional, situacion: data.situacion,
+  } : { sinCuenta: true })
+  if (operation === 'credito') return Response.json(data ? {
+    permitido: data.permitido, saldoConfirmado: data.saldo_confirmado,
+    limiteCredito: data.limite_credito, motivoAdvertencia: data.motivo_advertencia,
+  } : { sinCuenta: true })
+  if (operation === 'saldos' || operation === 'similares') return Response.json({ saldos: data })
+  if (operation === 'reparto') return Response.json({ filas: data })
+  return Response.json(data)
+}
+
+
+// Las consultas habituales usan la sesión del POS. Las mutaciones heredadas conservan
+// endpoints de servidor; ninguna clave de servicio se incluye en este cliente.
 
 /**
  * Brief S4: antes `consultarSaldo` devolvía `SaldoCliente | null`, donde `null` cubría
@@ -61,7 +88,7 @@ const authHeaders = async (): Promise<HeadersInit> => {
  * saldo real. El llamador decide qué mostrar en cada caso; ver ResultadoSaldo. */
 export async function consultarSaldo(clienteId: number): Promise<ResultadoSaldo> {
   try {
-    const response = await fetch('/api/hermes/consultar-saldo', {
+    const response = await consultarHermesLocal('/api/hermes/consultar-saldo', {
       method: 'POST',
       headers: await authHeaders(),
       body: JSON.stringify({ clienteId }),
@@ -97,7 +124,7 @@ export type ResultadoCredito =
  * necesita saber si mostrar el cartel de advertencia, nunca bloquea el submit. */
 export async function evaluarCredito(clienteId: number, montoCents: number): Promise<ResultadoCredito> {
   try {
-    const response = await fetch('/api/hermes/evaluar-credito', {
+    const response = await consultarHermesLocal('/api/hermes/evaluar-credito', {
       method: 'POST',
       headers: await authHeaders(),
       body: JSON.stringify({ clienteId, monto: Math.round(montoCents) / 100 }),
@@ -132,7 +159,7 @@ export type ResultadoVerificarCliente =
 
 export async function verificarClienteEnHermes(clienteId: number): Promise<ResultadoVerificarCliente> {
   try {
-    const response = await fetch('/api/hermes/verificar-cliente', {
+    const response = await consultarHermesLocal('/api/hermes/verificar-cliente', {
       method: 'POST',
       headers: await authHeaders(),
       body: JSON.stringify({ clienteId }),
@@ -155,7 +182,7 @@ export async function verificarClienteEnHermes(clienteId: number): Promise<Resul
  */
 export async function consultarSaldos(clienteIds: number[]): Promise<Map<number, SaldoClienteLote> | null> {
   try {
-    const response = await fetch('/api/hermes/consultar-saldos', {
+    const response = await consultarHermesLocal('/api/hermes/consultar-saldos', {
       method: 'POST',
       headers: await authHeaders(),
       body: JSON.stringify({ clienteIds }),
@@ -206,7 +233,7 @@ export interface SaldoSimilar {
  */
 export async function consultarSaldosSimilares(posIds: number[]): Promise<Map<number, SaldoSimilar> | null> {
   try {
-    const response = await fetch('/api/hermes/consultar-saldos-similares', {
+    const response = await consultarHermesLocal('/api/hermes/consultar-saldos-similares', {
       method: 'POST',
       headers: await authHeaders(),
       body: JSON.stringify({ posIds }),
@@ -279,7 +306,7 @@ export interface FilaReparto {
 /** SÍ lanza — el llamador (RepartoPagoPanel) necesita distinguir "no se pudo calcular"
  * de "no hay partidas abiertas" (array vacío, no es un error). */
 export async function calcularRepartoFifo(clienteId: number, monto: number): Promise<FilaReparto[]> {
-  const response = await fetch('/api/hermes/calcular-reparto', {
+  const response = await consultarHermesLocal('/api/hermes/calcular-reparto', {
     method: 'POST',
     headers: await authHeaders(),
     body: JSON.stringify({ clienteId, monto }),

@@ -382,6 +382,20 @@ export interface TurnoTicket {
   metodos: { metodo: string; montoBs: number; estadoVerificacion: string }[]
 }
 
+export interface TurnoMovimiento {
+  id: string
+  tipo: string
+  subtipo?: string
+  metodo: string
+  montoBs: number
+  detalle: string
+  clienteNombre?: string
+  documento?: string
+  creadoEn: string
+  estadoGasto?: string
+  comprobantePath?: string
+}
+
 export interface CajaGastoRecord {
   id: string
   sesionCajaId?: string

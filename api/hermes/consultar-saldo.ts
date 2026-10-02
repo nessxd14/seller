@@ -1,3 +1,4 @@
+import { hermesHeaders } from './_database.js'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 // La extensión .js es obligatoria: package.json declara "type": "module", así
 // que estas funciones corren como ESM y el specifier tiene que apuntar al
@@ -26,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const response = await fetch(`${hermesUrl}/rest/v1/rpc/consultar_saldo`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+      headers: hermesHeaders(serviceKey),
       body: JSON.stringify({ p_cliente_id: clienteId }),
     })
     if (!response.ok) { res.status(502).json({ error: `Hermes respondió ${response.status}` }); return }

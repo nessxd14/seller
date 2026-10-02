@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { featureFlags } from '../config/featureFlags'
-import { cashService } from '../infrastructure/services'
+import { turnoService, authSessionProvider } from '../infrastructure/services'
 
 interface CashSessionState {
   sessionId: string | null
@@ -34,12 +34,26 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
     if (!featureFlags.supabase) {
       return Promise.resolve().then(() => { setSessionId('mock-session'); setLoading(false) })
     }
-    return cashService.getOpenSession()
-      .then((open) => setSessionId(open ? open.id : null))
+    return Promise.all([turnoService.getSesionAbierta(), authSessionProvider.getSession()])
+      .then(([open, session]) => {
+        // Un cajero cobra dentro de su propio turno; los responsables supervisan.
+        if (session?.user.role === 'cajero') {
+          setSessionId(session.user.active && open?.cajeroId === session.user.id ? open.id : null)
+          return
+        }
+        setSessionId(session?.user.active && open ? open.id : null)
+      })
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    const update = () => { void refresh().catch(() => setSessionId(null)) }
+    update()
+    const unsubscribe = authSessionProvider.subscribe?.(update)
+    window.addEventListener('focus', update)
+    const timer = window.setInterval(update, 15_000)
+    return () => { unsubscribe?.(); window.removeEventListener('focus', update); clearInterval(timer) }
+  }, [refresh])
 
   const value = useMemo(() => ({ sessionId, loading, refresh }), [sessionId, loading, refresh])
   return <CashSessionContext.Provider value={value}>{children}</CashSessionContext.Provider>

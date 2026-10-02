@@ -24,10 +24,10 @@ export function RepartoPagoPanel({ clienteId, monto, onFilasChange }: {
   const [fetchError, setFetchError] = useState('')
 
   useEffect(() => {
-    if (!clienteId || monto <= 0) { setFilas(null); setStatus('ready'); return }
     let cancelled = false
-    setStatus('loading')
+    const reset = setTimeout(() => { setFilas(null); setStatus(clienteId && monto > 0 ? 'loading' : 'ready'); onFilasChange([], null) }, 0)
     const handle = setTimeout(() => {
+      if (!clienteId || monto <= 0) return
       void calcularRepartoFifo(clienteId, monto)
         .then((propuesta: FilaReparto[]) => {
           if (cancelled) return
@@ -40,7 +40,8 @@ export function RepartoPagoPanel({ clienteId, monto, onFilasChange }: {
           setStatus('error')
         })
     }, 300)
-    return () => { cancelled = true; clearTimeout(handle) }
+    return () => { cancelled = true; clearTimeout(handle); clearTimeout(reset) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset depende del cliente/monto; el padre recrea el callback al renderizar
   }, [clienteId, monto])
 
   useEffect(() => {

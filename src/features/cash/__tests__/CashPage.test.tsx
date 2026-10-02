@@ -5,6 +5,9 @@ import { CashPage } from '../CashPage'
 import { CashSessionProvider } from '../../../context/CashSessionContext'
 import type { AuthSession } from '../../../application/auth/AuthSessionProvider'
 import type { TurnoResumen, TurnoSesion } from '../../../application/shared/models'
+import { useEffect } from 'react'
+
+vi.mock('../useCashRefresh', () => ({ useCashRefresh: (refresh: () => Promise<void>) => { useEffect(() => { void refresh() }, [refresh]) } }))
 
 // Brief Caja-1 — blind count (decisión no negociable): un cajero nunca debe ver
 // "esperado"/"diferencia" en la pantalla de Caja; un gerente sí. resumen_turno ya lo
@@ -34,6 +37,7 @@ vi.mock('../../../infrastructure/services', () => ({
     getUltimaSesionCerrada: vi.fn().mockResolvedValue(null),
     resumen: (...args: unknown[]) => getResumenTurno(...args),
     misTickets: vi.fn().mockResolvedValue([]),
+    movimientos: vi.fn().mockResolvedValue([]),
     gastosPendientes: vi.fn().mockResolvedValue([]),
     turnosEnRevision: vi.fn().mockResolvedValue([]),
     faltantesPendientes: vi.fn().mockResolvedValue([]),

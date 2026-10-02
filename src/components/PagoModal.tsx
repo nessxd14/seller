@@ -1,33 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
 import { Modal } from './Modal'
 import { NumberField } from './NumberField'
-import { customerService, orderService, cashService, authSessionProvider, sensitiveOperations } from '../infrastructure/services'
+import { customerService, orderService, cashService, sensitiveOperations } from '../infrastructure/services'
 import { useCashSession } from '../context/CashSessionContext'
 import { featureFlags } from '../config/featureFlags'
-import { consultarSaldo, registrarPago, imputarPago, type ResultadoSaldo } from '../infrastructure/hermes/client'
-import { pendienteSyncHermesPagoRepository } from '../infrastructure/supabase/PendienteSyncHermesPagoRepository'
-import { methodExtToMedioHermes, type PosPaymentMethodExt } from '../infrastructure/supabase/mappers'
+import { consultarSaldo, type ResultadoSaldo } from '../infrastructure/hermes/client'
+import { type PosPaymentMethodExt } from '../infrastructure/supabase/mappers'
 import { formatMoney, money, moneyFromDecimal } from '../domain/common/money'
 import type { CustomerRecord, OrderView } from '../application/shared/models'
 import { RepartoPagoPanel } from './RepartoPagoPanel'
 import type { FilaRepartoEditable } from '../domain/hermes/repartoPago'
+import { createUuid } from '../application/shared/createUuid'
 
 const metodoLabels: Record<PosPaymentMethodExt, string> = { cash: 'Efectivo', qr: 'QR', deposit: 'Depósito', transfer: 'Transferencia', sigep: 'SIGEP', check: 'Cheque' }
 const metodoOrder: PosPaymentMethodExt[] = ['cash', 'qr', 'deposit', 'transfer', 'sigep', 'check']
 
-// "Registrar pago" — el cajero cobra al instante, dentro de su sesión de caja abierta,
-// igual que una venta. Del lado de Hermes el pago queda PROPUESTO hasta que un supervisor
-// (rol gerente, en Hermes) lo confirme — pero eso no es cosa del cajero ni de esta
-// pantalla: nunca se menciona acá, ni se bloquea ni se revierte el pago del POS por eso.
+// Caja y propuesta de Hermes se registran juntas. La confirmación autorizada es posterior.
 export function PagoModal({ onClose }: { onClose: () => void }) {
   const { sessionId } = useCashSession()
   // Brief S5: estable por apertura del modal (no por render), análogo a operationId en
   // PosContext — así un doble click con la red cortada y restablecida reusa la misma
   // clave de idempotencia en vez de crear dos movimiento_caja.
-  const pagoOperationId = useRef(crypto.randomUUID())
+  const pagoOperationId = useRef(createUuid())
   const [customer, setCustomer] = useState<CustomerRecord | null>(null)
   const [customerQuery, setCustomerQuery] = useState('')
   const [customerResults, setCustomerResults] = useState<CustomerRecord[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState('')
   const [showCustomerPicker, setShowCustomerPicker] = useState(false)
   const [tipo, setTipo] = useState<'total' | 'pedido'>('total')
   const [orders, setOrders] = useState<OrderView[]>([])
@@ -78,7 +77,11 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
     if (!showCustomerPicker) return
     let cancelled = false
     const handle = setTimeout(() => {
-      void customerService.list({ query: customerQuery, page: { page: 1, pageSize: 8 } }).then((list) => { if (!cancelled) setCustomerResults(list) })
+      setSearching(true); setSearchError('')
+      void customerService.list({ query: customerQuery, page: { page: 1, pageSize: 8 } })
+        .then((list) => { if (!cancelled) setCustomerResults(list) })
+        .catch(() => { if (!cancelled) { setCustomerResults([]); setSearchError('No se pudo buscar. Reintenta la búsqueda.') } })
+        .finally(() => { if (!cancelled) setSearching(false) })
     }, 250)
     return () => { cancelled = true; clearTimeout(handle) }
   }, [showCustomerPicker, customerQuery])
@@ -98,7 +101,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
     return () => { cancelled = true }
   }, [tipo, customer])
 
-  const pickCustomer = (record: CustomerRecord) => { setCustomer(record); setShowCustomerPicker(false); setCustomerQuery('') }
+  const pickCustomer = (record: CustomerRecord) => { setCustomer(record); setShowCustomerPicker(false); setCustomerQuery(''); setNoImputar(false); setRepartoFilas([]); setRepartoError(null) }
 
   const valid = !!customer && displayAmount > 0 && !!sessionId && (tipo === 'total' || !!orderId) && (tipo === 'pedido' || !repartoError)
   // No bloqueante: pagar de más es legítimo (queda saldo a favor), así que esto es un
@@ -107,44 +110,8 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
     ? displayAmount - saldo.saldoConfirmado
     : 0
 
-  // Puente hacia Hermes: siempre en segundo plano, best-effort. El pago del POS ya quedó
-  // confirmado antes de que esto corra — un fallo acá solo encola un reintento. Devuelve el
-  // pagoId cuando se pudo proponer — el llamador lo necesita para, opcionalmente, guardar
-  // un reparto editado con imputar_pago (Tarea 2); si no hay pagoId no hay nada que imputar.
-  const syncHermesPago = async (movimientoCajaId: string, clienteId: string, amountCents: number, metodo: PosPaymentMethodExt, pedidoId: string | undefined, noImputarFlag: boolean): Promise<{ pagoId?: string; usuarioPos: string }> => {
-    let usuarioPos = 'pos'
-    try {
-      const session = await authSessionProvider.getSession()
-      usuarioPos = session?.user.email ?? session?.user.id ?? usuarioPos
-    } catch {
-      // sin sesión disponible, se usa el fallback
-    }
-    if (!featureFlags.supabase) return { usuarioPos }
-    const medio = methodExtToMedioHermes(metodo)
-    try {
-      const { pagoId } = await registrarPago({ clienteId: Number(clienteId), monto: amountCents / 100, medio, pedidoId, movimientoCajaId, usuarioPos, noImputar: noImputarFlag })
-      return { pagoId: String(pagoId), usuarioPos }
-    } catch (err) {
-      try {
-        await pendienteSyncHermesPagoRepository.registrarFallo({
-          movimientoCajaId,
-          clienteId,
-          pedidoId,
-          monto: amountCents / 100,
-          metodo: medio,
-          usuarioPos,
-          error: err instanceof Error ? err.message : 'No se pudo registrar el pago en Hermes',
-        })
-      } catch {
-        // si ni siquiera se pudo encolar el reintento, no hay más que hacer acá — el pago
-        // ya está confirmado en el POS y es lo que importa
-      }
-      return { usuarioPos }
-    }
-  }
-
   const confirm = async () => {
-    if (!customer || !sessionId) return
+    if (!valid || !customer || !sessionId || submitting) return
     setSubmitting(true)
     setError('')
     try {
@@ -154,8 +121,9 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
       // reintento con exactamente estos mismos datos reusa la clave (un solo movimiento_caja);
       // cambiar el método tras un cobro fallido (brief S5's ejemplo: "el cliente dice pago
       // con QR") da una huella distinta, o sea un pago nuevo, no un reintento del viejo.
-      const huella = [customer.id, orderIdForPayment ?? '', amountCents, method, sessionId].join('|')
-      const { movementId } = await sensitiveOperations.ejecutarIdempotente(
+      const aplicaciones = tipo === 'total' && !noImputar ? repartoFilas.filter(f => f.aplica > 0).map(f => ({ partidaId: f.partidaId, monto: f.aplica })) : undefined
+      const huella = JSON.stringify([customer.id, orderIdForPayment, amountCents, method, sessionId, noImputar, aplicaciones])
+      await sensitiveOperations.ejecutarIdempotente(
         'register_payment',
         pagoOperationId.current,
         huella,
@@ -166,32 +134,12 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
           method,
           sessionId,
           idempotencyKey,
+          noImputar: tipo === 'total' && noImputar,
+          aplicaciones: aplicaciones?.length ? aplicaciones : undefined,
         }),
       )
       setDone({ amountCents, customerName: customer.name })
-      // Brief T4 Tarea 2: solo hay reparto que guardar cuando tipo === 'total' (sin pedido
-      // — proponer_pago no pudo aplicar nada solo) y el vendedor dejó al menos una fila con
-      // monto asignado. Ahí sí hace falta esperar el pagoId real de Hermes antes de poder
-      // llamar a imputar_pago; en cualquier otro caso el sync sigue siendo fire-and-forget,
-      // sin bloquear la confirmación del pago en el POS.
-      // Brief T7 Tarea 4: "no imputar" y el reparto son excluyentes — imputar_pago rechaza
-      // la combinación del lado servidor, así que acá directamente no se intenta.
-      const aplicacionesEditadas = noImputar ? [] : repartoFilas.filter((f) => f.aplica > 0).map((f) => ({ partidaId: f.partidaId, monto: f.aplica }))
-      if (tipo === 'total' && aplicacionesEditadas.length) {
-        const { pagoId, usuarioPos } = await syncHermesPago(movementId, customer.id, amountCents, method, orderIdForPayment, noImputar)
-        if (pagoId) {
-          try {
-            await imputarPago(pagoId, aplicacionesEditadas, usuarioPos)
-          } catch (err) {
-            // El pago y el anticipo en Hermes ya quedaron registrados — solo el reparto
-            // editado no se pudo guardar. confirmar_pago hace FIFO automático si nadie
-            // imputó nada, así que esto no bloquea nada, solo se avisa.
-            setDone((prev) => prev && ({ ...prev, repartoWarning: `No se pudo guardar el reparto editado: ${err instanceof Error ? err.message : 'error desconocido'}. Se va a repartir por FIFO automático al confirmar.` }))
-          }
-        }
-      } else {
-        void syncHermesPago(movementId, customer.id, amountCents, method, orderIdForPayment, noImputar)
-      }
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar el pago')
     } finally {
@@ -202,7 +150,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
   if (done) return <Modal title="Pago registrado" onClose={onClose}><div className="modal-body success-state">
     <span>✓</span>
     <h3>{formatMoney(money(done.amountCents))}</h3>
-    <p>Pago registrado. {formatMoney(money(done.amountCents))} anotado en la cuenta de {done.customerName}.</p>
+    <p>{featureFlags.supabase ? `Registrado en caja y en Hermes para ${done.customerName}. Pendiente de revisión.` : `Pago registrado para ${done.customerName}.`}</p>
     {done.repartoWarning && <p className="mock-note payment-error">{done.repartoWarning}</p>}
   </div><footer className="modal-actions"><button className="primary-button full-button" onClick={onClose}>Cerrar</button></footer></Modal>
 
@@ -211,6 +159,8 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
       <span className="field-label">Cliente</span>
       <div className="customer-search" style={{ marginTop: 5 }}>
         <input
+          aria-label="Buscar cliente para registrar pago"
+          autoComplete="off"
           value={showCustomerPicker ? customerQuery : (customer?.name ?? '')}
           placeholder="Buscar cliente por nombre, documento o correo..."
           onFocus={() => setShowCustomerPicker(true)}
@@ -218,8 +168,8 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
         />
         {showCustomerPicker && (
           <div className="customer-search-results">
-            {customerResults.map((c) => <button type="button" key={c.id} onClick={() => pickCustomer(c)}><strong>{c.name}</strong><small>{c.document} · {c.usualChannel}</small></button>)}
-            {!customerResults.length && <span className="empty-hint">Sin resultados.</span>}
+            {!searching && customerResults.map((c) => <button type="button" key={c.id} onClick={() => pickCustomer(c)}><strong>{c.name}</strong><small>{c.document || 'Sin documento'} · {c.usualChannel}</small></button>)}
+            {searching ? <span role="status" className="empty-hint">Buscando clientes…</span> : searchError ? <span role="alert" className="empty-hint">{searchError}</span> : !customerResults.length && <span className="empty-hint">Sin resultados.</span>}
             <button type="button" className="close-picker" onClick={() => setShowCustomerPicker(false)}>Cerrar</button>
           </div>
         )}
@@ -277,7 +227,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
 // de cliente y no necesita el ícono/chip compacto.
 function SaldoResumen({ saldo }: { saldo: ResultadoSaldo }) {
   if (saldo.estado === 'no-disponible') return <p className="mock-note">Saldo no disponible.</p>
-  if (saldo.estado === 'sin-cuenta') return <p className="mock-note">Este cliente todavía no tiene cuenta corriente en Hermes. El pago se va a registrar en caja igual, pero no va a aparecer en su estado de cuenta hasta que se lo importe en Hermes.</p>
+  if (saldo.estado === 'sin-cuenta') return <p className="mock-note">Se abrirá su cuenta en Hermes al registrar el pago.</p>
   const { saldoConfirmado, saldoProvisional } = saldo
   if (saldoConfirmado === 0 && saldoProvisional === 0) return <p className="mock-note">Cliente al día.</p>
   // Misma regla que SaldoBadge: si lo provisional es 0, el pago ya viajó a Hermes y no

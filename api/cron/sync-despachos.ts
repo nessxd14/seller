@@ -1,3 +1,4 @@
+import { hermesHeaders } from '../hermes/_database.js'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
@@ -78,7 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const response = await fetch(`${hermesUrl}/rest/v1/rpc/sincronizar_entrega_pedido`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: hermesServiceKey, Authorization: `Bearer ${hermesServiceKey}` },
+        headers: hermesHeaders(hermesServiceKey),
         body: JSON.stringify({
           p_pedido_id: row.pedido_id,
           p_fecha: row.fecha_completado,

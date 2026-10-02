@@ -28,7 +28,7 @@ export function CobrarVtdPickerModal({ yaSeleccionadas, onClose, onAdd }: { yaSe
     return disponibles.filter((v) => (v.numero ?? '').toLowerCase().includes(q) || (v.clienteNombre ?? '').toLowerCase().includes(q))
   }, [disponibles, query])
 
-  const toggle = (id: string) => setChecked((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  const toggle = (id: string) => setChecked((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
   const confirmar = () => {
     const seleccionadas = filtradas.filter((v) => checked.has(v.ventaId))
     if (!seleccionadas.length) return

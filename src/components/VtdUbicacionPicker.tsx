@@ -8,7 +8,7 @@ import { ventaDirectaService } from '../infrastructure/services'
  * 'VENTAS DIRECTAS' (sucursal_id=1), resuelta en runtime (nunca hardcodeada, el id lo
  * asigna la base). No hay nada para que el cajero elija; se resuelve sola al montar.
  */
-export function VtdUbicacionPicker({ value, onChange }: { value: number | null; onChange: (id: number | null) => void }) {
+export function VtdUbicacionPicker({ onChange }: { value: number | null; onChange: (id: number | null) => void }) {
   const [loaded, setLoaded] = useState(false)
   useEffect(() => {
     void ventaDirectaService.getUbicacionVentasDirectas().then((id) => { onChange(id); setLoaded(true) })

@@ -1,18 +1,20 @@
-import { ArrowDownLeft, ArrowUpRight, Calculator, LockKeyhole, Printer, WalletCards } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ArrowDownLeft, ArrowUpRight, Calculator, ChevronDown, LockKeyhole, Printer, WalletCards, RefreshCw, ReceiptText } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
 import { hasPermission } from '../../application/auth/AuthSessionProvider'
-import type { CajaFaltanteRecord, CajaGastoRecord, CashSessionRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoResumen, TurnoSesion, TurnoTicket } from '../../application/shared/models'
+import type { CajaFaltanteRecord, CajaGastoRecord, CashSessionRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoResumen, TurnoSesion, TurnoTicket, TurnoMovimiento } from '../../application/shared/models'
 import { sugerirPagosQr, type SugerenciaQr } from '../../domain/cash/qrSuggestions'
 import { authSessionProvider, cashService, sensitiveOperations, turnoService, ventaDirectaService } from '../../infrastructure/services'
 import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
 import { NumberField } from '../../components/NumberField'
-import { DenominationCount } from '../../components/DenominationCount'
+import { DenominationCount, denominacionesTotal } from '../../components/DenominationCount'
 import { VentaTicket } from '../../components/VentaTicket'
 import { featureFlags } from '../../config/featureFlags'
 import { useCashSession } from '../../context/CashSessionContext'
+import { useCashRefresh } from './useCashRefresh'
+import { createUuid } from '../../application/shared/createUuid'
 
 const bs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const metodoLabel: Record<string, string> = { EFECTIVO: 'Efectivo', QR: 'QR', TRANSFERENCIA: 'Transferencia', SIGEP: 'SIGEP', CHEQUE: 'Cheque', DEPOSITO: 'Depósito' }
@@ -36,10 +38,13 @@ function TurnoCashPage({ notify }: { notify: (message: string) => void }) {
   const { refresh: refreshCashSession } = useCashSession()
   const puedeSupervisar = hasPermission(session, 'cash_supervise')
 
-  const load = async () => setSesion(await turnoService.getSesionAbierta())
+  const [loadError, setLoadError] = useState('')
+  const load = useCallback(async () => {
+    try { setSesion(await turnoService.getSesionAbierta()); setLoadError('') }
+    catch (error) { setLoadError(error instanceof Error ? error.message : 'No se pudo consultar el turno') }
+  }, [])
   useEffect(() => { void authSessionProvider.getSession().then(setSession) }, [])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial del turno abierto, una sola vez al montar
-  useEffect(() => { void load() }, [])
+  useCashRefresh(load, 'seller-turno')
 
   const onOpened = async () => { await load(); await refreshCashSession(); notify('Turno abierto') }
   const onClosed = async () => { await load(); await refreshCashSession() }
@@ -47,15 +52,19 @@ function TurnoCashPage({ notify }: { notify: (message: string) => void }) {
   return <FeatureShell
     eyebrow="CONTROL DE CAJA"
     title="Caja"
+    className="cash-workspace"
     subtitle="Apertura, movimientos y cierre de turno — Caja Tienda"
-    action={puedeSupervisar ? <div className="turno-tabs" role="tablist"><button role="tab" className={tab === 'mi-turno' ? 'active' : ''} onClick={() => setTab('mi-turno')}>Mi turno</button><button role="tab" className={tab === 'supervision' ? 'active' : ''} onClick={() => setTab('supervision')}>Supervisión</button></div> : undefined}
+    action={puedeSupervisar ? <div className="turno-tabs" role="group" aria-label="Vistas de caja"><button aria-pressed={tab === 'mi-turno'} className={tab === 'mi-turno' ? 'active' : ''} onClick={() => setTab('mi-turno')}>Mi turno</button><button aria-pressed={tab === 'supervision'} className={tab === 'supervision' ? 'active' : ''} onClick={() => setTab('supervision')}>Supervisión</button></div> : undefined}
   >
+    {loadError && <p role="alert" className="cash-error">{loadError} <button onClick={() => void load()}>Reintentar</button></p>}
     {tab === 'supervision' && puedeSupervisar
       ? <SupervisionPanel notify={notify} />
       : sesion === 'loading'
         ? <FeatureState type="loading" text="Cargando turno" />
         : sesion
-          ? <MiTurnoPanel sesion={sesion} isManager={puedeSupervisar} notify={notify} onClosed={onClosed} />
+          ? sesion.cajeroId && sesion.cajeroId !== session?.user.id && !puedeSupervisar
+            ? <FeatureState type="error" text="Esta caja tiene el turno de otro cajero. Espera el relevo para abrir tu turno." />
+            : <MiTurnoPanel sesion={sesion} isManager={puedeSupervisar} notify={notify} onClosed={onClosed} />
           : <AbrirTurnoView notify={notify} onOpened={onOpened} />}
   </FeatureShell>
 }
@@ -66,23 +75,31 @@ function AbrirTurnoView({ notify, onOpened }: { notify: (message: string) => voi
   const [submitting, setSubmitting] = useState(false)
   useEffect(() => { void turnoService.getUltimaSesionCerrada().then((h) => setHandover(h?.entregadoPor ?? null)) }, [])
   const abrir = async () => {
+    if (submitting) return
     setSubmitting(true)
     try {
       await turnoService.abrir(denominaciones)
-      onOpened()
+      await onOpened()
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo abrir el turno')
     } finally {
       setSubmitting(false)
     }
   }
-  return <div className="cash-empty turno-abrir">
-    <div><WalletCards /></div>
-    <h2>No hay un turno abierto</h2>
-    {/* Blind count (B2): nunca el monto anterior — solo el nombre de quien entrega. */}
-    {handover && <p>Recibís la caja de <strong>{handover}</strong>. Contá el efectivo.</p>}
-    <DenominationCount value={denominaciones} onChange={setDenominaciones} />
-    <button className="primary-button" disabled={submitting} onClick={() => void abrir()}>{submitting ? 'Abriendo…' : 'Abrir turno'}</button>
+  return <div className="cash-opening">
+    <section className="cash-opening-intro">
+      <WalletCards aria-hidden="true" />
+      <h2>Abrir turno</h2>
+      <p>Cuenta el dinero que recibes para registrar tu fondo de apertura.</p>
+      {handover && <p className="cash-handover">Recibes la caja de <strong>{handover}</strong>.</p>}
+      <dl><div><dt>Caja</dt><dd>Caja Tienda</dd></div><div><dt>Registro</dt><dd>Por cajero y turno</dd></div></dl>
+      <p className="cash-opening-note">Las ventas, pagos y anticipos que cobres quedarán en este turno. Declara cada gasto con su detalle.</p>
+    </section>
+    <section className="cash-opening-count">
+      <header><h3>Cuenta el efectivo recibido</h3><p>Ingresa la cantidad de cada denominación.</p></header>
+      <DenominationCount value={denominaciones} onChange={setDenominaciones} disabled={submitting} />
+      <footer><div aria-live="polite"><span>Fondo de apertura</span><strong>Bs {bs(denominacionesTotal(denominaciones))}</strong></div><button className="primary-button" disabled={submitting} onClick={() => void abrir()}>{submitting ? 'Abriendo…' : 'Abrir mi turno'}</button></footer>
+    </section>
   </div>
 }
 
@@ -90,39 +107,49 @@ function TurnoHeaderChip({ sesion }: { sesion: TurnoSesion }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(id) }, [])
   const openedAt = new Date(sesion.abiertaEn).getTime()
-  const minutes = Math.max(0, Math.round((now - openedAt) / 60000))
+  const endAt = sesion.cerradaEn ? new Date(sesion.cerradaEn).getTime() : now
+  const minutes = Math.max(0, Math.round((endAt - openedAt) / 60000))
   const horas = Math.floor(minutes / 60)
   const mins = minutes % 60
   return <div>
-    <span>TURNO ABIERTO</span>
+    <div className="cash-turno-meta"><span>Turno #{sesion.id}</span><strong className={`cash-status ${sesion.estado.toLowerCase()}`}>{sesion.estado === 'ABIERTA' ? 'Abierto' : sesion.estado === 'EN_REVISION' ? 'En revisión' : 'Cerrado'}</strong></div>
     <h2>{sesion.cajaNombre}</h2>
-    <p>{sesion.abiertaPor ?? 'Cajero'} · desde {new Date(sesion.abiertaEn).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })} · {horas > 0 ? `${horas} h ` : ''}{mins} min</p>
+    <p className="cash-turno-owner">{sesion.abiertaPor ?? 'Cajero'}</p>
+    <p>Desde {new Date(sesion.abiertaEn).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })} · {horas > 0 ? `${horas} h ` : ''}{mins} min</p>
+    {sesion.cerradaEn && <p>Cerrado {new Date(sesion.cerradaEn).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })}</p>}
   </div>
 }
 
-function MiTurnoPanel({ sesion, isManager, notify, onClosed }: { sesion: TurnoSesion; isManager: boolean; notify: (message: string) => void; onClosed: () => void }) {
+export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = false }: { sesion: TurnoSesion; isManager: boolean; notify: (message: string) => void; onClosed: () => void; readOnly?: boolean }) {
   const [resumen, setResumen] = useState<TurnoResumen | null>(null)
   const [tickets, setTickets] = useState<TurnoTicket[]>([])
   const [movimientoOpen, setMovimientoOpen] = useState<'GASTO' | 'REMESA' | 'INYECCION' | null>(null)
   const [closing, setClosing] = useState(false)
   const [closeResult, setCloseResult] = useState<{ estado: string } | null>(null)
   const [reprintId, setReprintId] = useState<string | null>(null)
+  const [movimientos, setMovimientos] = useState<TurnoMovimiento[]>([])
+  const [loadError, setLoadError] = useState('')
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
+  const [filter, setFilter] = useState('TODOS')
+  const filteredMovements = movimientos.filter((m) => filter === 'TODOS' || m.tipo === filter || m.subtipo === filter)
 
-  const load = async () => {
-    const [r, t] = await Promise.all([turnoService.resumen(sesion.id), turnoService.misTickets(sesion.id)])
-    setResumen(r); setTickets(t)
-  }
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- recarga el resumen/tickets cuando cambia de sesión (apertura/cierre de turno)
-  useEffect(() => { void load() }, [sesion.id])
-
-  const registrarMovimiento = async (subtipo: 'GASTO' | 'REMESA' | 'INYECCION', montoBs: number, motivo: string, comprobantePath?: string) => {
+  const load = useCallback(async () => {
     try {
-      await turnoService.registrarMovimiento({ sesionId: sesion.id, subtipo, montoBs, motivo, comprobantePath })
+      const [r, t, m] = await Promise.all([turnoService.resumen(sesion.id), turnoService.misTickets(sesion.id), turnoService.movimientos(sesion.id)])
+      setResumen(r); setTickets(t); setMovimientos(m); setUpdatedAt(new Date()); setLoadError('')
+    } catch (error) { setLoadError(error instanceof Error ? error.message : 'No se pudo actualizar el turno') }
+  }, [sesion.id])
+  useCashRefresh(load, sesion.id)
+
+  const registrarMovimiento = async (subtipo: 'GASTO' | 'REMESA' | 'INYECCION', montoBs: number, motivo: string, comprobantePath?: string, idempotencyKey?: string) => {
+    try {
+      await turnoService.registrarMovimiento({ sesionId: sesion.id, subtipo, montoBs, motivo, comprobantePath, idempotencyKey })
       setMovimientoOpen(null)
       notify(subtipo === 'GASTO' ? 'Gasto registrado' : subtipo === 'REMESA' ? 'Remesa registrada' : 'Inyección registrada')
       await load()
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo registrar el movimiento')
+      throw error
     }
   }
 
@@ -144,39 +171,47 @@ function MiTurnoPanel({ sesion, isManager, notify, onClosed }: { sesion: TurnoSe
   }
 
   return <div className="cash-layout turno-layout">
+    <div className="cash-refresh"><span>{updatedAt ? `Actualizado ${updatedAt.toLocaleTimeString('es-BO')} · cada 15 s` : 'Actualizando turno…'}</span><button onClick={() => void load()}><RefreshCw /> Actualizar</button></div>
+    {loadError && <p role="alert" className="cash-error">{loadError}. Los datos visibles pueden estar desactualizados.</p>}
     <section className="cash-hero"><TurnoHeaderChip sesion={sesion} /><WalletCards />
       {/* B3: esperado/diferencia NUNCA para un cajero — esta tarjeta solo aparece si
           isManager, y aun así el dato viene de resumen_turno (ya redactado server-side
           para cajero), nunca recalculado acá. */}
       {isManager && <footer><span>Efectivo esperado</span><strong>{resumen?.esperadoEfectivoBs != null ? formatMoney(money(Math.round(resumen.esperadoEfectivoBs * 100))) : '—'}</strong>{resumen?.diferenciaRelevoBs ? <small>Relevo: {resumen.diferenciaRelevoBs >= 0 ? '+' : ''}{bs(resumen.diferenciaRelevoBs)}</small> : null}</footer>}
     </section>
-    {resumen && <section className="cash-methods"><h3>Mostrador (VTA)</h3>
-      {Object.keys(resumen.ventasRetailPorMetodo).length
-        ? Object.entries(resumen.ventasRetailPorMetodo).map(([m, v]) => <div key={m}><span>{metodoLabel[m] ?? m}</span><strong>Bs {bs(v)}</strong></div>)
-        : <FeatureState type="empty" text="Sin ventas de mostrador todavía en este turno" />}
-    </section>}
-    {resumen && <section className="cash-methods"><h3>Ventas directas (VTD)</h3>
-      {Object.keys(resumen.ventasVtdPorMetodo).length
-        ? <>{Object.entries(resumen.ventasVtdPorMetodo).map(([m, v]) => <div key={m}><span>{metodoLabel[m] ?? m}</span><strong>Bs {bs(v)}</strong></div>)}<div><span>Cobradas</span><strong>{resumen.cantidadVtdCobradas}</strong></div></>
-        : <FeatureState type="empty" text="Sin VTD cobradas todavía en este turno" />}
+    {resumen && <section className="cash-breakdown" aria-label="Desglose del turno">
+      <header><h3>Desglose del turno</h3><span>Ver métodos</span></header>
+      <CashSummaryRow title="Mostrador (VTA)" methods={resumen.ventasRetailPorMetodo} />
+      <CashSummaryRow title="Ventas directas (VTD)" methods={resumen.ventasVtdPorMetodo} note={`${resumen.cantidadVtdCobradas} VTD cobradas`} />
+      <CashSummaryRow title="Pagos y anticipos de clientes" methods={resumen.anticiposPorMetodo} note="Incluidos en los ingresos de este turno; separados de las ventas." />
+      <details className="cash-summary-row cash-summary-expenses">
+        <summary><h3>Gastos</h3><strong>Bs {bs((resumen.gastosPorEstado.aprobado ?? 0) + (resumen.gastosPorEstado.pendiente ?? 0))}</strong><ChevronDown aria-hidden="true" /></summary>
+        <div className="cash-summary-detail"><div><span>Aprobados</span><strong>Bs {bs(resumen.gastosPorEstado.aprobado ?? 0)}</strong></div><div><span>Pendientes de revisión</span><strong>Bs {bs(resumen.gastosPorEstado.pendiente ?? 0)}</strong></div><small>El detalle de cada gasto aparece en la actividad del turno.</small></div>
+      </details>
+      <div className="cash-summary-transfers"><div><span>Remesas</span><strong>Bs {bs(resumen.remesasBs)}</strong></div><div><span>Inyecciones</span><strong>Bs {bs(resumen.inyeccionesBs)}</strong></div></div>
     </section>}
     {resumen && resumen.vtdPorCobrar.cantidad > 0 && <section className="cash-methods vtd-por-cobrar-card">
       <h3>VTD por cobrar</h3>
       <p className="vtd-por-cobrar-info">{resumen.vtdPorCobrar.cantidad} venta{resumen.vtdPorCobrar.cantidad > 1 ? 's' : ''} · Bs {bs(resumen.vtdPorCobrar.totalBs)}</p>
       <small>Informativo — fuera del arqueo</small>
     </section>}
-    {resumen && <section className="cash-methods"><h3>Gastos, remesas e inyecciones</h3>
-      <div><span>Gastos aprobados</span><strong>Bs {bs(resumen.gastosPorEstado.aprobado ?? 0)}</strong></div>
-      <div><span>Gastos pendientes</span><strong>Bs {bs(resumen.gastosPorEstado.pendiente ?? 0)}</strong></div>
-      <div><span>Remesas</span><strong>Bs {bs(resumen.remesasBs)}</strong></div>
-      <div><span>Inyecciones</span><strong>Bs {bs(resumen.inyeccionesBs)}</strong></div>
-    </section>}
-    <section className="cash-movements"><header><h3>Acciones</h3><div>
+    {!readOnly && <section className="cash-movements cash-operation-actions"><header><h3>Movimientos de caja</h3><div>
       <button onClick={() => setMovimientoOpen('GASTO')}><ArrowUpRight /> Registrar gasto</button>
       <button onClick={() => setMovimientoOpen('REMESA')}><ArrowUpRight /> Remesa</button>
       <button onClick={() => setMovimientoOpen('INYECCION')}><ArrowDownLeft /> Inyección</button>
-    </div></header></section>
-    <section className="cash-movements"><h3>Mis tickets</h3>
+    </div></header></section>}
+    <section className="cash-ledger">
+      <header><div><h3>Actividad del turno</h3><p>Ventas, pagos, anticipos y gastos del cajero que cobró.</p></div><select aria-label="Filtrar movimientos" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="TODOS">Todos los movimientos</option><option value="VENTA">Ventas</option><option value="ANTICIPO">Pagos y anticipos</option><option value="GASTO">Gastos</option><option value="REMESA">Remesas</option><option value="INYECCION">Inyecciones</option><option value="ANULACION">Anulaciones</option></select></header>
+      <div className="cash-ledger-head"><span>Movimiento / detalle</span><span>Método</span><span>Importe</span></div>
+      {filteredMovements.map((m) => <article className="cash-ledger-row" key={m.id}>
+        <div><strong>{m.documento ?? (m.tipo === 'ANTICIPO' ? 'Pago / anticipo' : m.subtipo ?? m.tipo)}</strong><span>{m.clienteNombre}</span><p>{m.detalle || 'Sin detalle registrado'}</p><small>{new Date(m.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}{m.estadoGasto ? ` · ${m.estadoGasto.toLowerCase()}` : ''}</small>{m.comprobantePath && <button onClick={() => { void turnoService.comprobanteUrl(m.comprobantePath!).then((url) => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); else notify('No se pudo abrir el comprobante') }) }}><ReceiptText /> Ver comprobante</button>}</div>
+        <span>{metodoLabel[m.metodo] ?? m.metodo}</span><b>{['EGRESO', 'ANULACION'].includes(m.tipo) ? '− ' : ''}Bs {bs(m.montoBs)}</b>
+      </article>)}
+      {!movimientos.length && <p className="cash-muted">Los movimientos aparecerán aquí cuando se registren.</p>}
+      {!!movimientos.length && !filteredMovements.length && <div className="cash-filter-empty" role="status"><p>No hay movimientos de este tipo en el turno.</p><button type="button" onClick={() => setFilter('TODOS')}>Ver todos los movimientos</button></div>}
+      {movimientos.length >= 500 && <p className="cash-muted">Se muestran los últimos 500 movimientos. El resumen incluye el turno completo.</p>}
+    </section>
+    <section className="cash-movements cash-tickets"><h3>Mis tickets</h3>
       {tickets.length ? tickets.map((t) => <div key={t.ventaId} className="turno-ticket-row">
         <span>{t.numero ?? `#${t.ventaId}`}<small>{new Date(t.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</small></span>
         <span>{t.metodos.map((m) => metodoLabel[m.metodo] ?? m.metodo).join(' + ') || '—'}</span>
@@ -185,10 +220,10 @@ function MiTurnoPanel({ sesion, isManager, notify, onClosed }: { sesion: TurnoSe
         <button type="button" onClick={() => setReprintId(t.ventaId)}><Printer /> Reimprimir</button>
       </div>) : <FeatureState type="empty" text="Sin ventas todavía en este turno" />}
     </section>
-    <button className="close-cash-button" onClick={() => void abrirCierre()}><LockKeyhole /> Cerrar turno</button>
+    {!readOnly && <button className="close-cash-button" onClick={() => void abrirCierre()}><LockKeyhole /> Cerrar turno</button>}
     {movimientoOpen && <MovimientoTurnoModal tipo={movimientoOpen} sesionId={sesion.id} onClose={() => setMovimientoOpen(null)} onConfirm={registrarMovimiento} />}
     {closing && <CerrarTurnoModal onClose={() => setClosing(false)} onConfirm={confirmarCierre} />}
-    {closeResult && <Modal title={closeResult.estado === 'CERRADA' ? 'Turno cerrado' : 'Turno enviado a revisión'} onClose={() => { setCloseResult(null); onClosed() }}>
+    {closeResult && <Modal className="cash-dialog" title={closeResult.estado === 'CERRADA' ? 'Turno cerrado' : 'Turno enviado a revisión'} onClose={() => { setCloseResult(null); onClosed() }}>
       <div className="success-state"><span>✓</span><h3>{closeResult.estado === 'CERRADA' ? 'Turno cerrado' : 'Turno enviado a revisión del gerente'}</h3></div>
       <footer className="modal-actions"><button className="primary-button full-button" onClick={() => { setCloseResult(null); onClosed() }}>Aceptar</button></footer>
     </Modal>}
@@ -196,36 +231,64 @@ function MiTurnoPanel({ sesion, isManager, notify, onClosed }: { sesion: TurnoSe
   </div>
 }
 
-function MovimientoTurnoModal({ tipo, sesionId, onClose, onConfirm }: { tipo: 'GASTO' | 'REMESA' | 'INYECCION'; sesionId: string; onClose: () => void; onConfirm: (tipo: 'GASTO' | 'REMESA' | 'INYECCION', montoBs: number, motivo: string, comprobantePath?: string) => void }) {
+function CashSummaryRow({ title, methods, note }: { title: string; methods: Record<string, number>; note?: string }) {
+  const total = Object.values(methods).reduce((sum, amount) => sum + amount, 0)
+  return <details className="cash-summary-row">
+    <summary><h3>{title}</h3><strong>Bs {bs(total)}</strong><ChevronDown aria-hidden="true" /></summary>
+    <div className="cash-summary-detail">
+      {Object.entries(methods).length ? Object.entries(methods).map(([method, amount]) => <div key={method}><span>{metodoLabel[method] ?? method}</span><strong>Bs {bs(amount)}</strong></div>) : <p>Sin cobros registrados.</p>}
+      {note && <small>{note}</small>}
+    </div>
+  </details>
+}
+
+function MovimientoTurnoModal({ tipo, sesionId, onClose, onConfirm }: { tipo: 'GASTO' | 'REMESA' | 'INYECCION'; sesionId: string; onClose: () => void; onConfirm: (tipo: 'GASTO' | 'REMESA' | 'INYECCION', montoBs: number, motivo: string, comprobantePath?: string, idempotencyKey?: string) => Promise<void> }) {
   const [monto, setMonto] = useState(0)
   const [motivo, setMotivo] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const valid = monto > 0 && motivo.trim().length > 0
+  const [error, setError] = useState('')
+  const operation = useRef({ key: createUuid(), content: '' })
+  const uploadedPath = useRef<string | undefined>(undefined)
+  const valid = Number.isFinite(monto) && monto > 0 && motivo.trim().length >= 5
   const titulo = tipo === 'GASTO' ? 'Registrar gasto' : tipo === 'REMESA' ? 'Registrar remesa' : 'Registrar inyección'
   const submit = async () => {
+    if (!valid || submitting) return
     setSubmitting(true)
+    setError('')
     try {
-      const comprobantePath = file ? await turnoService.subirComprobante(sesionId, file) : undefined
-      onConfirm(tipo, monto, motivo.trim(), comprobantePath)
+      if (file && !uploadedPath.current) uploadedPath.current = await turnoService.subirComprobante(sesionId, file)
+      const content = JSON.stringify([sesionId, tipo, monto, motivo.trim(), uploadedPath.current])
+      if (operation.current.content && operation.current.content !== content) operation.current.key = createUuid()
+      operation.current.content = content
+      await onConfirm(tipo, monto, motivo.trim(), uploadedPath.current, operation.current.key)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo registrar el movimiento. Reintenta.')
     } finally {
       setSubmitting(false)
     }
   }
-  return <Modal title={titulo} onClose={onClose}><div className="modal-body form-grid">
-    <label className="full">Monto (Bs)<NumberField autoFocus min={0} step={0.01} value={monto} onCommit={setMonto} /></label>
-    <label className="full">Motivo<input type="text" value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Obligatorio" /></label>
-    {tipo === 'GASTO' && <label className="full">Comprobante (foto, opcional)<input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label>}
-  </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid || submitting} onClick={() => void submit()}>{submitting ? 'Guardando…' : 'Confirmar'}</button></footer></Modal>
+  return <Modal className="cash-dialog" title={titulo} onClose={() => { if (!submitting) onClose() }} escapeToClose={!submitting}><div className="modal-body form-grid">
+    <label className="full">Monto (Bs)<NumberField autoFocus disabled={submitting} min={0} step={0.01} value={monto} onCommit={setMonto} /></label>
+    <label className="full">{tipo === 'GASTO' ? 'Detalle del gasto' : 'Motivo'}<textarea rows={3} maxLength={1000} value={motivo} disabled={submitting} onChange={(e) => setMotivo(e.target.value)} placeholder={tipo === 'GASTO' ? 'Qué se pagó, a quién y para qué. Ej.: flete a Carlos por entrega PED-024.' : 'Describe el movimiento (mínimo 5 caracteres)'} /></label>
+    {tipo === 'GASTO' && <label className="full">Comprobante (foto, opcional)<input type="file" accept="image/*" disabled={submitting} onChange={(e) => { setFile(e.target.files?.[0] ?? null); uploadedPath.current = undefined }} /></label>}
+    {error && <p role="alert" className="full cash-error">{error}</p>}
+  </div><footer className="modal-actions"><button className="secondary-button" disabled={submitting} onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid || submitting} onClick={() => void submit()}>{submitting ? 'Guardando…' : 'Confirmar'}</button></footer></Modal>
 }
 
-function CerrarTurnoModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (denominaciones: Denominaciones) => void }) {
+function CerrarTurnoModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (denominaciones: Denominaciones) => Promise<void> }) {
   const [denominaciones, setDenominaciones] = useState<Denominaciones>({})
-  return <Modal title="Cerrar turno" subtitle="Contá el efectivo del cajón — el resultado no se muestra acá" onClose={onClose} wide>
+  const [busy, setBusy] = useState(false)
+  const submit = async () => {
+    if (busy) return
+    setBusy(true)
+    try { await onConfirm(denominaciones) } finally { setBusy(false) }
+  }
+  return <Modal className="cash-dialog" title="Cerrar turno" subtitle="Cuenta el efectivo del cajón para registrar tu cierre." onClose={() => { if (!busy) onClose() }} escapeToClose={!busy} wide>
     <div className="modal-body">
-      <DenominationCount value={denominaciones} onChange={setDenominaciones} />
+      <DenominationCount value={denominaciones} onChange={setDenominaciones} disabled={busy} />
     </div>
-    <footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" onClick={() => confirm('¿Confirmar cierre de turno?') && onConfirm(denominaciones)}>Confirmar cierre</button></footer>
+    <footer className="modal-actions"><button className="secondary-button" disabled={busy} onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy} onClick={() => void submit()}>{busy ? 'Guardando conteo…' : 'Confirmar conteo'}</button></footer>
   </Modal>
 }
 
@@ -234,7 +297,7 @@ function CerrarTurnoModal({ onClose, onConfirm }: { onClose: () => void; onConfi
 // Turnos en revisión, Faltantes.
 // ============================================================================
 
-function SupervisionPanel({ notify }: { notify: (message: string) => void }) {
+export function SupervisionPanel({ notify }: { notify: (message: string) => void }) {
   const [sesion, setSesion] = useState<TurnoSesion | null>(null)
   const [resumen, setResumen] = useState<TurnoResumen | null>(null)
   const [gastos, setGastos] = useState<CajaGastoRecord[]>([])
@@ -246,7 +309,9 @@ function SupervisionPanel({ notify }: { notify: (message: string) => void }) {
   const [pagosPorVerificar, setPagosPorVerificar] = useState<PagoPorVerificar[]>([])
   const [movimientosSinVincular, setMovimientosSinVincular] = useState<MovimientoBancoQr[]>([])
 
-  const load = async () => {
+  const [loadError, setLoadError] = useState('')
+  const load = useCallback(async () => {
+    try {
     const abierta = await turnoService.getSesionAbierta()
     setSesion(abierta)
     const [r, g, rev, f, banco, pagos, movimientos] = await Promise.all([
@@ -260,14 +325,10 @@ function SupervisionPanel({ notify }: { notify: (message: string) => void }) {
     ])
     setResumen(r); setGastos(g); setEnRevision(rev); setFaltantes(f)
     setEstadoBanco(banco); setPagosPorVerificar(pagos); setMovimientosSinVincular(movimientos)
-  }
-  // Brief: "auto-refrescando cada 15 s"
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial + refresco periódico de Supervisión
-    void load()
-    const id = window.setInterval(() => void load(), 15_000)
-    return () => window.clearInterval(id)
+    setLoadError('')
+    } catch (error) { setLoadError(error instanceof Error ? error.message : 'No se pudo actualizar la supervisión') }
   }, [])
+  useCashRefresh(load, 'supervision')
 
   const resolverGasto = async (id: string, aprobar: boolean) => {
     const nota = aprobar ? undefined : (window.prompt('Motivo del rechazo (opcional):') ?? undefined)
@@ -341,6 +402,7 @@ function SupervisionPanel({ notify }: { notify: (message: string) => void }) {
   }
 
   return <div className="cash-layout turno-layout supervision-panel">
+    {loadError && <p role="alert" className="cash-error">{loadError}. No se pudo actualizar la supervisión.</p>}
     <section className="cash-hero">
       <div><span>TURNO EN VIVO</span><h2>{sesion ? sesion.cajaNombre : 'Caja Tienda'}</h2><p>{sesion ? `${sesion.abiertaPor ?? 'Cajero'} · desde ${new Date(sesion.abiertaEn).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })}` : 'Sin turno abierto'}</p></div>
       <WalletCards />

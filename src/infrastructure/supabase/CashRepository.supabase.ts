@@ -41,15 +41,6 @@ interface MovimientoCajaRow {
 
 const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
 
-// Brief S5, Parte D (migración pendiente, la aplica Ness — ver migracion-cation-idempotencia-
-// anticipo.sql): `registrar_anticipo` todavía no acepta `p_idempotencia`. PostgREST no
-// resuelve funciones por nombre con parámetros opcionales del lado del cliente — si se
-// manda un parámetro que la función no tiene, responde "no encontré una función con esta
-// firma" (PGRST202). Detectarlo acá para reintentar sin el parámetro, así el flujo sigue
-// funcionando exactamente igual que hoy hasta que la migración se aplique.
-const esFirmaDesconocida = (error: { code?: string; message?: string }): boolean =>
-  error.code === 'PGRST202' || (error.message ?? '').includes('Could not find the function')
-
 const rowToSession = (session: SesionCajaRow, movimientos: MovimientoCajaRow[]): CashSessionRecord & Versioned => ({
   id: String(session.id),
   register: session.caja?.nombre ?? 'Caja Tienda',
@@ -159,43 +150,25 @@ export class SupabaseCashRepository implements CashRepository {
     return updated
   }
 
-  async registerAdvance(input: { orderId: string; amountCents: number; method: PosPaymentMethodExt; sessionId: string }, context: MutationContext): Promise<{ movementId: string }> {
-    const actor = context.actorId ?? 'pos'
-    // registrar_anticipo ahora recibe p_cliente_id (segundo parámetro) — se manda null
-    // explícito acá porque este flujo (anticipo desde un pedido) no lo necesita, la RPC
-    // resuelve el cliente a través del pedido. Todos los parámetros van por nombre, así
-    // que el orden real de la firma no afecta este call site.
-    const { data: movementId, error } = await supabase.rpc('registrar_anticipo', {
-      p_pedido_id: Number(input.orderId),
-      p_cliente_id: null,
-      p_monto: centsToNumeric(input.amountCents),
-      p_metodo: methodExtToMetodoPago(input.method),
-      p_sesion_id: Number(input.sessionId),
-      p_usuario: actor,
-    })
-    if (error) throw error
-    return { movementId: String(movementId) }
+  async registerAdvance(input: { orderId: string; amountCents: number; method: PosPaymentMethodExt; sessionId: string }, context: MutationContext & { idempotencyKey: string }): Promise<{ movementId: string; pagoId?: string; saldoProvisional?: number }> {
+    return this.registerPayment({ ...input, customerId: '' }, context)
   }
 
-  // "Registrar pago" del header: pago libre del cliente, sobre el total adeudado o sobre
-  // un pedido específico — a diferencia de registerAdvance (siempre atado a un pedido),
-  // acá el cliente es obligatorio y el pedido es opcional.
-  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: PosPaymentMethodExt; sessionId: string }, context: MutationContext & { idempotencyKey: string }): Promise<{ movementId: string }> {
-    const actor = context.actorId ?? 'pos'
-    const rpcParams = {
+  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: PosPaymentMethodExt; sessionId: string; noImputar?: boolean; aplicaciones?: Array<{ partidaId: number; monto: number }>; referencia?: string }, context: MutationContext & { idempotencyKey: string }): Promise<{ movementId: string; pagoId?: string; saldoProvisional?: number }> {
+    const { data, error } = await supabase.rpc('registrar_cobro_hermes', {
       p_pedido_id: input.orderId ? Number(input.orderId) : null,
-      p_cliente_id: Number(input.customerId),
+      p_cliente_id: input.customerId ? Number(input.customerId) : null,
       p_monto: centsToNumeric(input.amountCents),
       p_metodo: methodExtToMetodoPago(input.method),
       p_sesion_id: Number(input.sessionId),
-      p_usuario: actor,
-    }
-    let { data: movementId, error } = await supabase.rpc('registrar_anticipo', { ...rpcParams, p_idempotencia: context.idempotencyKey })
-    if (error && esFirmaDesconocida(error)) {
-      ({ data: movementId, error } = await supabase.rpc('registrar_anticipo', rpcParams))
-    }
-    if (error) throw error
-    return { movementId: String(movementId) }
+      p_idempotencia: context.idempotencyKey,
+      p_no_imputar: input.noImputar ?? false,
+      p_aplicaciones: input.aplicaciones?.map(a => ({ partida_id: a.partidaId, monto: a.monto })) ?? null,
+      p_referencia: input.referencia ?? null,
+    })
+    if (error) throw Object.assign(new Error(error.message || 'No se pudo registrar el cobro conjunto'), error)
+    if (!data?.movementId || !data?.pagoId) throw new Error('No se pudo verificar el registro conjunto del cobro')
+    return { movementId: String(data.movementId), pagoId: String(data.pagoId), saldoProvisional: Number(data.saldoProvisional) }
   }
 }
 

@@ -1,5 +1,6 @@
 import type { TransferEstado, TransferLine, TransferRecord } from '../../application/shared/models'
 import { LocalStorageRepository } from './localStore'
+import { createUuid } from '../../application/shared/createUuid'
 import { products } from '../../data/products'
 import { SUCURSAL_ALMACEN_ID, SUCURSAL_TIENDA_ID } from '../supabase/mappers'
 
@@ -8,7 +9,7 @@ const productAt = (index: number) => products[index % products.length]
 const seedLine = (productId: number, cantidadBase: number, cantidadDespachada?: number, cantidadRecibida?: number): TransferLine => {
   const product = products.find((p) => p.id === productId) ?? productAt(0)
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     productId: String(product.id),
     name: product.nombre,
     sku: product.sku,
@@ -114,7 +115,7 @@ export const transferService = {
   },
   async create(input: CreateTransferInput, actor: string): Promise<TransferRecord> {
     const record: TransferRecord = {
-      id: crypto.randomUUID(),
+      id: createUuid(),
       // Modo mock: no hay trigger de base que numere — se simula uno correlativo simple.
       numero: `TRA-2026-${String((await store.list()).length + 1).padStart(5, '0')}`,
       motivo: input.motivo,
@@ -130,7 +131,7 @@ export const transferService = {
         const product = products.find((p) => String(p.id) === line.productId)
         const cantidadBase = line.presentacionId != null ? (line.cantidadPresentacion ?? 1) : (line.cantidadBase ?? 1)
         return {
-          id: crypto.randomUUID(),
+          id: createUuid(),
           productId: line.productId,
           name: product?.nombre ?? '',
           sku: product?.sku ?? '',

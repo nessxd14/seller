@@ -16,9 +16,8 @@ import { buildLineasJsonb, marcarPedidoAtencionVista } from '../../infrastructur
 import { diffVersionLines } from '../../domain/orders/versionDiff'
 import { decidirEliminacionPedido } from '../../domain/orders/deletionDecision'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
-import { registrarPago, agregarLineasPedido, AgregarLineasHttpError } from '../../infrastructure/hermes/client'
-import { pendienteSyncHermesPagoRepository } from '../../infrastructure/supabase/PendienteSyncHermesPagoRepository'
-import { methodExtToMedioHermes, channelToCategoria, type PosPaymentMethodExt } from '../../infrastructure/supabase/mappers'
+import { agregarLineasPedido, AgregarLineasHttpError } from '../../infrastructure/hermes/client'
+import { channelToCategoria, type PosPaymentMethodExt } from '../../infrastructure/supabase/mappers'
 import { categoriasDeSegmento, SEGMENTOS_PEDIDO, type CategoriaPedido, type SegmentoPedido } from '../../domain/orders/segmentoPedido'
 import { useRoute } from '../../router/useRoute'
 import { navigate } from '../../router/history'
@@ -70,6 +69,7 @@ function SortTh({ label, sortkey, activeKey, onToggle }: { label: string; sortke
 }
 
 export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { notify: (message: string) => void; canDispatch?: boolean; readOnly?: boolean }) {
+  const [advanceOperationId, setAdvanceOperationId] = useState(() => crypto.randomUUID())
   const [orders, setOrders] = useState<OrderView[]>([])
   // Brief P1: Retail/Wholesale/Todos — filtra por pedido.categoria del lado del servidor
   // (nunca por prefijo de numero: los 221 retail históricos son PED-, no TKT-). Default
@@ -208,44 +208,10 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       notify(error instanceof Error ? error.message : 'No se pudo eliminar el pedido')
     }
   }
-  // Brief T4 Tarea 1 (la más importante): "Registrar anticipo" es el caso normal de "cobro
-  // contra un pedido concreto" — y hasta ahora nunca llegaba a Hermes, así que
-  // pago_aplicacion se quedaba vacía por más que la pantalla dijera que todo salió bien.
-  // Mismo patrón fire-and-forget que PagoModal.syncHermesPago: el anticipo ya quedó
-  // confirmado en Cation antes de que esto corra, un fallo acá solo encola un reintento.
-  const syncAnticipoHermes = async (movementId: string, clienteId: string, amountCents: number, metodo: PosPaymentMethodExt, pedidoId: string) => {
-    if (!featureFlags.supabase) return
-    let usuarioPos = 'pos'
-    try {
-      const session = await authSessionProvider.getSession()
-      usuarioPos = session?.user.email ?? session?.user.id ?? usuarioPos
-    } catch {
-      // sin sesión disponible, se usa el fallback
-    }
-    const medio = methodExtToMedioHermes(metodo)
-    try {
-      await registrarPago({ clienteId: Number(clienteId), monto: amountCents / 100, medio, pedidoId, movimientoCajaId: movementId, usuarioPos })
-    } catch (err) {
-      try {
-        await pendienteSyncHermesPagoRepository.registrarFallo({
-          movimientoCajaId: movementId,
-          clienteId,
-          pedidoId,
-          monto: amountCents / 100,
-          metodo: medio,
-          usuarioPos,
-          error: err instanceof Error ? err.message : 'No se pudo registrar el pago en Hermes',
-        })
-      } catch {
-        // si ni siquiera se pudo encolar el reintento, no hay más que hacer acá — el
-        // anticipo ya está confirmado en Cation y es lo que importa
-      }
-    }
-  }
   const registerAdvance = async (amountCents: number, method: PosPaymentMethodExt) => {
     if (!selected || !sessionId) return
-    const { movementId } = await cashService.registerAdvance(selected.id, amountCents, method, sessionId)
-    if (selected.customerId) void syncAnticipoHermes(movementId, selected.customerId, amountCents, method, selected.id)
+    await sensitiveOperations.ejecutarIdempotente('register_payment', advanceOperationId, JSON.stringify([selected.id, amountCents, method, sessionId]), key => cashService.registerAdvance(selected.id, amountCents, method, sessionId, key))
+    setAdvanceOperationId(crypto.randomUUID())
     setAdvanceOpen(false)
     notify('Anticipo registrado')
     setAdvances(await cashService.getAdvancesForOrder(selected.id))

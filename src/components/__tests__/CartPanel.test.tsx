@@ -7,17 +7,15 @@ import { PosProvider, usePos } from '../../context/PosContext'
 import { CashSessionProvider } from '../../context/CashSessionContext'
 import type { VtdPorCobrar } from '../../application/shared/models'
 
-// Brief Caja VTD tarea 3 — "Por ahora la VTD se cobra sola": mezclar líneas de catálogo
-// con VTD seleccionadas para cobrar debe bloquear el cobro (ninguno de los dos botones),
-// no solo avisar. Modo mock (featureFlags.supabase=false por defecto en tests), así que
-// CashSessionProvider resuelve sessionId síncrono a 'mock-session' — no hace falta
-// mockear cashService.
+// Se conserva el comportamiento VTD de la versión actual: se cobra sola.
+// La prueba usa un turno propio y stock suficiente; el bloqueo viene de mezclar VTD.
 const listPorCobrar = vi.fn()
 const cobrarVtd = vi.fn()
 const vtdSeleccionable: VtdPorCobrar = { ventaId: '1', numero: 'VTD-2026-00001', estado: 'ABIERTA', clienteNombre: 'Juan Pérez', totalBs: 150, creadoEn: new Date().toISOString() }
 
 vi.mock('../../infrastructure/services', () => ({
-  authSessionProvider: { getSession: vi.fn().mockResolvedValue(null) },
+  authSessionProvider: { getSession: vi.fn().mockResolvedValue({ user: { id: 'u1', role: 'cajero', active: true }, expiresAt: '2099-01-01' }) },
+  turnoService: { getSesionAbierta: vi.fn().mockResolvedValue({ id: '1', cajeroId: 'u1' }) },
   cashService: { getOpenSession: vi.fn().mockResolvedValue({ id: '1', register: 'Caja Tienda', openedAt: new Date().toISOString(), openingCents: 0, status: 'open', movements: [] }) },
   transferService: { create: vi.fn() },
   ventaDirectaService: {
@@ -28,7 +26,7 @@ vi.mock('../../infrastructure/services', () => ({
     getById: vi.fn().mockResolvedValue(null),
   },
   borradorOperacionService: { save: vi.fn() },
-  getStockBySucursalBatch: vi.fn().mockResolvedValue(new Map()),
+  getStockBySucursalBatch: vi.fn().mockResolvedValue(new Map([[999, { tienda: 100, almacen: 100, tiendaLibre: false, almacenLibre: false, tiendaVendible: 100, almacenVendible: 100, tiendaReservado: 0, almacenReservado: 0, tiendaMotivo: null, almacenMotivo: null }]])),
   configService: { listSucursales: vi.fn().mockResolvedValue([]) },
   listPresentations: vi.fn().mockResolvedValue([]),
 }))

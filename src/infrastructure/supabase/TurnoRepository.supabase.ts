@@ -3,7 +3,8 @@
 // directo a las RPCs de db/migrations/2026-09-27_caja_turno_cajero.sql. Ver
 // featureFlags.supabase en CashPage.tsx — este repositorio solo se usa ahí.
 import { supabase } from './supabaseClient'
-import type { CajaFaltanteRecord, CajaGastoRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoEstado, TurnoResumen, TurnoSesion, TurnoTicket } from '../../application/shared/models'
+import { createUuid } from '../../application/shared/createUuid'
+import type { CajaFaltanteRecord, CajaGastoRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoEstado, TurnoResumen, TurnoSesion, TurnoTicket, TurnoMovimiento } from '../../application/shared/models'
 
 // Brief: "hoy solo hay una caja habilitada operando este POS" — mismo criterio que
 // CAJA_ID en CashRepository.supabase.ts (verificado contra la tabla `caja`: una sola
@@ -45,6 +46,24 @@ const rowToSesion = (row: SesionRow): TurnoSesion => ({
 // las esconden server-side), un select directo a la tabla no las filtraría por rol. El
 // resto del módulo (resumen_turno, cerrar_turno) es la única fuente para esos dos campos.
 const SESION_SELECT = 'id, caja_id, estado, monto_apertura, cajero_id, abierta_por, abierta_en, cerrada_por, cerrada_en, diferencia_relevo, caja(nombre)'
+
+export async function listTurnos(): Promise<TurnoSesion[]> {
+  const { data, error } = await supabase.from('sesion_caja').select(SESION_SELECT).order('abierta_en', { ascending: false }).limit(50)
+  if (error) throw error
+  return ((data ?? []) as unknown as SesionRow[]).map(rowToSesion)
+}
+
+/** La pertenencia siempre es sesion_caja_id: nunca una aproximación por fecha. */
+export async function listMovimientosTurno(sesionId: string): Promise<TurnoMovimiento[]> {
+  const { data, error } = await supabase.from('movimiento_caja')
+    .select('id,tipo,subtipo,metodo,monto,nota,creado_en,cliente(nombre),pedido(numero,cliente(nombre)),venta(numero),caja_gasto(motivo,estado,comprobante_path)')
+    .eq('sesion_caja_id', Number(sesionId)).order('creado_en', { ascending: false }).limit(500)
+  if (error) throw error
+  return (data ?? []).map((value) => {
+    const row = value as unknown as { id: number; tipo: string; subtipo: string | null; metodo: string; monto: number; nota: string | null; creado_en: string; cliente: { nombre: string } | null; pedido: { numero: string; cliente: { nombre: string } | null } | null; venta: { numero: string } | null; caja_gasto: { motivo: string; estado: string; comprobante_path: string | null } | null }
+    return { id: String(row.id), tipo: row.tipo, subtipo: row.subtipo ?? undefined, metodo: row.metodo, montoBs: num(row.monto), detalle: row.caja_gasto?.motivo ?? row.nota ?? '', clienteNombre: row.cliente?.nombre ?? row.pedido?.cliente?.nombre, documento: row.venta?.numero ?? row.pedido?.numero, creadoEn: row.creado_en, estadoGasto: row.caja_gasto?.estado, comprobantePath: row.caja_gasto?.comprobante_path ?? undefined }
+  })
+}
 
 export async function getSesionAbierta(cajaId: number = CAJA_ID): Promise<TurnoSesion | null> {
   const { data, error } = await supabase.from('sesion_caja').select(SESION_SELECT).eq('caja_id', cajaId).eq('estado', 'ABIERTA').maybeSingle()
@@ -251,7 +270,7 @@ export async function getComprobanteUrl(path: string): Promise<string | null> {
 
 export async function subirComprobante(sesionId: string, file: File): Promise<string> {
   const ext = file.name.split('.').pop() || 'jpg'
-  const path = `${sesionId}/${crypto.randomUUID()}.${ext}`
+  const path = `${sesionId}/${createUuid()}.${ext}`
   const { error } = await supabase.storage.from('caja-comprobantes').upload(path, file, { upsert: true })
   if (error) throw error
   return path
