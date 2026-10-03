@@ -17,6 +17,8 @@ import { diffVersionLines } from '../../domain/orders/versionDiff'
 import { decidirEliminacionPedido } from '../../domain/orders/deletionDecision'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
 import { agregarLineasPedido, AgregarLineasHttpError } from '../../infrastructure/hermes/client'
+import { CobroDestinoField } from '../../components/CobroDestinoField'
+import { aplicarDestinoCobro, destinoObligatorio, destinoPendiente, useCobroDestino, type CobroDestino } from '../../components/useCobroDestino'
 import { channelToCategoria, type PosPaymentMethodExt } from '../../infrastructure/supabase/mappers'
 import { categoriasDeSegmento, SEGMENTOS_PEDIDO, type CategoriaPedido, type SegmentoPedido } from '../../domain/orders/segmentoPedido'
 import { useRoute } from '../../router/useRoute'
@@ -208,9 +210,10 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       notify(error instanceof Error ? error.message : 'No se pudo eliminar el pedido')
     }
   }
-  const registerAdvance = async (amountCents: number, method: PosPaymentMethodExt) => {
+  const registerAdvance = async (amountCents: number, method: PosPaymentMethodExt, destino: CobroDestino | null) => {
     if (!selected || !sessionId) return
-    await sensitiveOperations.ejecutarIdempotente('register_payment', advanceOperationId, JSON.stringify([selected.id, amountCents, method, sessionId]), key => cashService.registerAdvance(selected.id, amountCents, method, sessionId, key))
+    const resultado = await sensitiveOperations.ejecutarIdempotente('register_payment', advanceOperationId, JSON.stringify([selected.id, amountCents, method, sessionId]), key => cashService.registerAdvance(selected.id, amountCents, method, sessionId, key))
+    await aplicarDestinoCobro(destino, resultado?.movementId, notify)
     setAdvanceOperationId(crypto.randomUUID())
     setAdvanceOpen(false)
     notify('Anticipo registrado')
@@ -420,14 +423,16 @@ function ReasonModal({ action, orderNumber, onClose, onConfirm }: { action: 'can
 const metodoAnticipoLabels: Record<PosPaymentMethodExt, string> = { cash: 'Efectivo', qr: 'QR', deposit: 'Depósito', transfer: 'Transferencia', sigep: 'SIGEP', check: 'Cheque' }
 const metodoAnticipoOrder: PosPaymentMethodExt[] = ['cash', 'qr', 'deposit', 'transfer', 'sigep', 'check']
 
-function AdvanceModal({onClose,onConfirm}:{onClose:()=>void;onConfirm:(amountCents:number,method:PosPaymentMethodExt)=>void}) {
+export function AdvanceModal({onClose,onConfirm}:{onClose:()=>void;onConfirm:(amountCents:number,method:PosPaymentMethodExt,destino:CobroDestino|null)=>void}) {
   const [amount,setAmount]=useState(0)
-  const [method,setMethod]=useState<PosPaymentMethodExt>('cash')
-  const valid = amount > 0
+  const [method,setMethod]=useState<PosPaymentMethodExt|null>(null)
+  const { esEncargado, destino, setDestino } = useCobroDestino()
+  const valid = amount > 0 && method !== null && !destinoPendiente(esEncargado, method, destino)
   return <Modal title="Registrar anticipo" subtitle="Registra el importe recibido y su método de pago." onClose={onClose} className="commercial-modal"><div className="modal-body form-grid">
     <label className="full">Monto (Bs)<NumberField autoFocus min={0} step={0.01} value={amount/100} onCommit={(bs)=>setAmount(Math.round(bs*100))}/></label>
-    <label className="full">Método<select value={method} onChange={(e)=>setMethod(e.target.value as PosPaymentMethodExt)}>{metodoAnticipoOrder.map((m) => <option key={m} value={m}>{metodoAnticipoLabels[m]}</option>)}</select></label>
-  </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid} onClick={()=>onConfirm(amount,method)}>Confirmar</button></footer></Modal>
+    <label className="full">Método<select value={method ?? ''} onChange={(e)=>{ setMethod((e.target.value || null) as PosPaymentMethodExt | null); setDestino(null) }}><option value="" disabled>Elige un método…</option>{metodoAnticipoOrder.map((m) => <option key={m} value={m}>{metodoAnticipoLabels[m]}</option>)}</select></label>
+    {destinoObligatorio(esEncargado, method) && <CobroDestinoField value={destino} onChange={setDestino} />}
+  </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid} onClick={()=>{ if (method) onConfirm(amount,method,destinoObligatorio(esEncargado, method) ? destino : null) }}>Confirmar</button></footer></Modal>
 }
 
 // Brief S-I: mismo selector de productos que la cotización (ProductQuickAdd) para armar

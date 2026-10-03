@@ -98,6 +98,8 @@ export interface VentaDirectaRepository {
   // abrir_venta/completar_venta (no toca Kardex). listPorCobrar lee v_vtd_por_cobrar.
   listPorCobrar():Promise<VtdPorCobrar[]>
   cobrarVtd(input:{ventaIds:string[];sesionCajaId:string;pagos:SaleCheckoutPayment[]},context:MutationContext&{idempotencyKey:string}):Promise<CobrarVtdResultado>
+  // Entrega sin cobro: solo VTD ABIERTA sin pago; motivo >= 5 caracteres, contacto obligatorio sin cliente.
+  marcarPagoPosterior(ventaId:string,motivo:string,contacto:string|undefined):Promise<void>
 }
 
 // Brief S1 — borrador_operacion: guardado explícito y cross-device, distinto de

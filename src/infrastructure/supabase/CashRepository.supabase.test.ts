@@ -22,6 +22,12 @@ describe('Cobro conjunto de caja y Hermes',()=>{
   await expect(repo.registerPayment(input,context)).rejects.toMatchObject({code:'PGRST202'})
   expect(rpc).toHaveBeenCalledOnce()
  })
+ it('el error de la base llega como Error con su mensaje original (no como objeto plano)',async()=>{
+  rpc.mockResolvedValue({data:null,error:{code:'P0001',message:'La caja del turno está cerrada'}})
+  const error=await repo.registerPayment(input,context).catch((e:unknown)=>e)
+  expect(error).toBeInstanceOf(Error)
+  expect((error as Error).message).toBe('La caja del turno está cerrada')
+ })
  it('rechaza un resultado que no verifica ambas partes del cobro',async()=>{
   rpc.mockResolvedValue({data:{movementId:241},error:null})
   await expect(repo.registerPayment(input,context)).rejects.toThrow('registro conjunto')

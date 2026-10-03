@@ -225,7 +225,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
   }
   const setTrasladoDireccion = (origenId: number, destinoId: number) => { setTrasladoOrigenId(origenId); setTrasladoDestinoId(destinoId) }
   const [vtdUbicacionId, setVtdUbicacionId] = useState<number | null>(null)
-  const [vtdPrecobrado, setVtdPrecobrado] = useState(false)
+  // Brief Caja VTD obligatorio: el VTD se cobra antes de entregar, así que "Cobrar ahora" es el default.
+  const [vtdPrecobrado, setVtdPrecobrado] = useState(true)
   const loadVtdDraft = (draft: { cart: CartItem[]; vtdUbicacionId: number | null; vtdPrecobrado: boolean }) => {
     setMode('ventaDirecta')
     setCart(draft.cart)
@@ -356,7 +357,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setTrasladoOrigenId(SUCURSAL_ALMACEN)
     setTrasladoDestinoId(SUCURSAL_TIENDA)
     setVtdUbicacionId(null)
-    setVtdPrecobrado(false)
+    setVtdPrecobrado(true)
     setSelectedLineId(null)
     setUndoStack([])
   }
