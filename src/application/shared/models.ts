@@ -258,6 +258,11 @@ export interface VentaDirectaRecord {
   // 2026-09-28_caja_cobro_vtd.sql sin pago) — nunca regularizados, nunca "POR COBRAR".
   // true para todo VTD nuevo, sin importar si ya se cobró.
   cobroExigible: boolean
+  // Brief Caja VTD obligatorio: el VTD se entrega sin cobrar con motivo y contacto explícitos
+  // (marcar_vtd_pago_posterior). Es la única excepción al "cobrar antes de entregar".
+  pagoPosterior: boolean
+  pagoPosteriorMotivo?: string
+  pagoPosteriorContacto?: string
   creadoPor?: string
   creadoEn: string
   completadoEn?: string
@@ -272,6 +277,9 @@ export interface VtdPorCobrar {
   clienteId?: string
   clienteNombre?: string
   totalBs: number
+  pagoPosterior: boolean
+  pagoPosteriorMotivo?: string
+  pagoPosteriorContacto?: string
   creadoPor?: string
   creadoEn: string
   sesionCreacionId?: string
@@ -360,6 +368,9 @@ export interface TurnoResumen {
   cantidadVtdCobradas: number
   // Informativo, fuera del arqueo — nunca suma a esperadoEfectivoBs.
   vtdPorCobrar: { cantidad: number; totalBs: number }
+  // Cobros de anticipo en efectivo que recibió gerencia directamente: no entraron al cajón
+  // de este turno (movimiento_caja.fuera_de_arqueo). Ya NO están incluidos en anticiposPorMetodo.
+  cobrosFueraArqueoBs: number
   anticiposPorMetodo: Record<string, number>
   anulacionesPorMetodo: Record<string, number>
   gastosPorEstado: Record<string, number>
@@ -394,6 +405,7 @@ export interface TurnoMovimiento {
   creadoEn: string
   estadoGasto?: string
   comprobantePath?: string
+  fueraDeArqueo: boolean
 }
 
 export interface CajaGastoRecord {

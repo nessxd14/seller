@@ -11,12 +11,14 @@ import type { CustomerRecord, OrderView } from '../application/shared/models'
 import { RepartoPagoPanel } from './RepartoPagoPanel'
 import type { FilaRepartoEditable } from '../domain/hermes/repartoPago'
 import { createUuid } from '../application/shared/createUuid'
+import { CobroDestinoField } from './CobroDestinoField'
+import { aplicarDestinoCobro, destinoObligatorio, destinoPendiente, useCobroDestino } from './useCobroDestino'
 
 const metodoLabels: Record<PosPaymentMethodExt, string> = { cash: 'Efectivo', qr: 'QR', deposit: 'Depósito', transfer: 'Transferencia', sigep: 'SIGEP', check: 'Cheque' }
 const metodoOrder: PosPaymentMethodExt[] = ['cash', 'qr', 'deposit', 'transfer', 'sigep', 'check']
 
 // Caja y propuesta de Hermes se registran juntas. La confirmación autorizada es posterior.
-export function PagoModal({ onClose }: { onClose: () => void }) {
+export function PagoModal({ onClose, notify = () => undefined }: { onClose: () => void; notify?: (message: string) => void }) {
   const { sessionId } = useCashSession()
   // Brief S5: estable por apertura del modal (no por render), análogo a operationId en
   // PosContext — así un doble click con la red cortada y restablecida reusa la misma
@@ -36,7 +38,8 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
   // "escribió 0 a propósito". Ni bien el cajero toca el NumberField (o el saldo llega y
   // se precarga), pasa a tener un número fijo y ya no se vuelve a pisar.
   const [amount, setAmountState] = useState<number | undefined>(undefined)
-  const [method, setMethod] = useState<PosPaymentMethodExt>('cash')
+  const [method, setMethod] = useState<PosPaymentMethodExt | null>(null)
+  const { esEncargado, destino, setDestino } = useCobroDestino()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState<{ amountCents: number; customerName: string; repartoWarning?: string } | null>(null)
@@ -103,7 +106,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
 
   const pickCustomer = (record: CustomerRecord) => { setCustomer(record); setShowCustomerPicker(false); setCustomerQuery(''); setNoImputar(false); setRepartoFilas([]); setRepartoError(null) }
 
-  const valid = !!customer && displayAmount > 0 && !!sessionId && (tipo === 'total' || !!orderId) && (tipo === 'pedido' || !repartoError)
+  const valid = !!customer && !!method && !destinoPendiente(esEncargado, method, destino) && displayAmount > 0 && !!sessionId && (tipo === 'total' || !!orderId) && (tipo === 'pedido' || !repartoError)
   // No bloqueante: pagar de más es legítimo (queda saldo a favor), así que esto es un
   // aviso, no una condición de `valid`.
   const superaSaldo = saldo?.estado === 'ok' && saldo.saldoConfirmado > 0 && displayAmount > saldo.saldoConfirmado
@@ -111,7 +114,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
     : 0
 
   const confirm = async () => {
-    if (!valid || !customer || !sessionId || submitting) return
+    if (!valid || !customer || !sessionId || !method || submitting) return
     setSubmitting(true)
     setError('')
     try {
@@ -123,7 +126,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
       // con QR") da una huella distinta, o sea un pago nuevo, no un reintento del viejo.
       const aplicaciones = tipo === 'total' && !noImputar ? repartoFilas.filter(f => f.aplica > 0).map(f => ({ partidaId: f.partidaId, monto: f.aplica })) : undefined
       const huella = JSON.stringify([customer.id, orderIdForPayment, amountCents, method, sessionId, noImputar, aplicaciones])
-      await sensitiveOperations.ejecutarIdempotente(
+      const resultado = await sensitiveOperations.ejecutarIdempotente(
         'register_payment',
         pagoOperationId.current,
         huella,
@@ -138,6 +141,7 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
           aplicaciones: aplicaciones?.length ? aplicaciones : undefined,
         }),
       )
+      await aplicarDestinoCobro(destinoObligatorio(esEncargado, method) ? destino : null, resultado?.movementId, notify)
       setDone({ amountCents, customerName: customer.name })
 
     } catch (err) {
@@ -213,9 +217,11 @@ export function PagoModal({ onClose }: { onClose: () => void }) {
     {tipo === 'total' && customer && featureFlags.supabase && displayAmount > 0 && !noImputar && (
       <RepartoPagoPanel clienteId={Number(customer.id)} monto={displayAmount} onFilasChange={(filas, err) => { setRepartoFilas(filas); setRepartoError(err) }} />
     )}
-    <label>Método de pago<select value={method} onChange={(e) => setMethod(e.target.value as PosPaymentMethodExt)}>
+    <label>Método de pago<select value={method ?? ''} onChange={(e) => { setMethod((e.target.value || null) as PosPaymentMethodExt | null); setDestino(null) }}>
+      <option value="" disabled>Elige un método…</option>
       {metodoOrder.map((m) => <option key={m} value={m}>{metodoLabels[m]}</option>)}
     </select></label>
+    {destinoObligatorio(esEncargado, method) && <CobroDestinoField value={destino} onChange={setDestino} disabled={submitting} />}
     {featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar un pago.</p>}
     {superaSaldo > 0 && <p className="mock-note">Supera el saldo en {formatMoney(moneyFromDecimal(superaSaldo))} — va a quedar saldo a favor.</p>}
     {error && <p className="mock-note payment-error">{error}</p>}

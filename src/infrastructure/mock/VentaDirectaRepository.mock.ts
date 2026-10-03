@@ -56,6 +56,7 @@ export const ventaDirectaMockRepository = {
       totalCents,
       paidCents,
       cobroExigible: true,
+      pagoPosterior: false,
       creadoPor: actor,
       creadoEn: now(),
       lines: buildLines(input.lines),
@@ -66,6 +67,10 @@ export const ventaDirectaMockRepository = {
     const existing = await store.get(id)
     if (!existing) throw new Error('Venta directa no encontrada')
     if (existing.estado !== 'ABIERTA') throw new Error(`Venta % está en estado ${existing.estado} y no admite checkout`)
+    // Mismo mensaje que el trigger de `venta` (2026-10-03_caja_cobro_vtd_obligatorio.sql).
+    if (existing.cobroExigible && existing.totalCents > 0 && existing.paidCents === 0 && !existing.pagoPosterior) {
+      throw new Error(`${existing.numero} no está cobrada. Cóbrala en caja antes de entregar, o márcala como pago posterior con motivo.`)
+    }
     return store.save({ ...existing, estado: 'COMPLETADA', completadoEn: now() })
   },
   // motivo no se persiste en el mock — venta_evento es una tabla real de Supabase, sin
@@ -98,6 +103,16 @@ export const ventaDirectaMockRepository = {
     if (!existing) throw new Error('Venta directa no encontrada')
     return store.save({ ...existing, estado: 'ANULADA' })
   },
+  // Réplica de marcar_vtd_pago_posterior: VTD ABIERTA sin pago, motivo >= 5, contacto >= 3 si no hay cliente.
+  async marcarPagoPosterior(ventaId: string, motivo: string, contacto?: string): Promise<void> {
+    const existing = await store.get(ventaId)
+    if (!existing) throw new Error('Venta directa no encontrada')
+    if (existing.estado !== 'ABIERTA') throw new Error(`${existing.numero} no está abierta: solo se puede marcar pago posterior en una venta abierta`)
+    if (existing.paidCents > 0) throw new Error(`${existing.numero} ya tiene un pago registrado`)
+    if (motivo.trim().length < 5) throw new Error('El motivo del pago posterior debe tener al menos 5 caracteres')
+    if (!existing.customerId && (contacto ?? '').trim().length < 3) throw new Error('Indica quién se lleva la mercadería (nombre y teléfono): la venta no tiene cliente')
+    await store.save({ ...existing, pagoPosterior: true, pagoPosteriorMotivo: motivo.trim(), pagoPosteriorContacto: contacto?.trim() || undefined })
+  },
   // Brief Caja VTD: réplica simple de v_vtd_por_cobrar — exigible, no anulado, sin pago.
   async listPorCobrar(): Promise<VtdPorCobrar[]> {
     const all = await store.list()
@@ -106,6 +121,7 @@ export const ventaDirectaMockRepository = {
       .map((v) => ({
         ventaId: v.id, numero: v.numero, estado: v.estado as 'ABIERTA' | 'COMPLETADA',
         clienteId: v.customerId, clienteNombre: v.customerName, totalBs: v.totalCents / 100,
+        pagoPosterior: v.pagoPosterior, pagoPosteriorMotivo: v.pagoPosteriorMotivo, pagoPosteriorContacto: v.pagoPosteriorContacto,
         creadoPor: v.creadoPor, creadoEn: v.creadoEn, sesionCreacionId: v.sesionCajaId,
       }))
   },

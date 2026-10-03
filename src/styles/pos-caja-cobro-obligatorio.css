@@ -1,0 +1,43 @@
+/* Caja: cobro obligatorio de VTD, conteo sin ceros, entrega al cierre, cobros fuera del
+   arqueo y pistas "i". Archivo propio: no toca los pos-*.css existentes. */
+
+/* ── Bandeja de Venta Directa ─────────────────────────────────────────────── */
+.vtd-modo-tag.pago-posterior { background: #fef3c7; color: #92400e; }
+.vtd-card-pago-posterior { display: grid; gap: 2px; margin: 6px 0 0; font-size: 12px; color: #92400e; }
+.vtd-card-pago-posterior span { color: #78716c; }
+.vtd-card-actions .vtd-card-cobrar { font-weight: 700; }
+.vtd-card-actions button:disabled[title] { cursor: not-allowed; }
+.vtd-cobro-posterior-info { font-size: 12px; color: #92400e; }
+
+/* ── InfoHint ─────────────────────────────────────────────────────────────── */
+.info-hint { position: relative; display: inline-flex; align-items: center; vertical-align: middle; margin-left: 6px; }
+.info-hint .product-info-trigger.info-hint-trigger { position: static; width: 20px; height: 20px; flex: none; cursor: pointer; }
+.info-hint .product-info-trigger.info-hint-trigger:focus-visible { outline: 2px solid var(--orange, #f97316); outline-offset: 2px; }
+.info-hint-popover {
+  position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; display: grid; gap: 4px;
+  width: min(280px, 78vw); padding: 10px 12px; border: 1px solid #e3ded5; border-radius: 10px;
+  background: #fff; color: #1f2937; box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+  font-size: 12.5px; line-height: 1.45; font-weight: 400; text-align: left; white-space: normal; cursor: default;
+}
+.info-hint-popover strong { font-size: 13px; font-weight: 700; }
+.modal-subtitle-hint { display: inline-flex; align-items: flex-start; gap: 4px; }
+
+/* ── Cierre de turno: entrega y conteo en cero ────────────────────────────── */
+.cash-cero-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 12px; border: 1px dashed #d6d3d1; border-radius: 10px; font-size: 14px; cursor: pointer; }
+.cash-cero-check input { width: 18px; height: 18px; }
+.cash-opening-count .cash-cero-check { margin: 10px 0 0; }
+.cash-entrega-step { display: grid; gap: 12px; }
+.cash-entrega-step h3 { margin: 0; font-size: 16px; }
+.cash-entrega-step p { margin: 0; color: #57534e; font-size: 13px; }
+.cash-entrega-previa { padding: 10px 12px; border-radius: 10px; background: #ecfdf5; color: #065f46; font-size: 13px; }
+
+/* ── Cobros de clientes: ¿dónde fue el efectivo? ──────────────────────────── */
+.cobro-destino { display: grid; gap: 8px; margin: 4px 0; }
+.cobro-destino > span { font-size: 13px; font-weight: 600; }
+.cobro-destino label { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid #e7e5e4; border-radius: 10px; font-size: 14px; cursor: pointer; }
+.cobro-destino label:has(input:checked) { border-color: var(--orange, #f97316); background: #fff7ed; }
+
+/* ── Actividad del turno ──────────────────────────────────────────────────── */
+.fuera-arqueo-badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: #e0e7ff; color: #3730a3; font-size: 11px; font-weight: 600; }
+.cash-ledger-row .fuera-arqueo-toggle { margin-top: 6px; font-size: 12px; }
+.cash-action-with-hint { display: inline-flex; align-items: center; gap: 2px; }

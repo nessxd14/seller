@@ -11,12 +11,29 @@ import { Modal } from '../../components/Modal'
 import { NumberField } from '../../components/NumberField'
 import { DenominationCount, denominacionesTotal } from '../../components/DenominationCount'
 import { VentaTicket } from '../../components/VentaTicket'
+import { InfoHint } from '../../components/InfoHint'
 import { featureFlags } from '../../config/featureFlags'
 import { useCashSession } from '../../context/CashSessionContext'
 import { useCashRefresh } from './useCashRefresh'
 import { createUuid } from '../../application/shared/createUuid'
 
 const bs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const ENTREGA_CIERRE_PREFIJO = 'Entrega de cierre a '
+
+// Textos de ayuda "i" (Brief Caja). Ninguno muestra una cifra: solo explican el concepto.
+const HINTS = {
+  vta: { title: 'Mostrador (VTA)', text: 'Lo que cobraste por ventas de tienda. El efectivo va a tu cajón; QR y transferencia van al banco.' },
+  vtd: { title: 'Venta directa (VTD)', text: 'Cobro de una venta que se entrega desde almacén. Cuenta en tu turno cuando la cobras, no cuando se crea.' },
+  anticipos: { title: 'Pagos y anticipos', text: 'Plata que un cliente deja a cuenta de un pedido o de su saldo. No es una venta nueva.' },
+  gasto: { title: 'Gasto', text: 'Efectivo que sale del cajón para pagar algo (taxi, flete, almuerzo). Baja el cajón al instante. El gerente lo aprueba después y, si lo rechaza, queda como faltante del turno.' },
+  remesa: { title: 'Remesa', text: 'Efectivo que entregas al gerente o al banco. No se gasta, solo cambia de lugar. Si le entregas plata al gerente, es remesa, no gasto.' },
+  inyeccion: { title: 'Inyección', text: 'Efectivo que entra al cajón sin ser venta, por ejemplo sencillo para dar cambio. No sirve para corregir la apertura: el fondo inicial se cuenta al abrir el turno.' },
+  vtdPorCobrar: { title: 'VTD por cobrar', text: 'Ventas directas que todavía no se cobraron. No se entregan hasta cobrarlas, salvo las marcadas como pago posterior.' },
+  fueraArqueo: { title: 'Fuera del arqueo', text: 'Cobros en efectivo que recibió gerencia directamente. No entraron a este cajón, así que no cuentan en tu cierre.' },
+  anulacion: { title: 'Anulación', text: 'Devolución de una venta ya cobrada. Sale del cajón si fue en efectivo.' },
+} as const
+const hintCajaFor = (tipo: 'GASTO' | 'REMESA' | 'INYECCION') => (tipo === 'GASTO' ? HINTS.gasto : tipo === 'REMESA' ? HINTS.remesa : HINTS.inyeccion).text
+
 const metodoLabel: Record<string, string> = { EFECTIVO: 'Efectivo', QR: 'QR', TRANSFERENCIA: 'Transferencia', SIGEP: 'SIGEP', CHEQUE: 'Cheque', DEPOSITO: 'Depósito' }
 
 /**
@@ -72,10 +89,12 @@ function TurnoCashPage({ notify }: { notify: (message: string) => void }) {
 function AbrirTurnoView({ notify, onOpened }: { notify: (message: string) => void; onOpened: () => void }) {
   const [handover, setHandover] = useState<string | null>(null)
   const [denominaciones, setDenominaciones] = useState<Denominaciones>({})
+  const [cajonEnCero, setCajonEnCero] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const totalContado = denominacionesTotal(denominaciones)
   useEffect(() => { void turnoService.getUltimaSesionCerrada().then((h) => setHandover(h?.entregadoPor ?? null)) }, [])
   const abrir = async () => {
-    if (submitting) return
+    if (submitting || (totalContado === 0 && !cajonEnCero)) return
     setSubmitting(true)
     try {
       await turnoService.abrir(denominaciones)
@@ -98,7 +117,8 @@ function AbrirTurnoView({ notify, onOpened }: { notify: (message: string) => voi
     <section className="cash-opening-count">
       <header><h3>Cuenta el efectivo recibido</h3><p>Ingresa la cantidad de cada denominación.</p></header>
       <DenominationCount value={denominaciones} onChange={setDenominaciones} disabled={submitting} />
-      <footer><div aria-live="polite"><span>Fondo de apertura</span><strong>Bs {bs(denominacionesTotal(denominaciones))}</strong></div><button className="primary-button" disabled={submitting} onClick={() => void abrir()}>{submitting ? 'Abriendo…' : 'Abrir mi turno'}</button></footer>
+      {totalContado === 0 && <CajonEnCeroCheck checked={cajonEnCero} onChange={setCajonEnCero} disabled={submitting} />}
+      <footer><div aria-live="polite"><span>Fondo de apertura</span><strong>Bs {bs(totalContado)}</strong></div><button className="primary-button" disabled={submitting || (totalContado === 0 && !cajonEnCero)} onClick={() => void abrir()}>{submitting ? 'Abriendo…' : 'Abrir mi turno'}</button></footer>
     </section>
   </div>
 }
@@ -159,9 +179,25 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
     if (abiertas.length) { notify(`No se puede cerrar el turno: hay ${abiertas.length} venta${abiertas.length > 1 ? 's' : ''} directa${abiertas.length > 1 ? 's' : ''} de almacén abierta${abiertas.length > 1 ? 's' : ''}. Resolvelas en Venta Directa antes de cerrar.`); return }
     setClosing(true)
   }
-  const confirmarCierre = async (denominaciones: Denominaciones) => {
+  // Entrega de efectivo (remesa) antes del conteo de cierre. La clave de idempotencia la genera
+  // el modal una sola vez por instancia: un reintento no crea una segunda remesa.
+  const registrarEntregaCierre = async (montoBs: number, motivo: string, idempotencyKey: string) => {
+    await turnoService.registrarMovimiento({ sesionId: sesion.id, subtipo: 'REMESA', montoBs, motivo, idempotencyKey })
+    notify('Entrega registrada')
+    await load()
+  }
+  const alternarFueraDeArqueo = async (m: TurnoMovimiento) => {
     try {
-      const result = await turnoService.cerrar(sesion.id, denominaciones)
+      await turnoService.marcarCobroFueraDeArqueo(m.id, !m.fueraDeArqueo)
+      notify(m.fueraDeArqueo ? 'El cobro vuelve al arqueo' : 'El cobro salió del arqueo')
+      await load()
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo cambiar el cobro')
+    }
+  }
+  const confirmarCierre = async (denominaciones: Denominaciones, cajonVacio: boolean) => {
+    try {
+      const result = await turnoService.cerrar(sesion.id, denominaciones, cajonVacio)
       setClosing(false)
       setCloseResult({ estado: result.estado })
       notify(result.estado === 'CERRADA' ? 'Turno cerrado' : 'Turno enviado a revisión del gerente')
@@ -181,30 +217,31 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
     </section>
     {resumen && <section className="cash-breakdown" aria-label="Desglose del turno">
       <header><h3>Desglose del turno</h3><span>Ver métodos</span></header>
-      <CashSummaryRow title="Mostrador (VTA)" methods={resumen.ventasRetailPorMetodo} />
-      <CashSummaryRow title="Ventas directas (VTD)" methods={resumen.ventasVtdPorMetodo} note={`${resumen.cantidadVtdCobradas} VTD cobradas`} />
-      <CashSummaryRow title="Pagos y anticipos de clientes" methods={resumen.anticiposPorMetodo} note="Incluidos en los ingresos de este turno; separados de las ventas." />
+      <CashSummaryRow title="Mostrador (VTA)" methods={resumen.ventasRetailPorMetodo} info={HINTS.vta} />
+      <CashSummaryRow title="Ventas directas (VTD)" methods={resumen.ventasVtdPorMetodo} note={`${resumen.cantidadVtdCobradas} VTD cobradas`} info={HINTS.vtd} />
+      <CashSummaryRow title="Pagos y anticipos de clientes" methods={resumen.anticiposPorMetodo} note="Incluidos en los ingresos de este turno; separados de las ventas." info={HINTS.anticipos} />
+      {resumen.cobrosFueraArqueoBs > 0 && <CashSummaryRow title="Cobros recibidos por gerencia" methods={{ EFECTIVO: resumen.cobrosFueraArqueoBs }} note="Fuera del arqueo: no entraron a este cajón." info={HINTS.fueraArqueo} />}
       <details className="cash-summary-row cash-summary-expenses">
-        <summary><h3>Gastos</h3><strong>Bs {bs((resumen.gastosPorEstado.aprobado ?? 0) + (resumen.gastosPorEstado.pendiente ?? 0))}</strong><ChevronDown aria-hidden="true" /></summary>
+        <summary><h3>Gastos<InfoHint title={HINTS.gasto.title} text={HINTS.gasto.text} /></h3><strong>Bs {bs((resumen.gastosPorEstado.aprobado ?? 0) + (resumen.gastosPorEstado.pendiente ?? 0))}</strong><ChevronDown aria-hidden="true" /></summary>
         <div className="cash-summary-detail"><div><span>Aprobados</span><strong>Bs {bs(resumen.gastosPorEstado.aprobado ?? 0)}</strong></div><div><span>Pendientes de revisión</span><strong>Bs {bs(resumen.gastosPorEstado.pendiente ?? 0)}</strong></div><small>El detalle de cada gasto aparece en la actividad del turno.</small></div>
       </details>
-      <div className="cash-summary-transfers"><div><span>Remesas</span><strong>Bs {bs(resumen.remesasBs)}</strong></div><div><span>Inyecciones</span><strong>Bs {bs(resumen.inyeccionesBs)}</strong></div></div>
+      <div className="cash-summary-transfers"><div><span>Remesas<InfoHint title={HINTS.remesa.title} text={HINTS.remesa.text} /></span><strong>Bs {bs(resumen.remesasBs)}</strong></div><div><span>Inyecciones<InfoHint title={HINTS.inyeccion.title} text={HINTS.inyeccion.text} /></span><strong>Bs {bs(resumen.inyeccionesBs)}</strong></div></div>
     </section>}
     {resumen && resumen.vtdPorCobrar.cantidad > 0 && <section className="cash-methods vtd-por-cobrar-card">
-      <h3>VTD por cobrar</h3>
+      <h3>VTD por cobrar<InfoHint title={HINTS.vtdPorCobrar.title} text={HINTS.vtdPorCobrar.text} /></h3>
       <p className="vtd-por-cobrar-info">{resumen.vtdPorCobrar.cantidad} venta{resumen.vtdPorCobrar.cantidad > 1 ? 's' : ''} · Bs {bs(resumen.vtdPorCobrar.totalBs)}</p>
       <small>Informativo — fuera del arqueo</small>
     </section>}
     {!readOnly && <section className="cash-movements cash-operation-actions"><header><h3>Movimientos de caja</h3><div>
-      <button onClick={() => setMovimientoOpen('GASTO')}><ArrowUpRight /> Registrar gasto</button>
-      <button onClick={() => setMovimientoOpen('REMESA')}><ArrowUpRight /> Remesa</button>
-      <button onClick={() => setMovimientoOpen('INYECCION')}><ArrowDownLeft /> Inyección</button>
+      <span className="cash-action-with-hint"><button onClick={() => setMovimientoOpen('GASTO')}><ArrowUpRight /> Registrar gasto</button><InfoHint title={HINTS.gasto.title} text={HINTS.gasto.text} /></span>
+      <span className="cash-action-with-hint"><button onClick={() => setMovimientoOpen('REMESA')}><ArrowUpRight /> Remesa</button><InfoHint title={HINTS.remesa.title} text={HINTS.remesa.text} /></span>
+      <span className="cash-action-with-hint"><button onClick={() => setMovimientoOpen('INYECCION')}><ArrowDownLeft /> Inyección</button><InfoHint title={HINTS.inyeccion.title} text={HINTS.inyeccion.text} /></span>
     </div></header></section>}
     <section className="cash-ledger">
-      <header><div><h3>Actividad del turno</h3><p>Ventas, pagos, anticipos y gastos del cajero que cobró.</p></div><select aria-label="Filtrar movimientos" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="TODOS">Todos los movimientos</option><option value="VENTA">Ventas</option><option value="ANTICIPO">Pagos y anticipos</option><option value="GASTO">Gastos</option><option value="REMESA">Remesas</option><option value="INYECCION">Inyecciones</option><option value="ANULACION">Anulaciones</option></select></header>
+      <header><div><h3>Actividad del turno</h3><p>Ventas, pagos, anticipos y gastos del cajero que cobró.</p></div><select aria-label="Filtrar movimientos" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="TODOS">Todos los movimientos</option><option value="VENTA">Ventas</option><option value="ANTICIPO">Pagos y anticipos</option><option value="GASTO">Gastos</option><option value="REMESA">Remesas</option><option value="INYECCION">Inyecciones</option><option value="ANULACION">Anulaciones</option></select>{filter === 'ANULACION' && <InfoHint title={HINTS.anulacion.title} text={HINTS.anulacion.text} />}</header>
       <div className="cash-ledger-head"><span>Movimiento / detalle</span><span>Método</span><span>Importe</span></div>
       {filteredMovements.map((m) => <article className="cash-ledger-row" key={m.id}>
-        <div><strong>{m.documento ?? (m.tipo === 'ANTICIPO' ? 'Pago / anticipo' : m.subtipo ?? m.tipo)}</strong><span>{m.clienteNombre}</span><p>{m.detalle || 'Sin detalle registrado'}</p><small>{new Date(m.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}{m.estadoGasto ? ` · ${m.estadoGasto.toLowerCase()}` : ''}</small>{m.comprobantePath && <button onClick={() => { void turnoService.comprobanteUrl(m.comprobantePath!).then((url) => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); else notify('No se pudo abrir el comprobante') }) }}><ReceiptText /> Ver comprobante</button>}</div>
+        <div><strong>{m.documento ?? (m.tipo === 'ANTICIPO' ? 'Pago / anticipo' : m.subtipo ?? m.tipo)}</strong><span>{m.clienteNombre}</span><p>{m.detalle || 'Sin detalle registrado'}</p><small>{new Date(m.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}{m.estadoGasto ? ` · ${m.estadoGasto.toLowerCase()}` : ''}</small>{m.tipo === 'ANULACION' && <InfoHint title={HINTS.anulacion.title} text={HINTS.anulacion.text} />}{m.fueraDeArqueo && <span className="fuera-arqueo-badge">Fuera del arqueo<InfoHint title={HINTS.fueraArqueo.title} text={HINTS.fueraArqueo.text} /></span>}{isManager && sesion.estado === 'ABIERTA' && m.tipo === 'ANTICIPO' && m.metodo === 'EFECTIVO' && <button type="button" className="fuera-arqueo-toggle" onClick={() => void alternarFueraDeArqueo(m)}>{m.fueraDeArqueo ? 'Volver al arqueo' : 'Sacar del arqueo'}</button>}{m.comprobantePath && <button onClick={() => { void turnoService.comprobanteUrl(m.comprobantePath!).then((url) => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); else notify('No se pudo abrir el comprobante') }) }}><ReceiptText /> Ver comprobante</button>}</div>
         <span>{metodoLabel[m.metodo] ?? m.metodo}</span><b>{['EGRESO', 'ANULACION'].includes(m.tipo) ? '− ' : ''}Bs {bs(m.montoBs)}</b>
       </article>)}
       {!movimientos.length && <p className="cash-muted">Los movimientos aparecerán aquí cuando se registren.</p>}
@@ -222,7 +259,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
     </section>
     {!readOnly && <button className="close-cash-button" onClick={() => void abrirCierre()}><LockKeyhole /> Cerrar turno</button>}
     {movimientoOpen && <MovimientoTurnoModal tipo={movimientoOpen} sesionId={sesion.id} onClose={() => setMovimientoOpen(null)} onConfirm={registrarMovimiento} />}
-    {closing && <CerrarTurnoModal onClose={() => setClosing(false)} onConfirm={confirmarCierre} />}
+    {closing && <CerrarTurnoModal onClose={() => setClosing(false)} onConfirm={confirmarCierre} entrega={{ sesionId: sesion.id, registrar: registrarEntregaCierre }} />}
     {closeResult && <Modal className="cash-dialog" title={closeResult.estado === 'CERRADA' ? 'Turno cerrado' : 'Turno enviado a revisión'} onClose={() => { setCloseResult(null); onClosed() }}>
       <div className="success-state"><span>✓</span><h3>{closeResult.estado === 'CERRADA' ? 'Turno cerrado' : 'Turno enviado a revisión del gerente'}</h3></div>
       <footer className="modal-actions"><button className="primary-button full-button" onClick={() => { setCloseResult(null); onClosed() }}>Aceptar</button></footer>
@@ -231,10 +268,10 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
   </div>
 }
 
-function CashSummaryRow({ title, methods, note }: { title: string; methods: Record<string, number>; note?: string }) {
+function CashSummaryRow({ title, methods, note, info }: { title: string; methods: Record<string, number>; note?: string; info?: { title: string; text: string } }) {
   const total = Object.values(methods).reduce((sum, amount) => sum + amount, 0)
   return <details className="cash-summary-row">
-    <summary><h3>{title}</h3><strong>Bs {bs(total)}</strong><ChevronDown aria-hidden="true" /></summary>
+    <summary><h3>{title}{info && <InfoHint title={info.title} text={info.text} />}</h3><strong>Bs {bs(total)}</strong><ChevronDown aria-hidden="true" /></summary>
     <div className="cash-summary-detail">
       {Object.entries(methods).length ? Object.entries(methods).map(([method, amount]) => <div key={method}><span>{metodoLabel[method] ?? method}</span><strong>Bs {bs(amount)}</strong></div>) : <p>Sin cobros registrados.</p>}
       {note && <small>{note}</small>}
@@ -268,7 +305,7 @@ function MovimientoTurnoModal({ tipo, sesionId, onClose, onConfirm }: { tipo: 'G
       setSubmitting(false)
     }
   }
-  return <Modal className="cash-dialog" title={titulo} onClose={() => { if (!submitting) onClose() }} escapeToClose={!submitting}><div className="modal-body form-grid">
+  return <Modal className="cash-dialog" title={titulo} subtitle={hintCajaFor(tipo)} onClose={() => { if (!submitting) onClose() }} escapeToClose={!submitting}><div className="modal-body form-grid">
     <label className="full">Monto (Bs)<NumberField autoFocus disabled={submitting} min={0} step={0.01} value={monto} onCommit={setMonto} /></label>
     <label className="full">{tipo === 'GASTO' ? 'Detalle del gasto' : 'Motivo'}<textarea rows={3} maxLength={1000} value={motivo} disabled={submitting} onChange={(e) => setMotivo(e.target.value)} placeholder={tipo === 'GASTO' ? 'Qué se pagó, a quién y para qué. Ej.: flete a Carlos por entrega PED-024.' : 'Describe el movimiento (mínimo 5 caracteres)'} /></label>
     {tipo === 'GASTO' && <label className="full">Comprobante (foto, opcional)<input type="file" accept="image/*" disabled={submitting} onChange={(e) => { setFile(e.target.files?.[0] ?? null); uploadedPath.current = undefined }} /></label>}
@@ -276,19 +313,101 @@ function MovimientoTurnoModal({ tipo, sesionId, onClose, onConfirm }: { tipo: 'G
   </div><footer className="modal-actions"><button className="secondary-button" disabled={submitting} onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid || submitting} onClick={() => void submit()}>{submitting ? 'Guardando…' : 'Confirmar'}</button></footer></Modal>
 }
 
-function CerrarTurnoModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (denominaciones: Denominaciones) => Promise<void> }) {
+function CajonEnCeroCheck({ checked, onChange, disabled }: { checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
+  return <label className="cash-cero-check"><input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} /> El cajón está en cero</label>
+}
+
+/**
+ * Cierre en dos pasos cuando recibe `entrega` (cierre del cajero): 1) entrega de efectivo
+ * (remesa) y 2) conteo de lo que queda. Sin `entrega` (Arqueo sorpresa del gerente) es solo el
+ * conteo. Nunca muestra el esperado ni sugiere cuánto "debería" entregarse (conteo ciego).
+ */
+function CerrarTurnoModal({ onClose, onConfirm, entrega }: {
+  onClose: () => void
+  onConfirm: (denominaciones: Denominaciones, cajonVacio: boolean) => Promise<void>
+  entrega?: { sesionId: string; registrar: (montoBs: number, motivo: string, idempotencyKey: string) => Promise<void> }
+}) {
+  const [paso, setPaso] = useState<'cargando' | 'entrega' | 'conteo'>(entrega ? 'cargando' : 'conteo')
+  const [entregadoBs, setEntregadoBs] = useState(0)
+  const [monto, setMonto] = useState(0)
+  const [receptor, setReceptor] = useState('')
+  const [entregaError, setEntregaError] = useState('')
   const [denominaciones, setDenominaciones] = useState<Denominaciones>({})
+  const [cajonEnCero, setCajonEnCero] = useState(false)
   const [busy, setBusy] = useState(false)
-  const submit = async () => {
-    if (busy) return
+  // Una clave por instancia del modal (se renueva solo si cambia lo que se entrega).
+  const operacion = useRef({ key: createUuid(), content: '' })
+  const sesionId = entrega?.sesionId
+
+  // Si ya hubo una entrega de cierre en este turno (el cajero cerró el paso 2 y volvió), sale
+  // de los movimientos del turno — no de estado local — y se salta directo al conteo.
+  useEffect(() => {
+    if (!sesionId) return
+    let cancelled = false
+    turnoService.movimientos(sesionId).then((movimientos) => {
+      if (cancelled) return
+      const previo = movimientos.filter((m) => m.subtipo === 'REMESA' && m.detalle.startsWith(ENTREGA_CIERRE_PREFIJO)).reduce((sum, m) => sum + m.montoBs, 0)
+      setEntregadoBs(previo)
+      setPaso(previo > 0 ? 'conteo' : 'entrega')
+    }).catch(() => { if (!cancelled) setPaso('entrega') })
+    return () => { cancelled = true }
+  }, [sesionId])
+
+  const total = denominacionesTotal(denominaciones)
+  const conteoBloqueado = total === 0 && !cajonEnCero
+  const entregaValida = Number.isFinite(monto) && monto > 0 && receptor.trim().length >= 2
+
+  const registrarEntrega = async () => {
+    if (!entrega || !entregaValida || busy) return
     setBusy(true)
-    try { await onConfirm(denominaciones) } finally { setBusy(false) }
+    setEntregaError('')
+    const motivo = `${ENTREGA_CIERRE_PREFIJO}${receptor.trim()}`
+    const content = JSON.stringify([monto, motivo])
+    if (operacion.current.content && operacion.current.content !== content) operacion.current.key = createUuid()
+    operacion.current.content = content
+    try {
+      await entrega.registrar(monto, motivo, operacion.current.key)
+      setEntregadoBs(monto)
+      setPaso('conteo')
+    } catch (err) {
+      setEntregaError(err instanceof Error ? err.message : 'No se pudo registrar la entrega. Reintenta.')
+    } finally {
+      setBusy(false)
+    }
   }
-  return <Modal className="cash-dialog" title="Cerrar turno" subtitle="Cuenta el efectivo del cajón para registrar tu cierre." onClose={() => { if (!busy) onClose() }} escapeToClose={!busy} wide>
+  const confirmar = async () => {
+    if (busy || conteoBloqueado) return
+    setBusy(true)
+    try { await onConfirm(denominaciones, total === 0 && cajonEnCero) } finally { setBusy(false) }
+  }
+
+  if (paso !== 'conteo') {
+    return <Modal className="cash-dialog" title="Cerrar turno" subtitle="Primero registra el efectivo que entregas, si corresponde." onClose={() => { if (!busy) onClose() }} escapeToClose={!busy}>
+      {paso === 'cargando'
+        ? <div className="modal-body"><p role="status">Revisando el turno…</p></div>
+        : <>
+          <div className="modal-body cash-entrega-step">
+            <h3>¿Entregas efectivo antes de cerrar?</h3>
+            <label className="full">Monto entregado (Bs)<NumberField autoFocus disabled={busy} min={0} step={0.01} value={monto} onCommit={setMonto} /></label>
+            <label className="full">A quién se lo entregas<input type="text" maxLength={80} value={receptor} disabled={busy} onChange={(e) => setReceptor(e.target.value)} placeholder="Nombre de quien recibe" /></label>
+            {entregaError && <p role="alert" className="cash-error">{entregaError}</p>}
+          </div>
+          <footer className="modal-actions">
+            <button className="secondary-button" disabled={busy} onClick={onClose}>Cancelar</button>
+            <button className="secondary-button" disabled={busy} onClick={() => setPaso('conteo')}>No entrego nada</button>
+            <button className="primary-button" disabled={!entregaValida || busy} onClick={() => void registrarEntrega()}>{busy ? 'Registrando…' : 'Registrar entrega y continuar'}</button>
+          </footer>
+        </>}
+    </Modal>
+  }
+
+  return <Modal className="cash-dialog" title="Cerrar turno" subtitle={entrega ? 'Cuenta el efectivo que queda en el cajón después de la entrega.' : 'Cuenta el efectivo del cajón para registrar tu cierre.'} onClose={() => { if (!busy) onClose() }} escapeToClose={!busy} wide>
     <div className="modal-body">
+      {entrega && entregadoBs > 0 && <p className="cash-entrega-previa" role="status">Ya registraste una entrega de Bs {bs(entregadoBs)} en este cierre.</p>}
       <DenominationCount value={denominaciones} onChange={setDenominaciones} disabled={busy} />
+      {total === 0 && <CajonEnCeroCheck checked={cajonEnCero} onChange={setCajonEnCero} disabled={busy} />}
     </div>
-    <footer className="modal-actions"><button className="secondary-button" disabled={busy} onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy} onClick={() => void submit()}>{busy ? 'Guardando conteo…' : 'Confirmar conteo'}</button></footer>
+    <footer className="modal-actions"><button className="secondary-button" disabled={busy} onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || conteoBloqueado} onClick={() => void confirmar()}>{busy ? 'Guardando conteo…' : 'Confirmar conteo'}</button></footer>
   </Modal>
 }
 
@@ -469,7 +588,7 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
       </div>
     </section>
 
-    {arqueoOpen && <CerrarTurnoModal onClose={() => setArqueoOpen(false)} onConfirm={confirmarArqueo} />}
+    {arqueoOpen && <CerrarTurnoModal onClose={() => setArqueoOpen(false)} onConfirm={(denominaciones) => confirmarArqueo(denominaciones)} />}
   </div>
 }
 

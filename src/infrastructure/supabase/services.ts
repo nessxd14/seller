@@ -252,6 +252,9 @@ export const ventaDirectaService = {
   async listPorCobrar() {
     return ventaDirectaRepository.listPorCobrar()
   },
+  async marcarPagoPosterior(ventaId: string, motivo: string, contacto?: string): Promise<void> {
+    return ventaDirectaRepository.marcarPagoPosterior(ventaId, motivo, contacto)
+  },
   /**
    * Brief Caja VTD: p_idempotencia es obligatorio en cobrar_vtd — un idempotencyKey por
    * intento de cobro (mismo criterio que checkout/abrir): un doble clic/reintento de red
@@ -280,7 +283,8 @@ export const turnoService = {
   registrarMovimiento: (input: { sesionId: string; subtipo: 'GASTO' | 'REMESA' | 'INYECCION'; montoBs: number; motivo: string; comprobantePath?: string; idempotencyKey?: string }) =>
     turnoRepository.registrarMovimientoTurno({ ...input, idempotencyKey: input.idempotencyKey ?? createUuid() }),
   resolverGasto: turnoRepository.resolverGasto,
-  cerrar: turnoRepository.cerrarTurno,
+  cerrar: (sesionId: string, denominaciones: Denominaciones, cajonVacio: boolean = false) => turnoRepository.cerrarTurno(sesionId, denominaciones, cajonVacio),
+  marcarCobroFueraDeArqueo: (movimientoId: string, fuera: boolean = true) => turnoRepository.marcarCobroFueraDeArqueo(movimientoId, fuera),
   revisar: turnoRepository.revisarTurno,
   arqueoSorpresa: turnoRepository.registrarArqueoSorpresa,
   resumen: turnoRepository.getResumenTurno,

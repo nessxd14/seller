@@ -52,6 +52,8 @@ export function CobrarVtdPickerModal({ yaSeleccionadas, onClose, onAdd }: { yaSe
                         <strong>{v.numero ?? `#${v.ventaId}`}</strong>
                         <span>{v.clienteNombre ?? 'Cliente de mostrador'}</span>
                         <span className={`vtd-modo-tag ${v.estado === 'COMPLETADA' ? 'pagado' : 'por-cobrar'}`}>{v.estado === 'COMPLETADA' ? 'Entregada' : 'Por entregar'}</span>
+                        {v.pagoPosterior && <span className="vtd-modo-tag pago-posterior">Pago posterior</span>}
+                        {v.pagoPosterior && (v.pagoPosteriorContacto || v.pagoPosteriorMotivo) && <span className="vtd-cobro-posterior-info">{[v.pagoPosteriorContacto, v.pagoPosteriorMotivo].filter(Boolean).join(' · ')}</span>}
                       </span>
                       <b>Bs {bs(v.totalBs)}</b>
                     </label>

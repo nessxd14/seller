@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { toError } from './postgrestError'
 import type { MutationContext, VentaDirectaAbrirLine, VentaDirectaRepository } from '../../application/ports/repositories'
 import type { CobrarVtdResultado, VentaDirectaRecord, VtdEstado, VtdLine, VtdPorCobrar } from '../../application/shared/models'
 import type { SaleCheckoutPayment } from '../../application/ports/repositories'
@@ -22,6 +23,10 @@ interface VentaRow {
   // (nunca regularizados). Ausente en filas anteriores a la migración... no debería pasar,
   // pero `?? true` cubre ese caso degradando a "exigible" en vez de ocultar el cobro.
   cobro_exigible?: boolean | null
+  // 2026-10-03_caja_cobro_vtd_obligatorio.sql
+  pago_posterior?: boolean | null
+  pago_posterior_motivo?: string | null
+  pago_posterior_contacto?: string | null
   cliente?: { nombre: string } | null
 }
 
@@ -71,6 +76,9 @@ const rowToVtd = (header: VentaRow, lines: VentaLineaRow[], pagos: VentaPagoRow[
     totalCents: numericToCents(num(header.total)),
     paidCents,
     cobroExigible: header.cobro_exigible ?? true,
+    pagoPosterior: header.pago_posterior ?? false,
+    pagoPosteriorMotivo: header.pago_posterior_motivo ?? undefined,
+    pagoPosteriorContacto: header.pago_posterior_contacto ?? undefined,
     creadoPor: header.creado_por ?? undefined,
     creadoEn: header.creado_en,
     completadoEn: header.completado_en ?? undefined,
@@ -82,14 +90,14 @@ const LINE_SELECT = '*, producto(nombre,sku_interno), presentacion(nombre)'
 
 const fetchVtdById = async (id: number): Promise<VentaDirectaRecord | null> => {
   const { data: header, error: headerError } = await supabase.from('venta').select('*, cliente(nombre)').eq('id', id).maybeSingle()
-  if (headerError) throw headerError
+  if (headerError) throw toError(headerError)
   if (!header) return null
   const [{ data: lines, error: linesError }, { data: pagos, error: pagosError }] = await Promise.all([
     supabase.from('venta_linea').select(LINE_SELECT).eq('venta_id', id),
     supabase.from('venta_pago').select('monto').eq('venta_id', id),
   ])
-  if (linesError) throw linesError
-  if (pagosError) throw pagosError
+  if (linesError) throw toError(linesError)
+  if (pagosError) throw toError(pagosError)
   return rowToVtd(header as VentaRow, (lines ?? []) as VentaLineaRow[], (pagos ?? []) as VentaPagoRow[])
 }
 
@@ -108,7 +116,7 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
     const numericId = Number(sesionCajaId)
     if (!Number.isFinite(numericId)) return []
     const { data: headers, error } = await supabase.from('venta').select('*, cliente(nombre)').eq('sesion_caja_id', numericId).eq('estado', 'ABIERTA').not('numero', 'is', null).order('creado_en', { ascending: true })
-    if (error) throw error
+    if (error) throw toError(error)
     const rows = (headers ?? []) as VentaRow[]
     const ids = rows.map((r) => r.id)
     if (!ids.length) return []
@@ -116,8 +124,8 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
       supabase.from('venta_linea').select(LINE_SELECT).in('venta_id', ids),
       supabase.from('venta_pago').select('venta_id, monto').in('venta_id', ids),
     ])
-    if (linesError) throw linesError
-    if (pagosError) throw pagosError
+    if (linesError) throw toError(linesError)
+    if (pagosError) throw toError(pagosError)
     return rows.map((header) =>
       rowToVtd(
         header,
@@ -149,7 +157,7 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
       p_usuario: actor,
       p_idempotencia: context.idempotencyKey,
     })
-    if (error) throw error
+    if (error) throw toError(error)
     const result = data as { venta_id: number; reintento?: boolean }
     const created = await fetchVtdById(result.venta_id)
     if (!created) throw new NotFoundError('No se pudo releer la venta directa recién abierta')
@@ -160,7 +168,7 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
     const actor = context.actorId ?? 'pos'
     const numericId = Number(id)
     const { error } = await supabase.rpc('completar_venta', { p_venta_id: numericId, p_usuario: actor })
-    if (error) throw error
+    if (error) throw toError(error)
     const updated = await fetchVtdById(numericId)
     if (!updated) throw new NotFoundError('No se pudo releer la venta directa completada')
     return updated
@@ -176,7 +184,7 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
       p_usuario: actor,
       p_motivo: motivo,
     })
-    if (error) throw error
+    if (error) throw toError(error)
     const updated = await fetchVtdById(numericId)
     if (!updated) throw new NotFoundError('No se pudo releer la venta directa ajustada')
     return updated
@@ -186,7 +194,7 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
     const actor = context.actorId ?? 'pos'
     const numericId = Number(id)
     const { error } = await supabase.rpc('anular_venta', { p_venta_id: numericId, p_usuario: actor, p_sesion_caja_id: cashSessionId ? Number(cashSessionId) : null })
-    if (error) throw error
+    if (error) throw toError(error)
     const updated = await fetchVtdById(numericId)
     if (!updated) throw new NotFoundError('No se pudo releer la venta directa anulada')
     return updated
@@ -196,11 +204,12 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
   // pago. security_invoker: la vista ya filtra por lo que el cajero puede ver.
   async listPorCobrar(): Promise<VtdPorCobrar[]> {
     const { data, error } = await supabase.from('v_vtd_por_cobrar').select('*')
-    if (error) throw error
+    if (error) throw toError(error)
     type Row = {
       venta_id: number; numero: string | null; estado: 'ABIERTA' | 'COMPLETADA'; cliente_id: number | null
       cliente_nombre: string | null; total: number | string; creado_por: string | null; creado_en: string
       sesion_creacion_id: number | null
+      pago_posterior?: boolean | null; pago_posterior_motivo?: string | null; pago_posterior_contacto?: string | null
     }
     return ((data ?? []) as Row[]).map((r) => ({
       ventaId: String(r.venta_id),
@@ -209,10 +218,21 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
       clienteId: r.cliente_id != null ? String(r.cliente_id) : undefined,
       clienteNombre: r.cliente_nombre ?? undefined,
       totalBs: num(r.total),
+      pagoPosterior: r.pago_posterior ?? false,
+      pagoPosteriorMotivo: r.pago_posterior_motivo ?? undefined,
+      pagoPosteriorContacto: r.pago_posterior_contacto ?? undefined,
       creadoPor: r.creado_por ?? undefined,
       creadoEn: r.creado_en,
       sesionCreacionId: r.sesion_creacion_id != null ? String(r.sesion_creacion_id) : undefined,
     }))
+  }
+
+  // Brief Caja VTD obligatorio — marcar_vtd_pago_posterior: única forma de entregar un VTD
+  // sin cobrarlo. Solo VTD ABIERTA y sin pago; la RPC exige motivo (>= 5) y contacto (>= 3)
+  // cuando la venta no tiene cliente. El mock replica las mismas reglas.
+  async marcarPagoPosterior(ventaId: string, motivo: string, contacto: string | undefined): Promise<void> {
+    const { error } = await supabase.rpc('marcar_vtd_pago_posterior', { p_venta_id: Number(ventaId), p_motivo: motivo, p_contacto: contacto ?? null })
+    if (error) throw toError(error)
   }
 
   // Brief Caja VTD — cobrar_vtd: cobro de uno o más VTD postcobrados en un solo recibo.
@@ -229,7 +249,7 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
       })),
       p_idempotencia: context.idempotencyKey,
     })
-    if (error) throw error
+    if (error) throw toError(error)
     type Result = {
       reintento?: boolean; sesion_caja_id: number
       ventas: { venta_id: number; numero: string | null; total: number | string; estado: string }[]
@@ -255,7 +275,7 @@ export const ventaDirectaRepository = new SupabaseVentaDirectaRepository()
 // consultando por sucursal_id + codigo_zona en cada carga.
 export const getUbicacionVentasDirectas = async (): Promise<number> => {
   const { data, error } = await supabase.from('ubicacion').select('id').eq('sucursal_id', SUCURSAL_ALMACEN_ID).eq('codigo_zona', 'VENTAS DIRECTAS').maybeSingle()
-  if (error) throw error
+  if (error) throw toError(error)
   if (!data) throw new NotFoundError('No se encontró la ubicación fija de Venta Directa (VENTAS DIRECTAS) para Almacén Central')
   return data.id as number
 }

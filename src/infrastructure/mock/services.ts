@@ -211,6 +211,9 @@ export const ventaDirectaService = {
   listPorCobrar() {
     return ventaDirectaMockRepository.listPorCobrar()
   },
+  marcarPagoPosterior(ventaId: string, motivo: string, contacto?: string): Promise<void> {
+    return ventaDirectaMockRepository.marcarPagoPosterior(ventaId, motivo, contacto)
+  },
   async cobrarVtd(input: Parameters<typeof ventaDirectaMockRepository.cobrarVtd>[0]) {
     return sensitiveOperations.execute('cobrar_vtd', `${input.sesionCajaId}:${input.ventaIds.slice().sort().join(',')}`, () =>
       ventaDirectaMockRepository.cobrarVtd(input),

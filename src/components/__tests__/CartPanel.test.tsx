@@ -11,7 +11,7 @@ import type { VtdPorCobrar } from '../../application/shared/models'
 // La prueba usa un turno propio y stock suficiente; el bloqueo viene de mezclar VTD.
 const listPorCobrar = vi.fn()
 const cobrarVtd = vi.fn()
-const vtdSeleccionable: VtdPorCobrar = { ventaId: '1', numero: 'VTD-2026-00001', estado: 'ABIERTA', clienteNombre: 'Juan Pérez', totalBs: 150, creadoEn: new Date().toISOString() }
+const vtdSeleccionable: VtdPorCobrar = { ventaId: '1', numero: 'VTD-2026-00001', estado: 'ABIERTA', clienteNombre: 'Juan Pérez', totalBs: 150, pagoPosterior: false, creadoEn: new Date().toISOString() }
 
 vi.mock('../../infrastructure/services', () => ({
   authSessionProvider: { getSession: vi.fn().mockResolvedValue({ user: { id: 'u1', role: 'cajero', active: true }, expiresAt: '2099-01-01' }) },
