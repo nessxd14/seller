@@ -11,9 +11,8 @@ export type CobroDestino = 'cajon' | 'fuera'
  * cliente entró al cajón o lo recibió gerencia directamente (fuera del arqueo). Un cajero nunca
  * ve esta elección: esEncargado queda en false para él y el cobro sigue como siempre.
  */
-export function useCobroDestino() {
+export function useEsEncargado(): boolean {
   const [esEncargado, setEsEncargado] = useState(false)
-  const [destino, setDestino] = useState<CobroDestino | null>(null)
   useEffect(() => {
     if (!featureFlags.supabase) return
     let cancelled = false
@@ -22,6 +21,12 @@ export function useCobroDestino() {
     } catch { /* sin sesión disponible: se trata como cajero */ }
     return () => { cancelled = true }
   }, [])
+  return esEncargado
+}
+
+export function useCobroDestino() {
+  const esEncargado = useEsEncargado()
+  const [destino, setDestino] = useState<CobroDestino | null>(null)
   return { esEncargado, destino, setDestino }
 }
 

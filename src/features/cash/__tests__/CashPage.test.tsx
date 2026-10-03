@@ -245,6 +245,14 @@ describe('Cobros fuera del arqueo — actividad y resumen (Brief Caja VTD obliga
     expect(screen.queryByRole('button', { name: /Sacar del arqueo|Volver al arqueo/ })).toBeNull()
   })
 
+  it('supervisor (cash_supervise sin permiso admin): ve la actividad pero no el toggle, igual que la elección D2', async () => {
+    listarMovimientos.mockResolvedValue([mov({ id: '9' })])
+    const supervisor: AuthSession = { user: { id: 'u3', name: 'Sol Supervisora', role: 'supervisor', active: true }, expiresAt: '2999-01-01T00:00:00Z' }
+    await cargarCaja(supervisor)
+    await screen.findByText('Pago / anticipo')
+    expect(screen.queryByRole('button', { name: /Sacar del arqueo|Volver al arqueo/ })).toBeNull()
+  })
+
   it('el resumen muestra "Cobros recibidos por gerencia" solo si hay cobros fuera del arqueo', async () => {
     await cargarCaja(gerenteSession)
     expect(screen.queryByText('Cobros recibidos por gerencia')).toBeNull()
