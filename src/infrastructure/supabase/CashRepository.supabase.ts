@@ -156,7 +156,7 @@ export class SupabaseCashRepository implements CashRepository {
   }
 
   async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: PosPaymentMethodExt; sessionId: string; noImputar?: boolean; aplicaciones?: Array<{ partidaId: number; monto: number }>; referencia?: string }, context: MutationContext & { idempotencyKey: string }): Promise<{ movementId: string; pagoId?: string; saldoProvisional?: number }> {
-    const { data, error } = await supabase.rpc('registrar_cobro_hermes', {
+    const { data, error } = await supabase.rpc('registrar_cobro_cation', {
       p_pedido_id: input.orderId ? Number(input.orderId) : null,
       p_cliente_id: input.customerId ? Number(input.customerId) : null,
       p_monto: centsToNumeric(input.amountCents),
@@ -168,8 +168,12 @@ export class SupabaseCashRepository implements CashRepository {
       p_referencia: input.referencia ?? null,
     })
     if (error) throw Object.assign(new Error(error.message || 'No se pudo registrar el cobro conjunto'), error)
-    if (!data?.movementId || !data?.pagoId) throw new Error('No se pudo verificar el registro conjunto del cobro')
-    return { movementId: String(data.movementId), pagoId: String(data.pagoId), saldoProvisional: Number(data.saldoProvisional) }
+    if (!data?.movementId || (!data?.pagoId && data?.excluidoRetail !== true)) throw new Error('No se pudo verificar el registro conjunto del cobro')
+    return {
+      movementId: String(data.movementId),
+      pagoId: data.pagoId == null ? undefined : String(data.pagoId),
+      saldoProvisional: data.saldoProvisional == null ? undefined : Number(data.saldoProvisional),
+    }
   }
 }
 
