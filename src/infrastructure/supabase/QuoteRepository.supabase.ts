@@ -46,6 +46,7 @@ interface CotizacionRow {
   descuento_general: number | string
   total: number | string
   notas: string | null
+  condiciones_comerciales?: string | null
   vigencia_hasta: string | null
   version: number
   creado_por: string | null
@@ -121,7 +122,7 @@ const rowToQuoteDraft = (header: CotizacionRow, lines: CotizacionLineaRow[]): Qu
   channel: categoriaToChannel(header.categoria) as QuoteDraft['channel'],
   status: estadoToStatus(header.estado),
   validUntil: header.vigencia_hasta ?? '',
-  terms: '',
+  terms: header.condiciones_comerciales ?? '',
   notes: header.notas ?? '',
   generalDiscountCents: numericToCents(num(header.descuento_general)),
   createdAt: header.creado_en,
@@ -150,6 +151,8 @@ export const buildLineasJsonb = (lines: WorkflowLine[], channel: QuoteDraft['cha
         unidad_medida: line.unitOfMeasure ?? null,
         cantidad_base: line.quantity,
         precio_unitario: centsToNumeric(line.unitPriceCents),
+        ...(line.listPriceCents != null ? { precio_lista: centsToNumeric(line.listPriceCents) } : {}),
+        ...(line.priceOverridden ? { precio_modificado: true, modificado_por: line.modifiedBy ?? actor } : {}),
         descuento_pct: bpToPct(line.discountBasisPoints),
         nota: line.note ?? null,
       }
@@ -162,6 +165,7 @@ export const buildLineasJsonb = (lines: WorkflowLine[], channel: QuoteDraft['cha
       precio_unitario: centsToNumeric(line.unitPriceCents),
       descuento_pct: bpToPct(line.discountBasisPoints),
       descripcion: line.maskName || null,
+      ...(line.note != null ? { nota: line.note } : {}),
       ...(line.priceOverridden ? { precio_modificado: true, modificado_por: line.modifiedBy ?? actor } : {}),
       ...(line.presentacionId != null ? { presentacion_id: line.presentacionId, cantidad_presentacion: line.quantity } : {}),
     }
@@ -242,6 +246,8 @@ export class SupabaseQuoteRepository implements QuoteRepository {
         // inmutable. p_referencia es un campo vestigial distinto del asunto (que va en
         // p_asunto); no hay nada del vendedor que mandarle.
         p_referencia: null,
+        p_notas: value.notes || null,
+        p_condiciones_comerciales: value.terms,
         p_descuento_general: centsToNumeric(value.generalDiscountCents),
         p_vigencia_hasta: value.validUntil || null,
         p_usuario: actor,
@@ -269,8 +275,9 @@ export class SupabaseQuoteRepository implements QuoteRepository {
     const { data: current, error: currentError } = await supabase.from('cotizacion').select('id, version, estado').eq('id', numericId).maybeSingle()
     if (currentError) throw currentError
     if (!current) throw new NotFoundError('Cotización no encontrada')
-    if (context.expectedVersion !== undefined && current.version !== context.expectedVersion) {
-      throw new ConflictError('La cotización fue modificada por otra sesión', { expected: context.expectedVersion, actual: current.version })
+    const expectedVersion = context.expectedVersion ?? value.version ?? current.version
+    if (current.version !== expectedVersion) {
+      throw new ConflictError('La cotización fue modificada por otra sesión. Vuelve a abrirla para revisar los cambios.', { expected: expectedVersion, actual: current.version })
     }
     if (current.estado !== 'BORRADOR') {
       throw new ConflictError('Solo una cotización en borrador puede editarse')
@@ -278,12 +285,13 @@ export class SupabaseQuoteRepository implements QuoteRepository {
 
     const { error: rpcError } = await supabase.rpc('actualizar_cotizacion', {
       p_cotizacion_id: numericId,
-      p_version_actual: current.version,
+      p_version_actual: expectedVersion,
       p_categoria: channelToCategoria(value.channel),
       p_lineas: buildLineasJsonb(value.lines, value.channel, actor),
       p_cliente_id: value.customerId ? Number(value.customerId) : null,
       p_referencia: null,
       p_notas: value.notes || null,
+      p_condiciones_comerciales: value.terms,
       p_descuento_general: centsToNumeric(value.generalDiscountCents),
       p_vigencia_hasta: value.validUntil || null,
       p_asunto: value.asunto || null,
@@ -307,7 +315,20 @@ export class SupabaseQuoteRepository implements QuoteRepository {
   async duplicate(id: string, context: MutationContext): Promise<QuoteDraft & Versioned> {
     const source = await this.getById(id)
     if (!source) throw new NotFoundError('Cotización no encontrada')
-    return this.save({ ...source, id: '', number: '', status: 'draft' }, context)
+    // Una copia nueva solo puede usar contactos activos del cliente de origen.
+    // Los nombres históricos del original nunca se usan como identidad de la copia.
+    let solicitanteId = source.solicitanteId
+    if (solicitanteId) {
+      const { data: contact, error } = await supabase.from('cliente_contacto')
+        .select('id').eq('id', Number(solicitanteId))
+        .eq('cliente_id', Number(source.customerId)).eq('activo', true).maybeSingle()
+      if (error) throw error
+      if (!contact) solicitanteId = undefined
+    }
+    return this.save({
+      ...source, id: '', number: '', version: undefined, status: 'draft',
+      solicitanteId, solicitanteNombre: undefined,
+    }, context)
   }
 }
 

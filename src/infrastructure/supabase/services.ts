@@ -40,7 +40,14 @@ const bigPageOrders = { page: 1, pageSize: 1000 }
 
 export const quoteService = {
   async list(): Promise<QuoteDraft[]> {
-    const { items } = await quoteRepository.list({ page: bigPage })
+    const items: QuoteDraft[] = []
+    let page = 1
+    while (true) {
+      const result = await quoteRepository.list({ page: { ...bigPage, page } })
+      items.push(...result.items)
+      if (!result.items.length || items.length >= result.total) break
+      page += 1
+    }
     return items
   },
   // Brief S3: /cotizaciones/:id necesita traer una cotización puntual sin pedir la lista
@@ -50,8 +57,7 @@ export const quoteService = {
   },
   async save(quote: QuoteDraft): Promise<QuoteDraft> {
     const actorId = await currentActorId()
-    const existing = quote.id ? await quoteRepository.getById(quote.id) : null
-    return quoteRepository.save(quote, { actorId, expectedVersion: existing?.version })
+    return quoteRepository.save(quote, { actorId, expectedVersion: quote.version })
   },
   async duplicate(id: string): Promise<QuoteDraft> {
     const actorId = await currentActorId()

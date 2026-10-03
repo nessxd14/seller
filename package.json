@@ -10,6 +10,7 @@
     "test": "vitest run src api",
     "test:e2e": "playwright test",
     "test:integration": "node supabase/tests/cobros-entregas.test.mjs",
+    "test:quotations": "node supabase/tests/cotizaciones.test.mjs",
     "preview": "vite preview",
     "bootstrap:clientes": "node --env-file=.env scripts/bootstrap_clientes.mjs"
   },

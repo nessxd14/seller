@@ -25,6 +25,7 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
   // clave de idempotencia en vez de crear dos movimiento_caja.
   const pagoOperationId = useRef(createUuid())
   const [customer, setCustomer] = useState<CustomerRecord | null>(null)
+  const integraConciliador = !!customer && customer.type !== 'retail'
   const [customerQuery, setCustomerQuery] = useState('')
   const [customerResults, setCustomerResults] = useState<CustomerRecord[]>([])
   const [searching, setSearching] = useState(false)
@@ -60,7 +61,7 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the previous customer's saldo/monto immediately when customer changes, before the new fetch resolves
     setSaldo(null)
     setAmountState(undefined)
-    if (!featureFlags.supabase || !customer) return
+    if (!featureFlags.supabase || !customer || customer.type === 'retail') return
     const id = Number(customer.id)
     if (!Number.isFinite(id) || id <= 0) return
     let cancelled = false
@@ -154,7 +155,7 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
   if (done) return <Modal title="Pago registrado" onClose={onClose}><div className="modal-body success-state">
     <span>✓</span>
     <h3>{formatMoney(money(done.amountCents))}</h3>
-    <p>{featureFlags.supabase ? `Registrado en caja y en Hermes para ${done.customerName}. Pendiente de revisión.` : `Pago registrado para ${done.customerName}.`}</p>
+    <p>{featureFlags.supabase && integraConciliador ? `Registrado en caja y en Hermes para ${done.customerName}. Pendiente de revisión.` : `Pago registrado en caja para ${done.customerName}.`}</p>
     {done.repartoWarning && <p className="mock-note payment-error">{done.repartoWarning}</p>}
   </div><footer className="modal-actions"><button className="primary-button full-button" onClick={onClose}>Cerrar</button></footer></Modal>
 
@@ -194,11 +195,12 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
       </select>
       {customer && !orders.length && <small className="line-stock-error">Este cliente no tiene pedidos abiertos.</small>}
     </label>}
-    {customer && featureFlags.supabase && saldo && <SaldoResumen saldo={saldo} />}
+    {integraConciliador && featureFlags.supabase && saldo && <SaldoResumen saldo={saldo} />}
+    {customer?.type === 'retail' && <p className="mock-note full">Este pago se registra en Seller. Los clientes retail quedan fuera del conciliador.</p>}
     <label>Monto (Bs)<NumberField autoFocus min={0} step={0.01} value={displayAmount} onCommit={setAmount} /></label>
     {/* Brief T7 Tarea 4: excluyente con el reparto de abajo — imputar_pago rechaza la
         combinación del lado servidor, así que acá se apagan mutuamente en la UI. */}
-    {tipo === 'total' && customer && featureFlags.supabase && (
+    {tipo === 'total' && integraConciliador && featureFlags.supabase && (
       <label className="full custom-modal-add-another">
         <input
           type="checkbox"
@@ -214,7 +216,7 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
     {/* Brief T4 Tarea 2: solo un pago "sobre el total" puede corresponder a más de una
         partida — un pago atado a un pedido específico ya se resuelve solo (proponer_pago
         le aplica el monto entero a esa partida). */}
-    {tipo === 'total' && customer && featureFlags.supabase && displayAmount > 0 && !noImputar && (
+    {tipo === 'total' && integraConciliador && customer && featureFlags.supabase && displayAmount > 0 && !noImputar && (
       <RepartoPagoPanel clienteId={Number(customer.id)} monto={displayAmount} onFilasChange={(filas, err) => { setRepartoFilas(filas); setRepartoError(err) }} />
     )}
     <label>Método de pago<select value={method ?? ''} onChange={(e) => { setMethod((e.target.value || null) as PosPaymentMethodExt | null); setDestino(null) }}>

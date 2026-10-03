@@ -1,0 +1,1018 @@
+{
+  "metadata": {
+    "enums": [
+      {
+        "name": "estado_conciliacion",
+        "values": [
+          "PENDIENTE",
+          "CONCILIADA",
+          "INYECTADA",
+          "DESCARTADA"
+        ]
+      },
+      {
+        "name": "metodo_resolucion",
+        "values": [
+          "AUTO_SIMPLE",
+          "AUTO_COINCIDE",
+          "MANUAL"
+        ]
+      },
+      {
+        "name": "tipo_movimiento",
+        "values": [
+          "INV_INICIAL",
+          "ENTRADA",
+          "SALIDA",
+          "AJUSTE",
+          "TRASLADO"
+        ]
+      },
+      {
+        "name": "estado_traslado_linea",
+        "values": [
+          "POR_DESPACHAR",
+          "DESPACHADA",
+          "RECHAZADO",
+          "CAMBIADA",
+          "RETIRADA"
+        ]
+      },
+      {
+        "name": "categoria_pedido",
+        "values": [
+          "MAYOR",
+          "TIENDA",
+          "INSTITUCIONAL",
+          "MUNICIPAL",
+          "CORPORATIVO"
+        ]
+      },
+      {
+        "name": "estado_pedido",
+        "values": [
+          "ABIERTO",
+          "COMPLETADO",
+          "CANCELADO"
+        ]
+      },
+      {
+        "name": "estado_linea",
+        "values": [
+          "POR_DESPACHAR",
+          "DESPACHADA",
+          "PENDIENTE",
+          "COMPRADO_DIRECTO",
+          "ESPECIAL",
+          "RECHAZADO",
+          "CAMBIADA",
+          "RETIRADA"
+        ]
+      },
+      {
+        "name": "tipo_precio_cliente",
+        "values": [
+          "retail",
+          "mayorista",
+          "corporativo",
+          "institucion"
+        ]
+      },
+      {
+        "name": "estado_venta",
+        "values": [
+          "ABIERTA",
+          "COMPLETADA",
+          "ANULADA"
+        ]
+      },
+      {
+        "name": "estado_cotizacion",
+        "values": [
+          "BORRADOR",
+          "APROBADA",
+          "CONVERTIDA",
+          "VENCIDA",
+          "ANULADA"
+        ]
+      },
+      {
+        "name": "estado_sesion_caja",
+        "values": [
+          "ABIERTA",
+          "CERRADA",
+          "EN_REVISION"
+        ]
+      },
+      {
+        "name": "tipo_movimiento_caja",
+        "values": [
+          "VENTA",
+          "ANTICIPO",
+          "INGRESO",
+          "EGRESO",
+          "ANULACION"
+        ]
+      },
+      {
+        "name": "metodo_pago",
+        "values": [
+          "EFECTIVO",
+          "QR",
+          "TRANSFERENCIA",
+          "SIGEP",
+          "CHEQUE",
+          "DEPOSITO"
+        ]
+      },
+      {
+        "name": "condicion_pago",
+        "values": [
+          "CONTADO",
+          "PAGO_PARCIAL",
+          "SIGEP",
+          "TRANSFERENCIA_BANCARIA",
+          "QR",
+          "CREDITO"
+        ]
+      },
+      {
+        "name": "estado_traslado",
+        "values": [
+          "SOLICITADO",
+          "EN_TRANSITO",
+          "RECIBIDO",
+          "RECHAZADO",
+          "CANCELADO"
+        ]
+      },
+      {
+        "name": "motivo_traslado",
+        "values": [
+          "VENTA_DIRECTA",
+          "REPOSICION",
+          "DEVOLUCION"
+        ]
+      }
+    ],
+    "tables": [
+      {
+        "name": "cliente",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "default": null,
+            "notnull": true,
+            "identity": "a"
+          },
+          {
+            "name": "nombre",
+            "type": "text",
+            "default": null,
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "tipo_precio",
+            "type": "tipo_precio_cliente",
+            "default": "'retail'::tipo_precio_cliente",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "documento",
+            "type": "character varying",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "telefono",
+            "type": "character varying",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "email",
+            "type": "character varying",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "direccion",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "activo",
+            "type": "boolean",
+            "default": "true",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "creado_en",
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "actualizado_en",
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "shopify_customer_id",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "origen",
+            "type": "text",
+            "default": "'manual'::text",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "ciudad",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "razon_social",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "tope_autorizado",
+            "type": "numeric(14,2)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          }
+        ],
+        "constraints": [
+          {
+            "name": "ck_cliente_tope",
+            "type": "c",
+            "definition": "CHECK (((tope_autorizado IS NULL) OR (tope_autorizado > (0)::numeric)))"
+          },
+          {
+            "name": "cliente_pkey",
+            "type": "p",
+            "definition": "PRIMARY KEY (id)"
+          }
+        ]
+      },
+      {
+        "name": "cliente_contacto",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "default": null,
+            "notnull": true,
+            "identity": "a"
+          },
+          {
+            "name": "cliente_id",
+            "type": "bigint",
+            "default": null,
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "nombre",
+            "type": "text",
+            "default": null,
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "cargo",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "telefono",
+            "type": "character varying(40)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "email",
+            "type": "character varying(160)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "tope_autorizado",
+            "type": "numeric(14,2)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "activo",
+            "type": "boolean",
+            "default": "true",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "notas",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "creado_en",
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "creado_por",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "modificado_en",
+            "type": "timestamp with time zone",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "modificado_por",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          }
+        ],
+        "constraints": [
+          {
+            "name": "ck_cliente_contacto_nombre",
+            "type": "c",
+            "definition": "CHECK ((btrim(nombre) <> ''::text))"
+          },
+          {
+            "name": "ck_cliente_contacto_tope",
+            "type": "c",
+            "definition": "CHECK (((tope_autorizado IS NULL) OR (tope_autorizado > (0)::numeric)))"
+          },
+          {
+            "name": "cliente_contacto_cliente_id_fkey",
+            "type": "f",
+            "definition": "FOREIGN KEY (cliente_id) REFERENCES cliente(id) ON DELETE RESTRICT"
+          },
+          {
+            "name": "cliente_contacto_pkey",
+            "type": "p",
+            "definition": "PRIMARY KEY (id)"
+          }
+        ]
+      },
+      {
+        "name": "cotizacion",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "default": null,
+            "notnull": true,
+            "identity": "a"
+          },
+          {
+            "name": "cliente_id",
+            "type": "bigint",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "categoria",
+            "type": "categoria_pedido",
+            "default": null,
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "referencia",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "estado",
+            "type": "estado_cotizacion",
+            "default": "'BORRADOR'::estado_cotizacion",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "subtotal",
+            "type": "numeric",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "descuento_general",
+            "type": "numeric",
+            "default": "0",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "total",
+            "type": "numeric",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "notas",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "vigencia_hasta",
+            "type": "date",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "version",
+            "type": "integer",
+            "default": "0",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "creado_por",
+            "type": "character varying",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "creado_en",
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "actualizado_en",
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "fecha",
+            "type": "date",
+            "default": "CURRENT_DATE",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "asunto",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "condicion_pago",
+            "type": "condicion_pago",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "solicitado_por",
+            "type": "character varying",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "aprobado_por",
+            "type": "character varying",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "aprobado_en",
+            "type": "timestamp with time zone",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "numero",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "solicitante_id",
+            "type": "bigint",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "medio_pago",
+            "type": "metodo_pago",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          }
+        ],
+        "constraints": [
+          {
+            "name": "ck_cotizacion_condicion_valida",
+            "type": "c",
+            "definition": "CHECK (((condicion_pago IS NULL) OR (condicion_pago = ANY (ARRAY['CONTADO'::condicion_pago, 'CREDITO'::condicion_pago]))))"
+          },
+          {
+            "name": "ck_cotizacion_no_municipal",
+            "type": "c",
+            "definition": "CHECK ((categoria <> 'MUNICIPAL'::categoria_pedido))"
+          },
+          {
+            "name": "cotizacion_cliente_id_fkey",
+            "type": "f",
+            "definition": "FOREIGN KEY (cliente_id) REFERENCES cliente(id)"
+          },
+          {
+            "name": "cotizacion_pkey",
+            "type": "p",
+            "definition": "PRIMARY KEY (id)"
+          },
+          {
+            "name": "cotizacion_solicitante_id_fkey",
+            "type": "f",
+            "definition": "FOREIGN KEY (solicitante_id) REFERENCES cliente_contacto(id) ON DELETE RESTRICT"
+          }
+        ]
+      },
+      {
+        "name": "cotizacion_linea",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "default": null,
+            "notnull": true,
+            "identity": "a"
+          },
+          {
+            "name": "cotizacion_id",
+            "type": "bigint",
+            "default": null,
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "producto_id",
+            "type": "bigint",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "es_personalizado",
+            "type": "boolean",
+            "default": "false",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "descripcion",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "nota",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "sucursal_origen_id",
+            "type": "bigint",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "cantidad_base",
+            "type": "numeric",
+            "default": null,
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "precio_lista",
+            "type": "numeric",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "precio_unitario",
+            "type": "numeric",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "descuento_pct",
+            "type": "numeric",
+            "default": "0",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "precio_modificado",
+            "type": "boolean",
+            "default": "false",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "modificado_por",
+            "type": "character varying",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "modificado_en",
+            "type": "timestamp with time zone",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "subtotal",
+            "type": "numeric",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "creado_en",
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "presentacion_id",
+            "type": "bigint",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "cantidad_presentacion",
+            "type": "numeric",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "unidad_medida",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          }
+        ],
+        "constraints": [
+          {
+            "name": "chk_cotizacion_linea_producto_o_personalizado",
+            "type": "c",
+            "definition": "CHECK ((((es_personalizado = false) AND (producto_id IS NOT NULL)) OR ((es_personalizado = true) AND (descripcion IS NOT NULL))))"
+          },
+          {
+            "name": "chk_cotizacion_linea_unidad_medida",
+            "type": "c",
+            "definition": "CHECK (((unidad_medida IS NULL) OR ((char_length(unidad_medida) >= 1) AND (char_length(unidad_medida) <= 30))))"
+          },
+          {
+            "name": "cotizacion_linea_cantidad_base_check",
+            "type": "c",
+            "definition": "CHECK ((cantidad_base > (0)::numeric))"
+          },
+          {
+            "name": "cotizacion_linea_cotizacion_id_fkey",
+            "type": "f",
+            "definition": "FOREIGN KEY (cotizacion_id) REFERENCES cotizacion(id) ON DELETE CASCADE"
+          },
+          {
+            "name": "cotizacion_linea_descuento_pct_check",
+            "type": "c",
+            "definition": "CHECK (((descuento_pct >= (0)::numeric) AND (descuento_pct <= (100)::numeric)))"
+          },
+          {
+            "name": "cotizacion_linea_pkey",
+            "type": "p",
+            "definition": "PRIMARY KEY (id)"
+          },
+          {
+            "name": "cotizacion_linea_presentacion_id_fkey",
+            "type": "f",
+            "definition": "FOREIGN KEY (presentacion_id) REFERENCES presentacion(id)"
+          },
+          {
+            "name": "cotizacion_linea_producto_id_fkey",
+            "type": "f",
+            "definition": "FOREIGN KEY (producto_id) REFERENCES producto(id)"
+          },
+          {
+            "name": "cotizacion_linea_sucursal_origen_id_fkey",
+            "type": "f",
+            "definition": "FOREIGN KEY (sucursal_origen_id) REFERENCES sucursal(id)"
+          }
+        ]
+      },
+      {
+        "name": "producto",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "default": null,
+            "notnull": true,
+            "identity": "a"
+          },
+          {
+            "name": "familia_id",
+            "type": "bigint",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "nombre",
+            "type": "character varying(250)",
+            "default": null,
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "sku_interno",
+            "type": "character varying(64)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "marca",
+            "type": "character varying(120)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "unidad_base",
+            "type": "character varying(40)",
+            "default": null,
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "precio_base",
+            "type": "numeric(14,2)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "activo",
+            "type": "boolean",
+            "default": "true",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "shopify_variant_id",
+            "type": "character varying(64)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "shopify_inventory_item_id",
+            "type": "character varying(64)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "creado_en",
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "actualizado_en",
+            "type": "timestamp with time zone",
+            "default": "now()",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "imagen_url",
+            "type": "character varying(500)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "precio_mayoreo",
+            "type": "numeric(14,2)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "precio_institucion",
+            "type": "numeric(14,2)",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "stock_min",
+            "type": "numeric",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "punto_reorden",
+            "type": "numeric",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "precio_corporativo",
+            "type": "numeric",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "ficha_md",
+            "type": "text",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "ficha_actualizada_en",
+            "type": "timestamp with time zone",
+            "default": null,
+            "notnull": false,
+            "identity": ""
+          },
+          {
+            "name": "precio_municipal",
+            "generated": "s",
+            "type": "numeric",
+            "default": "precio_corporativo",
+            "notnull": false,
+            "identity": ""
+          }
+        ],
+        "constraints": [
+          {
+            "name": "producto_familia_id_fkey",
+            "type": "f",
+            "definition": "FOREIGN KEY (familia_id) REFERENCES familia(id)"
+          },
+          {
+            "name": "producto_pkey",
+            "type": "p",
+            "definition": "PRIMARY KEY (id)"
+          },
+          {
+            "name": "producto_sku_interno_key",
+            "type": "u",
+            "definition": "UNIQUE (sku_interno)"
+          }
+        ]
+      },
+      {
+        "name": "presentacion",
+        "columns": [
+          {
+            "name": "id",
+            "type": "bigint",
+            "default": null,
+            "notnull": true,
+            "identity": "a"
+          },
+          {
+            "name": "producto_id",
+            "type": "bigint",
+            "default": null,
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "nombre",
+            "type": "character varying(80)",
+            "default": null,
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "factor_unidad_base",
+            "type": "numeric(14,4)",
+            "default": null,
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "es_base",
+            "type": "boolean",
+            "default": "false",
+            "notnull": true,
+            "identity": ""
+          },
+          {
+            "name": "activo",
+            "type": "boolean",
+            "default": "true",
+            "notnull": true,
+            "identity": ""
+          }
+        ],
+        "constraints": [
+          {
+            "name": "presentacion_factor_unidad_base_check",
+            "type": "c",
+            "definition": "CHECK ((factor_unidad_base > (0)::numeric))"
+          },
+          {
+            "name": "presentacion_pkey",
+            "type": "p",
+            "definition": "PRIMARY KEY (id)"
+          },
+          {
+            "name": "presentacion_producto_id_fkey",
+            "type": "f",
+            "definition": "FOREIGN KEY (producto_id) REFERENCES producto(id)"
+          }
+        ]
+      }
+    ]
+  },
+  "functions": [
+    "CREATE OR REPLACE FUNCTION public.actualizar_cotizacion(p_cotizacion_id bigint, p_version_actual integer, p_categoria categoria_pedido, p_lineas jsonb, p_cliente_id bigint DEFAULT NULL::bigint, p_referencia text DEFAULT NULL::text, p_notas text DEFAULT NULL::text, p_descuento_general numeric DEFAULT 0, p_vigencia_hasta date DEFAULT NULL::date, p_asunto text DEFAULT NULL::text, p_condicion_pago condicion_pago DEFAULT NULL::condicion_pago, p_fecha date DEFAULT NULL::date, p_usuario text DEFAULT NULL::text, p_solicitante_id bigint DEFAULT NULL::bigint, p_medio_pago metodo_pago DEFAULT NULL::metodo_pago)\n RETURNS bigint\n LANGUAGE plpgsql\nAS $function$\r\ndeclare\r\n  v_linea jsonb; v_esp boolean; v_prod bigint;\r\n  v_pres bigint; v_factor numeric; v_cant_pres numeric; v_cant numeric;\r\n  v_desc_pct numeric; v_unit numeric; v_lista numeric; v_origen bigint;\r\n  v_sub numeric; v_subtotal numeric := 0;\r\n  v_estado_actual text;\r\n  v_version_actual_db integer;\r\nbegin\r\n  if jsonb_typeof(p_lineas) <> 'array' or jsonb_array_length(p_lineas) = 0 then\r\n    raise exception 'p_lineas debe ser un array no vacío';\r\n  end if;\r\n\r\n  select estado, version into v_estado_actual, v_version_actual_db\r\n  from cotizacion where id = p_cotizacion_id\r\n  for update;\r\n\r\n  if not found then\r\n    raise exception 'Cotización % no existe', p_cotizacion_id;\r\n  end if;\r\n  if v_estado_actual <> 'BORRADOR' then\r\n    raise exception 'Solo una cotización en borrador puede editarse';\r\n  end if;\r\n  if v_version_actual_db <> p_version_actual then\r\n    raise exception 'La cotización fue modificada por otra sesión';\r\n  end if;\r\n\r\n  delete from cotizacion_linea where cotizacion_id = p_cotizacion_id;\r\n\r\n  for v_linea in select * from jsonb_array_elements(p_lineas)\r\n  loop\r\n    v_esp := coalesce((v_linea->>'es_personalizado')::boolean, false);\r\n    v_desc_pct := coalesce((v_linea->>'descuento_pct')::numeric, 0);\r\n    if v_desc_pct < 0 or v_desc_pct > 100 then\r\n      raise exception 'descuento_pct fuera de rango (0..100)';\r\n    end if;\r\n    v_unit  := (v_linea->>'precio_unitario')::numeric;\r\n    v_lista := coalesce((v_linea->>'precio_lista')::numeric, v_unit);\r\n    v_pres  := (v_linea->>'presentacion_id')::bigint;\r\n\r\n    if v_esp then\r\n      if coalesce(btrim(v_linea->>'descripcion'),'') = '' then\r\n        raise exception 'El ítem personalizado requiere descripcion';\r\n      end if;\r\n      v_prod := null; v_origen := null; v_pres := null;\r\n      v_cant := (v_linea->>'cantidad_base')::numeric;\r\n      v_cant_pres := v_cant;\r\n    else\r\n      v_prod := (v_linea->>'producto_id')::bigint;\r\n      if v_prod is null then raise exception 'Cada línea de catálogo requiere producto_id'; end if;\r\n\r\n      if v_pres is not null then\r\n        select factor_unidad_base into v_factor\r\n          from presentacion where id = v_pres and producto_id = v_prod;\r\n        if v_factor is null then\r\n          raise exception 'La presentación % no pertenece al producto %', v_pres, v_prod;\r\n        end if;\r\n        v_cant_pres := (v_linea->>'cantidad_presentacion')::numeric;\r\n        if v_cant_pres is null or v_cant_pres <= 0 then\r\n          raise exception 'cantidad_presentacion debe ser positiva';\r\n        end if;\r\n        v_cant := v_cant_pres * v_factor;\r\n      else\r\n        v_cant := (v_linea->>'cantidad_base')::numeric;\r\n        v_cant_pres := v_cant;\r\n      end if;\r\n\r\n      v_origen := coalesce((v_linea->>'sucursal_origen_id')::bigint,\r\n                           case when p_categoria = 'TIENDA' then 2 else 1 end);\r\n    end if;\r\n\r\n    if v_cant is null or v_cant <= 0 then raise exception 'cantidad debe ser positiva'; end if;\r\n\r\n    v_sub := case when v_unit is not null\r\n                  then round(v_unit * v_cant_pres * (1 - v_desc_pct/100), 2) else null end;\r\n    if v_sub is not null then v_subtotal := v_subtotal + v_sub; end if;\r\n\r\n    insert into cotizacion_linea (\r\n      cotizacion_id, producto_id, es_personalizado, descripcion, unidad_medida, nota,\r\n      sucursal_origen_id, presentacion_id, cantidad_presentacion, cantidad_base,\r\n      precio_lista, precio_unitario, descuento_pct, subtotal,\r\n      precio_modificado, modificado_por, modificado_en\r\n    ) values (\r\n      p_cotizacion_id, v_prod, v_esp, v_linea->>'descripcion', case when v_esp then coalesce(nullif(upper(btrim(v_linea->>'unidad_medida')), ''), 'UNIDAD') end, v_linea->>'nota',\r\n      v_origen, v_pres, v_cant_pres, v_cant,\r\n      v_lista, v_unit, v_desc_pct, v_sub,\r\n      coalesce((v_linea->>'precio_modificado')::boolean, false),\r\n      case when (v_linea->>'precio_modificado')::boolean then coalesce(v_linea->>'modificado_por', p_usuario) else null end,\r\n      case when (v_linea->>'precio_modificado')::boolean then now() else null end\r\n    );\r\n  end loop;\r\n\r\n  update cotizacion\r\n     set cliente_id = p_cliente_id,\r\n         categoria = p_categoria,\r\n         referencia = p_referencia,\r\n         notas = p_notas,\r\n         vigencia_hasta = p_vigencia_hasta,\r\n         asunto = p_asunto,\r\n         condicion_pago = p_condicion_pago,\r\n         medio_pago = p_medio_pago,\r\n         fecha = coalesce(p_fecha, fecha),\r\n         solicitante_id = p_solicitante_id,\r\n         subtotal = v_subtotal,\r\n         descuento_general = coalesce(p_descuento_general, 0),\r\n         total = v_subtotal - coalesce(p_descuento_general, 0),\r\n         version = version + 1,\r\n         actualizado_en = now()\r\n   where id = p_cotizacion_id;\r\n\r\n  return p_cotizacion_id;\r\nend;\r\n$function$\n",
+    "CREATE OR REPLACE FUNCTION public.crear_cotizacion(p_categoria categoria_pedido, p_lineas jsonb, p_cliente_id bigint DEFAULT NULL::bigint, p_referencia text DEFAULT NULL::text, p_descuento_general numeric DEFAULT 0, p_vigencia_hasta date DEFAULT NULL::date, p_usuario text DEFAULT NULL::text, p_asunto text DEFAULT NULL::text, p_condicion_pago condicion_pago DEFAULT NULL::condicion_pago, p_fecha date DEFAULT NULL::date, p_solicitante_id bigint DEFAULT NULL::bigint, p_medio_pago metodo_pago DEFAULT NULL::metodo_pago)\n RETURNS bigint\n LANGUAGE plpgsql\nAS $function$\r\ndeclare\r\n  v_cot_id bigint; v_linea jsonb; v_esp boolean; v_prod bigint;\r\n  v_pres bigint; v_factor numeric; v_cant_pres numeric; v_cant numeric;\r\n  v_desc_pct numeric; v_unit numeric; v_lista numeric; v_origen bigint;\r\n  v_sub numeric; v_subtotal numeric := 0;\r\nbegin\r\n  if jsonb_typeof(p_lineas) <> 'array' or jsonb_array_length(p_lineas) = 0 then\r\n    raise exception 'p_lineas debe ser un array no vacío';\r\n  end if;\r\n\r\n  insert into cotizacion (categoria, referencia, cliente_id, descuento_general,\r\n                          vigencia_hasta, creado_por, asunto, condicion_pago, fecha,\r\n                          solicitante_id, medio_pago)\r\n  values (p_categoria, p_referencia, p_cliente_id, coalesce(p_descuento_general,0),\r\n          p_vigencia_hasta, p_usuario, p_asunto, p_condicion_pago,\r\n          coalesce(p_fecha, current_date), p_solicitante_id, p_medio_pago)\r\n  returning id into v_cot_id;\r\n\r\n  for v_linea in select * from jsonb_array_elements(p_lineas)\r\n  loop\r\n    v_esp := coalesce((v_linea->>'es_personalizado')::boolean, false);\r\n    v_desc_pct := coalesce((v_linea->>'descuento_pct')::numeric, 0);\r\n    if v_desc_pct < 0 or v_desc_pct > 100 then\r\n      raise exception 'descuento_pct fuera de rango (0..100)';\r\n    end if;\r\n    v_unit  := (v_linea->>'precio_unitario')::numeric;\r\n    v_lista := coalesce((v_linea->>'precio_lista')::numeric, v_unit);\r\n    v_pres  := (v_linea->>'presentacion_id')::bigint;\r\n\r\n    if v_esp then\r\n      if coalesce(btrim(v_linea->>'descripcion'),'') = '' then\r\n        raise exception 'El ítem personalizado requiere descripcion';\r\n      end if;\r\n      v_prod := null; v_origen := null; v_pres := null;\r\n      v_cant := (v_linea->>'cantidad_base')::numeric;\r\n      v_cant_pres := v_cant;\r\n    else\r\n      v_prod := (v_linea->>'producto_id')::bigint;\r\n      if v_prod is null then raise exception 'Cada línea de catálogo requiere producto_id'; end if;\r\n\r\n      if v_pres is not null then\r\n        select factor_unidad_base into v_factor\r\n          from presentacion where id = v_pres and producto_id = v_prod;\r\n        if v_factor is null then\r\n          raise exception 'La presentación % no pertenece al producto %', v_pres, v_prod;\r\n        end if;\r\n        v_cant_pres := (v_linea->>'cantidad_presentacion')::numeric;\r\n        if v_cant_pres is null or v_cant_pres <= 0 then\r\n          raise exception 'cantidad_presentacion debe ser positiva';\r\n        end if;\r\n        v_cant := v_cant_pres * v_factor;\r\n      else\r\n        v_cant := (v_linea->>'cantidad_base')::numeric;\r\n        v_cant_pres := v_cant;\r\n      end if;\r\n\r\n      v_origen := coalesce((v_linea->>'sucursal_origen_id')::bigint,\r\n                           case when p_categoria = 'TIENDA' then 2 else 1 end);\r\n    end if;\r\n\r\n    if v_cant is null or v_cant <= 0 then raise exception 'cantidad debe ser positiva'; end if;\r\n\r\n    v_sub := case when v_unit is not null\r\n                  then round(v_unit * v_cant_pres * (1 - v_desc_pct/100), 2) else null end;\r\n    if v_sub is not null then v_subtotal := v_subtotal + v_sub; end if;\r\n\r\n    insert into cotizacion_linea (\r\n      cotizacion_id, producto_id, es_personalizado, descripcion, unidad_medida, nota,\r\n      sucursal_origen_id, presentacion_id, cantidad_presentacion, cantidad_base,\r\n      precio_lista, precio_unitario, descuento_pct, subtotal\r\n    ) values (\r\n      v_cot_id, v_prod, v_esp, v_linea->>'descripcion', case when v_esp then coalesce(nullif(upper(btrim(v_linea->>'unidad_medida')), ''), 'UNIDAD') end, v_linea->>'nota',\r\n      v_origen, v_pres, v_cant_pres, v_cant,\r\n      v_lista, v_unit, v_desc_pct, v_sub\r\n    );\r\n  end loop;\r\n\r\n  update cotizacion\r\n     set subtotal = v_subtotal,\r\n         total = v_subtotal - coalesce(p_descuento_general, 0)\r\n   where id = v_cot_id;\r\n\r\n  return v_cot_id;\r\nend;\r\n$function$\n",
+    "CREATE OR REPLACE FUNCTION public.fn_solicitante_coherente()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\ndeclare\r\n  v_contacto_cliente bigint;\r\n  v_nombre           text;\r\n  v_activo           boolean;\r\nbegin\r\n  if NEW.solicitante_id is not null then\r\n    select cc.cliente_id, cc.nombre, cc.activo\r\n      into v_contacto_cliente, v_nombre, v_activo\r\n      from cliente_contacto cc where cc.id = NEW.solicitante_id;\r\n\r\n    if v_contacto_cliente is null then\r\n      raise exception 'El solicitante % no existe', NEW.solicitante_id\r\n        using errcode = 'foreign_key_violation';\r\n    end if;\r\n\r\n    if NEW.cliente_id is null or v_contacto_cliente <> NEW.cliente_id then\r\n      raise exception 'El solicitante elegido pertenece a otro cliente. Elegí un contacto de esta institución.'\r\n        using errcode = 'check_violation';\r\n    end if;\r\n\r\n    if TG_OP = 'INSERT' and not v_activo then\r\n      raise exception 'El solicitante % está desactivado. Reactivalo o elegí otro.', v_nombre\r\n        using errcode = 'check_violation';\r\n    end if;\r\n\r\n    if NEW.solicitado_por is null or btrim(NEW.solicitado_por) = '' then\r\n      NEW.solicitado_por := v_nombre;\r\n    end if;\r\n  end if;\r\n\r\n  -- IF ANIDADO: PL/pgSQL evalúa los dos lados de un AND siempre, y cotizacion\r\n  -- no tiene esta columna.\r\n  if TG_TABLE_NAME = 'pedido' then\r\n    if NEW.recepcionado_por_id is not null then\r\n      select cc.cliente_id, cc.nombre into v_contacto_cliente, v_nombre\r\n        from cliente_contacto cc where cc.id = NEW.recepcionado_por_id;\r\n\r\n      if NEW.cliente_id is null or v_contacto_cliente is distinct from NEW.cliente_id then\r\n        raise exception 'Quien recibe debe ser un contacto de la misma institución.'\r\n          using errcode = 'check_violation';\r\n      end if;\r\n\r\n      if NEW.recibido_por is null or btrim(NEW.recibido_por) = '' then\r\n        NEW.recibido_por := v_nombre;\r\n      end if;\r\n    end if;\r\n  end if;\r\n\r\n  return NEW;\r\nend;\r\n$function$\n"
+  ]
+}

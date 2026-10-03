@@ -2,6 +2,7 @@ import {PGlite} from '@electric-sql/pglite'
 import fs from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import { testOrigenMayorista } from './origen-mayorista.test.mjs'
+import { testSincronizacionAutomatica } from './sincronizacion-automatica.test.mjs'
 const backup=JSON.parse(await fs.readFile(new URL('./schema.fixture.json',import.meta.url),'utf8'))
 const meta=backup.metadata[0].metadata
 const db=new PGlite()
@@ -127,4 +128,5 @@ assert.equal((await db.query("select has_function_privilege('anon','hermes.asoci
 assert.equal((await db.query("select has_table_privilege('service_role','hermes.pago','UPDATE') permitted")).rows[0].permitted,false)
 console.log('OK: comprobante autorizado, archivo disponible, vínculo reversible y saldo/estado preservados')
 await testOrigenMayorista(db, claims)
+await testSincronizacionAutomatica(db, claims)
 await db.close()

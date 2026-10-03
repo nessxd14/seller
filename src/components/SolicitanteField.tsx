@@ -29,6 +29,7 @@ export function SolicitanteField({ clienteId, value, onChange, required, actorId
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
+  const savingRef = useRef(false)
 
   const closeAll = () => { setExpanded(false); setCreating(null); setQuery(''); setError('') }
 
@@ -44,8 +45,12 @@ export function SolicitanteField({ clienteId, value, onChange, required, actorId
     let cancelled = false
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mismo patrón que CustomerPicker: la bandera de carga tiene que cambiar apenas cambia la query, antes de que resuelva el debounce
     setSearching(true)
+    setResults([])
+    setError('')
     const handle = setTimeout(() => {
-      void buscarContactos(clienteId, query.trim() || null).then((list) => { if (!cancelled) { setResults(list); setSearching(false) } })
+      void buscarContactos(clienteId, query.trim() || null)
+        .then((list) => { if (!cancelled) { setResults(list); setSearching(false) } })
+        .catch(() => { if (!cancelled) { setResults([]); setSearching(false); setError('No se pudieron cargar los contactos. Cierra y vuelve a abrir el selector para reintentar.') } })
     }, 300)
     return () => { cancelled = true; clearTimeout(handle) }
   }, [expanded, creating, query, clienteId])
@@ -54,11 +59,16 @@ export function SolicitanteField({ clienteId, value, onChange, required, actorId
   const startNew = () => setCreating({ ...emptyForm, nombre: query })
 
   const confirmCreate = async () => {
+    if (savingRef.current) return
     if (!creating || !creating.nombre.trim()) { setError('El nombre es obligatorio'); return }
+    const topeTrimmed = creating.tope.trim()
+    if (topeTrimmed && (!Number.isFinite(Number(topeTrimmed)) || Number(topeTrimmed) < 0)) {
+      setError('El tope debe ser un importe válido mayor o igual a cero'); return
+    }
+    savingRef.current = true
     setSaving(true)
     setError('')
     try {
-      const topeTrimmed = creating.tope.trim()
       const created = await crearContacto(clienteId, {
         nombre: creating.nombre,
         cargo: creating.cargo,
@@ -69,17 +79,18 @@ export function SolicitanteField({ clienteId, value, onChange, required, actorId
       onChange({ id: created.id, nombre: created.nombre })
       closeAll()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear el contacto')
+      setError(err && typeof err === 'object' && 'message' in err ? String(err.message) : 'No se pudo crear el contacto')
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
 
   return (
-    <label className="full solicitante-field">
-      Solicitante{required && <span className="field-required-mark"> *</span>}
+    <div className="full solicitante-field">
+      <span>Solicitante{required && <span className="field-required-mark"> *</span>}</span>
       <div className="customer-picker" ref={rootRef}>
-        <button type="button" className={`customer-select ${required ? 'required' : ''}`} onClick={() => setExpanded((v) => !v)}>
+        <button type="button" aria-label={`Solicitante: ${value?.nombre ?? 'Sin elegir'}`} aria-expanded={expanded} className={`customer-select ${required ? 'required' : ''}`} onClick={() => setExpanded((v) => !v)}>
           <UserRound /><span><small>SOLICITANTE</small><strong>{value ? value.nombre : 'Sin elegir'}</strong></span><ChevronDown className={expanded ? 'chevron-open' : ''} />
         </button>
         {expanded && <div className="customer-picker-panel">
@@ -103,6 +114,7 @@ export function SolicitanteField({ clienteId, value, onChange, required, actorId
             <div className="customer-search-box"><Search /><input placeholder="Buscar contacto por nombre…" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus /></div>
             {value && <div className="customer-picker-quick"><button type="button" onClick={() => { onChange(null); closeAll() }}>Sin solicitante</button></div>}
             <div className="customer-results">
+              {error && <p className="payment-error" role="alert">{error}</p>}
               {searching
                 ? <p className="product-info-empty">Buscando…</p>
                 : <>
@@ -120,6 +132,6 @@ export function SolicitanteField({ clienteId, value, onChange, required, actorId
         </div>}
       </div>
       {required && <small className="field-required-hint">Este cliente requiere elegir un solicitante para el pedido — la cotización se puede guardar sin uno.</small>}
-    </label>
+    </div>
   )
 }
