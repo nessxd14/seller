@@ -50,6 +50,7 @@ type LinePresentation = { id: number; nombre: string; factorUnidadBase: number; 
 type LineStock = { tienda: number; almacen: number }
 
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
+type EditorAction = (quote: QuoteDraft) => void | false | Promise<void | false>
 
 export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSave, onCreateOrder, onConvert }: {
   quote: QuoteDraft
@@ -63,9 +64,9 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // tracks this explicitly at each of its three entry points instead.
   isExistingQuote?: boolean
   onClose: () => void
-  onSave: (quote: QuoteDraft) => void | Promise<void>
-  onCreateOrder?: (quote: QuoteDraft) => void | Promise<void>
-  onConvert?: (quote: QuoteDraft) => void | Promise<void>
+  onSave: EditorAction
+  onCreateOrder?: EditorAction
+  onConvert?: EditorAction
 }) {
   const [value, setValue] = useState<QuoteDraft>(() => structuredClone(quote))
   const readOnly = value.status !== 'draft' && value.id !== ''
@@ -91,11 +92,20 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // se muestra tal cual. null = dentro del tope o nada que evaluar (sin solicitante todavía).
   const [topeWarning, setTopeWarning] = useState<string | null>(null)
   const [creditoWarning, setCreditoWarning] = useState<string | null>(null)
-  // Brief H — useBorrador: autosave de la cotización. Desactivado en solo-lectura (nada
-  // que autoguardar ahí); si queda un borrador viejo de otra cotización nueva sin
-  // terminar, igual se ofrece — el banner es por tipo de formulario, no por registro.
-  const { borradorPendiente, descartar: descartarBorrador, limpiar: limpiarBorrador } = useBorrador(borradorKey('cotizacion', actorId), value, { activo: !readOnly })
-  const retomarBorrador = () => { if (borradorPendiente) { setValue(borradorPendiente.datos); limpiarBorrador() } }
+  // Cada documento tiene su propio borrador; una copia no restaura el original.
+  const draftScope = isExistingQuote ? `cotizacion:${quote.id}` : 'cotizacion:nueva'
+  const { borradorPendiente, descartar: descartarBorrador, limpiar: limpiarBorrador } = useBorrador(borradorKey(draftScope, actorId), value, { activo: !readOnly })
+  const canRestoreDraft = !readOnly && borradorPendiente && (!isExistingQuote || borradorPendiente.datos.id === quote.id)
+  const retomarBorrador = () => {
+    if (!canRestoreDraft) return
+    setValue({
+      ...borradorPendiente.datos, id: quote.id, number: quote.number, status: quote.status,
+      createdAt: quote.createdAt, creadoPor: quote.creadoPor,
+      // Conservar la versión del borrador existente para detectar ediciones posteriores.
+      version: isExistingQuote ? borradorPendiente.datos.version : undefined,
+    })
+    limpiarBorrador()
+  }
   // Item 2/3: per-productId caches so stock + presentations are fetched once (on add), not
   // on every render or toggle interaction.
   const [stockByProduct, setStockByProduct] = useState<Record<string, LineStock>>({})
@@ -201,8 +211,8 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       channel: (customer.usualChannel === 'mayoreo' || customer.usualChannel === 'institucional' || customer.usualChannel === 'corporativo') ? customer.usualChannel : v.channel,
       // Brief S-C: un solicitante de la institución anterior no es válido para la nueva
       // (la base lo rechazaría igual, pero mejor no dejar que se intente).
-      solicitanteId: undefined,
-      solicitanteNombre: undefined,
+      solicitanteId: v.customerId === customer.id ? v.solicitanteId : undefined,
+      solicitanteNombre: v.customerId === customer.id ? v.solicitanteNombre : undefined,
     }))
     setShowCustomerPicker(false)
     setCustomerQuery('')
@@ -346,7 +356,9 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   useEffect(() => {
     const missing = Array.from(new Set(catalogLines.map((line) => line.productId).filter((id) => id && !(id in identifiersByProduct))))
     if (!missing.length) return
-    void listLineIdentifiers(missing).then((result) => setIdentifiersByProduct((prev) => ({ ...prev, ...result })))
+    void listLineIdentifiers(missing).then((result) => setIdentifiersByProduct((prev) => ({
+      ...prev, ...Object.fromEntries(missing.map((id) => [id, result[id] ?? {}])),
+    })))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogLines])
 
@@ -426,7 +438,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const requiereSolicitante = selectedCustomer?.type === 'institutional' || selectedCustomer?.type === 'corporate'
   const missingSolicitante = requiereSolicitante && !value.solicitanteId
 
-  const runAction = async (action: (q: QuoteDraft) => void | Promise<void>) => {
+  const runAction = async (action: EditorAction) => {
     // Candado síncrono: `disabled={saving}` recién surte efecto en el próximo repintado,
     // así que un doble clic/toque muy rápido (terminal táctil, conexión lenta) puede
     // disparar runAction dos veces antes de que el DOM se actualice. El ref corta la
@@ -436,12 +448,12 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     setSaving(true)
     setSaveError('')
     try {
-      await action(value)
-      limpiarBorrador()
+      const result = await action(value)
+      if (result !== false) limpiarBorrador()
     } catch (err) {
       // TAREA 5: el mensaje del trigger ("Los pedidos de clientes X requieren...") se
       // muestra tal cual, nunca reemplazado por uno genérico.
-      setSaveError(err instanceof Error ? err.message : 'No se pudo completar la acción')
+      setSaveError(err && typeof err === 'object' && 'message' in err ? String(err.message) : 'No se pudo completar la acción')
     } finally {
       submittingRef.current = false
       setSaving(false)
@@ -461,9 +473,9 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   }
 
   return (
-    <Modal title={isExistingQuote ? `Cotización ${value.number || value.id}` : 'Nueva cotización / pedido'} subtitle={readOnly ? 'Consulta los datos y productos del documento.' : 'Prepara la propuesta y elige cómo continuar.'} onClose={onClose} wide escapeToClose={!customModalOpen && !editLineModalId} className="commercial-modal document-editor-modal">
-      <div className="modal-body quote-editor draft-order-editor">
-        {borradorPendiente && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}
+    <Modal title={isExistingQuote ? `Cotización ${value.number || value.id}` : 'Nueva cotización / pedido'} subtitle={readOnly ? 'Consulta los datos y productos del documento.' : 'Prepara la propuesta y elige cómo continuar.'} onClose={() => { if (!submittingRef.current) onClose() }} wide escapeToClose={!saving && !customModalOpen && !editLineModalId} className="commercial-modal document-editor-modal">
+      <div className="modal-body quote-editor draft-order-editor" inert={saving} aria-busy={saving}>
+        {canRestoreDraft && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}
         {/* Brief S3 Parte B: autoría — quién creó la cotización. */}
         {value.creadoPor && <div className="autoria-row"><AutoriaBadge label="Creado por" email={value.creadoPor} /></div>}
         {/* Brief S-C: en solo-lectura el picker no se muestra (nada que editar) — el
@@ -518,9 +530,10 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
               mayorista/retail no ocupa espacio, no queda oculto-pero-deshabilitado. */}
           {!readOnly && featureFlags.supabase && value.customerId && requiereSolicitante && (
             <SolicitanteField
+              key={value.customerId}
               clienteId={value.customerId}
               value={value.solicitanteId ? { id: value.solicitanteId, nombre: value.solicitanteNombre ?? '' } : null}
-              onChange={(solicitante) => setValue((v) => ({ ...v, solicitanteId: solicitante?.id, solicitanteNombre: solicitante?.nombre }))}
+              onChange={(solicitante) => setValue((v) => v.customerId === value.customerId ? { ...v, solicitanteId: solicitante?.id, solicitanteNombre: solicitante?.nombre } : v)}
               required={missingSolicitante}
               actorId={actorId}
             />

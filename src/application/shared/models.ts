@@ -49,6 +49,8 @@ export interface WorkflowLine {
 
 export interface QuoteDraft {
   id: string
+  /** Versión leída al abrir el documento; evita sobrescribir otra edición. */
+  version?: number
   number: string
   customerId: string
   customerName: string

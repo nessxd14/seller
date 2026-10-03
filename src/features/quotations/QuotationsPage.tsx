@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowUpDown, Copy, Eye, LoaderCircle, Plus, ShoppingCart } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { QuoteDraft, QuoteWorkflowStatus } from '../../application/shared/models'
 import { orderService, quoteService, sensitiveOperations } from '../../infrastructure/services'
 import { formatMoney, money } from '../../domain/common/money'
@@ -64,11 +64,16 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   // previewLoadingId solo deshabilita el botón del ojito de esa fila mientras dura
   // ese único fetch — no hace falta un estado de carga elaborado como en el editor.
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null)
+  const [duplicateLoadingId, setDuplicateLoadingId] = useState<string | null>(null)
+  const duplicatingRef = useRef(false)
   const openPreview = async (id: string) => {
     setPreviewLoadingId(id)
     try {
       const full = await quoteService.getById(id)
       if (full) setPreview(full)
+      else notify('Cotización no encontrada')
+    } catch (error) {
+      notify(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'No se pudo abrir la cotización')
     } finally {
       setPreviewLoadingId(null)
     }
@@ -98,6 +103,11 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
       setEditingLoading(false)
       if (found) setEditing(found)
       else { notify('Cotización no encontrada'); navigate('/') }
+    }).catch((error: unknown) => {
+      if (cancelled) return
+      setEditingLoading(false)
+      notify(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'No se pudo abrir la cotización')
+      navigate('/')
     })
     // Si la ruta cambia (o el componente se desmonta) antes de que el fetch resuelva,
     // cortamos el `setEditing`/`setEditingLoading` de esa promesa vieja — si no, el
@@ -124,13 +134,29 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
   // Supabase adapters use an empty id as the "not yet persisted" sentinel and mint
   // the real numeric id from crear_cotizacion's return value; the mock repository
   // still needs a client-generated id up front (it has no server round trip).
-  const create = () => { if(readOnly){notify('Modo solo lectura');return} setEditingIsExisting(false); setEditing({ id: featureFlags.supabase ? '' : crypto.randomUUID(), number: '', customerId: '', customerName: '', channel: 'mayoreo', status: 'draft', validUntil: sumarDiasIso(hoyLocal(), 15), terms: 'Contado', notes: '', generalDiscountCents: 0, createdAt: new Date().toISOString(), lines: [] }) }
+  const create = () => { if(readOnly){notify('Modo solo lectura');return} setEditingIsExisting(false); setEditing({ id: featureFlags.supabase ? '' : crypto.randomUUID(), number: '', customerId: '', customerName: '', channel: 'mayoreo', status: 'draft', validUntil: sumarDiasIso(hoyLocal(), 15), terms: '', notes: '', generalDiscountCents: 0, createdAt: new Date().toISOString(), lines: [] }) }
   // Brief S3: cerrar el editor de una cotización EXISTENTE (abierta por URL) también
   // navega a '/' — si no, la URL se queda apuntando a /cotizaciones/:id con el editor ya
   // cerrado, y el próximo re-render (p. ej. tras `load()`) lo reabriría solo.
   const closeEditor = () => { setEditing(null); if (editingIsExisting) navigate('/') }
   const save = async (quote: QuoteDraft) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.save(quote); closeEditor(); await load(); notify('Cotización guardada') }
-  const duplicate = async (id: string) => { if(readOnly){notify('Modo solo lectura');return} await quoteService.duplicate(id); await load(); notify('Cotización duplicada') }
+  const duplicate = async (id: string) => {
+    if (readOnly) { notify('Modo solo lectura'); return }
+    if (duplicatingRef.current) return
+    duplicatingRef.current = true
+    setDuplicateLoadingId(id)
+    try {
+      const copy = await quoteService.duplicate(id)
+      await load()
+      navigate(cotizacionPath(copy.id))
+      notify('Cotización duplicada. Puedes editar el cliente y el solicitante de la copia.')
+    } catch (error) {
+      notify(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'No se pudo duplicar la cotización')
+    } finally {
+      duplicatingRef.current = false
+      setDuplicateLoadingId(null)
+    }
+  }
   const createOrderDirect = async (quote: QuoteDraft) => {
     if(readOnly){notify('Modo solo lectura');return}
     await orderService.save({
@@ -164,9 +190,13 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
     if(readOnly){notify('Modo solo lectura');return}
     // TAREA 3 (Ronda 9): sin cliente no se puede convertir — mismo requisito que guardar.
     if(!quote.customerId){notify('Esta cotización no tiene cliente. Abrila y elegí uno en el buscador antes de convertirla.');return}
-    if (!confirm(`¿Convertir ${quote.number} en pedido?`)) return
+    if (!confirm(`¿Convertir ${quote.number} en pedido?`)) return false
     if (featureFlags.supabase) {
-      await sensitiveOperations.execute('convert_quote', quote.id, () => orderService.save({ id: '', number: '', customerName: quote.customerName, channel: quote.channel, status: 'draft', createdAt: new Date().toISOString(), sourceQuoteId: quote.id, solicitanteId: quote.solicitanteId, lines: [], events: [] }))
+      await sensitiveOperations.execute('convert_quote', quote.id, async () => {
+        // La conversión lee la cotización en la base: guardar primero los cambios del formulario.
+        const saved = quote.status === 'draft' ? await quoteService.save(quote) : quote
+        return orderService.save({ id: '', number: '', customerName: saved.customerName, channel: saved.channel, status: 'draft', createdAt: new Date().toISOString(), sourceQuoteId: saved.id, solicitanteId: saved.solicitanteId, lines: [], events: [] })
+      })
     } else {
       const snapshot = await sensitiveOperations.execute('convert_quote',quote.id,()=>quoteService.markConverted(quote.id, crypto.randomUUID()))
       await orderService.save({ id: snapshot.id, number: snapshot.number, customerName: snapshot.customer.name, channel: quote.channel, status: 'draft', createdAt: snapshot.createdAt, sourceQuoteId: quote.id, lines: snapshot.items.map((line) => ({ id: line.id, productId: line.product.productId, name: line.product.name, sku: line.product.sku, quantity: line.quantity, unitPriceCents: line.appliedPrice.cents, discountBasisPoints: line.discountBasisPoints, prepared: 0, allocations: [] })), events: [{ at: new Date().toLocaleString('es-BO'), label: 'Pedido creado desde cotización', detail: `Snapshots conservados desde ${quote.number}` }] })
@@ -194,12 +224,17 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
           <span><span className={`status-chip ${statusChipClass(quote.status)}`}>{statusLabel[quote.status]}</span>{quote.conditionPago && <small className="channel-chip">{condicionPagoLabel[quote.conditionPago]}</small>}</span>
           <span>{nearExpiry ? <span className="vigencia-warning"><AlertTriangle />{days < 0 ? 'Vencida' : `${quote.validUntil} (${days} d)`}</span> : quote.validUntil}</span>
           <strong>{formatMoney(money(Math.max(0,listTotal(quote))))}</strong>
-          <div className="row-actions"><button title="Vista previa / exportar" disabled={previewLoadingId === quote.id} onClick={() => void openPreview(quote.id)}>{previewLoadingId === quote.id ? <LoaderCircle className="spin" /> : <Eye />}</button><button title="Duplicar" onClick={() => duplicate(quote.id)}><Copy /></button><button title="Editar" onClick={() => navigate(cotizacionPath(quote.id))}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>{quote.status === 'approved' && <button title={quote.customerId ? 'Convertir en pedido' : 'Sin cliente — abrí la cotización y elegí uno'} onClick={() => convert(quote)}><ShoppingCart /></button>}</div>
+          <div className="row-actions">
+            <button title="Vista previa / exportar" disabled={previewLoadingId === quote.id} onClick={() => void openPreview(quote.id)}>{previewLoadingId === quote.id ? <LoaderCircle className="spin" /> : <Eye />}</button>
+            <button title="Duplicar" disabled={duplicateLoadingId !== null} onClick={() => void duplicate(quote.id)}>{duplicateLoadingId === quote.id ? <LoaderCircle className="spin" /> : <Copy />}</button>
+            <button title="Editar" onClick={() => navigate(cotizacionPath(quote.id))}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>
+            {quote.status === 'approved' && <button title={quote.customerId ? 'Convertir en pedido' : 'Sin cliente — abrí la cotización y elegí uno'} onClick={() => convert(quote)}><ShoppingCart /></button>}
+          </div>
         </article>
       })}
     </div>}
     {editingLoading && <Modal title="Cargando cotización" onClose={closeEditor}><FeatureState type="skeleton" text="Cargando cotización" /></Modal>}
-    {editing && <DraftOrderEditor quote={editing} isExistingQuote={editingIsExisting} onClose={closeEditor} onSave={save} onCreateOrder={createOrderDirect} onConvert={editingIsExisting ? convert : undefined} />}
+    {editing && <DraftOrderEditor key={`${editingIsExisting ? 'guardada' : 'nueva'}:${editing.id}`} quote={editing} isExistingQuote={editingIsExisting} onClose={closeEditor} onSave={save} onCreateOrder={createOrderDirect} onConvert={editingIsExisting ? convert : undefined} />}
     {preview && <DocumentoExportable mode="cotizacion" doc={{ number: preview.number, customerId: preview.customerId, customerName: preview.customerName, channel: preview.channel, lines: preview.lines, validUntil: preview.validUntil, conditionPago: preview.conditionPago, medioPago: preview.medioPago, asunto: preview.asunto, documentDate: preview.documentDate, generalDiscountCents: preview.generalDiscountCents, creadoPor: preview.creadoPor }} onClose={() => setPreview(null)} />}
   </FeatureShell>
 }
