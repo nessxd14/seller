@@ -22,6 +22,7 @@ export interface CheckoutFingerprintInput {
   discountCents: number
   customerId?: string
   cashSessionId: string
+  balanceCents?: number
   // Brief S5: sin esto, un cobro fallido en efectivo + reintento del cliente pagando por
   // QR reusaba la misma huella (mismo carrito, mismo descuento, mismo cliente) — si el
   // primer intento SÍ había commiteado del lado del servidor, la venta quedaba registrada
@@ -57,5 +58,6 @@ export const checkoutFingerprint = (input: CheckoutFingerprintInput): string => 
     .map((p) => [p.method, p.amountCents].join('|'))
     .sort()
     .join(';')
-  return cyrb53(`${input.cashSessionId}#${input.customerId ?? ''}#${input.discountCents}#${lineas}#${pagos}`)
+  const legacyContent = `${input.cashSessionId}#${input.customerId ?? ''}#${input.discountCents}#${lineas}#${pagos}`
+  return cyrb53(`${legacyContent}${input.balanceCents ? `#saldo:${input.balanceCents}` : ''}`)
 }

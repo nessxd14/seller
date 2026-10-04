@@ -13,6 +13,10 @@ const baseInput: CheckoutFingerprintInput = {
 }
 
 describe('checkoutFingerprint', () => {
+  it('distingue el consumo de saldo para no reutilizar otro intento de cobro', () => {
+    expect(checkoutFingerprint({ ...baseInput, balanceCents: 1000 })).not.toBe(checkoutFingerprint({ ...baseInput, balanceCents: 500 }))
+    expect(checkoutFingerprint({ ...baseInput, balanceCents: 0 })).toBe(checkoutFingerprint(baseInput))
+  })
   it('es determinística para la misma entrada', () => {
     expect(checkoutFingerprint(baseInput)).toBe(checkoutFingerprint({ ...baseInput, lines: [...baseInput.lines] }))
   })

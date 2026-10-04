@@ -44,7 +44,7 @@ export async function getTicket(id: string): Promise<VentaTicketRecord | null> {
   if (!Number.isFinite(numericId)) return null
   const { data: header, error: headerError } = await supabase
     .from('venta')
-    .select('id, numero, estado, creado_en, creado_por, subtotal, descuento_total, total, cliente(nombre, documento), sesion_caja(caja(nombre))')
+    .select('id, numero, estado, creado_en, creado_por, subtotal, descuento_total, total, cliente_acreedor, saldo_favor_aplicado, cliente(nombre, documento), sesion_caja(caja(nombre))')
     .eq('id', numericId)
     .maybeSingle()
   if (headerError) throw headerError
@@ -60,7 +60,7 @@ export async function getTicket(id: string): Promise<VentaTicketRecord | null> {
   type LineaRow = { id: number; cantidad: number | string; cantidad_presentacion: number | string | null; precio_unitario: number | string; es_personalizado?: boolean; descripcion?: string | null; unidad_medida?: string | null; producto?: { nombre: string; sku_interno: string | null } | null; presentacion?: { nombre: string } | null }
   type PagoRow = { metodo: string; monto: number | string; recibido: number | string | null; estado_verificacion: string }
   const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
-  const h = header as unknown as HeaderRow
+  const h = header as unknown as HeaderRow & { cliente_acreedor?: boolean; saldo_favor_aplicado?: number | string }
 
   return {
     ventaId: String(h.id),
@@ -71,6 +71,8 @@ export async function getTicket(id: string): Promise<VentaTicketRecord | null> {
     cajaNombre: h.sesion_caja?.caja?.nombre,
     clienteNombre: h.cliente?.nombre,
     clienteNit: h.cliente?.documento,
+    clienteAcreedor: h.cliente_acreedor === true,
+    saldoFavorAplicadoBs: num(h.saldo_favor_aplicado),
     lineas: ((lineas ?? []) as unknown as LineaRow[]).map((l) => {
       const cantidad = num(l.cantidad_presentacion ?? l.cantidad)
       const precioUnitarioBs = num(l.precio_unitario)
@@ -151,7 +153,7 @@ export class SupabaseSaleRepository implements SaleRepository {
   }
 
   async checkout(
-    input: { lines: SaleCheckoutLine[]; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number; receivedCents?: number }>; cashSessionId: string; customerId?: string; discountCents?: number },
+    input: { lines: SaleCheckoutLine[]; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number; receivedCents?: number }>; cashSessionId: string; customerId?: string; discountCents?: number; balanceCents?: number },
     context: MutationContext & { idempotencyKey: string }
   ) {
     const actor = context.actorId ?? 'pos'
@@ -170,7 +172,8 @@ export class SupabaseSaleRepository implements SaleRepository {
       monto: centsToNumeric(payment.amountCents),
       ...(payment.receivedCents != null ? { recibido: centsToNumeric(payment.receivedCents) } : {}),
     }))
-    const { data, error } = await supabase.rpc('registrar_venta', {
+    const usingBalance = (input.balanceCents ?? 0) > 0
+    const { data, error } = await supabase.rpc(usingBalance ? 'registrar_venta_con_saldo' : 'registrar_venta', {
       p_lineas: lineas,
       p_pagos: pagos,
       p_sesion_caja_id: Number(input.cashSessionId),
@@ -178,9 +181,10 @@ export class SupabaseSaleRepository implements SaleRepository {
       p_descuento_total: centsToNumeric(input.discountCents ?? 0),
       p_usuario: actor,
       p_idempotencia: context.idempotencyKey,
+      ...(usingBalance ? { p_saldo_favor: centsToNumeric(input.balanceCents!) } : {}),
     })
     if (error) throw error
-    const result = data as { venta_id: number; numero?: string; subtotal: number | string; descuento_total: number | string; total: number | string; reintento?: boolean }
+    const result = data as { venta_id: number; numero?: string; subtotal: number | string; descuento_total: number | string; total: number | string; reintento?: boolean; saldo_favor_aplicado?:number|string; saldo_favor_restante?:number|string }
     return {
       saleId: String(result.venta_id),
       numero: result.numero,
@@ -188,6 +192,8 @@ export class SupabaseSaleRepository implements SaleRepository {
       discountCents: numericToCents(num(result.descuento_total)),
       totalCents: numericToCents(num(result.total)),
       isRetry: result.reintento === true,
+      balanceAppliedCents: numericToCents(num(result.saldo_favor_aplicado)),
+      balanceRemainingCents: result.saldo_favor_restante != null ? numericToCents(num(result.saldo_favor_restante)) : undefined,
     }
   }
 }

@@ -54,7 +54,7 @@ export interface SaleCheckoutLine { productId:string; quantity:number; unitPrice
 // referencia: solo relevante para cobrar_vtd/TRANSFERENCIA (ver VentaDirectaRepository.cobrarVtd) — registrar_venta/checkout no lo usa.
 export interface SaleCheckoutPayment { method:'cash'|'qr'|'transfer'; amountCents:number; receivedCents?:number; referencia?:string }
 // Brief Caja-1 A1: numero — VTA-2026-NNNNN, asignado atómicamente por _registrar_venta_nucleo.
-export interface SaleCheckoutResult { saleId:string; numero?:string; subtotalCents:number; discountCents:number; totalCents:number; isRetry?:boolean }
+export interface SaleCheckoutResult { saleId:string; numero?:string; subtotalCents:number; discountCents:number; totalCents:number; isRetry?:boolean; balanceAppliedCents?:number; balanceRemainingCents?:number }
 export interface SaleRepository {
   getById(id:string):Promise<SalePortRecord|null>
   confirm(id:string,context:MutationContext&{idempotencyKey:string}):Promise<SalePortRecord>
@@ -65,7 +65,7 @@ export interface SaleRepository {
    * shape above, which the mock backend still uses. `idempotencyKey` is required so a
    * lost response and a cajero retry reuse the same key instead of registering the sale twice.
    */
-  checkout(input:{lines:SaleCheckoutLine[];payments:SaleCheckoutPayment[];cashSessionId:string;customerId?:string;discountCents?:number},context:MutationContext&{idempotencyKey:string}):Promise<SaleCheckoutResult>
+  checkout(input:{lines:SaleCheckoutLine[];payments:SaleCheckoutPayment[];cashSessionId:string;customerId?:string;discountCents?:number;balanceCents?:number},context:MutationContext&{idempotencyKey:string}):Promise<SaleCheckoutResult>
 }
 // No Supabase adapter for this port — registrar_venta records payment atomically with the sale, there is no standalone payment step in the backend. Kept for the mock backend only.
 export interface PaymentRepository {

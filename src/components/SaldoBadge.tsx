@@ -57,6 +57,8 @@ export function SaldoBadge({ clienteId }: { clienteId?: string }) {
   const { saldoConfirmado, saldoProvisional } = saldo
   if (saldoConfirmado === 0 && saldoProvisional === 0) return null // al día: no hay nada que decir
   const enRevisionBs = Math.abs(saldoConfirmado - saldoProvisional)
+  if (saldoConfirmado < 0) return <small className="saldo-badge saldo-badge-acreedor"><CircleDollarSign /> Saldo a favor confirmado: Bs {money(Math.abs(saldoConfirmado))}{enRevisionBs > 0 && <> · Bs {money(enRevisionBs)} por verificar</>}</small>
+  if (saldoProvisional < 0) return <small className="saldo-badge saldo-badge-en-revision"><CircleDollarSign /> Pago por verificar: Bs {money(enRevisionBs)} · saldo a favor todavía no disponible</small>
   // Si lo provisional es 0, el pago ya viajó a Hermes y solo falta que Rony lo confirme
   // — mostrar "Debe" acá es exactamente el bug del brief: reclamarle al cliente plata
   // que ya pagó. Nota neutra, sin "Debe" ni "Saldo a favor", mientras se resuelve.

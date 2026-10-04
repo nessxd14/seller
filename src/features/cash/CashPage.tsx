@@ -154,7 +154,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
   const [loadError, setLoadError] = useState('')
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [filter, setFilter] = useState('TODOS')
-  const filteredMovements = movimientos.filter((m) => filter === 'TODOS' || m.tipo === filter || m.subtipo === filter)
+  const filteredMovements = movimientos.filter((m) => filter === 'TODOS' || (filter === 'ACREEDOR' && m.clienteAcreedor) || (filter === 'SALDO_FAVOR' && ['SALDO_FAVOR','SALDO_REVERTIDO'].includes(m.tipo)) || m.tipo === filter || m.subtipo === filter)
 
   const load = useCallback(async () => {
     try {
@@ -220,7 +220,8 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
     </section>
     {resumen && <section className="cash-breakdown" aria-label="Desglose del turno">
       <header><h3>Desglose del turno</h3><span>Ver métodos</span></header>
-      <CashSummaryRow title="Mostrador (VTA)" methods={resumen.ventasRetailPorMetodo} info={HINTS.vta} />
+      <CashSummaryRow title="Mostrador (VTA)" methods={resumen.ventasRetailPorMetodo} note={resumen.ventasTotalBs != null ? `Total vendido: Bs ${bs(resumen.ventasTotalBs)}. Dinero nuevo por método.` : undefined} info={HINTS.vta} />
+      {(resumen.saldoFavorAplicadoBs ?? 0) > 0 && <div className="credit-turno-summary"><div><strong>Saldo de clientes utilizado</strong><small>Dinero recibido anteriormente; fuera del arqueo de este turno.</small></div><b>Bs {bs(resumen.saldoFavorAplicadoBs!)}</b></div>}
       <CashSummaryRow title="Ventas directas (VTD)" methods={resumen.ventasVtdPorMetodo} note={`${resumen.cantidadVtdCobradas} VTD cobradas`} info={HINTS.vtd} />
       <CashSummaryRow title="Pagos y anticipos de clientes" methods={resumen.anticiposPorMetodo} note="Incluidos en los ingresos de este turno; separados de las ventas." info={HINTS.anticipos} />
       {resumen.cobrosFueraArqueoBs > 0 && <CashSummaryRow title="Cobros recibidos por gerencia" methods={{ EFECTIVO: resumen.cobrosFueraArqueoBs }} note="Fuera del arqueo: no entraron a este cajón." info={HINTS.fueraArqueo} />}
@@ -241,20 +242,20 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
       <span className="cash-action-with-hint"><button onClick={() => setMovimientoOpen('INYECCION')}><ArrowDownLeft /> Inyección</button><InfoHint title={HINTS.inyeccion.title} text={HINTS.inyeccion.text} /></span>
     </div></header></section>}
     <section className="cash-ledger">
-      <header><div><h3>Actividad del turno</h3><p>Ventas, pagos, anticipos y gastos del cajero que cobró.</p></div><select aria-label="Filtrar movimientos" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="TODOS">Todos los movimientos</option><option value="VENTA">Ventas</option><option value="ANTICIPO">Pagos y anticipos</option><option value="GASTO">Gastos</option><option value="REMESA">Remesas</option><option value="INYECCION">Inyecciones</option><option value="ANULACION">Anulaciones</option></select>{filter === 'ANULACION' && <InfoHint title={HINTS.anulacion.title} text={HINTS.anulacion.text} />}</header>
+      <header><div><h3>Actividad del turno</h3><p>Ventas, pagos, anticipos y gastos del cajero que cobró.</p></div><select aria-label="Filtrar movimientos" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="TODOS">Todos los movimientos</option><option value="VENTA">Ventas</option><option value="ACREEDOR">Clientes con saldo a favor</option><option value="SALDO_FAVOR">Aplicaciones de saldo</option><option value="ANTICIPO">Pagos y anticipos</option><option value="GASTO">Gastos</option><option value="REMESA">Remesas</option><option value="INYECCION">Inyecciones</option><option value="ANULACION">Anulaciones</option></select>{filter === 'ANULACION' && <InfoHint title={HINTS.anulacion.title} text={HINTS.anulacion.text} />}</header>
       <div className="cash-ledger-head"><span>Movimiento / detalle</span><span>Método</span><span>Importe</span></div>
-      {filteredMovements.map((m) => <article className="cash-ledger-row" key={m.id}>
-        <div><strong>{m.documento ?? (m.tipo === 'ANTICIPO' ? 'Pago / anticipo' : m.subtipo ?? m.tipo)}</strong><span>{m.clienteNombre}</span><p>{m.detalle || 'Sin detalle registrado'}</p><small>{new Date(m.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}{m.estadoGasto ? ` · ${m.estadoGasto.toLowerCase()}` : ''}</small>{m.tipo === 'ANULACION' && <InfoHint title={HINTS.anulacion.title} text={HINTS.anulacion.text} />}{m.fueraDeArqueo && <span className="fuera-arqueo-badge">Fuera del arqueo<InfoHint title={HINTS.fueraArqueo.title} text={HINTS.fueraArqueo.text} /></span>}{esEncargado && sesion.estado === 'ABIERTA' && m.tipo === 'ANTICIPO' && m.metodo === 'EFECTIVO' && <button type="button" className="fuera-arqueo-toggle" onClick={() => void alternarFueraDeArqueo(m)}>{m.fueraDeArqueo ? 'Volver al arqueo' : 'Sacar del arqueo'}</button>}{m.comprobantePath && <button onClick={() => { void turnoService.comprobanteUrl(m.comprobantePath!).then((url) => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); else notify('No se pudo abrir el comprobante') }) }}><ReceiptText /> Ver comprobante</button>}</div>
-        <span>{metodoLabel[m.metodo] ?? m.metodo}</span><b>{['EGRESO', 'ANULACION'].includes(m.tipo) ? '− ' : ''}Bs {bs(m.montoBs)}</b>
+      {filteredMovements.map((m) => <article className={`cash-ledger-row ${m.clienteAcreedor ? 'cash-acreedor-row' : ''}`} key={m.id}>
+        <div><strong>{m.documento ?? (m.tipo === 'ANTICIPO' ? 'Pago / anticipo' : m.subtipo ?? m.tipo)}</strong><span>{m.clienteNombre}</span>{m.clienteAcreedor && <small className="credit-client-tag">Cliente con saldo a favor</small>}<p>{m.detalle || 'Sin detalle registrado'}</p><small>{new Date(m.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}{m.estadoGasto ? ` · ${m.estadoGasto.toLowerCase()}` : ''}</small>{m.tipo === 'ANULACION' && <InfoHint title={HINTS.anulacion.title} text={HINTS.anulacion.text} />}{m.fueraDeArqueo && <span className="fuera-arqueo-badge">Fuera del arqueo<InfoHint title={HINTS.fueraArqueo.title} text={HINTS.fueraArqueo.text} /></span>}{esEncargado && sesion.estado === 'ABIERTA' && m.tipo === 'ANTICIPO' && m.metodo === 'EFECTIVO' && <button type="button" className="fuera-arqueo-toggle" onClick={() => void alternarFueraDeArqueo(m)}>{m.fueraDeArqueo ? 'Volver al arqueo' : 'Sacar del arqueo'}</button>}{m.comprobantePath && <button onClick={() => { void turnoService.comprobanteUrl(m.comprobantePath!).then((url) => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); else notify('No se pudo abrir el comprobante') }) }}><ReceiptText /> Ver comprobante</button>}</div>
+        <span>{m.metodo === 'SALDO_FAVOR' ? 'Saldo a favor' : metodoLabel[m.metodo] ?? m.metodo}</span><b>{['EGRESO', 'ANULACION'].includes(m.tipo) ? '− ' : ''}Bs {bs(m.montoBs)}</b>
       </article>)}
       {!movimientos.length && <p className="cash-muted">Los movimientos aparecerán aquí cuando se registren.</p>}
       {!!movimientos.length && !filteredMovements.length && <div className="cash-filter-empty" role="status"><p>No hay movimientos de este tipo en el turno.</p><button type="button" onClick={() => setFilter('TODOS')}>Ver todos los movimientos</button></div>}
       {movimientos.length >= 500 && <p className="cash-muted">Se muestran los últimos 500 movimientos. El resumen incluye el turno completo.</p>}
     </section>
     <section className="cash-movements cash-tickets"><h3>Mis tickets</h3>
-      {tickets.length ? tickets.map((t) => <div key={t.ventaId} className="turno-ticket-row">
-        <span>{t.numero ?? `#${t.ventaId}`}<small>{new Date(t.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</small></span>
-        <span>{t.metodos.map((m) => metodoLabel[m.metodo] ?? m.metodo).join(' + ') || '—'}</span>
+      {tickets.length ? tickets.map((t) => <div key={t.ventaId} className={`turno-ticket-row ${t.clienteAcreedor ? 'cash-acreedor-row' : ''}`}>
+        <span>{t.numero ?? `#${t.ventaId}`}{t.clienteAcreedor && <small className="credit-client-tag">Cliente con saldo a favor</small>}<small>{new Date(t.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</small></span>
+        <span>{t.metodos.map((m) => (m.metodo === 'SALDO_FAVOR' ? 'Saldo a favor' : metodoLabel[m.metodo] ?? m.metodo)).join(' + ') || '—'}</span>
         {t.metodos.some((m) => m.estadoVerificacion === 'PENDIENTE') && <span className="qr-pendiente-chip">QR pendiente</span>}
         <b>Bs {bs(t.totalBs)}</b>
         <button type="button" onClick={() => setReprintId(t.ventaId)}><Printer /> Reimprimir</button>

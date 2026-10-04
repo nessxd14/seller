@@ -76,6 +76,7 @@ export function VentaTicket({ id, onClose }: { id: string; onClose: () => void }
         <div><strong>TOTAL</strong><strong>Bs {bs(venta.totalBs)}</strong></div>
       </div>
       <div className="ticket-totals">
+        {(venta.saldoFavorAplicadoBs ?? 0) > 0 && <div><span>Saldo a favor{venta.estado === 'ANULADA' ? ' (devuelto)' : ' aplicado'}</span><span>Bs {bs(venta.saldoFavorAplicadoBs!)}</span></div>}
         {venta.pagos.map((p, i) => <div key={i}><span>{metodoLabel[p.metodo] ?? p.metodo}{p.estadoVerificacion === 'PENDIENTE' ? ' (pendiente)' : p.estadoVerificacion === 'RECHAZADO' ? ' (rechazado)' : ''}</span><span>Bs {bs(p.montoBs)}</span></div>)}
         {efectivo?.recibidoBs != null && <div><span>Recibido</span><span>Bs {bs(efectivo.recibidoBs)}</span></div>}
         {cambio != null && <div><span>Cambio</span><span>Bs {bs(cambio)}</span></div>}

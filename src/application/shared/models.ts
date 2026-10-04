@@ -361,6 +361,9 @@ export interface TurnoSesion {
 }
 
 export interface TurnoResumen {
+  saldoFavorAplicadoBs?: number
+  ventasTotalBs?: number
+  ventasAcreedorCantidad?: number
   aperturaBs: number
   ventasPorMetodo: Record<string, number>
   // Brief Caja VTD: desglose de `ventasPorMetodo` en mostrador (VTA) vs venta directa
@@ -388,6 +391,9 @@ export interface TurnoResumen {
 }
 
 export interface TurnoTicket {
+  clienteAcreedor?: boolean
+  saldoFavorAplicadoBs?: number
+  clienteNombre?: string
   ventaId: string
   numero: string | null
   totalBs: number
@@ -396,6 +402,8 @@ export interface TurnoTicket {
 }
 
 export interface TurnoMovimiento {
+  clienteAcreedor?: boolean
+  saldoFavorAplicadoBs?: number
   id: string
   tipo: string
   subtipo?: string
@@ -430,6 +438,8 @@ export interface CajaGastoRecord {
 export interface VentaTicketPago { metodo: string; montoBs: number; recibidoBs?: number; estadoVerificacion: string }
 export interface VentaTicketLinea { id: string; nombre: string; sku: string; cantidad: number; presentacionNombre?: string; precioUnitarioBs: number; subtotalBs: number }
 export interface VentaTicketRecord {
+  clienteAcreedor?: boolean
+  saldoFavorAplicadoBs?: number
   ventaId: string
   numero: string | null
   estado: string

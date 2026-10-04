@@ -193,7 +193,7 @@ export const saleService = {
    * cantidad, descuento, cliente, caja) da una huella distinta y por lo tanto una venta
    * nueva; el mismo contenido reusa la clave, que es exactamente el reintento legítimo.
    */
-  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number; receivedCents?: number }>; cashSessionId: string; customerId?: string; discountCents?: number; operationId: string }) {
+  async checkout(input: { lines: Array<{ productId: string; quantity: number; unitPriceCents: number; listPriceCents?: number; sourceLocation?: 'Tienda' | 'Almacén'; presentacionId?: number }>; payments: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number; receivedCents?: number }>; cashSessionId: string; customerId?: string; discountCents?: number; balanceCents?: number; operationId: string }) {
     const actorId = await currentActorId()
     const aggregateId = `${input.operationId}:${checkoutFingerprint({ ...input, discountCents: input.discountCents ?? 0 })}`
     const result = await sensitiveOperations.execute('checkout', aggregateId, (idempotencyKey) =>
