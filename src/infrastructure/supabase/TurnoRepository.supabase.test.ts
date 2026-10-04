@@ -58,10 +58,23 @@ describe('cobros fuera del arqueo', () => {
       { id: 1, tipo: 'ANTICIPO', subtipo: null, metodo: 'EFECTIVO', monto: 50, nota: null, creado_en: '2026-10-03T10:00:00Z', fuera_de_arqueo: true, cliente: null, pedido: null, venta: null, caja_gasto: null },
       { id: 2, tipo: 'ANTICIPO', subtipo: null, metodo: 'EFECTIVO', monto: 20, nota: null, creado_en: '2026-10-03T09:00:00Z', cliente: null, pedido: null, venta: null, caja_gasto: null },
     ] }) }) }) })
-    from.mockReturnValue({ select })
+    from.mockImplementation((table: string) => table === 'saldo_cliente_uso'
+      ? { select: () => ({ eq: () => ({ order: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }) }) }) }
+      : { select })
     const rows = await listMovimientosTurno('4')
     expect(select.mock.calls[0][0]).toContain('fuera_de_arqueo')
     expect(rows.map((r) => r.fueraDeArqueo)).toEqual([true, false])
+  })
+
+  it('incluye una compra totalmente cubierta con saldo, conservando el registro de efectivo separado', async () => {
+    const cash = [{ id: 2, tipo: 'VENTA', metodo: 'EFECTIVO', monto: 30, creado_en: '2026-10-03T09:00:00Z', venta: { numero: 'VTA-2', cliente_acreedor: true, cliente: { nombre: 'Cliente acreedor' } } }]
+    const balance = [{ id: 3, monto: 100, creado_en: '2026-10-03T10:00:00Z', anulado_en: null, venta: { numero: 'VTA-3' }, cliente: { nombre: 'Cliente acreedor' } }]
+    from.mockImplementation((table: string) => ({ select: () => ({ eq: () => ({ order: () => ({ limit: () => Promise.resolve({ data: table === 'saldo_cliente_uso' ? balance : cash, error: null }) }) }) }) }))
+    const rows = await listMovimientosTurno('4')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ id: 'saldo-3', tipo: 'SALDO_FAVOR', montoBs: 100, clienteAcreedor: true, documento: 'VTA-3' })
+    expect(rows[0].detalle).toContain('sin ingreso nuevo')
+    expect(rows[1]).toMatchObject({ tipo: 'VENTA', metodo: 'EFECTIVO', montoBs: 30, clienteAcreedor: true, clienteNombre: 'Cliente acreedor' })
   })
 
   it('getResumenTurno mapea cobros_fuera_arqueo (0 si falta)', async () => {

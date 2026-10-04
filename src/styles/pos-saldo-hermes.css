@@ -71,3 +71,37 @@
   color: var(--orange);
   box-shadow: inset 0 0 0 1px var(--orange);
 }
+
+/* El estado acreedor conserva texto e icono: el color es una señal adicional. */
+.cart-panel.cart-acreedor,.pos-root .cart-panel.cart-acreedor {
+  background:linear-gradient(150deg,rgba(236,253,245,.94),rgba(255,255,255,.94));
+  border-left:4px solid #059669;
+  --orange:#047857;
+  --orange-dark:#065f46;
+}
+.cart-panel.cart-acreedor .cart-header h2 { color:#065f46; }
+.cart-panel.cart-acreedor .grand-total { background:linear-gradient(135deg,rgba(16,185,129,.14),rgba(255,255,255,.6));border-color:#99d9bc; }
+.cart-panel.cart-acreedor .grand-total strong { color:#065f46; }
+.cart-panel.cart-acreedor .channel-badge { background:#d1fae5;color:#065f46; }
+.cart-panel.cart-acreedor .pay-button { background:#047857; }
+.cart-panel.cart-acreedor .pay-button:hover:not(:disabled) { background:#065f46; }
+.credit-cart-notice { display:flex;align-items:flex-start;gap:10px;margin:12px 16px;padding:13px 14px;border:1px solid #99d9bc;border-radius:12px;background:rgba(209,250,229,.68);color:#065f46; }
+.credit-cart-notice svg { width:21px;height:21px;flex-shrink:0; }
+.credit-cart-notice strong,.credit-cart-notice span,.credit-cart-notice small { display:block; }
+.credit-cart-notice strong { font-size:13px; }
+.credit-cart-notice span { font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:3px; }
+.credit-cart-notice small { font-size:11px;margin-top:3px; }
+.credit-payment-option,.credit-payment-summary { padding:16px;border:1px solid #99d9bc;border-radius:13px;background:#ecfdf5;color:#065f46;margin-bottom:16px; }
+.credit-payment-option p { font-size:12px;margin:10px 0 0; }
+.credit-payment-option > label:not(.credit-use-toggle) { display:grid;gap:6px;margin-top:12px; }
+.credit-use-toggle { display:flex!important;align-items:center;gap:10px;min-height:44px;cursor:pointer; }
+.credit-use-toggle input[type=checkbox] { width:18px!important;height:18px!important;min-height:18px!important;flex-shrink:0;accent-color:#047857; }
+.credit-use-toggle svg { width:23px;height:23px;flex-shrink:0; }
+.credit-use-toggle strong,.credit-use-toggle small,.credit-payment-summary span { display:block; }
+.credit-use-toggle small { margin-top:3px;font-variant-numeric:tabular-nums; }
+.credit-payment-summary { display:grid;gap:6px;font-variant-numeric:tabular-nums; }
+.credit-amount-due { display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;margin-bottom:12px;border-bottom:1px solid #dce5f1; }
+.credit-amount-due strong { font-size:24px;font-variant-numeric:tabular-nums; }
+.payment-entry-fields { border:0;padding:0;margin:0;min-width:0; }
+.payment-entry-fields legend { font-size:13px;font-weight:600;padding:0 0 9px; }
+.credit-apply-button { border-color:#99d9bc!important;color:#065f46!important;background:#ecfdf5!important; }

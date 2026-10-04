@@ -11,7 +11,7 @@ const movements = [
   { id: 901, tipo: 'VENTA', subtipo: null, metodo: 'EFECTIVO', monto: 120, nota: '', creado_en: openedAt, cliente: null, pedido: null, venta: { numero: 'VTA-PRUEBA-001' }, caja_gasto: null },
 ]
 
-async function fixture(page: Page, role = 'gerente', initialOpen = true, authenticate = true, lostPaymentResponse = false, lostExpenseResponse = false) {
+async function fixture(page: Page, role = 'gerente', initialOpen = true, authenticate = true, lostPaymentResponse = false, lostExpenseResponse = false, creditor = false) {
   let open = initialOpen
   const writes: { name: string; body: Record<string, unknown> }[] = []
   if (authenticate) await page.addInitScript(({ id, role }) => {
@@ -28,19 +28,21 @@ async function fixture(page: Page, role = 'gerente', initialOpen = true, authent
     let data: unknown = []
     if (name === 'perfil') data = [{ id: userId, nombre: 'Usuario de prueba local', email: 'prueba@example.test', rol: role, activo: true }]
     if (name === 'sesion_caja') data = open ? [turno] : []
-    if (name === 'movimiento_caja') data = url.searchParams.get('select') === 'venta_id' ? [{ venta_id: 1 }] : movements
-    if (name === 'venta') data = [{ id: 1, numero: 'VTA-PRUEBA-001', total: 120, creado_en: openedAt }]
+    if (name === 'movimiento_caja') data = url.searchParams.get('select') === 'venta_id' ? [{ venta_id: 1 }] : movements.map(m => creditor && m.venta ? { ...m, venta: { ...m.venta, cliente_acreedor: true, cliente: { nombre: 'Cliente acreedor de prueba' } } } : m)
+    if (name === 'saldo_cliente_uso') data = creditor ? url.searchParams.get('select') === 'venta_id' ? [{ venta_id: 2 }] : [{ id: 904, monto: 100, creado_en: openedAt, anulado_en: null, motivo_anulacion: null, venta: { numero: 'VTA-SALDO-002' }, pedido: null, cliente: { nombre: 'Cliente acreedor de prueba' } }] : []
+    if (name === 'venta') data = creditor ? [{ id: 1, numero: 'VTA-PRUEBA-001', total: 120, cliente_acreedor: true, saldo_favor_aplicado: 0, creado_en: openedAt }, { id: 2, numero: 'VTA-SALDO-002', total: 100, cliente_acreedor: true, saldo_favor_aplicado: 100, creado_en: openedAt }] : [{ id: 1, numero: 'VTA-PRUEBA-001', total: 120, creado_en: openedAt }]
     if (name === 'venta_pago') data = [{ venta_id: 1, metodo: 'EFECTIVO', monto: 120, estado_verificacion: 'VERIFICADO' }]
-    if (name === 'cliente') data = [{ id: 83, nombre: 'Cliente de prueba', tipo_precio: 'MINORISTA', documento: '123456', activo: true }]
-    if (name === 'resumen_turno') data = { ...summary, esperado_efectivo: role === 'cajero' ? null : summary.esperado_efectivo }
+    if (name === 'cliente') data = [{ id: 83, nombre: creditor ? 'Cliente acreedor de prueba' : 'Cliente de prueba', tipo_precio: 'mayorista', documento: '123456', activo: true }]
+    if (name === 'resumen_turno') data = { ...summary, ...(creditor ? { saldo_favor_aplicado: 100, ventas_total: 220, ventas_acreedores: 2 } : {}), esperado_efectivo: role === 'cajero' ? null : summary.esperado_efectivo }
     if (name === 'estado_banco_qr') data = { ultimo_latido: openedAt, minutos_desde: 0, en_linea: true }
-    if (name === 'consultar_hermes_pos') data = body.p_operacion === 'saldo' ? { saldo_confirmado: 350, saldo_provisional: 350, situacion: 'DEUDOR' } : []
-    if (rpc && ['abrir_turno', 'registrar_movimiento_turno', 'registrar_cobro_hermes'].includes(name)) {
+    if (name === 'consultar_hermes_pos') data = body.p_operacion === 'saldo' ? creditor ? { saldo_confirmado: -100, saldo_provisional: -100, situacion: 'ACREEDOR' } : { saldo_confirmado: 350, saldo_provisional: 350, situacion: 'DEUDOR' } : []
+    if (name === 'consultar_saldo_disponible') data = creditor ? { sinCuenta: false, saldoConfirmado: -100, disponible: 100, enRevision: 0, pedidoPendiente: 0, aplicadoPedido: 0, esAcreedor: true } : { sinCuenta: true, disponible: 0 }
+    if (rpc && ['abrir_turno', 'registrar_movimiento_turno', 'registrar_cobro_cation'].includes(name)) {
       writes.push({ name, body })
       if (name === 'abrir_turno') { open = true; data = { sesion_id: 900 } }
       if (name === 'registrar_movimiento_turno') data = { movimiento_id: 904, gasto_id: 1 }
-      if (name === 'registrar_cobro_hermes') data = { movementId: 905, pagoId: 906, saldoProvisional: 0 }
-      if (name === 'registrar_cobro_hermes' && lostPaymentResponse && writes.filter((w) => w.name === name).length === 1) {
+      if (name === 'registrar_cobro_cation') data = { movementId: 905, pagoId: 906, saldoProvisional: 0 }
+      if (name === 'registrar_cobro_cation' && lostPaymentResponse && writes.filter((w) => w.name === name).length === 1) {
         await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ code: 'XX000', message: 'Respuesta perdida de prueba' }) })
         return
       }
@@ -53,6 +55,37 @@ async function fixture(page: Page, role = 'gerente', initialOpen = true, authent
   })
   return writes
 }
+
+test('el carrito destaca al acreedor y retira el aviso al cambiar a mostrador', async ({ page }) => {
+  await fixture(page, 'cajero', true, true, false, false, true)
+  await page.goto('http://127.0.0.1:5180')
+  await page.locator('.customer-select').click()
+  await page.getByPlaceholder('Buscar por nombre o NIT…').fill('Cliente acreedor')
+  await page.getByRole('button', { name: /Cliente acreedor de prueba · 123456|Cliente acreedor de prueba 123456/ }).click()
+  await expect(page.locator('.cart-acreedor .credit-cart-notice')).toContainText('Cliente con saldo a favor')
+  await expect(page.locator('.credit-cart-notice')).toContainText('100,00')
+  await page.screenshot({ path: '.ui-review.local/seller-carrito-acreedor.png', fullPage: true })
+  await page.locator('.customer-select').click()
+  await page.getByRole('button', { name: 'Cliente de mostrador', exact: true }).click()
+  await expect(page.locator('.cart-acreedor')).toHaveCount(0)
+  await expect(page.locator('.credit-cart-notice')).toHaveCount(0)
+})
+
+test('caja móvil resalta el saldo y muestra su ticket sin sumar efectivo al arqueo', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await fixture(page, 'gerente', true, true, false, false, true)
+  await page.goto('/')
+  await expect(page.locator('.credit-turno-summary')).toContainText('100,00')
+  await expect(page.locator('.cash-ledger-row.cash-acreedor-row')).toHaveCount(2)
+  await page.getByRole('combobox', { name: 'Filtrar movimientos' }).selectOption('SALDO_FAVOR')
+  await expect(page.locator('.cash-ledger-row')).toHaveCount(1)
+  await expect(page.locator('.cash-ledger-row')).toContainText('sin ingreso nuevo de dinero')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: '.ui-review.local/caja-acreedor-mobile.png', fullPage: true })
+  await page.getByRole('button', { name: 'Mi caja', exact: true }).click()
+  await expect(page.locator('.turno-ticket-row').filter({ hasText: 'VTA-SALDO-002' })).toContainText('Saldo a favor')
+  await expect(page.locator('.turno-ticket-row').filter({ hasText: 'VTA-SALDO-002' })).toContainText('Cliente con saldo a favor')
+})
 
 test('gerente ve ventas, anticipos y gastos del mismo turno en escritorio', async ({ page }) => {
   await fixture(page)
@@ -132,7 +165,7 @@ test('un gasto exige detalle y conserva monto, motivo e idempotencia', async ({ 
   await page.screenshot({ path: '.ui-review.local/caja-gasto-mobile.png' })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await page.getByRole('button', { name: 'Confirmar', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('No se pudo registrar el movimiento')
+  await expect(page.getByRole('alert')).toContainText('Respuesta perdida del gasto')
   await page.getByRole('button', { name: 'Confirmar', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Registrar gasto', exact: true })).toHaveCount(0)
   const movement = writes.find((w) => w.name === 'registrar_movimiento_turno')
@@ -177,11 +210,12 @@ test('cajero registra pago en la cartera actual y reintenta sin cambiar su clave
   await page.getByLabel('Monto (Bs)', { exact: true }).fill('25')
   await page.getByLabel('Monto (Bs)', { exact: true }).press('Tab')
   await page.getByLabel(/Dejar como anticipo/).check()
+  await page.getByRole('combobox', { name: 'Método de pago', exact: true }).selectOption('cash')
   await page.getByRole('button', { name: 'Confirmar pago', exact: true }).click()
   await expect(page.getByText('Respuesta perdida de prueba')).toBeVisible()
   await page.getByRole('button', { name: 'Confirmar pago', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Pago registrado', exact: true })).toBeVisible()
-  const attempts = writes.filter((w) => w.name === 'registrar_cobro_hermes')
+  const attempts = writes.filter((w) => w.name === 'registrar_cobro_cation')
   expect(attempts).toHaveLength(2)
   expect(attempts[0].body).toMatchObject({ p_cliente_id: 83, p_sesion_id: 900, p_monto: 25, p_no_imputar: true })
   expect(attempts[1].body.p_idempotencia).toBe(attempts[0].body.p_idempotencia)

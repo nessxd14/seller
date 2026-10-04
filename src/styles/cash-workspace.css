@@ -1,4 +1,24 @@
 /* Azul Claro: una vista compartida por Seller y Caja, con vidrio en las superficies. */
+/* Saldo propio del cliente: informativo y separado del dinero recibido en el turno. */
+.cash-workspace .cash-acreedor-row,.remote-cash-app .cash-acreedor-row {
+  background:linear-gradient(120deg,rgba(209,250,229,.72),rgba(255,255,255,.86));
+  border-left:3px solid #059669;
+}
+.cash-workspace .cash-ledger-row.cash-acreedor-row,.cash-workspace .turno-ticket-row.cash-acreedor-row {
+  padding-left:12px;padding-right:12px;border-radius:8px;
+}
+.cash-workspace .credit-client-tag,.remote-cash-app .credit-client-tag {
+  display:inline-block!important;width:fit-content;padding:3px 8px;margin-top:5px;
+  border-radius:7px;background:#d1fae5;color:#065f46;font-size:11px;font-weight:700;
+}
+.cash-workspace .credit-turno-summary,.remote-cash-app .credit-turno-summary {
+  display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 18px;
+  background:rgba(236,253,245,.8);border-left:3px solid #059669;color:#065f46;
+}
+.credit-turno-summary small { display:block;margin-top:4px;font-size:12px;line-height:1.5; }
+.credit-turno-summary b { white-space:nowrap;font-variant-numeric:tabular-nums; }
+@media(max-width:640px) { .credit-turno-summary { flex-wrap:wrap; }.credit-turno-summary b { font-size:20px; } }
+
 .cash-workspace, .remote-cash-app, .cash-dialog, .customer-search, .customer-picker, .customer-search-results {
   font-family:'Manrope Variable','DM Sans',sans-serif;
 }
