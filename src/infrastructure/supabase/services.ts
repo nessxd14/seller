@@ -22,6 +22,7 @@ import type { VentaDirectaAbrirLine, SaleCheckoutPayment } from '../../applicati
 import type { BorradorOperacionTipo, VentaDirectaRecord } from '../../application/shared/models'
 import { borradorOperacionRepository } from './BorradorOperacionRepository.supabase'
 import * as turnoRepository from './TurnoRepository.supabase'
+import * as pedidoVendedorRepository from './PedidoVendedorRepository.supabase'
 import type { Denominaciones } from '../../application/shared/models'
 
 export const configService = configRepository
@@ -278,6 +279,15 @@ export const ventaDirectaService = {
       ventaDirectaRepository.cobrarVtd(input, { actorId, idempotencyKey }),
     )
   },
+}
+
+// Piso: pedido del vendedor en su teléfono (guardar/retirar/anular/mis pedidos).
+export const pedidoVendedorService = {
+  guardar: pedidoVendedorRepository.guardar,
+  retirar: pedidoVendedorRepository.retirar,
+  anular: pedidoVendedorRepository.anular,
+  misPedidos: pedidoVendedorRepository.misPedidos,
+  clavesAbiertas: pedidoVendedorRepository.clavesAbiertas,
 }
 
 export const turnoService = {

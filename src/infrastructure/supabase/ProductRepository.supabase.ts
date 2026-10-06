@@ -118,6 +118,18 @@ const fetchBarcodeCodes = async (productIds: number[]): Promise<Map<number, { ba
 
 const PRODUCT_COLUMNS = 'id,nombre,sku_interno,marca,unidad_base,precio_base,precio_mayoreo,precio_institucion,precio_corporativo,activo,imagen_url,stock_min,punto_reorden,familia_id,familia(nombre)'
 
+interface ResolverRow { producto_id: number; presentacion_id?: number | null; factor_unidad_base?: number | string | null; presentacion_nombre?: string | null }
+
+/** La presentación de un código solo se informa cuando TODAS las filas del producto apuntan a la misma. */
+const singlePresentation = (rows: ResolverRow[]): Presentation | undefined => {
+  const ids = new Set(rows.map((row) => row.presentacion_id ?? null))
+  if (ids.size !== 1) return undefined
+  const [first] = rows
+  if (first.presentacion_id == null) return undefined
+  const factor = num(first.factor_unidad_base ?? 1) || 1
+  return { id: first.presentacion_id, nombre: first.presentacion_nombre ?? '', factorUnidadBase: factor, esBase: factor === 1 }
+}
+
 export class SupabaseProductRepository implements ProductRepository {
   async search(input: { query?: string; category?: string; active?: boolean; page: PageRequest }): Promise<Page<Product>> {
     const { query, active, page } = input
@@ -217,7 +229,7 @@ export class SupabaseProductRepository implements ProductRepository {
    * elegir uno al azar: el llamador decide qué hacer con la ambigüedad.
    */
   async resolveScannedCode(codigo: string): Promise<
-    | { kind: 'found'; product: Product }
+    | { kind: 'found'; product: Product; presentation?: Presentation }
     | { kind: 'ambiguous'; productIds: number[] }
     | { kind: 'not_found' }
   > {
@@ -226,12 +238,14 @@ export class SupabaseProductRepository implements ProductRepository {
     if (!code) return { kind: 'not_found' }
     const { data, error } = await supabase.rpc('resolver_identificador', { p_codigo: code })
     if (error) throw error
-    const rows = (data ?? []) as Array<{ producto_id: number }>
+    const rows = (data ?? []) as ResolverRow[]
     if (rows.length) {
       const productIds = [...new Set(rows.map((row) => row.producto_id))]
       if (productIds.length > 1) return { kind: 'ambiguous', productIds }
       const product = await this.getById(String(productIds[0]))
-      return product ? { kind: 'found', product } : { kind: 'not_found' }
+      if (!product) return { kind: 'not_found' }
+      const presentation = singlePresentation(rows)
+      return presentation ? { kind: 'found', product, presentation } : { kind: 'found', product }
     }
     const bySku = await this.findBySku(code)
     return bySku ? { kind: 'found', product: bySku } : { kind: 'not_found' }

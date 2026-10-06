@@ -22,7 +22,7 @@ export class MockProductRepository implements ProductRepository {
     return products.find((product) => product.sku === sku) ?? null
   }
 
-  async resolveScannedCode(codigo: string): Promise<{ kind: 'found'; product: Product } | { kind: 'ambiguous'; productIds: number[] } | { kind: 'not_found' }> {
+  async resolveScannedCode(codigo: string): Promise<{ kind: 'found'; product: Product; presentation?: { id: number; nombre: string; factorUnidadBase: number; esBase: boolean } } | { kind: 'ambiguous'; productIds: number[] } | { kind: 'not_found' }> {
     const matches = products.filter((product) => isExactProductCode(product, cleanProductQuery(codigo)))
     if (matches.length > 1) return { kind: 'ambiguous', productIds: matches.map((product) => product.id) }
     return matches[0] ? { kind: 'found', product: matches[0] } : { kind: 'not_found' }
