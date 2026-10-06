@@ -4,7 +4,7 @@ import { usePos } from '../context/PosContext'
 import { Modal } from './Modal'
 import { featureFlags } from '../config/featureFlags'
 import { useCashSession } from '../context/CashSessionContext'
-import { saleService, turnoService } from '../infrastructure/services'
+import { saleService } from '../infrastructure/services'
 import type { SaleCheckoutPayment } from '../application/ports/repositories'
 import { useSaldoCliente } from '../hooks/useSaldoCliente'
 import { checkoutFingerprint } from '../domain/sales/checkoutFingerprint'
@@ -12,11 +12,7 @@ import { avisarSaldoActualizado } from '../infrastructure/supabase/SaldoCliente.
 import { netUnitPriceCents } from '../domain/sales/ventaPricing'
 import { NumberField } from './NumberField'
 import { VentaTicket } from './VentaTicket'
-
-// Brief Caja-2 B1: pasado este umbral sin VERIFICADO, se le ofrece al cajero seguir
-// esperando o dejar la venta retenida (QR pendiente en "Mis tickets").
-const QR_HOLD_TIMEOUT_S = 90
-const QR_HOLD_POLL_MS = 3000
+import { useQrHold } from '../hooks/useQrHold'
 
 const allMethods = [
   { id: 'efectivo', label: 'Efectivo', icon: Banknote },
@@ -74,29 +70,9 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
   const paymentValid = pendingBalance ? !pendingChanged : amountDue === 0 || (method === 'mixto' ? Math.abs(mixedSum - amountDue) < 0.005 : method === 'efectivo' ? received >= amountDue : Math.abs(received - amountDue) < 0.005)
 
   // Brief Caja-2 B1: mientras el banco está en línea, una venta retail con QR queda
-  // "Esperando confirmación del QR…" en vez de ir directo a la pantalla confirmada.
-  // null = sin retención (venta sin QR, banco offline, o ya verificada/vencida).
-  const [holdPhase, setHoldPhase] = useState<'esperando' | 'vencida' | null>(null)
-  const [holdElapsedS, setHoldElapsedS] = useState(0)
-  const [holdQrAmountCents, setHoldQrAmountCents] = useState(0)
-  const [bankOfflineNotice, setBankOfflineNotice] = useState(false)
-
-  // Brief Caja-2 B1: mientras se espera, un poll cada 3 s a venta_pago.estado_verificacion
-  // — hasta VERIFICADO (pasa a la pantalla confirmada) o hasta los 90 s (ofrece seguir
-  // esperando / dejar retenida).
-  useEffect(() => {
-    if (holdPhase !== 'esperando' || !result) return
-    const startedAt = Date.now()
-    const interval = window.setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startedAt) / 1000)
-      setHoldElapsedS(elapsed)
-      if (elapsed >= QR_HOLD_TIMEOUT_S) { setHoldPhase('vencida'); return }
-      void turnoService.estadoPagoQr(result.saleId)
-        .then((estado) => { if (estado === 'VERIFICADO') { setHoldPhase(null); setDone(true) } })
-        .catch(() => { /* red caída — se sigue esperando, el próximo tick reintenta */ })
-    }, QR_HOLD_POLL_MS)
-    return () => window.clearInterval(interval)
-  }, [holdPhase, result])
+  // "Esperando confirmación del QR…" en vez de ir directo a la pantalla confirmada
+  // (la máquina de estados vive en useQrHold, compartida con el cobro de pedidos de vendedor).
+  const { phase: holdPhase, elapsedS: holdElapsedS, qrAmountCents: holdQrAmountCents, bankOfflineNotice, iniciar: iniciarRetencion, seguirEsperando } = useQrHold({ saleId: result?.saleId ?? null, onVerified: () => setDone(true) })
 
   const buildPayments = (): SaleCheckoutPayment[] => {
     if (pendingBalance) return pendingBalance.payments
@@ -179,20 +155,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
       // confirmada. Sin QR en el pago, o banco offline/caído, nunca se retiene: un
       // scraper caído no puede frenar al cajero.
       const qrAmountCents = payments.filter((p) => p.method === 'qr').reduce((sum, p) => sum + p.amountCents, 0)
-      if (qrAmountCents > 0) {
-        setHoldQrAmountCents(qrAmountCents)
-        try {
-          const estado = await turnoService.estadoBancoQr()
-          if (estado.enLinea) {
-            setHoldElapsedS(0)
-            setHoldPhase('esperando')
-            return
-          }
-          setBankOfflineNotice(true)
-        } catch {
-          setBankOfflineNotice(true)
-        }
-      }
+      if (qrAmountCents > 0 && await iniciarRetencion(qrAmountCents)) return
       setDone(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar la venta')
@@ -244,7 +207,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
       </div>
       <footer className="modal-actions">
         {holdPhase === 'vencida'
-          ? <><button className="secondary-button" onClick={() => { setHoldElapsedS(0); setHoldPhase('esperando') }}>Seguir esperando</button><button className="primary-button full-button" onClick={dejarRetenida}>Dejar retenida</button></>
+          ? <><button className="secondary-button" onClick={seguirEsperando}>Seguir esperando</button><button className="primary-button full-button" onClick={dejarRetenida}>Dejar retenida</button></>
           : <button className="secondary-button full-button" onClick={dejarRetenida}>Dejar retenida</button>}
       </footer>
     </Modal>

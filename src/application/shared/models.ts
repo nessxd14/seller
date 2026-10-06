@@ -543,3 +543,52 @@ export interface PedidoVendedorRecord {
 export type PedidoVendedorLineaInput =
   | { productoId: number; presentacionId?: number | null; cantidad: number; precioUnitario?: number }
   | { esPersonalizado: true; descripcion: string; unidadMedida: string; cantidad: number; precioUnitario: number }
+
+// ── Caja: pedido de vendedor en la cola y su cobro (cobrar_pedido_vendedor) ───────────
+export interface PedidoVendedorEnCola {
+  pedidoId: string
+  codigo: string
+  numeroDia: number
+  estado: 'ENVIADO' | 'EN_CAJA'
+  vendedor: string
+  enviadoEn: string | null
+  total: number
+  lineas: number
+  tomadoPor: string | null
+  sesionCajaId: string | null
+}
+
+/** Línea de p_lineas de cobrar_pedido_vendedor (mismo formato que registrar_venta + pedido_linea_id / verificada / motivo_descuento). */
+export interface PedidoCobroLineaPayload {
+  producto_id?: number
+  presentacion_id?: number
+  cantidad_base?: number
+  cantidad_presentacion?: number
+  precio_unitario: number
+  sucursal_origen_id?: number
+  es_personalizado?: true
+  descripcion?: string
+  unidad_medida?: string
+  pedido_linea_id?: number
+  verificada?: true
+  motivo_descuento?: string
+}
+export interface PedidoCobroQuitadaPayload { pedido_linea_id: number; motivo?: string }
+
+export interface PedidoVendedorCobroInput {
+  pedidoId: string
+  lineas: PedidoCobroLineaPayload[]
+  quitadas: PedidoCobroQuitadaPayload[]
+  pagos: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number; receivedCents?: number }>
+  sesionCajaId: string
+}
+
+export interface PedidoVendedorCobroResultado {
+  ventaId: string
+  numero: string | null
+  subtotal: number
+  descuentoTotal: number
+  total: number
+  reintento: boolean
+  pedidos: string[]
+}

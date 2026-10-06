@@ -17,10 +17,10 @@ const money = (value: number) => value.toLocaleString('es-BO', { minimumFraction
  * p_pagos que sume el total; el desglose fino de caja lo sigue resolviendo PaymentModal
  * en el flujo de venta normal.
  */
-export function VtdPaymentModal({ total, submitting, error, onClose, onConfirm }: { total: number; submitting: boolean; error: string; onClose: () => void; onConfirm: (payments: SaleCheckoutPayment[]) => void }) {
+export function VtdPaymentModal({ total, submitting, error, onClose, onConfirm, title = 'Cobrar venta directa', subtitle = 'Precobrado — se cobra antes de enviar a Almacén' }: { total: number; submitting: boolean; error: string; onClose: () => void; onConfirm: (payments: SaleCheckoutPayment[]) => void; title?: string; subtitle?: string }) {
   const [method, setMethod] = useState<'cash' | 'qr' | 'transfer'>('cash')
   return (
-    <Modal title="Cobrar venta directa" subtitle="Precobrado — se cobra antes de enviar a Almacén" onClose={onClose}>
+    <Modal title={title} subtitle={subtitle} onClose={onClose}>
       <div className="payment-total"><span>Total a cobrar</span><strong>Bs {money(total)}</strong></div>
       <div className="modal-body">
         <label className="field-label">Método de pago</label>

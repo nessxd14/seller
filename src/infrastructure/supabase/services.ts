@@ -288,6 +288,10 @@ export const pedidoVendedorService = {
   anular: pedidoVendedorRepository.anular,
   misPedidos: pedidoVendedorRepository.misPedidos,
   clavesAbiertas: pedidoVendedorRepository.clavesAbiertas,
+  cola: pedidoVendedorRepository.cola,
+  tomar: pedidoVendedorRepository.tomar,
+  devolver: pedidoVendedorRepository.devolver,
+  cobrar: pedidoVendedorRepository.cobrar,
 }
 
 export const turnoService = {
