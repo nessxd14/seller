@@ -114,3 +114,30 @@ describe('CartPanel — ítems personalizados se pueden cobrar', () => {
     expect(cobrar.disabled).toBe(true)
   })
 })
+
+describe('CartPanel — "+ Pedido de vendedor" (Brief Caja pedido de vendedor)', () => {
+  const renderPanel = (props: { pedidosVendedorEnEspera?: number; onOpenPedidosVendedor?: () => void }) => render(
+    <PosProvider><CashSessionProvider><CartPanel notify={() => {}} onOpenDraftOrder={() => {}} onGoToCash={() => {}} {...props} /></CashSessionProvider></PosProvider>,
+  )
+
+  it('muestra el enlace con el contador de pedidos en espera y lo abre', async () => {
+    const abrir = vi.fn()
+    renderPanel({ pedidosVendedorEnEspera: 3, onOpenPedidosVendedor: abrir })
+    const link = await screen.findByRole('button', { name: /\+ Pedido de vendedor/ }) as HTMLButtonElement
+    expect(link.dataset.posAction).toBe('pedido-vendedor')
+    expect(screen.getByLabelText('3 en espera').textContent).toBe('3')
+    await waitFor(() => expect(link.disabled).toBe(false))
+    fireEvent.click(link)
+    expect(abrir).toHaveBeenCalledOnce()
+  })
+
+  it('sin contador no hay badge; sin callback (rol sin caja) no hay enlace', async () => {
+    renderPanel({ onOpenPedidosVendedor: () => {} })
+    await screen.findByRole('button', { name: /\+ Pedido de vendedor/ })
+    expect(screen.queryByLabelText(/en espera/)).toBeNull()
+    cleanup()
+    renderPanel({})
+    await screen.findByText('+ Agregar VTD')
+    expect(screen.queryByText(/Pedido de vendedor/)).toBeNull()
+  })
+})

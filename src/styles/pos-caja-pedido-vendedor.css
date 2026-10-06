@@ -1,0 +1,75 @@
+/* Caja: cobro de pedidos de vendedor (cola, verificación línea por línea). Archivo propio. */
+.cart-list-heading .pedido-vendedor-link { display: inline-flex; align-items: center; gap: 6px; }
+.pedido-vendedor-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #2563eb; color: #fff; font-size: 11px; font-weight: 700; }
+
+.modal.pedido-vendedor-modal { width: min(1000px, 96vw); max-height: 94vh; position: relative; }
+.pv-cuerpo { display: grid; gap: 12px; }
+.pv-vacio { margin: 20px 0; text-align: center; color: #526279; }
+
+/* Cola */
+.pv-filtro, .pv-buscador > label { display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid #dce5f1; border-radius: 10px; background: #fff; }
+.pv-filtro svg, .pv-buscador > label svg { width: 18px; height: 18px; color: #526279; flex: none; }
+.pv-filtro input, .pv-buscador > label input { flex: 1; min-width: 0; border: 0; outline: 0; height: 44px; font-size: 15px; background: transparent; }
+.pv-cola { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pv-cola button { width: 100%; display: grid; grid-template-columns: 56px 1fr auto auto; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid #dce5f1; border-radius: 12px; background: #fff; text-align: left; min-height: 56px; }
+.pv-cola button:hover:not(:disabled) { border-color: #2563eb; background: #f5f9ff; }
+.pv-cola button:disabled { opacity: .55; cursor: not-allowed; }
+.pv-numero { font-size: 28px; color: #2563eb; text-align: center; font-variant-numeric: tabular-nums; }
+.pv-quien { display: grid; min-width: 0; }
+.pv-quien small { color: #526279; }
+.pv-estado { font-size: 12px; font-weight: 700; color: #1d4ed8; }
+.pv-total { font-variant-numeric: tabular-nums; }
+
+/* Verificación */
+.pv-buscador { display: grid; gap: 6px; position: relative; }
+.pv-faltante { margin: 0; padding: 8px 12px; border-radius: 8px; background: #fff4e5; color: #8a4b00; font-size: 13px; }
+.pv-faltante button { margin-left: 8px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; padding: 4px 12px; font-weight: 700; }
+.pv-resultados { list-style: none; margin: 0; padding: 0; border: 1px solid #dce5f1; border-radius: 10px; background: #fff; max-height: 220px; overflow-y: auto; }
+.pv-resultados li + li { border-top: 1px solid #dce5f1; }
+.pv-resultados button { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 0 10px; padding: 8px 12px; border: 0; background: transparent; text-align: left; }
+.pv-resultados small { color: #526279; }
+.pv-resultados b { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+
+.pv-lineas { display: grid; gap: 8px; max-height: 52vh; overflow-y: auto; padding-right: 2px; }
+.pv-linea { display: grid; grid-template-columns: minmax(0, 1fr) 110px 120px 110px; align-items: end; gap: 10px; padding: 10px 12px; border: 1px solid #dce5f1; border-left: 4px solid #f59e0b; border-radius: 12px; background: #fff; }
+.pv-linea.verificada { border-left-color: #12b76a; }
+.pv-linea.quitada { grid-template-columns: 1fr auto; align-items: center; opacity: .7; border-left-color: #b42318; }
+.pv-linea-nombre { display: grid; min-width: 0; gap: 2px; }
+.pv-linea-nombre strong, .pv-linea-nombre s { overflow-wrap: anywhere; }
+.pv-linea-nombre small { color: #526279; font-size: 12px; }
+.pv-linea-nombre .pv-dif { color: #8a4b00; font-weight: 600; }
+.pv-etiqueta { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #e0e7ff; color: #3730a3; font-weight: 700; }
+.pv-campo { display: grid; gap: 4px; font-size: 12px; font-weight: 700; color: #526279; }
+.pv-campo input { width: 100%; height: 40px; padding: 0 10px; border: 1px solid #dce5f1; border-radius: 8px; font-size: 15px; }
+.pv-subtotal { text-align: right; font-variant-numeric: tabular-nums; font-size: 15px; padding-bottom: 8px; }
+.pv-acciones { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.pv-acciones button, .pv-linea.quitada button { min-height: 40px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 10px; font-size: 13px; font-weight: 700; }
+.pv-acciones svg, .pv-linea.quitada svg { width: 16px; height: 16px; }
+.pv-verificar { border: 1px solid #dce5f1; background: #fff; color: #142033; }
+.pv-verificar.activo { border-color: #12b76a; background: #ecfdf3; color: #067647; }
+.pv-acciones .peligro, .primary-button.peligro { color: #b42318; }
+.primary-button.peligro { background: #b42318; color: #fff; }
+.pv-chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.pv-chips button { min-height: 36px; padding: 0 12px; border: 1px solid #dce5f1; border-radius: 999px; background: #f3f6fa; font-size: 13px; font-weight: 600; }
+.pv-chips button.activo { background: #2563eb; border-color: #2563eb; color: #fff; }
+.pv-motivo { grid-column: 1 / -1; display: grid; gap: 6px; padding: 8px 10px; border-radius: 10px; background: #fff4e5; }
+.pv-motivo-req { font-size: 12px; font-weight: 700; color: #8a4b00; }
+.pv-motivo input { height: 40px; padding: 0 10px; border: 1px solid #f1c27d; border-radius: 8px; font-size: 15px; }
+
+.pv-pie { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pv-resumen { display: grid; }
+.pv-resumen small { color: #8a4b00; font-weight: 600; }
+.pv-cobrar { min-width: 200px; height: 48px; font-size: 16px; }
+.pv-salir { position: absolute; inset: 0; z-index: 5; display: grid; align-content: center; justify-items: center; gap: 12px; padding: 24px; background: rgb(255 255 255 / 96%); border-radius: inherit; text-align: center; }
+.pv-salir h3 { margin: 0; }
+.pv-salir label { display: grid; gap: 6px; width: min(420px, 100%); text-align: left; font-weight: 700; }
+.pv-salir input { height: 44px; padding: 0 12px; border: 1px solid #dce5f1; border-radius: 10px; font-size: 16px; }
+.pv-salir button { min-width: 220px; }
+
+@media (max-width: 760px) {
+  .pv-linea { grid-template-columns: 1fr 1fr; }
+  .pv-linea-nombre { grid-column: 1 / -1; }
+  .pv-subtotal { grid-column: 1 / -1; text-align: left; }
+  .pv-cola button { grid-template-columns: 44px 1fr auto; }
+  .pv-estado { grid-column: 2 / -1; }
+}

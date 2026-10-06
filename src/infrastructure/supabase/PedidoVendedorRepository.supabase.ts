@@ -2,7 +2,8 @@
 // (guardar/retirar/anular/mis_pedidos_vendedor); aquí solo se mapea snake_case → camelCase.
 import { supabase } from './supabaseClient'
 import { toError } from './postgrestError'
-import type { PedidoVendedorEstado, PedidoVendedorLinea, PedidoVendedorLineaInput, PedidoVendedorRecord } from '../../application/shared/models'
+import type { PedidoVendedorCobroInput, PedidoVendedorCobroResultado, PedidoVendedorEnCola, PedidoVendedorEstado, PedidoVendedorLinea, PedidoVendedorLineaInput, PedidoVendedorRecord } from '../../application/shared/models'
+import { centsToNumeric, methodToMetodoPago } from './mappers'
 
 const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
 const numOrNull = (v: number | string | null | undefined): number | null => (v == null ? null : Number(v))
@@ -85,4 +86,56 @@ export async function clavesAbiertas(userId: string): Promise<Array<{ pedidoId: 
     .eq('vendedor_id', userId).in('estado', ['ARMANDO', 'ENVIADO'])
   if (error) throw toError(error)
   return ((data ?? []) as Array<{ id: number | string; clave_cliente: string }>).map((r) => ({ pedidoId: String(r.id), clave: r.clave_cliente }))
+}
+
+// ── Caja: cola, tomar, devolver y cobrar ───────────────────────────────────────────────
+
+interface ColaRow {
+  pedido_id: number | string; codigo: string; numero_dia: number; estado: 'ENVIADO' | 'EN_CAJA'; vendedor: string | null
+  enviado_en: string | null; total: number | string; lineas: number | string; tomado_por: string | null; sesion_caja_id: number | string | null
+}
+
+/** Pedidos esperando (ENVIADO) y ya dentro de una caja (EN_CAJA), del más viejo al más nuevo. Cajero, gerente y admin. */
+export async function cola(): Promise<PedidoVendedorEnCola[]> {
+  const { data, error } = await supabase.rpc('pedidos_vendedor_cola')
+  if (error) throw toError(error)
+  return ((data ?? []) as ColaRow[]).map((r) => ({
+    pedidoId: String(r.pedido_id), codigo: r.codigo, numeroDia: r.numero_dia, estado: r.estado, vendedor: r.vendedor ?? '', enviadoEn: r.enviado_en,
+    total: num(r.total), lineas: num(r.lineas), tomadoPor: r.tomado_por, sesionCajaId: r.sesion_caja_id != null ? String(r.sesion_caja_id) : null,
+  }))
+}
+
+/** ENVIADO → EN_CAJA. Repetirlo con el mismo usuario y sesión devuelve el pedido (reintento seguro y reanudación tras recargar). */
+export async function tomar(pedidoId: string, sesionCajaId: string): Promise<PedidoVendedorRecord> {
+  const { data, error } = await supabase.rpc('tomar_pedido_vendedor', { p_pedido_id: Number(pedidoId), p_sesion_caja_id: Number(sesionCajaId) })
+  if (error) throw toError(error)
+  return rowToPedido(data as PedidoRow)
+}
+
+/** EN_CAJA → ENVIADO: el pedido vuelve a la cola sin cambios. */
+export async function devolver(pedidoId: string): Promise<void> {
+  const { error } = await supabase.rpc('devolver_pedido_vendedor', { p_pedido_id: Number(pedidoId) })
+  if (error) throw toError(error)
+}
+
+/**
+ * Cobra exactamente un pedido. La clave de idempotencia es siempre la misma para ese pedido
+ * (`pedido-vendedor:<id>`): reintentar tras una respuesta perdida devuelve la venta con reintento: true.
+ */
+export async function cobrar(input: PedidoVendedorCobroInput): Promise<PedidoVendedorCobroResultado> {
+  const { data, error } = await supabase.rpc('cobrar_pedido_vendedor', {
+    p_pedido_ids: [Number(input.pedidoId)],
+    p_lineas: input.lineas,
+    p_pagos: input.pagos.map((p) => ({
+      metodo: methodToMetodoPago(p.method),
+      monto: centsToNumeric(p.amountCents),
+      ...(p.method === 'cash' && p.receivedCents != null ? { recibido: centsToNumeric(p.receivedCents) } : {}),
+    })),
+    p_sesion_caja_id: Number(input.sesionCajaId),
+    p_idempotencia: `pedido-vendedor:${input.pedidoId}`,
+    p_quitadas: input.quitadas,
+  })
+  if (error) throw toError(error)
+  const r = data as { venta_id: number | string; numero?: string | null; subtotal: number | string; descuento_total: number | string; total: number | string; reintento?: boolean; pedidos?: Array<number | string> }
+  return { ventaId: String(r.venta_id), numero: r.numero ?? null, subtotal: num(r.subtotal), descuentoTotal: num(r.descuento_total), total: num(r.total), reintento: r.reintento === true, pedidos: (r.pedidos ?? []).map(String) }
 }
