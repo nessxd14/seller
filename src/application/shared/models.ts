@@ -492,3 +492,54 @@ export interface MovimientoBancoQr {
   fechaTransaccion: string
 }
 
+
+// ── Piso: pedido armado en el teléfono del vendedor (guardar_pedido_vendedor) ───────────
+export type PedidoVendedorEstado = 'ARMANDO' | 'ENVIADO' | 'EN_CAJA' | 'COBRADO' | 'ANULADO'
+
+export interface PedidoVendedorLinea {
+  /** Cambia en CADA guardado: nunca usarlo como key de React ni para rastrear líneas locales (usar `orden`). */
+  lineaId: string
+  orden: number
+  productoId: number | null
+  nombre: string
+  sku: string | null
+  presentacionId: number | null
+  presentacion: string | null
+  esBase: boolean
+  factor: number
+  esPersonalizado: boolean
+  unidadMedida: string | null
+  cantidad: number
+  precioLista: number | null
+  /** Piso de precio (lista − 10 %) solo para líneas base con precio de catálogo; null en paquetes, sin precio y personalizados. */
+  precioMinimo: number | null
+  precioUnitario: number
+  subtotal: number
+  resultado: string | null
+  cantidadFinal: number | null
+  precioFinal: number | null
+  motivoCaja: string | null
+}
+
+export interface PedidoVendedorRecord {
+  pedidoId: string
+  codigo: string
+  numeroDia: number
+  fecha: string
+  estado: PedidoVendedorEstado
+  vendedor: string
+  nota: string | null
+  total: number
+  enviadoEn: string | null
+  tomadoPor: string | null
+  ventaNumero: string | null
+  anuladoOrigen: string | null
+  anuladoMotivo: string | null
+  reintento: boolean
+  lineas: PedidoVendedorLinea[]
+}
+
+/** Línea tal como se envía a guardar_pedido_vendedor (p_lineas). */
+export type PedidoVendedorLineaInput =
+  | { productoId: number; presentacionId?: number | null; cantidad: number; precioUnitario?: number }
+  | { esPersonalizado: true; descripcion: string; unidadMedida: string; cantidad: number; precioUnitario: number }

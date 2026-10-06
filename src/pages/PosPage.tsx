@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { PosProvider, usePos } from '../context/PosContext'
 import { CashSessionProvider } from '../context/CashSessionContext'
 import { CartPanel } from '../components/CartPanel'
@@ -36,7 +36,12 @@ import { hasPermission, type AuthSession } from '../application/auth/AuthSession
 import { authSessionProvider } from '../infrastructure/services'
 import { supabaseAuthSessionProvider } from '../infrastructure/supabase/SupabaseAuthSessionProvider'
 import type { QuoteDraft } from '../application/shared/models'
-import { parseRoute } from '../router/appRoute'
+import { parseRoute, pisoPath } from '../router/appRoute'
+import { navigate as navigateTo } from '../router/history'
+import { useRoute } from '../router/useRoute'
+
+// Piso (teléfono del vendedor): carga diferida para que el escáner y su código no entren al bundle del POS de escritorio.
+const PedidoPisoApp = lazy(() => import('../features/piso/PedidoPisoApp').then((m) => ({ default: m.PedidoPisoApp })))
 
 const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 
@@ -67,6 +72,7 @@ function PosContent() {
     const route = parseRoute(window.location.pathname)
     return route.kind === 'pedido' ? 'Pedidos' : route.kind === 'cotizacion' ? 'Cotizaciones' : route.kind === 'venta' ? 'Reportes' : 'Venta'
   })
+  const route = useRoute()
   const [session, setSession] = useState<AuthSession | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(!featureFlags.supabase)
   const [conflictDemo, setConflictDemo] = useState(false)
@@ -78,6 +84,9 @@ function PosContent() {
   const [pagoModalOpen, setPagoModalOpen] = useState(false)
   const [ambiguousIds, setAmbiguousIds] = useState<number[] | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  // Un vendedor no usa el POS de escritorio: cualquier ruta que no sea un detalle (/pedidos/:id, …) lo lleva a /piso.
+  const esVendedor = session?.user.role === 'vendedor'
+  useEffect(() => { if (esVendedor && route.kind === 'none') navigateTo(pisoPath, { replace: true }) }, [esVendedor, route.kind])
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2800) }
   const handleNew = () => { if (cart.length && !window.confirm('¿Crear una nueva operación y limpiar el carrito actual?')) return; newOperation(); setSearch(''); setCategory('Todos'); notify('Nueva operación lista') }
   useEffect(() => {
@@ -284,10 +293,18 @@ function PosContent() {
         ? 'session_expired'
         : null
   const blocked=Boolean(blockKind)||conflictDemo
+  // El módulo activo (incluido 'Venta', el de arranque) debe estar permitido para el rol: antes solo se verificaba en navigate().
+  const moduloPermitido = !session || (PERMISOS_MODULO[activeModule] ?? (() => true))(session)
   if(conflictDemo)return <div className="integration-demo-page"><IntegrationState kind="conflict" onReload={()=>setConflictDemo(false)} onKeepCopy={()=>{setConflictDemo(false);notify('Copia local conservada')}} onCancel={()=>setConflictDemo(false)}/></div>
   if (featureFlags.supabase && !sessionLoaded) return null
   if (featureFlags.supabase && !session) return <LoginScreen />
-  return <div className={`app-shell pos-root ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`} data-modo={mode}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} onRegistrarPago={() => setPagoModalOpen(true)} user={session?.user} onOpenSettings={() => navigate('Configuración')} onOpenShortcuts={() => setShortcutsOpen(true)} />{blockKind?<IntegrationState kind={blockKind}/>:page}</div>{activeModule === 'Venta'&&!blocked && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}{pagoModalOpen && <PagoModal onClose={() => setPagoModalOpen(false)} notify={notify} />}{ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onPick={(product) => { addProduct(product); setAmbiguousIds(null); notify(`${product.nombre} agregado`) }} onClose={() => setAmbiguousIds(null)} />}{shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}</div>
+  if (route.kind === 'piso') {
+    if (!hasPermission(session, 'floor_order')) return <div className="piso-bloqueado" role="alert"><p>Tu rol no permite abrir esta pantalla</p></div>
+    return <Suspense fallback={null}><PedidoPisoApp session={session as AuthSession} /></Suspense>
+  }
+  // Un vendedor que aún no fue redirigido (primer render) no debe ver ni un instante el POS completo.
+  if (esVendedor && route.kind === 'none') return null
+  return <div className={`app-shell pos-root ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`} data-modo={mode}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} onRegistrarPago={() => setPagoModalOpen(true)} user={session?.user} onOpenSettings={() => navigate('Configuración')} onOpenShortcuts={() => setShortcutsOpen(true)} />{blockKind?<IntegrationState kind={blockKind}/>:!moduloPermitido?<main className="catalog"><div className="module-blocked" role="alert"><h2>Tu rol no permite abrir este módulo</h2></div></main>:page}</div>{activeModule === 'Venta'&&!blocked&&moduloPermitido && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}{pagoModalOpen && <PagoModal onClose={() => setPagoModalOpen(false)} notify={notify} />}{ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onPick={(product) => { addProduct(product); setAmbiguousIds(null); notify(`${product.nombre} agregado`) }} onClose={() => setAmbiguousIds(null)} />}{shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}</div>
 }
 
 export function PosPage() { return <PosProvider><CashSessionProvider><PosContent /></CashSessionProvider></PosProvider> }

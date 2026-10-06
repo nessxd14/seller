@@ -38,3 +38,9 @@ export const comisionesService = featureFlags.supabase ? supabaseServices.comisi
 export const turnoService = featureFlags.supabase ? supabaseServices.turnoService : new Proxy({} as typeof supabaseServices.turnoService, {
   get() { return () => { throw new Error('turnoService no está disponible en modo mock — CashPage.tsx debe usar el flujo mock de siempre.') } },
 })
+
+// Piso: solo tiene implementación Supabase (las RPC viven en la base); en modo mock la pantalla
+// /piso no puede usarse y el throw es la señal clara.
+export const pedidoVendedorService = featureFlags.supabase ? supabaseServices.pedidoVendedorService : new Proxy({} as typeof supabaseServices.pedidoVendedorService, {
+  get() { return () => { throw new Error('pedidoVendedorService no está disponible en modo mock.') } },
+})
