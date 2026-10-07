@@ -213,7 +213,7 @@ test('cajero registra pago en la cartera actual y reintenta sin cambiar su clave
   await page.getByRole('combobox', { name: 'Método de pago', exact: true }).selectOption('cash')
   await page.getByRole('button', { name: 'Confirmar pago', exact: true }).click()
   await expect(page.getByText('Respuesta perdida de prueba')).toBeVisible()
-  await page.getByRole('button', { name: 'Confirmar pago', exact: true }).click()
+  await page.getByRole('button', { name: 'Comprobar el mismo pago', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Pago registrado', exact: true })).toBeVisible()
   const attempts = writes.filter((w) => w.name === 'registrar_cobro_cation')
   expect(attempts).toHaveLength(2)

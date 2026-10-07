@@ -30,7 +30,7 @@ export function CobrarVtdPickerModal({ yaSeleccionadas, onClose, onAdd }: { yaSe
 
   const toggle = (id: string) => setChecked((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
   const confirmar = () => {
-    const seleccionadas = filtradas.filter((v) => checked.has(v.ventaId))
+    const seleccionadas = disponibles.filter((v) => checked.has(v.ventaId))
     if (!seleccionadas.length) return
     onAdd(seleccionadas)
   }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { useEffect } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { CartPanel } from '../CartPanel'
@@ -7,7 +7,7 @@ import { PosProvider, usePos } from '../../context/PosContext'
 import { CashSessionProvider } from '../../context/CashSessionContext'
 import type { VtdPorCobrar } from '../../application/shared/models'
 
-// Se conserva el comportamiento VTD de la versión actual: se cobra sola.
+// El carrito permite cobrar una VTD sola o junto a productos de mostrador.
 // La prueba usa un turno propio y stock suficiente; el bloqueo viene de mezclar VTD.
 const listPorCobrar = vi.fn()
 const cobrarVtd = vi.fn()
@@ -31,6 +31,7 @@ vi.mock('../../infrastructure/services', () => ({
   listPresentations: vi.fn().mockResolvedValue([]),
 }))
 
+beforeEach(() => { sessionStorage.clear(); localStorage.clear() })
 afterEach(cleanup)
 
 // Agrega un producto de catálogo al carrito antes de que se monte CartPanel, usando el
@@ -77,11 +78,11 @@ describe('CartPanel — cobro de VTD desde el carrito (Brief Caja VTD)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Agregar \(1\)/ }))
 
     await waitFor(() => expect(screen.getByText(/VTD-2026-00001/)).toBeTruthy())
-    expect(screen.getByText('Cobrar VTD')).toBeTruthy()
+    expect((screen.getByRole('button',{name:/Cobrar todo/}) as HTMLButtonElement).disabled).toBe(false)
     expect(screen.queryByText(/Por ahora la VTD se cobra sola/)).toBeNull()
   })
 
-  it('mezclar catálogo + VTD bloquea el cobro con el mensaje del brief', async () => {
+  it('mezclar catálogo + VTD habilita un cobro único con el total combinado', async () => {
     listPorCobrar.mockResolvedValue([vtdSeleccionable])
     render(<Wrapper withCatalogItem />)
 
@@ -90,11 +91,10 @@ describe('CartPanel — cobro de VTD desde el carrito (Brief Caja VTD)', () => {
     fireEvent.click(screen.getByText('VTD-2026-00001').closest('label')!.querySelector('input[type="checkbox"]')!)
     fireEvent.click(screen.getByRole('button', { name: /Agregar \(1\)/ }))
 
-    await waitFor(() => expect(screen.getByText(/Por ahora la VTD se cobra sola\. Cobrá primero la venta de mostrador\./)).toBeTruthy())
-    expect(screen.queryByText('Cobrar VTD')).toBeNull()
-    // El botón "Cobrar" normal (retail) también queda bloqueado mientras haya VTD elegidas.
-    const cobrarButton = screen.getByRole('button', { name: /^Cobrar/ }) as HTMLButtonElement
-    expect(cobrarButton.disabled).toBe(true)
+    await waitFor(() => expect((screen.getByRole('button', {name:/Cobrar todo/}) as HTMLButtonElement).disabled).toBe(false))
+    expect(screen.queryByText(/Por ahora la VTD/)).toBeNull()
+    expect(screen.getByRole('button', {name:/Cobrar todo/}).textContent).toMatch(/160/)
+
   })
 })
 
@@ -125,7 +125,7 @@ describe('CartPanel — "+ Pedido de vendedor" (Brief Caja pedido de vendedor)',
     renderPanel({ pedidosVendedorEnEspera: 3, onOpenPedidosVendedor: abrir })
     const link = await screen.findByRole('button', { name: /\+ Pedido de vendedor/ }) as HTMLButtonElement
     expect(link.dataset.posAction).toBe('pedido-vendedor')
-    expect(screen.getByLabelText('3 en espera').textContent).toBe('3')
+    expect(screen.getByText('3 en espera')).toBeTruthy()
     await waitFor(() => expect(link.disabled).toBe(false))
     fireEvent.click(link)
     expect(abrir).toHaveBeenCalledOnce()

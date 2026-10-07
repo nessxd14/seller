@@ -56,4 +56,12 @@ describe('auditoriaDvr', () => {
     const [, init] = fetchMock.mock.calls[0]
     expect(JSON.parse(init.body)).toEqual({ transactionId: 't2', reason: 'completada', totalBs: 150.5, numero: 'VTA-2026-00001' })
   })
+
+  it('manda los Bs por método de pago en /end (contexto para CATION VLM)', () => {
+    vi.stubEnv('VITE_AUDIT_API_URL', 'http://localhost:8787')
+    fetchMock.mockResolvedValueOnce({ ok: true })
+    auditEnd({ transactionId: 't3', reason: 'completada', totalBs: 80, numero: 'VTA-2026-00002', metodos: { cash: 30, qr: 50 } })
+    const [, init] = fetchMock.mock.calls[0]
+    expect(JSON.parse(init.body)).toMatchObject({ transactionId: 't3', totalBs: 80, metodos: { cash: 30, qr: 50 } })
+  })
 })

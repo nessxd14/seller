@@ -1,5 +1,12 @@
 import { supabase } from '../supabase/supabaseClient'
 
+export interface PedidoParaCobro { id: string; number: string; pendienteBs: number }
+export async function consultarPedidosCobro(clienteId: string): Promise<PedidoParaCobro[]> {
+  const { data, error } = await supabase.rpc('pedidos_cobro_cliente', { p_cliente_id: Number(clienteId) })
+  if (error) throw Object.assign(new Error(error.message), error)
+  return (data ?? []).map((r: { id: number; numero: string; pendiente: number }) => ({ id: String(r.id), number: r.numero, pendienteBs: Number(r.pendiente) }))
+}
+
 // Consulta la misma base del POS con su sesión y permisos, sin puente entre proyectos.
 async function consultarHermesLocal(url: string, options: RequestInit): Promise<Response> {
   const body = JSON.parse(String(options.body ?? '{}'))

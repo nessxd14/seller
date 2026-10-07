@@ -126,6 +126,12 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       if (seg === 'todos') setConteosSegmento(contarPorSegmento(items))
     }).catch(() => setStatus('error'))
   }
+  useEffect(() => {
+    const update = () => { void cargarPedidos(segmento); if (selected) void orderService.getById(selected.id).then(setSelected) }
+    window.addEventListener('pago-cliente-registrado', update)
+    return () => window.removeEventListener('pago-cliente-registrado', update)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- consulta después de un pago con el filtro y pedido actuales
+  }, [segmento, selected?.id])
   const load = () => cargarPedidos(segmento)
   const cambiarSegmento = (seg: SegmentoPedido) => {
     setSegmento(seg)
