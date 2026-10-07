@@ -1,5 +1,5 @@
 import { ChevronDown, CircleUserRound, FileText, HandCoins, Pause, ReceiptText, RotateCcw, Save, ShoppingCart, Sparkles, Truck, Warehouse } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { usePos, type CartCustomer } from '../context/PosContext'
 import type { CartItem as CartItemType, SalesChannel } from '../types'
 import { useBorrador, borradorKey } from '../hooks/useBorrador'
@@ -75,6 +75,10 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // este panel.
   const [chromeCollapsed, setChromeCollapsed] = useState(() => localStorage.getItem('roari-cart-chrome-collapsed') === '1')
   useEffect(() => { localStorage.setItem('roari-cart-chrome-collapsed', chromeCollapsed ? '1' : '0') }, [chromeCollapsed])
+  const [sourceDetailsOpen, setSourceDetailsOpen] = useState(() => localStorage.getItem('roari-cart-source-details') === '1')
+  const sourceDetailsId = useId()
+  const showPedidoAction = featureFlags.supabase && !!onOpenPedidosVendedor
+  useEffect(() => { localStorage.setItem('roari-cart-source-details', sourceDetailsOpen ? '1' : '0') }, [sourceDetailsOpen])
   // Regla que no se negocia: un campo con valor cargado nunca se oculta. Si hay
   // descuento, el desglose se queda visible aunque el cromo esté colapsado —
   // un descuento invisible que sigue aplicándose es el tipo de bug que nadie
@@ -461,10 +465,17 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
           ? <div className="customer-select-collapsed"><CircleUserRound size={13} /><span>Cliente: <strong>{customerLabel}</strong></span></div>
           : <>{<CustomerPicker channel={channel} notify={notify} />}{customer && <SaldoBadge clienteId={customer.id} />}</>}
     {mode === 'venta' && <>
-      <div className="cart-source-actions">
-        {featureFlags.supabase && onOpenPedidosVendedor && <button type="button" data-pos-action="pedido-vendedor" disabled={!sessionId} onClick={onOpenPedidosVendedor}><ReceiptText /><span><strong>{pedidoEnCarrito ? 'Revisar pedido' : '+ Pedido de vendedor'}</strong><small>{pedidoEnCarrito ? pedidoEnCarrito.pedido.codigo : `${pedidosVendedorEnEspera} en espera`}</small></span></button>}
-        <button type="button" data-pos-action="agregar-vtd" disabled={!sessionId} onClick={() => setVtdCobroPickerOpen(true)}><Warehouse /><span><strong>+ Agregar VTD</strong><small>Cobrar junto a esta venta</small></span></button>
-      </div>
+      <section className="cart-source-controls" aria-label="Pedidos y VTD">
+        <div className={`cart-source-actions${showPedidoAction ? '' : ' cart-source-actions--single'}`}>
+          {showPedidoAction && <button className="cart-source-action" type="button" data-pos-action="pedido-vendedor" disabled={!sessionId} onClick={onOpenPedidosVendedor} title={pedidoEnCarrito ? `Revisar ${pedidoEnCarrito.pedido.codigo}` : 'Verificar un pedido de vendedor y añadirlo al carrito'}><ReceiptText aria-hidden="true" /><strong>{pedidoEnCarrito ? 'Revisar pedido' : '+ Pedido de vendedor'}</strong>{pedidosVendedorEnEspera > 0 && <span className="cart-source-count" aria-label={`${pedidosVendedorEnEspera} en espera`}>{pedidosVendedorEnEspera}</span>}</button>}
+          <button className="cart-source-action" type="button" data-pos-action="agregar-vtd" disabled={!sessionId} onClick={() => setVtdCobroPickerOpen(true)} title="Añadir una VTD pendiente para cobrar junto a esta venta"><Warehouse aria-hidden="true" /><strong>+ Agregar VTD</strong></button>
+          <button className="cart-source-toggle" type="button" aria-expanded={sourceDetailsOpen} aria-controls={sourceDetailsId} aria-label={sourceDetailsOpen ? 'Ocultar ayuda de pedidos y VTD' : 'Mostrar ayuda de pedidos y VTD'} title={sourceDetailsOpen ? 'Ocultar ayuda' : 'Mostrar ayuda'} onClick={() => setSourceDetailsOpen(open => !open)}><ChevronDown aria-hidden="true" /></button>
+        </div>
+        <div className="cart-source-details" id={sourceDetailsId} hidden={!sourceDetailsOpen}>
+          {showPedidoAction && <p><strong>Pedido de vendedor</strong>{pedidoEnCarrito ? `Revisa los productos de ${pedidoEnCarrito.pedido.codigo}.` : 'Verifica sus productos y añádelos al carrito.'}</p>}
+          <p><strong>VTD pendiente</strong>Cóbrala junto a los productos de esta venta.</p>
+        </div>
+      </section>
       <div className="cart-seller-field"><label>Venta realizada por{pedidoEnCarrito ? <strong>{pedidoEnCarrito.pedido.vendedor}</strong> : <select aria-label="Venta realizada por" value={vendedorId ?? ''} onChange={e => setVendedorId(e.target.value || undefined)}><option value="">Sin vendedor asignado</option>{vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}</select>}</label>{sellerError && <small role="alert">{sellerError} <button type="button" onClick={() => setSellerRetry(n => n+1)}>Reintentar</button></small>}</div>
       <button type="button" data-pos-action="custom-item" className="custom-item-add-link" onClick={() => setCustomItemOpen(true)}>+ Ítem personalizado</button>
     </>}

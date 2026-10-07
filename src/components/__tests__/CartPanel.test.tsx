@@ -125,7 +125,7 @@ describe('CartPanel — "+ Pedido de vendedor" (Brief Caja pedido de vendedor)',
     renderPanel({ pedidosVendedorEnEspera: 3, onOpenPedidosVendedor: abrir })
     const link = await screen.findByRole('button', { name: /\+ Pedido de vendedor/ }) as HTMLButtonElement
     expect(link.dataset.posAction).toBe('pedido-vendedor')
-    expect(screen.getByText('3 en espera')).toBeTruthy()
+    expect(screen.getByLabelText('3 en espera')).toBeTruthy()
     await waitFor(() => expect(link.disabled).toBe(false))
     fireEvent.click(link)
     expect(abrir).toHaveBeenCalledOnce()
