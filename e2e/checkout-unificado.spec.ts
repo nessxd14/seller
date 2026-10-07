@@ -99,3 +99,27 @@ test('registrar pago en móvil respeta el pedido y su importe pendiente',async({
   await expect(page.getByRole('heading',{name:'Pago registrado',exact:true})).toBeVisible()
   expect(writes[0].body).toMatchObject({p_pedido_id:5,p_cliente_id:83,p_monto:40,p_metodo:'QR'})
 })
+test('pedido específico: informa una actualización pendiente y recupera la consulta',async({page})=>{
+  const writes=await fixture(page)
+  let consultas=0
+  await page.route('**/rest/v1/rpc/pedidos_cobro_cliente',async route=>{
+    const first=consultas++===0
+    await route.fulfill({status:first?404:200,contentType:'application/json',body:JSON.stringify(first?{code:'PGRST202',message:'Function missing from schema cache'}:[{id:5,numero:'PED-2026-0005',pendiente:40}])})
+  })
+  await page.goto('/')
+  await page.getByRole('button',{name:'Registrar pago',exact:true}).click()
+  await page.getByLabel('Buscar cliente para registrar pago').fill('Cliente')
+  await page.getByRole('button',{name:/Cliente de prueba/}).click()
+  await page.getByRole('button',{name:'Sobre un pedido específico'}).click()
+  await expect(page.getByRole('alert')).toContainText('Falta activar la actualización')
+  await expect(page.getByLabel('Monto (Bs)',{exact:true})).toBeDisabled()
+  await expect(page.getByRole('button',{name:'Confirmar pago',exact:true})).toBeDisabled()
+  await page.getByRole('button',{name:'Reintentar pedidos'}).click()
+  await page.getByRole('combobox',{name:'Pedido',exact:true}).selectOption('5')
+  await expect(page.getByText(/Pendiente de este pedido:/)).toContainText('40,00')
+  await page.getByLabel('Monto (Bs)',{exact:true}).fill('50')
+  await page.getByLabel('Monto (Bs)',{exact:true}).press('Tab')
+  await expect(page.getByText(/Supera el pendiente del pedido/)).toContainText('10,00')
+  await page.screenshot({path:'.ui-review.local/registrar-pago-pedido-especifico.png',fullPage:true})
+  expect(consultas).toBe(2);expect(writes).toHaveLength(0)
+})

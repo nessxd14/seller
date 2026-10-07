@@ -18,7 +18,7 @@ export async function testCheckoutCaja(db, claims) {
     insert into public.perfil(id,nombre,rol,activo,email) values('00000000-0000-0000-0000-000000000009','Vendedora sintética','vendedor',true,'seller@test.invalid');
     insert into public.venta(id,numero,total,estado,cobro_exigible,cliente_id,ubicacion_id) values(890001,'VTD-TEST-1',150,'ABIERTA',true,null,990001),(890002,'VTD-TEST-2',60,'COMPLETADA',true,null,990001),(890003,'VTD-TEST-3',20,'ABIERTA',true,null,990001);
     insert into public.venta_linea(venta_id,producto_id,cantidad,precio_unitario) values(890001,990001,15,10),(890002,990001,6,10),(890003,990001,2,10);`)
-  await db.exec(await fs.readFile(new URL('../migrations/20261007203513_checkout_caja_unificado.sql',import.meta.url),'utf8'))
+  await db.exec(await fs.readFile(new URL('../migrations/20261007213559_checkout_caja_unificado.sql',import.meta.url),'utf8'))
   await claims('00000000-0000-0000-0000-000000000002')
   const seller='00000000-0000-0000-0000-000000000009'
   const line={producto_id:990001,cantidad_base:2,precio_unitario:10,sucursal_origen_id:2}
@@ -77,6 +77,18 @@ export async function testCheckoutCaja(db, claims) {
   assert.equal((await db.query('select no_imputar from hermes.pago where id=$1',[advance.pagoId])).rows[0].no_imputar,true)
   await claims('00000000-0000-0000-0000-000000000001');await db.query("select hermes.confirmar_pago($1,'test')",[advance.pagoId])
   assert.equal(Number((await db.query('select pendiente from hermes.v_partida_estado where pedido_id=890021')).rows[0].pendiente),60,'El pago dirigido no pasa al pedido siguiente')
+  await claims('00000000-0000-0000-0000-000000000002')
+  await db.exec(`insert into public.cliente(id,nombre,tipo_precio,activo) values(890030,'Cliente abono sintético','mayorista',true);
+    insert into public.pedido(id,categoria,cliente_id,total,subtotal,numero,estado) values(890030,'MAYOR',890030,100,100,'PED-ABONO','COMPLETADO'),(890031,'MAYOR',890030,60,60,'PED-NO-TOCAR','ABIERTO');`)
+  const abono=async (monto,key)=>(await db.query("select public.registrar_cobro_cation(p_pedido_id=>890030,p_cliente_id=>890030,p_monto=>$1,p_metodo=>'EFECTIVO',p_sesion_id=>900001,p_idempotencia=>$2) result",[monto,key])).rows[0].result
+  const partial=await abono(25,'test-partial-specific-order')
+  assert.equal(Number((await db.query('select * from public.pedidos_cobro_cliente(890030) where id=890030')).rows[0].pendiente),75,'El abono en revisión reduce el pendiente de este pedido')
+  const excess=await abono(85,'test-excess-specific-order')
+  assert.equal(Number((await db.query('select sum(monto) as total from hermes.pago_aplicacion where pago_id=$1',[excess.pagoId])).rows[0].total),75,'Solo se aplica la deuda no reservada del pedido elegido')
+  await claims('00000000-0000-0000-0000-000000000001')
+  await db.query("select hermes.confirmar_pago($1,'test')",[partial.pagoId]);await db.query("select hermes.confirmar_pago($1,'test')",[excess.pagoId])
+  assert.equal(Number((await db.query('select pendiente from hermes.v_partida_estado where pedido_id=890031')).rows[0].pendiente),60,'El excedente no se aplica a otro pedido')
+  assert.equal(Number((await db.query("select monto from hermes.movimiento_cuenta where pago_id=$1 and tipo='ANTICIPO'",[excess.pagoId])).rows[0].monto),-10,'El excedente queda como anticipo del cliente')
   assert.equal((await db.query("select has_function_privilege('anon','public.checkout_caja(jsonb,jsonb,bigint,text,bigint,numeric,numeric,uuid,bigint[],jsonb,bigint[])','EXECUTE') allowed")).rows[0].allowed,false)
   await claims(seller)
   await assert.rejects(()=>call('test-seller-not-cash',{vtds:[],payments:[{metodo:'EFECTIVO',monto:20}]}),/No autorizado/)

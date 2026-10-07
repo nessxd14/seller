@@ -16,11 +16,15 @@ Implementación local para la decisión de emitir un único comprobante de caja 
 
 - Suite completa de Vitest y compilación TypeScript/Vite.
 - `npm run test:integration`: PostgreSQL aislado con datos sintéticos y definiciones reales de las RPC vigentes. Cubre caja + Hermes, mezcla de pagos, idempotencia, rollback, stock, saldo confirmado, vendedor, pedido verificado, permisos y caja cerrada.
-- `npx playwright test --config playwright.checkout.config.ts`: tres flujos completos en Chromium, con todas las solicitudes Supabase interceptadas y sin ventas reales. Incluye prueba móvil y capturas en `.ui-review.local/checkout-*.png`.
+- `npx playwright test --config playwright.checkout.config.ts`: cuatro flujos completos en Chromium, con todas las solicitudes Supabase interceptadas y sin ventas reales. Incluye prueba móvil, recuperación de la consulta de pedidos y capturas en `.ui-review.local/`.
 
 ## Activación
 
-La migración `20261007203513_checkout_caja_unificado.sql` está preparada y probada localmente. Debe aplicarse en `zxoxougwgstrarwymlvd` antes de publicar este frontend. No se ha aplicado en producción ni se han creado cobros reales como parte de estas pruebas.
+La migración `20261007213559_checkout_caja_unificado.sql` se aplicó en `zxoxougwgstrarwymlvd` el 7 de octubre de 2026 con autorización del usuario. El archivo conserva el SQL probado y usa la versión asignada por el historial remoto, para evitar que un despliegue posterior intente aplicarlo de nuevo. La consulta autenticada se verificó en producción; no se crearon cobros reales. La publicación del frontend sigue pendiente.
+
+La revisión de Registrar Pago distingue actualización pendiente, permisos y fallo de conexión; permite reintentar sin volver a seleccionar el cliente. Al elegir un pedido muestra su pendiente separado del saldo total, precarga ese importe y permite abonos. El aviso de excedente se calcula contra ese pedido. Las pruebas verifican que los pagos en revisión reduzcan el pendiente sugerido y que un excedente quede como anticipo sin aplicarse a otro pedido.
+
+Los advisors posteriores señalan las tres nuevas RPC como funciones `SECURITY DEFINER` accesibles para usuarios autenticados. El acceso es intencional: cada función exige un operador autorizado, fija el `search_path` y revoca ejecución a `PUBLIC` y `anon`. La tabla de comprobantes tiene RLS y consulta restringida al cajero propietario o gerencia.
 
 La migración crea `cobro_caja` y tres RPC con permisos de cajero/gerencia y RLS para consultar los documentos. Actualiza `hermes.registrar_movimiento_pos` sin cambiar los pagos históricos. La instalación no importa ni modifica ventas, saldos o pedidos existentes.
 

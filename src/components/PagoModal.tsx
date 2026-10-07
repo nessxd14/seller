@@ -42,6 +42,7 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
   const [orders, setOrders] = useState<PedidoParaCobro[]>([])
   const [ordersLoading, setOrdersLoading] = useState(false)
   const [ordersError, setOrdersError] = useState('')
+  const [ordersRetry, setOrdersRetry] = useState(0)
   const [orderId, setOrderId] = useState<string | undefined>(undefined)
   // `amount` es `undefined` mientras el cajero no tocó el campo — permite distinguir
   // "todavía no escribió nada, así que el saldo lo puede precargar cuando llegue" de
@@ -119,17 +120,27 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
       // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the order list/selection immediately when tipo or customer changes, before the new fetch (if any) resolves
       setOrders([])
       setOrderId(undefined)
+      setOrdersLoading(false)
+      setOrdersError('')
       return
     }
     let cancelled = false
-    void Promise.resolve().then(() => { if (!cancelled) { setOrdersLoading(true); setOrdersError('') } })
+    void Promise.resolve().then(() => { if (!cancelled) { setOrders([]); setOrderId(undefined); setOrdersLoading(true); setOrdersError('') } })
     void (featureFlags.supabase ? consultarPedidosCobro(customer.id) : orderService.list().then(items => items.filter(o => o.customerId === customer.id && o.status !== 'cancelled').map(o => ({id:o.id,number:o.number,pendienteBs:(o.totalCents ?? o.lines.reduce((sum,l)=>sum+Math.round(l.quantity*l.unitPriceCents),0))/100})))).then((list) => {
       if (cancelled) return
       setOrders(list)
-    }).catch(() => { if (!cancelled) setOrdersError('No se pudieron consultar los pedidos. Vuelve a elegir el cliente.') })
+    }).catch((err: unknown) => {
+      if (cancelled) return
+      const code = err && typeof err === 'object' && 'code' in err ? err.code : undefined
+      setOrdersError(code === 'PGRST202' || code === '42883'
+        ? 'La consulta de pedidos aún no está habilitada. Falta activar la actualización de la base de datos.'
+        : code === '42501'
+          ? 'Tu sesión no tiene permiso para consultar pedidos. Revisa el acceso con administración.'
+          : 'No se pudieron consultar los pedidos. Reintenta la consulta.')
+    })
       .finally(() => { if (!cancelled) setOrdersLoading(false) })
     return () => { cancelled = true }
-  }, [tipo, customer])
+  }, [tipo, customer, ordersRetry])
 
   const pickCustomer = (record: CustomerRecord) => { setCustomer(record); setShowCustomerPicker(false); setCustomerQuery(''); setOrderId(undefined); setOrders([]); setNoImputar(false); setRepartoFilas([]); setRepartoContext(''); setRepartoError(null) }
   const changeTipo = (next: 'total' | 'pedido') => { setTipo(next); setOrderId(undefined); setAmountState(undefined); setNoImputar(false); setRepartoContext('') }
@@ -138,8 +149,9 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
   const valid = !!customer && !!method && !!actorId && !identityLoading && !destinoPendiente(esEncargado, method, destino) && Number.isFinite(displayAmount) && Math.round(displayAmount * 100) > 0 && !!sessionId && (tipo === 'total' || (!!selectedOrder && !ordersLoading && !ordersError)) && (!requiereReparto || (repartoContext === `${customer.id}:${displayAmount}` && !repartoError))
   // No bloqueante: pagar de más es legítimo (queda saldo a favor), así que esto es un
   // aviso, no una condición de `valid`.
-  const superaSaldo = saldo?.estado === 'ok' && saldo.saldoProvisional > 0 && displayAmount > saldo.saldoProvisional
-    ? displayAmount - saldo.saldoProvisional
+  const pendienteDestino = tipo === 'pedido' ? selectedOrder?.pendienteBs : saldo?.estado === 'ok' ? Math.max(0, saldo.saldoProvisional) : undefined
+  const superaSaldo = pendienteDestino != null && displayAmount > pendienteDestino
+    ? displayAmount - pendienteDestino
     : 0
 
   const confirm = async () => {
@@ -221,18 +233,20 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
         <button type="button" className={tipo === 'pedido' ? 'active' : ''} onClick={() => changeTipo('pedido')}>Sobre un pedido específico</button>
       </div>
     </div>
-    {tipo === 'pedido' && <label className="full">
-      Pedido
-      <select value={orderId ?? ''} disabled={!customer || ordersLoading} onChange={(e) => { setOrderId(e.target.value || undefined); setAmountState(undefined) }}>
+    {tipo === 'pedido' && <div className="full">
+      <label htmlFor="pago-pedido">Pedido</label>
+      <select id="pago-pedido" value={orderId ?? ''} disabled={!customer || ordersLoading || !!ordersError} onChange={(e) => { setOrderId(e.target.value || undefined); setAmountState(undefined) }}>
         <option value="">{customer ? 'Elegí un pedido…' : 'Elegí un cliente primero'}</option>
         {orders.map((o) => <option key={o.id} value={o.id}>{o.number} · Pendiente Bs {o.pendienteBs.toFixed(2)}</option>)}
       </select>
       {ordersLoading ? <small role="status">Consultando pedidos…</small> : ordersError ? <small role="alert">{ordersError}</small> : customer && !orders.length && <small>Este cliente no tiene pedidos pendientes de pago.</small>}
-    </label>}
-    {integraConciliador && featureFlags.supabase && saldo && <SaldoResumen saldo={saldo} />}
+      {ordersError && <button type="button" className="secondary-button" onClick={() => { setOrders([]); setOrderId(undefined); setAmountState(undefined); setOrdersError(''); setOrdersLoading(true); setOrdersRetry(n => n + 1) }}>Reintentar pedidos</button>}
+      {selectedOrder && <p className="mock-note">Pendiente de este pedido: {formatMoney(moneyFromDecimal(selectedOrder.pendienteBs))}. El pago se asignará a {selectedOrder.number}; el excedente quedará como anticipo.</p>}
+    </div>}
+    {integraConciliador && featureFlags.supabase && saldo && <div className="full">{tipo === 'pedido' && <span className="field-label">Saldo total del cliente</span>}<SaldoResumen saldo={saldo} /></div>}
     {customer?.type === 'retail' && <p className="mock-note full">Este pago se registra en Seller. Los clientes retail quedan fuera del conciliador.</p>}
     <h3 className="full payment-account-step"><span>2</span> Importe y distribución</h3>
-    <label>Monto (Bs)<NumberField min={0} step={0.01} value={displayAmount} onCommit={setAmount} /></label>
+    <label>Monto (Bs)<NumberField min={0} step={0.01} value={displayAmount} onCommit={setAmount} disabled={tipo === 'pedido' && (!selectedOrder || ordersLoading || !!ordersError)} /></label>
     {/* Brief T7 Tarea 4: excluyente con el reparto de abajo — imputar_pago rechaza la
         combinación del lado servidor, así que acá se apagan mutuamente en la UI. */}
     {tipo === 'total' && integraConciliador && featureFlags.supabase && (
@@ -263,7 +277,7 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
     <label>Referencia (opcional)<input maxLength={200} value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="Número de depósito o comprobante" /></label>
     {destinoObligatorio(esEncargado, method) && <CobroDestinoField value={destino} onChange={setDestino} disabled={submitting} />}
     {featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar un pago.</p>}
-    {superaSaldo > 0 && <p className="mock-note">Supera el saldo en {formatMoney(moneyFromDecimal(superaSaldo))} — va a quedar saldo a favor.</p>}
+    {superaSaldo > 0 && <p className="mock-note">Supera {tipo === 'pedido' ? 'el pendiente del pedido' : 'el saldo'} en {formatMoney(moneyFromDecimal(superaSaldo))} — va a quedar saldo a favor.</p>}
     {error && <p className="mock-note payment-error">{error}</p>}
   </fieldset><footer className="modal-actions"><button className="secondary-button" disabled={submitting} onClick={close}>{pending ? 'Cerrar y conservar intento' : 'Cancelar'}</button><button className="primary-button" disabled={identityLoading || (!pending && !valid) || submitting} onClick={() => void confirm()}>{submitting ? 'Registrando…' : pending ? 'Comprobar el mismo pago' : 'Confirmar pago'}</button></footer></Modal>
 }
