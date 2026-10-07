@@ -32,8 +32,17 @@ export function SaldoBadge({ clienteId }: { clienteId?: string }) {
     const id = Number(clienteId)
     if (!Number.isFinite(id) || id <= 0) return
     let cancelled = false
-    void consultarSaldo(id).then((result) => { if (!cancelled) setSaldo(result) })
-    return () => { cancelled = true }
+    let revision = 0
+    const update = () => {
+      const current = ++revision
+      void consultarSaldo(id).then(result => { if (!cancelled && current === revision) setSaldo(result) })
+        .catch(() => { if (!cancelled && current === revision) setSaldo({estado:'no-disponible'}) })
+    }
+    update()
+    window.addEventListener('saldo-cliente-actualizado', update)
+    window.addEventListener('focus', update)
+    const interval = window.setInterval(() => { if (document.visibilityState !== 'hidden') update() }, 15_000)
+    return () => { cancelled = true; clearInterval(interval); window.removeEventListener('saldo-cliente-actualizado', update); window.removeEventListener('focus', update) }
   }, [clienteId])
 
   if (!saldo) return null // todavía no se consultó: transitorio, no inventar nada

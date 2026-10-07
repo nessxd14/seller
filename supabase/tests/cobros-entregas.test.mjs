@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { testOrigenMayorista } from './origen-mayorista.test.mjs'
 import { testSincronizacionAutomatica } from './sincronizacion-automatica.test.mjs'
 import { testSaldoFavor } from './saldo-favor.test.mjs'
+import { testCheckoutCaja } from './checkout-caja.test.mjs'
 const backup=JSON.parse(await fs.readFile(new URL('./schema.fixture.json',import.meta.url),'utf8'))
 const meta=backup.metadata[0].metadata
 const db=new PGlite()
@@ -131,4 +132,5 @@ console.log('OK: comprobante autorizado, archivo disponible, vínculo reversible
 await testOrigenMayorista(db, claims)
 await testSincronizacionAutomatica(db, claims)
 await testSaldoFavor(db, claims)
+await testCheckoutCaja(db, claims)
 await db.close()

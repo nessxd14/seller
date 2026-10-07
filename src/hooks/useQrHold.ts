@@ -12,27 +12,29 @@ export const QR_HOLD_POLL_MS = 3000
  * la venta retenida. Con el banco fuera de línea no retiene nunca: un scraper caído no puede
  * frenar al cajero. Compartido por el cobro de mostrador (PaymentModal) y el de pedidos de vendedor.
  */
-export function useQrHold({ saleId, onVerified }: { saleId: string | null; onVerified: () => void }) {
+export function useQrHold({ saleId, saleIds, onVerified }: { saleId: string | null; saleIds?: string[]; onVerified: () => void }) {
   const [phase, setPhase] = useState<'esperando' | 'vencida' | null>(null)
   const [elapsedS, setElapsedS] = useState(0)
   const [qrAmountCents, setQrAmountCents] = useState(0)
   const [bankOfflineNotice, setBankOfflineNotice] = useState(false)
   const onVerifiedRef = useRef(onVerified)
   useEffect(() => { onVerifiedRef.current = onVerified }, [onVerified])
+  const idsKey = JSON.stringify(saleIds ?? (saleId ? [saleId] : []))
 
   useEffect(() => {
-    if (phase !== 'esperando' || !saleId) return
+    const ids = JSON.parse(idsKey) as string[]
+    if (phase !== 'esperando' || !ids.length) return
     const startedAt = Date.now()
     const interval = window.setInterval(() => {
       const elapsed = Math.floor((Date.now() - startedAt) / 1000)
       setElapsedS(elapsed)
       if (elapsed >= QR_HOLD_TIMEOUT_S) { setPhase('vencida'); return }
-      void turnoService.estadoPagoQr(saleId)
-        .then((estado) => { if (estado === 'VERIFICADO') { setPhase(null); onVerifiedRef.current() } })
+      void Promise.all(ids.map(id => turnoService.estadoPagoQr(id)))
+        .then((estados) => { if (estados.every(estado => estado === 'VERIFICADO' || estado === 'NO_APLICA')) { setPhase(null); onVerifiedRef.current() } })
         .catch(() => { /* red caída — se sigue esperando, el próximo tick reintenta */ })
     }, QR_HOLD_POLL_MS)
     return () => window.clearInterval(interval)
-  }, [phase, saleId])
+  }, [phase, idsKey])
 
   return {
     phase, elapsedS, qrAmountCents, bankOfflineNotice,

@@ -3,7 +3,8 @@ import { getPrice } from '../data/products'
 import type { CartItem, Product, SalesChannel } from '../types'
 import { ventaLineTotalCents } from '../domain/sales/ventaPricing'
 import { moneyFromDecimal } from '../domain/common/money'
-import type { TransferMotivo } from '../application/shared/models'
+import type { TransferMotivo, VtdPorCobrar } from '../application/shared/models'
+import type { PedidoEnCarrito } from '../application/shared/cajaCheckout'
 import { featureFlags } from '../config/featureFlags'
 import { consultarSaldos } from '../infrastructure/hermes/client'
 import { auditEnd, auditStart } from '../lib/auditoriaDvr'
@@ -69,6 +70,12 @@ export interface CartCustomer {
 }
 
 interface PosState {
+  pedidoEnCarrito: PedidoEnCarrito | null
+  setPedidoEnCarrito: (pedido: PedidoEnCarrito | null) => void
+  vtdsEnCarrito: VtdPorCobrar[]
+  setVtdsEnCarrito: React.Dispatch<React.SetStateAction<VtdPorCobrar[]>>
+  vendedorId: string | undefined
+  setVendedorId: (id: string | undefined) => void
   channel: SalesChannel
   setChannel: (channel: SalesChannel) => void
   cart: CartItem[]
@@ -124,13 +131,24 @@ interface PosState {
   // lo llama antes de guardar el borrador. Ambos marcan la operación como "ya cerrada"
   // para que el reset de estado que sigue (newOperation/clearOperation) no mande un
   // /end 'cancelada' duplicado — ver resetOperationState más abajo.
-  notifyVentaCompletada: (input: { numero?: string; totalBs: number }) => void
+  notifyVentaCompletada: (input: { numero?: string; totalBs: number; metodos?: Partial<Record<'cash' | 'qr' | 'transfer', number>> }) => void
   notifyVentaSuspendida: () => void
 }
 
 const PosContext = createContext<PosState | null>(null)
 
+const GROUPS_KEY = 'cation-carrito-documentos-v1'
+function readGroups(): { pedido: PedidoEnCarrito | null; vtds: VtdPorCobrar[]; seller?: string } {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(GROUPS_KEY) ?? 'null')
+    return value && value.operationId === sessionStorage.getItem(OPERACION_ID_KEY) && Array.isArray(value.vtds) ? value : { pedido: null, vtds: [] }
+  } catch { return { pedido: null, vtds: [] } }
+}
+
 export function PosProvider({ children }: { children: ReactNode }) {
+  const [pedidoEnCarrito, setPedidoEnCarrito] = useState<PedidoEnCarrito | null>(() => readGroups().pedido)
+  const [vtdsEnCarrito, setVtdsEnCarrito] = useState<VtdPorCobrar[]>(() => readGroups().vtds)
+  const [vendedorId, setVendedorId] = useState<string | undefined>(() => readGroups().seller)
   const [channel, setChannelState] = useState<SalesChannel>('retail')
   const [cart, setCart] = useState<CartItem[]>([])
   const [discount, setDiscount] = useState(0)
@@ -140,6 +158,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     () => sessionStorage.getItem(OPERACION_ID_KEY) ?? nuevoOperacionId(),
   )
   const [customer, setCustomer] = useState<CartCustomer | null>(null)
+  useEffect(() => { sessionStorage.setItem(GROUPS_KEY, JSON.stringify({ operationId, pedido: pedidoEnCarrito, vtds: vtdsEnCarrito, seller: vendedorId })) }, [operationId, pedidoEnCarrito, vtdsEnCarrito, vendedorId])
   // Brief hotkeys — Tarea 3b: por defecto no hay selección; addProduct la mueve a la
   // línea recién tocada. Se limpia sola si el carrito queda vacío (línea eliminada,
   // operación nueva, etc.) — ver el efecto más abajo.
@@ -349,6 +368,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
     }
     operationEndedRef.current = false
     clearCart()
+    setPedidoEnCarrito(null)
+    setVtdsEnCarrito([])
+    setVendedorId(undefined)
     setChannelState('retail')
     setCustomer(null)
     setEsAcreedor(false)
@@ -362,13 +384,14 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setUndoStack([])
   }
   const newOperation = () => {
+    if (!operationEndedRef.current && localStorage.getItem(`roari-saldo-cobro:${operationId}`)) return
     resetOperationState()
     setOperationNumber((number) => number + 1)
     setOperationId(nuevoOperacionId())
   }
-  const notifyVentaCompletada = (input: { numero?: string; totalBs: number }) => {
+  const notifyVentaCompletada = (input: { numero?: string; totalBs: number; metodos?: Partial<Record<'cash' | 'qr' | 'transfer', number>> }) => {
     operationEndedRef.current = true
-    auditEnd({ transactionId: operationId, reason: 'completada', totalBs: input.totalBs, numero: input.numero })
+    auditEnd({ transactionId: operationId, reason: 'completada', totalBs: input.totalBs, numero: input.numero, metodos: input.metodos })
   }
   const notifyVentaSuspendida = () => {
     operationEndedRef.current = true
@@ -402,7 +425,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setUndoStack([])
   }
 
-  return <PosContext.Provider value={{ channel, setChannel, cart, addProduct, addCustomItem, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, selectedLineId, setSelectedLineId, undoLastAdd, notifyVentaCompletada, notifyVentaSuspendida }}>{children}</PosContext.Provider>
+  return <PosContext.Provider value={{ pedidoEnCarrito, setPedidoEnCarrito, vtdsEnCarrito, setVtdsEnCarrito, vendedorId, setVendedorId, channel, setChannel, cart, addProduct, addCustomItem, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, selectedLineId, setSelectedLineId, undoLastAdd, notifyVentaCompletada, notifyVentaSuspendida }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {

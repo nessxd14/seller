@@ -321,9 +321,10 @@ export async function estadoBancoQr(): Promise<EstadoBancoQr> {
 // Brief Caja-2 B1: poll de PaymentModal mientras espera la confirmación del banco —
 // una sola fila porque la venta recién cobrada tiene, como mucho, un pago QR.
 export async function getEstadoPagoQr(ventaId: string): Promise<string | null> {
-  const { data, error } = await supabase.from('venta_pago').select('estado_verificacion').eq('venta_id', Number(ventaId)).eq('metodo', 'QR').maybeSingle()
+  const { data, error } = await supabase.from('venta_pago').select('estado_verificacion').eq('venta_id', Number(ventaId)).eq('metodo', 'QR')
   if (error) throw toError(error)
-  return (data as { estado_verificacion: string } | null)?.estado_verificacion ?? null
+  const pagos = (data ?? []) as { estado_verificacion: string }[]
+  return pagos.some(p => p.estado_verificacion === 'RECHAZADO') ? 'RECHAZADO' : pagos.some(p => p.estado_verificacion !== 'VERIFICADO') ? 'PENDIENTE' : pagos.length ? 'VERIFICADO' : 'NO_APLICA'
 }
 
 // Brief Caja-2 B2 — columna izquierda de Supervisión: pagos PENDIENTE de turnos

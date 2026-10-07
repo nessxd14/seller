@@ -17,27 +17,30 @@ import { FeatureState } from '../features/shared/FeatureShell'
 export function RepartoPagoPanel({ clienteId, monto, onFilasChange }: {
   clienteId: number
   monto: number
-  onFilasChange: (filas: FilaRepartoEditable[], error: string | null) => void
+  onFilasChange: (filas: FilaRepartoEditable[], error: string | null, context?: string) => void
 }) {
   const [filas, setFilas] = useState<FilaRepartoEditable[] | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [fetchError, setFetchError] = useState('')
+  const [loadedContext, setLoadedContext] = useState('')
 
   useEffect(() => {
     let cancelled = false
-    const reset = setTimeout(() => { setFilas(null); setStatus(clienteId && monto > 0 ? 'loading' : 'ready'); onFilasChange([], null) }, 0)
+    const reset = setTimeout(() => { setFilas(null); setStatus(clienteId && monto > 0 ? 'loading' : 'ready'); onFilasChange([], 'Consultando el reparto…', `${clienteId}:${monto}`) }, 0)
     const handle = setTimeout(() => {
       if (!clienteId || monto <= 0) return
       void calcularRepartoFifo(clienteId, monto)
         .then((propuesta: FilaReparto[]) => {
           if (cancelled) return
           setFilas(propuesta.map((f) => ({ partidaId: f.partidaId, referencia: f.referencia, pendiente: f.pendiente, aplica: f.aplica })))
+          setLoadedContext(`${clienteId}:${monto}`)
           setStatus('ready')
         })
         .catch((err) => {
           if (cancelled) return
           setFetchError(err instanceof HermesHttpError ? err.message : 'No se pudo calcular el reparto')
           setStatus('error')
+          onFilasChange([], 'No se pudo calcular el reparto. Reintenta o elige anticipo.', `${clienteId}:${monto}`)
         })
     }, 300)
     return () => { cancelled = true; clearTimeout(handle); clearTimeout(reset) }
@@ -45,10 +48,10 @@ export function RepartoPagoPanel({ clienteId, monto, onFilasChange }: {
   }, [clienteId, monto])
 
   useEffect(() => {
-    if (!filas) { onFilasChange([], null); return }
-    onFilasChange(filas, validarReparto(monto, filas))
+    if (!filas || loadedContext !== `${clienteId}:${monto}`) return
+    onFilasChange(filas, validarReparto(monto, filas), `${clienteId}:${monto}`)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onFilasChange se recrea cada render en el padre; lo que importa es cuándo cambian filas/monto
-  }, [filas, monto])
+  }, [filas, monto, loadedContext])
 
   const updateAplica = (partidaId: number, aplica: number) =>
     setFilas((prev) => prev?.map((f) => (f.partidaId === partidaId ? { ...f, aplica } : f)) ?? prev)

@@ -1,5 +1,5 @@
 import { Banknote, CreditCard, Printer, QrCode, Shuffle, Smartphone, Wallet } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePos } from '../context/PosContext'
 import { Modal } from './Modal'
 import { featureFlags } from '../config/featureFlags'
@@ -12,6 +12,12 @@ import { avisarSaldoActualizado } from '../infrastructure/supabase/SaldoCliente.
 import { netUnitPriceCents } from '../domain/sales/ventaPricing'
 import { NumberField } from './NumberField'
 import { VentaTicket } from './VentaTicket'
+import { checkoutCaja } from '../infrastructure/supabase/CajaCheckout.supabase'
+import type { CajaReceipt } from '../application/shared/cajaCheckout'
+import { totalCents as pedidoTotalCents, bloqueos } from '../domain/sales/pedidoCaja'
+import { CajaTicket } from './CajaTicket'
+import { auditEnd } from '../lib/auditoriaDvr'
+import { paymentRejected } from '../domain/hermes/paymentAttempt'
 import { useQrHold } from '../hooks/useQrHold'
 
 const allMethods = [
@@ -28,18 +34,29 @@ interface PendingBalancePayment { context: string; cashSessionId: string; balanc
 function readPendingBalance(key: string): PendingBalancePayment | null {
   try {
     const value = JSON.parse(localStorage.getItem(key) ?? 'null') as PendingBalancePayment | null
-    return value && typeof value.context === 'string' && typeof value.cashSessionId === 'string' && Number.isSafeInteger(value.balanceCents) && value.balanceCents > 0 && Array.isArray(value.payments)
+    return value && typeof value.context === 'string' && typeof value.cashSessionId === 'string' && Number.isSafeInteger(value.balanceCents) && value.balanceCents >= 0 && Array.isArray(value.payments)
       && value.payments.every(p => ['cash','qr','transfer'].includes(p.method) && Number.isSafeInteger(p.amountCents) && p.amountCents > 0) ? value : null
   } catch { return null }
 }
 
+// Bs cobrados por método, para el /end de la auditoría de DVR (contexto de CATION VLM:
+// por ejemplo, una venta solo QR no debería mostrar billetes en la gaveta).
+const metodosBs = (payments: { method: 'cash' | 'qr' | 'transfer'; amountCents: number }[]): Partial<Record<'cash' | 'qr' | 'transfer', number>> =>
+  payments.reduce<Partial<Record<'cash' | 'qr' | 'transfer', number>>>((acc, p) => ({ ...acc, [p.method]: ((acc[p.method] ?? 0) * 100 + p.amountCents) / 100 }), {})
+
 export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => void; onCheckoutSuccess?: () => void }) {
-  const { cart, discount, total, newOperation, customer, operationId, notifyVentaCompletada } = usePos()
+  const { cart, discount, total: normalTotal, pedidoEnCarrito, vtdsEnCarrito = [], vendedorId, newOperation, customer, operationId, notifyVentaCompletada } = usePos()
+  const pedidoCents = pedidoEnCarrito ? pedidoTotalCents(pedidoEnCarrito.lineas.filter(l => l.verificada)) : 0
+  const newSaleCents = Math.round(normalTotal * 100) + pedidoCents
+  const total = (newSaleCents + vtdsEnCarrito.reduce((sum,v) => sum+Math.round(v.totalBs*100),0))/100
+  const unified = !!pedidoEnCarrito || vtdsEnCarrito.length > 0 || !!vendedorId
+  const submittingRef = useRef(false)
+  const [receipt, setReceipt] = useState<CajaReceipt | null>(null)
   const { sessionId } = useCashSession()
   const pendingKey = `roari-saldo-cobro:${operationId}`
   const [pendingBalance, setPendingBalance] = useState(() => readPendingBalance(pendingKey))
   const checkoutSessionId = pendingBalance?.cashSessionId ?? sessionId
-  const paymentContext = checkoutFingerprint({ lines: cart.map(item => ({ productId: String(item.id), quantity: item.cantidad, unitPriceCents: netUnitPriceCents(item), sourceLocation: item.ubicacion, presentacionId: item.presentacionId, description: item.nombre, isCustomItem: item.isCustomItem, unitOfMeasure: item.unidadMedida })), payments: [], cashSessionId: checkoutSessionId ?? '', customerId: customer?.id, discountCents: Math.round(discount * 100) })
+  const paymentContext = JSON.stringify([pedidoEnCarrito, vtdsEnCarrito.map(v => v.ventaId), (pedidoEnCarrito ? null : vendedorId) ?? null, checkoutFingerprint({ lines: cart.map(item => ({ productId: String(item.id), quantity: item.cantidad, unitPriceCents: netUnitPriceCents(item), sourceLocation: item.ubicacion, presentacionId: item.presentacionId, description: item.nombre, isCustomItem: item.isCustomItem, unitOfMeasure: item.unidadMedida })), payments: [], cashSessionId: checkoutSessionId ?? '', customerId: customer?.id, discountCents: Math.round(discount * 100) })])
   const pendingChanged = !!pendingBalance && pendingBalance.context !== paymentContext
   // Crédito has no metodo_pago equivalent in the real backend; only shown in mock mode.
   const methods = allMethods.filter((m) => m.id !== 'credito' || (featureFlags.credit && !featureFlags.supabase))
@@ -47,7 +64,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
   const { saldo, loading: saldoLoading, error: saldoError, refresh: refreshSaldo } = useSaldoCliente(customer?.id)
   const [useBalance, setUseBalance] = useState(true)
   const [balanceInput, setBalanceInput] = useState<number | null>(null)
-  const maximumBalanceCents = Math.min(Math.round((saldo?.disponible ?? 0) * 100), Math.round(total * 100))
+  const maximumBalanceCents = Math.min(Math.round((saldo?.disponible ?? 0) * 100), newSaleCents)
   const balanceCents = pendingBalance?.balanceCents ?? (useBalance ? Math.max(0, Math.min(maximumBalanceCents, Math.round((balanceInput ?? maximumBalanceCents / 100) * 100))) : 0)
   const amountDue = (Math.round(total * 100) - balanceCents) / 100
   const [receivedInput, setReceived] = useState<number | null>(null)
@@ -72,7 +89,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
   // Brief Caja-2 B1: mientras el banco está en línea, una venta retail con QR queda
   // "Esperando confirmación del QR…" en vez de ir directo a la pantalla confirmada
   // (la máquina de estados vive en useQrHold, compartida con el cobro de pedidos de vendedor).
-  const { phase: holdPhase, elapsedS: holdElapsedS, qrAmountCents: holdQrAmountCents, bankOfflineNotice, iniciar: iniciarRetencion, seguirEsperando } = useQrHold({ saleId: result?.saleId ?? null, onVerified: () => setDone(true) })
+  const { phase: holdPhase, elapsedS: holdElapsedS, qrAmountCents: holdQrAmountCents, bankOfflineNotice, iniciar: iniciarRetencion, seguirEsperando } = useQrHold({ saleId: result?.saleId ?? null, saleIds: receipt?.saleIds, onVerified: () => setDone(true) })
 
   const buildPayments = (): SaleCheckoutPayment[] => {
     if (pendingBalance) return pendingBalance.payments
@@ -89,18 +106,19 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
   }
 
   const confirmSupabase = async () => {
-    if (submitting || !paymentValid || pendingChanged) return
+    if (submittingRef.current || !paymentValid || pendingChanged || (pedidoEnCarrito && bloqueos(pedidoEnCarrito.lineas).length)) return
     if (!checkoutSessionId) { setError('No hay una sesión de caja abierta. Abrí la caja para poder cobrar.'); return }
+    submittingRef.current = true
     setSubmitting(true)
     setError('')
     try {
       const payments = buildPayments()
-      if (balanceCents > 0) {
+      {
         const attempt = { context: paymentContext, cashSessionId: checkoutSessionId, balanceCents, payments }
         localStorage.setItem(pendingKey, JSON.stringify(attempt))
         setPendingBalance(attempt)
       }
-      const checkout = await saleService.checkout({
+      const input = {
         lines: cart.map((item) => item.isCustomItem ? {
           // Ítem personalizado: sin producto, presentación ni origen — el id negativo del
           // carrito nunca debe llegar al RPC.
@@ -134,7 +152,11 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
         // tras una respuesta perdida reuse la misma clave de idempotencia, y que un
         // carrito editado tras un fallo genere una venta nueva en vez de perderse.
         operationId,
-      })
+      }
+      const unifiedReceipt = unified ? await checkoutCaja({ ...input, pedido: pedidoEnCarrito, vtds: vtdsEnCarrito, vendedorId: pedidoEnCarrito ? undefined : vendedorId }, `checkout:${operationId}`) : null
+      const checkout = unifiedReceipt ? { saleId: unifiedReceipt.saleIds[0], numero: unifiedReceipt.numero, totalCents: unifiedReceipt.totalCents, isRetry: unifiedReceipt.isRetry, balanceAppliedCents: unifiedReceipt.balanceCents } : await saleService.checkout(input)
+      setReceipt(unifiedReceipt)
+      if (pedidoEnCarrito) auditEnd({ transactionId: `pdv-${pedidoEnCarrito.pedido.pedidoId}`, reason: 'completada', numero: checkout.numero, totalBs: pedidoCents/100, metodos: metodosBs(payments) })
       localStorage.removeItem(pendingKey)
       setResult({ saleId: checkout.saleId, numero: checkout.numero, totalCents: checkout.totalCents, isRetry: checkout.isRetry === true, balanceAppliedCents: 'balanceAppliedCents' in checkout ? Number(checkout.balanceAppliedCents ?? 0) : 0, balanceRemainingCents: 'balanceRemainingCents' in checkout ? Number(checkout.balanceRemainingCents) : undefined })
       const cashPayment = payments.find(p => p.method === 'cash')
@@ -142,7 +164,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
       // Brief Caja-2 B3: /end 'completada' apenas registrar_venta confirma, antes de
       // decidir si esta venta queda retenida (B1) o va directo a la pantalla confirmada
       // — la auditoría de DVR ya no tiene nada que ver con eso.
-      notifyVentaCompletada({ numero: checkout.numero, totalBs: checkout.totalCents / 100 })
+      notifyVentaCompletada({ numero: checkout.numero, totalBs: checkout.totalCents / 100, metodos: metodosBs(payments) })
       // TAREA 4 (Tanda 3): el caché de stock de origen del carrito (CartPanel's originStock)
       // no se invalidaba nunca — vendías 5 de 5 unidades, volvías a agregar el producto y
       // seguía diciendo que había 5. Se invalida entero acá, apenas la venta se confirma.
@@ -161,11 +183,12 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
       setError(err instanceof Error ? err.message : 'No se pudo registrar la venta')
       // Un rechazo SQL explícito revierte la transacción. Una respuesta de red perdida
       // puede corresponder a una venta confirmada: conservar su reparto al reintentar.
-      if (/^(P0001|42501|22\w{3}|23\w{3})$/.test(String((err as { code?: string })?.code ?? ''))) {
+      if (paymentRejected(err)) {
         localStorage.removeItem(pendingKey); setPendingBalance(null)
       }
       void refreshSaldo()
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
@@ -230,15 +253,16 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
     featureFlags.supabase
       ? (result?.isRetry ? `Esta venta ya estaba registrada (#${result.saleId}). No se cobró dos veces.` : 'Venta registrada en el backend.')
       : 'Esta es una simulación. No se registró ningún pago real.'
-  }</p>{result && result.balanceAppliedCents > 0 && <div className="credit-payment-summary"><strong>Saldo a favor aplicado: Bs {money(result.balanceAppliedCents / 100)}</strong><span>Dinero nuevo: Bs {money((result.totalCents - result.balanceAppliedCents) / 100)}</span>{result.balanceRemainingCents != null && <span>Saldo a favor restante: Bs {money(result.balanceRemainingCents / 100)}</span>}</div>}</div><footer className="modal-actions">{featureFlags.supabase && result && <button className="secondary-button" onClick={() => setTicketOpen(true)}><Printer /> Imprimir ticket</button>}<button className="primary-button full-button" onClick={() => { newOperation(); onClose() }}>Finalizar y nueva operación</button></footer>{ticketOpen && result && <VentaTicket id={result.saleId} onClose={() => setTicketOpen(false)} />}</Modal>
+  }</p>{result && result.balanceAppliedCents > 0 && <div className="credit-payment-summary"><strong>Saldo a favor aplicado: Bs {money(result.balanceAppliedCents / 100)}</strong><span>Dinero nuevo: Bs {money((result.totalCents - result.balanceAppliedCents) / 100)}</span>{result.balanceRemainingCents != null && <span>Saldo a favor restante: Bs {money(result.balanceRemainingCents / 100)}</span>}</div>}</div><footer className="modal-actions">{featureFlags.supabase && result && <button className="secondary-button" onClick={() => setTicketOpen(true)}><Printer /> Imprimir ticket</button>}<button className="primary-button full-button" onClick={() => { newOperation(); onClose() }}>Finalizar y nueva operación</button></footer>{ticketOpen && result && (receipt ? <CajaTicket receipt={receipt} onClose={() => setTicketOpen(false)} /> : <VentaTicket id={result.saleId} onClose={() => setTicketOpen(false)} />)}</Modal>
 
-  return <Modal title="Registrar cobro" subtitle={customer?.name ?? 'Cliente de mostrador'} onClose={() => { if (!submitting) onClose() }} wide>
-    <div className="payment-total"><span>Total de la venta</span><strong>Bs {money(total)}</strong></div>
+  return <Modal title="Registrar cobro" subtitle={customer?.name ?? 'Cliente de mostrador'} onClose={() => { if (!submittingRef.current) onClose() }} escapeToClose={!submitting} className="payment-account-modal" wide>
+    <div className="payment-total"><span>Total del cobro{unified ? " · un comprobante" : ""}</span><strong>Bs {money(total)}</strong></div>
     <div className="modal-body">
+      {unified && <div className="checkout-breakdown"><span>Mostrador <b>Bs {money(normalTotal)}</b></span>{pedidoEnCarrito && <span>{pedidoEnCarrito.pedido.codigo} <b>Bs {money(pedidoCents/100)}</b></span>}{vtdsEnCarrito.map(v => <span key={v.ventaId}>{v.numero} <b>Bs {money(v.totalBs)}</b></span>)}</div>}
       {!pendingBalance && saldoLoading && <p role="status">Consultando saldo del cliente…</p>}
       {!pendingBalance && saldoError && <p className="mock-note" role="status">No se pudo verificar el saldo a favor. Puedes cobrar la venta completa o volver a consultar. <button type="button" disabled={submitting} onClick={() => void refreshSaldo()}>Consultar saldo</button></p>}
       {pendingBalance && <section className="credit-payment-summary"><strong>Cobro pendiente de comprobar</strong><span>Saldo aplicado en el intento: Bs {money(pendingBalance.balanceCents / 100)}</span><p>El reintento conserva el importe y los métodos originales, aunque el saldo disponible haya cambiado.</p>{pendingBalance.payments.map((p, i) => <span key={i}>{p.method === 'cash' ? 'Efectivo' : p.method === 'qr' ? 'QR' : 'Transferencia'}: Bs {money(p.amountCents / 100)}</span>)}</section>}
-      {pendingChanged && <p className="payment-error" role="alert">El carrito cambió y tiene un cobro con saldo sin comprobar. Revisa el ticket en Caja antes de iniciar otra operación.</p>}
+      {pendingChanged && <p className="payment-error" role="alert">El carrito cambió y tiene un cobro sin comprobar. Revisa el ticket en Caja antes de iniciar otra operación.</p>}
       {!pendingBalance && maximumBalanceCents > 0 && <section className="credit-payment-option" aria-label="Usar saldo a favor">
         <label className="credit-use-toggle"><input type="checkbox" checked={useBalance} disabled={submitting} onChange={e => setUseBalance(e.target.checked)} /><Wallet /><span><strong>Usar saldo a favor confirmado</strong><small>Disponible: Bs {money(saldo?.disponible ?? 0)}</small></span></label>
         {useBalance && <label>Saldo que se aplicará (Bs)<NumberField min={0} max={maximumBalanceCents / 100} step={0.01} value={balanceCents / 100} disabled={submitting} onCommit={setBalanceInput} /></label>}
@@ -254,6 +278,6 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
       {featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar la venta.</p>}
       {error && <p className="mock-note payment-error" role="alert">{error}</p>}
     </div>
-    <footer className="modal-actions"><button className="secondary-button" disabled={submitting} onClick={onClose}>Cancelar</button><button data-pos-action="confirm-payment" className="primary-button" disabled={!paymentValid || submitting || (!pendingBalance && saldoLoading) || (featureFlags.supabase && !checkoutSessionId)} onClick={confirm}>{submitting ? 'Procesando…' : pendingBalance ? 'Comprobar cobro anterior' : amountDue === 0 ? 'Confirmar con saldo a favor' : 'Confirmar cobro'}</button></footer>
+    <footer className="modal-actions"><button className="secondary-button" disabled={submitting} onClick={onClose}>Cancelar</button><button data-pos-action="confirm-payment" className="primary-button" disabled={!paymentValid || submitting || (!pendingBalance && saldoLoading) || !!(pedidoEnCarrito && bloqueos(pedidoEnCarrito.lineas).length) || (featureFlags.supabase && !checkoutSessionId)} onClick={confirm}>{submitting ? 'Procesando…' : pendingBalance ? 'Comprobar cobro anterior' : amountDue === 0 ? 'Confirmar con saldo a favor' : 'Confirmar cobro'}</button></footer>
   </Modal>
 }

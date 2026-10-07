@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { Modal } from './Modal'
 import { NumberField } from './NumberField'
-import { customerService, orderService, cashService, sensitiveOperations } from '../infrastructure/services'
+import { authSessionProvider, customerService, orderService, cashService, sensitiveOperations } from '../infrastructure/services'
 import { useCashSession } from '../context/CashSessionContext'
 import { featureFlags } from '../config/featureFlags'
-import { consultarSaldo, type ResultadoSaldo } from '../infrastructure/hermes/client'
+import { consultarSaldo, consultarPedidosCobro, type PedidoParaCobro, type ResultadoSaldo } from '../infrastructure/hermes/client'
 import { type PosPaymentMethodExt } from '../infrastructure/supabase/mappers'
 import { formatMoney, money, moneyFromDecimal } from '../domain/common/money'
-import type { CustomerRecord, OrderView } from '../application/shared/models'
+import type { CustomerRecord } from '../application/shared/models'
 import { RepartoPagoPanel } from './RepartoPagoPanel'
 import type { FilaRepartoEditable } from '../domain/hermes/repartoPago'
 import { createUuid } from '../application/shared/createUuid'
 import { CobroDestinoField } from './CobroDestinoField'
 import { aplicarDestinoCobro, destinoObligatorio, destinoPendiente, useCobroDestino } from './useCobroDestino'
+import { paymentAttemptKey, paymentRejected, readPaymentAttempt, type PaymentAttempt } from '../domain/hermes/paymentAttempt'
+import { avisarSaldoActualizado } from '../infrastructure/supabase/SaldoCliente.supabase'
 
 const metodoLabels: Record<PosPaymentMethodExt, string> = { cash: 'Efectivo', qr: 'QR', deposit: 'Depósito', transfer: 'Transferencia', sigep: 'SIGEP', check: 'Cheque' }
 const metodoOrder: PosPaymentMethodExt[] = ['cash', 'qr', 'deposit', 'transfer', 'sigep', 'check']
@@ -24,6 +26,11 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
   // PosContext — así un doble click con la red cortada y restablecida reusa la misma
   // clave de idempotencia en vez de crear dos movimiento_caja.
   const pagoOperationId = useRef(createUuid())
+  const sending = useRef(false)
+  const [actorId, setActorId] = useState<string | null>(null)
+  const [identityLoading, setIdentityLoading] = useState(true)
+  const [pending, setPending] = useState<PaymentAttempt | null>(null)
+  const [referencia, setReferencia] = useState('')
   const [customer, setCustomer] = useState<CustomerRecord | null>(null)
   const integraConciliador = !!customer && customer.type !== 'retail'
   const [customerQuery, setCustomerQuery] = useState('')
@@ -32,7 +39,9 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
   const [searchError, setSearchError] = useState('')
   const [showCustomerPicker, setShowCustomerPicker] = useState(false)
   const [tipo, setTipo] = useState<'total' | 'pedido'>('total')
-  const [orders, setOrders] = useState<OrderView[]>([])
+  const [orders, setOrders] = useState<PedidoParaCobro[]>([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
+  const [ordersError, setOrdersError] = useState('')
   const [orderId, setOrderId] = useState<string | undefined>(undefined)
   // `amount` es `undefined` mientras el cajero no tocó el campo — permite distinguir
   // "todavía no escribió nada, así que el saldo lo puede precargar cuando llegue" de
@@ -43,7 +52,7 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
   const { esEncargado, destino, setDestino } = useCobroDestino()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [done, setDone] = useState<{ amountCents: number; customerName: string; repartoWarning?: string } | null>(null)
+  const [done, setDone] = useState<{ amountCents: number; customerName: string; inHermes: boolean; repartoWarning?: string } | null>(null)
   // Brief S4: antes solo se guardaba sinCuenta y se descartaba el saldo — el cajero
   // registraba un pago a ciegas, sin ver cuánto debía el cliente. Ahora se muestra el
   // resultado completo (los mismos cuatro estados de SaldoBadge) y se usa para precargar
@@ -53,9 +62,23 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
   // un solo pedido) — el vendedor puede editar el reparto propuesto antes de confirmar.
   const [repartoFilas, setRepartoFilas] = useState<FilaRepartoEditable[]>([])
   const [repartoError, setRepartoError] = useState<string | null>(null)
+  const [repartoContext, setRepartoContext] = useState('')
+  const [repartoRetry, setRepartoRetry] = useState(0)
   // Brief T7 Tarea 4: excluyente con el reparto — el vendedor decide reservar el pago como
   // anticipo en vez de dejar que el FIFO se lo coma contra deuda vieja.
   const [noImputar, setNoImputar] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void authSessionProvider.getSession().then(session => {
+      if (!active) return
+      const id = session?.user.id ?? (featureFlags.supabase ? null : 'mock')
+      setActorId(id)
+      if (id) setPending(readPaymentAttempt(id))
+    }).catch(() => { if (active) setError('No se pudo comprobar tu sesión. Vuelve a abrir el formulario.') })
+      .finally(() => { if (active) setIdentityLoading(false) })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the previous customer's saldo/monto immediately when customer changes, before the new fetch resolves
@@ -73,7 +96,8 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
   // y llegó un saldo confirmado positivo, ese es el monto a mostrar — pero derivado en el
   // render, no vía setState sincrónico dentro de un efecto (eso es justo lo que S1 sacó
   // de CustomersPage por el mismo lint react-hooks/set-state-in-effect).
-  const amountPrecargado = saldo?.estado === 'ok' && saldo.saldoConfirmado > 0 ? saldo.saldoConfirmado : undefined
+  const selectedOrder = orders.find(o => o.id === orderId)
+  const amountPrecargado = tipo === 'pedido' ? selectedOrder?.pendienteBs : saldo?.estado === 'ok' ? Math.max(0, saldo.saldoProvisional) : undefined
   const displayAmount = amount ?? amountPrecargado ?? 0
   const setAmount = (value: number) => setAmountState(value)
 
@@ -98,68 +122,78 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
       return
     }
     let cancelled = false
-    void orderService.list().then((list) => {
+    void Promise.resolve().then(() => { if (!cancelled) { setOrdersLoading(true); setOrdersError('') } })
+    void (featureFlags.supabase ? consultarPedidosCobro(customer.id) : orderService.list().then(items => items.filter(o => o.customerId === customer.id && o.status !== 'cancelled').map(o => ({id:o.id,number:o.number,pendienteBs:(o.totalCents ?? o.lines.reduce((sum,l)=>sum+Math.round(l.quantity*l.unitPriceCents),0))/100})))).then((list) => {
       if (cancelled) return
-      setOrders(list.filter((o) => o.customerId === customer.id && o.status !== 'delivered' && o.status !== 'cancelled'))
-    })
+      setOrders(list)
+    }).catch(() => { if (!cancelled) setOrdersError('No se pudieron consultar los pedidos. Vuelve a elegir el cliente.') })
+      .finally(() => { if (!cancelled) setOrdersLoading(false) })
     return () => { cancelled = true }
   }, [tipo, customer])
 
-  const pickCustomer = (record: CustomerRecord) => { setCustomer(record); setShowCustomerPicker(false); setCustomerQuery(''); setNoImputar(false); setRepartoFilas([]); setRepartoError(null) }
+  const pickCustomer = (record: CustomerRecord) => { setCustomer(record); setShowCustomerPicker(false); setCustomerQuery(''); setOrderId(undefined); setOrders([]); setNoImputar(false); setRepartoFilas([]); setRepartoContext(''); setRepartoError(null) }
+  const changeTipo = (next: 'total' | 'pedido') => { setTipo(next); setOrderId(undefined); setAmountState(undefined); setNoImputar(false); setRepartoContext('') }
+  const requiereReparto = tipo === 'total' && integraConciliador && featureFlags.supabase && displayAmount > 0 && !noImputar
 
-  const valid = !!customer && !!method && !destinoPendiente(esEncargado, method, destino) && displayAmount > 0 && !!sessionId && (tipo === 'total' || !!orderId) && (tipo === 'pedido' || !repartoError)
+  const valid = !!customer && !!method && !!actorId && !identityLoading && !destinoPendiente(esEncargado, method, destino) && Number.isFinite(displayAmount) && Math.round(displayAmount * 100) > 0 && !!sessionId && (tipo === 'total' || (!!selectedOrder && !ordersLoading && !ordersError)) && (!requiereReparto || (repartoContext === `${customer.id}:${displayAmount}` && !repartoError))
   // No bloqueante: pagar de más es legítimo (queda saldo a favor), así que esto es un
   // aviso, no una condición de `valid`.
-  const superaSaldo = saldo?.estado === 'ok' && saldo.saldoConfirmado > 0 && displayAmount > saldo.saldoConfirmado
-    ? displayAmount - saldo.saldoConfirmado
+  const superaSaldo = saldo?.estado === 'ok' && saldo.saldoProvisional > 0 && displayAmount > saldo.saldoProvisional
+    ? displayAmount - saldo.saldoProvisional
     : 0
 
   const confirm = async () => {
-    if (!valid || !customer || !sessionId || !method || submitting) return
+    if (sending.current || !actorId || (!pending && !valid)) return
+    sending.current = true
     setSubmitting(true)
     setError('')
     try {
-      const amountCents = moneyFromDecimal(displayAmount).cents
-      const orderIdForPayment = tipo === 'pedido' ? orderId : undefined
+      const aplicaciones = requiereReparto ? repartoFilas.filter(f => f.aplica > 0).map(f => ({ partidaId: f.partidaId, monto: f.aplica })) : undefined
+      const attempt: PaymentAttempt = pending ?? { operationId: pagoOperationId.current, customer: customer!, orderId: tipo === 'pedido' ? orderId : undefined, amountCents: moneyFromDecimal(displayAmount).cents, method: method!, sessionId: sessionId!, noImputar: tipo === 'total' && (noImputar || (!!aplicaciones && aplicaciones.length === 0)), aplicaciones: aplicaciones?.length ? aplicaciones : undefined, destino: destinoObligatorio(esEncargado, method) ? destino : null, referencia: referencia.trim() }
+      localStorage.setItem(paymentAttemptKey(actorId), JSON.stringify(attempt)); setPending(attempt)
+      const { operationId: id, customer: client, destino: target, ...payment } = attempt
+      const amountCents = attempt.amountCents
       // Brief S5: huella = clienteId | pedidoId | amountCents | method | sessionId — un
       // reintento con exactamente estos mismos datos reusa la clave (un solo movimiento_caja);
       // cambiar el método tras un cobro fallido (brief S5's ejemplo: "el cliente dice pago
       // con QR") da una huella distinta, o sea un pago nuevo, no un reintento del viejo.
-      const aplicaciones = tipo === 'total' && !noImputar ? repartoFilas.filter(f => f.aplica > 0).map(f => ({ partidaId: f.partidaId, monto: f.aplica })) : undefined
-      const huella = JSON.stringify([customer.id, orderIdForPayment, amountCents, method, sessionId, noImputar, aplicaciones])
+      const huella = JSON.stringify(payment)
       const resultado = await sensitiveOperations.ejecutarIdempotente(
         'register_payment',
-        pagoOperationId.current,
+        id,
         huella,
         (idempotencyKey) => cashService.registerPayment({
-          customerId: customer.id,
-          orderId: orderIdForPayment,
-          amountCents,
-          method,
-          sessionId,
+          ...payment,
+          customerId: client.id,
           idempotencyKey,
-          noImputar: tipo === 'total' && noImputar,
-          aplicaciones: aplicaciones?.length ? aplicaciones : undefined,
         }),
       )
-      await aplicarDestinoCobro(destinoObligatorio(esEncargado, method) ? destino : null, resultado?.movementId, notify)
-      setDone({ amountCents, customerName: customer.name })
+      localStorage.removeItem(paymentAttemptKey(actorId)); setPending(null)
+      await aplicarDestinoCobro(target, resultado?.movementId, notify)
+      avisarSaldoActualizado(); window.dispatchEvent(new Event('pago-cliente-registrado'))
+      setDone({ amountCents, customerName: client.name, inHermes: !!resultado && 'pagoId' in resultado && !!resultado.pagoId })
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar el pago')
+      if (paymentRejected(err)) { localStorage.removeItem(paymentAttemptKey(actorId)); setPending(null) }
     } finally {
       setSubmitting(false)
+      sending.current = false
     }
   }
 
   if (done) return <Modal title="Pago registrado" onClose={onClose}><div className="modal-body success-state">
     <span>✓</span>
     <h3>{formatMoney(money(done.amountCents))}</h3>
-    <p>{featureFlags.supabase && integraConciliador ? `Registrado en caja y en Hermes para ${done.customerName}. Pendiente de revisión.` : `Pago registrado en caja para ${done.customerName}.`}</p>
+    <p>{featureFlags.supabase && done.inHermes ? `Registrado en caja y en Hermes para ${done.customerName}. Pendiente de revisión.` : `Pago registrado en caja para ${done.customerName}.`}</p>
     {done.repartoWarning && <p className="mock-note payment-error">{done.repartoWarning}</p>}
   </div><footer className="modal-actions"><button className="primary-button full-button" onClick={onClose}>Cerrar</button></footer></Modal>
 
-  return <Modal title="Registrar pago" subtitle="Pago de un cliente sobre su cuenta" onClose={onClose} wide><div className="modal-body form-grid">
+  const close = () => { if (!sending.current) onClose() }
+  return <Modal title="Registrar pago" subtitle="Cliente → destino del pago → importe y medio" className="payment-account-modal" onClose={close} escapeToClose={!submitting} wide>
+  {pending && <div role="status" className="payment-account-pending"><strong>Pago pendiente de comprobar</strong><p>{pending.customer.name} · {formatMoney(money(pending.amountCents))} · {metodoLabels[pending.method]}</p><small>Reutiliza este intento para evitar cobrar dos veces.</small></div>}
+  <fieldset disabled={submitting || !!pending || identityLoading} className="modal-body form-grid payment-account-fields">
+    <h3 className="full payment-account-step"><span>1</span> Cliente y destino</h3>
     <div className="full">
       <span className="field-label">Cliente</span>
       <div className="customer-search" style={{ marginTop: 5 }}>
@@ -183,21 +217,22 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
     <div className="full">
       <span className="field-label">Tipo de pago</span>
       <div className="payment-methods pago-tipo-toggle">
-        <button type="button" className={tipo === 'total' ? 'active' : ''} onClick={() => setTipo('total')}>Sobre el total adeudado</button>
-        <button type="button" className={tipo === 'pedido' ? 'active' : ''} onClick={() => setTipo('pedido')}>Sobre un pedido específico</button>
+        <button type="button" className={tipo === 'total' ? 'active' : ''} onClick={() => changeTipo('total')}>Sobre el total adeudado</button>
+        <button type="button" className={tipo === 'pedido' ? 'active' : ''} onClick={() => changeTipo('pedido')}>Sobre un pedido específico</button>
       </div>
     </div>
     {tipo === 'pedido' && <label className="full">
       Pedido
-      <select value={orderId ?? ''} disabled={!customer} onChange={(e) => setOrderId(e.target.value || undefined)}>
+      <select value={orderId ?? ''} disabled={!customer || ordersLoading} onChange={(e) => { setOrderId(e.target.value || undefined); setAmountState(undefined) }}>
         <option value="">{customer ? 'Elegí un pedido…' : 'Elegí un cliente primero'}</option>
-        {orders.map((o) => <option key={o.id} value={o.id}>{o.number}</option>)}
+        {orders.map((o) => <option key={o.id} value={o.id}>{o.number} · Pendiente Bs {o.pendienteBs.toFixed(2)}</option>)}
       </select>
-      {customer && !orders.length && <small className="line-stock-error">Este cliente no tiene pedidos abiertos.</small>}
+      {ordersLoading ? <small role="status">Consultando pedidos…</small> : ordersError ? <small role="alert">{ordersError}</small> : customer && !orders.length && <small>Este cliente no tiene pedidos pendientes de pago.</small>}
     </label>}
     {integraConciliador && featureFlags.supabase && saldo && <SaldoResumen saldo={saldo} />}
     {customer?.type === 'retail' && <p className="mock-note full">Este pago se registra en Seller. Los clientes retail quedan fuera del conciliador.</p>}
-    <label>Monto (Bs)<NumberField autoFocus min={0} step={0.01} value={displayAmount} onCommit={setAmount} /></label>
+    <h3 className="full payment-account-step"><span>2</span> Importe y distribución</h3>
+    <label>Monto (Bs)<NumberField min={0} step={0.01} value={displayAmount} onCommit={setAmount} /></label>
     {/* Brief T7 Tarea 4: excluyente con el reparto de abajo — imputar_pago rechaza la
         combinación del lado servidor, así que acá se apagan mutuamente en la UI. */}
     {tipo === 'total' && integraConciliador && featureFlags.supabase && (
@@ -217,17 +252,20 @@ export function PagoModal({ onClose, notify = () => undefined }: { onClose: () =
         partida — un pago atado a un pedido específico ya se resuelve solo (proponer_pago
         le aplica el monto entero a esa partida). */}
     {tipo === 'total' && integraConciliador && customer && featureFlags.supabase && displayAmount > 0 && !noImputar && (
-      <RepartoPagoPanel clienteId={Number(customer.id)} monto={displayAmount} onFilasChange={(filas, err) => { setRepartoFilas(filas); setRepartoError(err) }} />
+      <RepartoPagoPanel key={`${customer.id}:${repartoRetry}`} clienteId={Number(customer.id)} monto={displayAmount} onFilasChange={(filas, err, context) => { setRepartoFilas(filas); setRepartoError(err); setRepartoContext(context ?? '') }} />
     )}
+    {requiereReparto && repartoError && !repartoError.startsWith('Consultando') && <button type="button" className="secondary-button full" onClick={() => { setRepartoContext(''); setRepartoRetry(n => n + 1) }}>Reintentar reparto</button>}
+    <h3 className="full payment-account-step"><span>3</span> Medio y respaldo</h3>
     <label>Método de pago<select value={method ?? ''} onChange={(e) => { setMethod((e.target.value || null) as PosPaymentMethodExt | null); setDestino(null) }}>
       <option value="" disabled>Elige un método…</option>
       {metodoOrder.map((m) => <option key={m} value={m}>{metodoLabels[m]}</option>)}
     </select></label>
+    <label>Referencia (opcional)<input maxLength={200} value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="Número de depósito o comprobante" /></label>
     {destinoObligatorio(esEncargado, method) && <CobroDestinoField value={destino} onChange={setDestino} disabled={submitting} />}
     {featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar un pago.</p>}
     {superaSaldo > 0 && <p className="mock-note">Supera el saldo en {formatMoney(moneyFromDecimal(superaSaldo))} — va a quedar saldo a favor.</p>}
     {error && <p className="mock-note payment-error">{error}</p>}
-  </div><footer className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid || submitting} onClick={() => void confirm()}>{submitting ? 'Registrando…' : 'Confirmar pago'}</button></footer></Modal>
+  </fieldset><footer className="modal-actions"><button className="secondary-button" disabled={submitting} onClick={close}>{pending ? 'Cerrar y conservar intento' : 'Cancelar'}</button><button className="primary-button" disabled={identityLoading || (!pending && !valid) || submitting} onClick={() => void confirm()}>{submitting ? 'Registrando…' : pending ? 'Comprobar el mismo pago' : 'Confirmar pago'}</button></footer></Modal>
 }
 
 // Mismos cuatro estados que SaldoBadge (Brief S4) — acá se muestran como una línea de

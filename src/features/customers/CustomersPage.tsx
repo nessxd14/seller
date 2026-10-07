@@ -86,6 +86,8 @@ export function CustomersPage({ notify }: { notify: (message: string) => void })
   //   { mapa: Map }   → datos reales; un id ausente del Map es "sin cuenta en Hermes"
   // Con dos booleanos separados hacía falta un setState sincrónico dentro del
   // efecto (react-hooks/set-state-in-effect) para marcar "cargando".
+  const [saldoRevision, setSaldoRevision] = useState(0)
+  useEffect(() => { const update = () => setSaldoRevision(n => n+1); window.addEventListener('saldo-cliente-actualizado', update); return () => window.removeEventListener('saldo-cliente-actualizado', update) }, [])
   const [saldos, setSaldos] = useState<{ mapa: Map<number, SaldoClienteLote> | null } | null>(null)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [deleteDecision, setDeleteDecision] = useState<DeleteClienteDecision>({ kind: 'loading' })
@@ -98,7 +100,7 @@ export function CustomersPage({ notify }: { notify: (message: string) => void })
     let cancelado = false
     void consultarSaldos(ids).then((mapa) => { if (!cancelado) setSaldos({ mapa }) })
     return () => { cancelado = true }
-  }, [customers])
+  }, [customers, saldoRevision])
   const filtered = useMemo(() => customers.filter((customer) => (!typeFilter || customer.type === typeFilter) && coincideBusqueda([customer.name, customer.businessName, customer.document, customer.email, customer.phone, customer.city].filter(Boolean).join(' '), query)), [customers, query, typeFilter])
   const create = () => { setEditingIsNew(true); setEditing({ id: crypto.randomUUID(), name: '', type: 'wholesale', document: '', phone: '', email: '', address: '', usualChannel: 'mayoreo', paymentTerms: 'Contado', creditLimitCents: 0, pendingBalanceCents: 0 }) }
   const save = async (customer: CustomerRecord) => { await customerService.save(customer); setEditing(null); await load(); notify('Cliente guardado') }

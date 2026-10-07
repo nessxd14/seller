@@ -9,6 +9,19 @@ import { useQrHold } from '../useQrHold'
 const ms = (n: number) => act(async () => { await vi.advanceTimersByTimeAsync(n) })
 
 beforeEach(() => { vi.useFakeTimers(); turno.estadoBancoQr.mockReset(); turno.estadoPagoQr.mockReset() })
+
+it('un cobro combinado espera el QR de todas sus operaciones', async () => {
+  turno.estadoBancoQr.mockResolvedValue({enLinea:true})
+  turno.estadoPagoQr.mockImplementation(async (id: string) => id === '1' ? 'VERIFICADO' : 'PENDIENTE')
+  const verified = vi.fn()
+  const { result } = renderHook(() => useQrHold({saleId:'1',saleIds:['1','2'],onVerified:verified}))
+  await act(async () => { await result.current.iniciar(10000) })
+  await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+  expect(verified).not.toHaveBeenCalled()
+  turno.estadoPagoQr.mockImplementation(async (id: string) => id === '1' ? 'NO_APLICA' : 'VERIFICADO')
+  await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+  expect(verified).toHaveBeenCalledOnce()
+})
 afterEach(() => { cleanup(); vi.useRealTimers() })
 
 describe('useQrHold (retención de venta con QR)', () => {

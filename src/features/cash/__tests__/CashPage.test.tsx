@@ -118,7 +118,7 @@ const cargarCaja = async (session = cajeroSession, resumen: Record<string, unkno
   montarCaja()
   await screen.findByText('Mostrador (VTA)')
 }
-const cantidad = (valor: number) => { const input = screen.getByLabelText('Cantidad de billetes/monedas de 100'); fireEvent.change(input, { target: { value: String(valor) } }); fireEvent.blur(input) }
+const cantidad = (valor: number) => { const input = screen.getByLabelText('Cantidad de billetes/monedas de 100'); fireEvent.focus(input); fireEvent.change(input, { target: { value: String(valor) } }); fireEvent.blur(input) }
 const abrirCierre = async () => { fireEvent.click(screen.getByRole('button', { name: /Cerrar turno/ })); await screen.findByText('¿Entregas efectivo antes de cerrar?') }
 const irAlConteo = async () => { await abrirCierre(); fireEvent.click(screen.getByRole('button', { name: 'No entrego nada' })); await screen.findByText('Cuenta el efectivo que queda en el cajón después de la entrega.') }
 

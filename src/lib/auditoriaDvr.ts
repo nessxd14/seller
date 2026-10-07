@@ -66,6 +66,8 @@ export interface AuditEndInput {
   reason: AuditEndReason
   totalBs?: number
   numero?: string
+  /** Bs cobrados por método (cash/qr/transfer). Contexto para CATION VLM: compara lo que ve la cámara con cómo se pagó. */
+  metodos?: Partial<Record<'cash' | 'qr' | 'transfer', number>>
 }
 
 export function auditEnd(input: AuditEndInput): void {
@@ -74,5 +76,6 @@ export function auditEnd(input: AuditEndInput): void {
     reason: input.reason,
     ...(input.totalBs != null ? { totalBs: input.totalBs } : {}),
     ...(input.numero != null ? { numero: input.numero } : {}),
+    ...(input.metodos != null ? { metodos: input.metodos } : {}),
   })
 }

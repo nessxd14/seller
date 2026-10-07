@@ -17,6 +17,7 @@ import { useQrHold } from '../../hooks/useQrHold'
 import { auditEnd, auditStart } from '../../lib/auditoriaDvr'
 import { authSessionProvider, listPresentations, pedidoVendedorService, productRepository } from '../../infrastructure/services'
 import type { Product } from '../../types'
+import type { PedidoEnCarrito } from '../../application/shared/cajaCheckout'
 
 const bs = (cents: number) => (cents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const MOTIVOS_QUITAR = ['No lo lleva', 'Sin stock', 'Cambió por otro']
@@ -29,22 +30,24 @@ type Paso = 'cola' | 'verificar' | 'pago' | 'retenido' | 'ticket'
 
 /**
  * Cobro de un pedido de vendedor en caja: cola → verificación línea por línea → pago → resultado.
- * Flujo propio: nunca lee ni escribe el carrito de usePos().
+ * La verificación sincroniza sus líneas con el carrito cuando onCartChange está disponible.
  */
-export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onChanged, notify }: {
+export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onChanged, notify, onCartChange, initialCart }: {
   sessionId: string
   initialPedidoId?: string | null
   onClose: () => void
   onChanged?: () => void
   notify: (message: string) => void
+  onCartChange?: (pedido: PedidoEnCarrito | null) => void
+  initialCart?: PedidoEnCarrito | null
 }) {
-  const [paso, setPaso] = useState<Paso>('cola')
+  const [paso, setPaso] = useState<Paso>(initialCart ? 'verificar' : 'cola')
   const [cola, setCola] = useState<PedidoVendedorEnCola[] | null>(null)
   const [colaError, setColaError] = useState('')
   const [filtro, setFiltro] = useState('')
   const [tomando, setTomando] = useState<string | null>(null)
-  const [pedido, setPedido] = useState<PedidoVendedorRecord | null>(null)
-  const [lineas, setLineas] = useState<LineaCaja[]>([])
+  const [pedido, setPedido] = useState<PedidoVendedorRecord | null>(initialCart?.pedido ?? null)
+  const [lineas, setLineas] = useState<LineaCaja[]>(initialCart?.lineas ?? [])
   const [saliendo, setSaliendo] = useState<'menu' | 'anular' | null>(null)
   const [motivoAnular, setMotivoAnular] = useState('')
   const [accionError, setAccionError] = useState('')
@@ -54,6 +57,10 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
   const [resultado, setResultado] = useState<PedidoVendedorCobroResultado | null>(null)
   const cajeroId = useRef<string | undefined>(undefined)
   const inicioAutomatico = useRef(false)
+
+  useEffect(() => {
+    if (pedido && paso === 'verificar') onCartChange?.({ pedido, lineas })
+  }, [pedido, lineas, paso, onCartChange])
 
   const hold = useQrHold({ saleId: resultado?.ventaId ?? null, onVerified: () => irATicket() })
 
@@ -91,10 +98,10 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
 
   // Abierto desde el QR del vendedor: toma el pedido directamente (la guarda evita el doble efecto de StrictMode).
   useEffect(() => {
-    if (!initialPedidoId || inicioAutomatico.current) return
+    if (!initialPedidoId || initialCart || inicioAutomatico.current) return
     inicioAutomatico.current = true
     void tomar(initialPedidoId)
-  }, [initialPedidoId, tomar])
+  }, [initialPedidoId, tomar, initialCart])
 
   // ── 2. Verificación ───────────────────────────────────────────────────────────────
   const cambiar = (key: string, fn: (l: LineaCaja) => LineaCaja) => setLineas((prev) => prev.map((l) => (l.key === key ? fn(l) : l)))
@@ -104,6 +111,7 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
   const verificadas = vivas.filter((l) => l.verificada).length
 
   const cerrarFlujo = (razon: 'cancelada' | null) => {
+    if (razon) onCartChange?.(null)
     if (razon && pedido) auditEnd({ transactionId: `pdv-${pedido.pedidoId}`, reason: razon })
     onChanged?.()
     onClose()
@@ -122,7 +130,7 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
     catch (error) { setAccionError(error instanceof Error ? error.message : 'No se pudo anular el pedido') }
     finally { setEnAccion(false) }
   }
-  const pedirSalir = () => { setAccionError(''); setSaliendo('menu') }
+  const pedirSalir = () => { if (onCartChange && !razones.length) { onClose(); return }; setAccionError(''); setSaliendo('menu') }
 
   // ── 3. Pago y 4. Resultado ───────────────────────────────────────────────────────
   const irATicket = () => setPaso('ticket')
@@ -183,6 +191,7 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
     const totalVendedor = totalVendedorCents(lineas)
     return <Modal wide className="pedido-vendedor-modal" title={`Pedido ${pedido.numeroDia} · ${pedido.vendedor}${minutos != null ? ` · hace ${minutos} min` : ''}`} subtitle={pedido.nota ? `Nota del vendedor: ${pedido.nota}` : 'Verifica cada línea antes de cobrar'} onClose={pedirSalir} escapeToClose={saliendo === null}>
       <div className="modal-body pv-cuerpo">
+        <div className="pv-progress"><div><span>REVISIÓN EN CAJA</span><strong>{verificadas} de {vivas.length} productos verificados</strong></div><progress max={Math.max(1, vivas.length)} value={verificadas} /><p>{onCartChange ? 'Los productos verificados aparecen en el carrito. Revisa cantidades y precios antes del cobro.' : 'Revisa cada producto antes de cobrar.'}</p></div>
         <BuscadorCaja
           onVerificar={(producto, presentacionId) => {
             const r = verificarPorEscaneo(lineas, producto.id, presentacionId)
@@ -207,7 +216,8 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
       </div>
       <footer className="modal-actions pv-pie">
         <div className="pv-resumen"><strong>{verificadas} de {vivas.length} verificadas</strong>{totalVendedor !== total && <small>Vendedor Bs {bs(totalVendedor)} → ahora Bs {bs(total)}</small>}</div>
-        <button type="button" className="primary-button pv-cobrar" disabled={razones.length > 0} title={razones[0]} onClick={() => { setPagoError(''); setPaso('pago') }}>Cobrar Bs {bs(total)}</button>
+        {onCartChange && <button type="button" className="secondary-button" onClick={() => setSaliendo('menu')}>Opciones del pedido</button>}
+        <button type="button" className="primary-button pv-cobrar" disabled={razones.length > 0} title={razones[0]} onClick={() => { if (onCartChange) { onCartChange({ pedido, lineas }); onClose() } else { setPagoError(''); setPaso('pago') } }}>{onCartChange ? 'Continuar en carrito' : `Cobrar Bs ${bs(total)}`}</button>
       </footer>
       {saliendo && <div className="pv-salir" role="dialog" aria-label="Salir del pedido">
         {saliendo === 'menu'

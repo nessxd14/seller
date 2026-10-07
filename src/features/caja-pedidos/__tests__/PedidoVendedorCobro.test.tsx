@@ -47,6 +47,23 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
+describe('Pedido en el carrito de caja', () => {
+  it('sincroniza cada verificación y continúa en el carrito sin cobrar todavía', async () => {
+    const onCartChange = vi.fn(); const onClose = vi.fn()
+    montar({ onCartChange, onClose, initialPedidoId: '9' })
+    await screen.findByRole('button', {name: /^Verificar: Resma carta/})
+    verificar('Resma carta')
+    await waitFor(() => expect(onCartChange.mock.lastCall?.[0].lineas.filter((l: {verificada:boolean}) => l.verificada).length).toBe(1))
+    const continuar = screen.getByRole('button',{name:/Continuar en carrito/}) as HTMLButtonElement
+    expect(continuar.disabled).toBe(true)
+    verificar('Marcador')
+    expect(continuar.disabled).toBe(false)
+    fireEvent.click(continuar)
+    expect(onClose).toHaveBeenCalledOnce(); expect(svc.cobrar).not.toHaveBeenCalled()
+    expect(onCartChange.mock.lastCall?.[0].pedido.pedidoId).toBe('9')
+  })
+})
+
 describe('Cola', () => {
   it('lista el pedido, filtra, y los de otra caja quedan deshabilitados; el propio dice "En tu caja"', async () => {
     svc.cola.mockResolvedValue([colaFila, { ...colaFila, pedidoId: '10', numeroDia: 4, vendedor: 'Luis', estado: 'EN_CAJA', tomadoPor: 'Rony', sesionCajaId: '7' }, { ...colaFila, pedidoId: '11', numeroDia: 5, vendedor: 'Eva', estado: 'EN_CAJA', tomadoPor: 'Yo', sesionCajaId: '4' }])

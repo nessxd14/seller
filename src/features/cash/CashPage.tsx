@@ -11,6 +11,7 @@ import { Modal } from '../../components/Modal'
 import { NumberField } from '../../components/NumberField'
 import { DenominationCount, denominacionesTotal } from '../../components/DenominationCount'
 import { VentaTicket } from '../../components/VentaTicket'
+import { CajaComprobantes } from './CajaComprobantes'
 import { InfoHint } from '../../components/InfoHint'
 import { useEsEncargado } from '../../components/useCobroDestino'
 import { featureFlags } from '../../config/featureFlags'
@@ -252,6 +253,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
       {!!movimientos.length && !filteredMovements.length && <div className="cash-filter-empty" role="status"><p>No hay movimientos de este tipo en el turno.</p><button type="button" onClick={() => setFilter('TODOS')}>Ver todos los movimientos</button></div>}
       {movimientos.length >= 500 && <p className="cash-muted">Se muestran los últimos 500 movimientos. El resumen incluye el turno completo.</p>}
     </section>
+    {featureFlags.supabase && <CajaComprobantes sessionId={sesion.id} />}
     <section className="cash-movements cash-tickets"><h3>Mis tickets</h3>
       {tickets.length ? tickets.map((t) => <div key={t.ventaId} className={`turno-ticket-row ${t.clienteAcreedor ? 'cash-acreedor-row' : ''}`}>
         <span>{t.numero ?? `#${t.ventaId}`}{t.clienteAcreedor && <small className="credit-client-tag">Cliente con saldo a favor</small>}<small>{new Date(t.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</small></span>

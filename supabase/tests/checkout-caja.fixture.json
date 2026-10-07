@@ -1,0 +1,246 @@
+{
+  "tables": [
+    {
+      "col": "id",
+      "name": "pedido_vendedor",
+      "type": "int8",
+      "default": null
+    },
+    {
+      "col": "fecha",
+      "name": "pedido_vendedor",
+      "type": "date",
+      "default": null
+    },
+    {
+      "col": "numero_dia",
+      "name": "pedido_vendedor",
+      "type": "int4",
+      "default": null
+    },
+    {
+      "col": "estado",
+      "name": "pedido_vendedor",
+      "type": "text",
+      "default": "'ARMANDO'::text"
+    },
+    {
+      "col": "vendedor_id",
+      "name": "pedido_vendedor",
+      "type": "uuid",
+      "default": null
+    },
+    {
+      "col": "clave_cliente",
+      "name": "pedido_vendedor",
+      "type": "text",
+      "default": null
+    },
+    {
+      "col": "nota",
+      "name": "pedido_vendedor",
+      "type": "text",
+      "default": null
+    },
+    {
+      "col": "total",
+      "name": "pedido_vendedor",
+      "type": "numeric",
+      "default": "0"
+    },
+    {
+      "col": "creado_en",
+      "name": "pedido_vendedor",
+      "type": "timestamptz",
+      "default": "now()"
+    },
+    {
+      "col": "actualizado_en",
+      "name": "pedido_vendedor",
+      "type": "timestamptz",
+      "default": "now()"
+    },
+    {
+      "col": "enviado_en",
+      "name": "pedido_vendedor",
+      "type": "timestamptz",
+      "default": null
+    },
+    {
+      "col": "tomado_por",
+      "name": "pedido_vendedor",
+      "type": "uuid",
+      "default": null
+    },
+    {
+      "col": "tomado_en",
+      "name": "pedido_vendedor",
+      "type": "timestamptz",
+      "default": null
+    },
+    {
+      "col": "sesion_caja_id",
+      "name": "pedido_vendedor",
+      "type": "int8",
+      "default": null
+    },
+    {
+      "col": "venta_id",
+      "name": "pedido_vendedor",
+      "type": "int8",
+      "default": null
+    },
+    {
+      "col": "cobrado_en",
+      "name": "pedido_vendedor",
+      "type": "timestamptz",
+      "default": null
+    },
+    {
+      "col": "anulado_en",
+      "name": "pedido_vendedor",
+      "type": "timestamptz",
+      "default": null
+    },
+    {
+      "col": "anulado_por",
+      "name": "pedido_vendedor",
+      "type": "uuid",
+      "default": null
+    },
+    {
+      "col": "anulado_origen",
+      "name": "pedido_vendedor",
+      "type": "text",
+      "default": null
+    },
+    {
+      "col": "anulado_motivo",
+      "name": "pedido_vendedor",
+      "type": "text",
+      "default": null
+    },
+    {
+      "col": "id",
+      "name": "pedido_vendedor_linea",
+      "type": "int8",
+      "default": null
+    },
+    {
+      "col": "pedido_id",
+      "name": "pedido_vendedor_linea",
+      "type": "int8",
+      "default": null
+    },
+    {
+      "col": "orden",
+      "name": "pedido_vendedor_linea",
+      "type": "int4",
+      "default": null
+    },
+    {
+      "col": "producto_id",
+      "name": "pedido_vendedor_linea",
+      "type": "int8",
+      "default": null
+    },
+    {
+      "col": "presentacion_id",
+      "name": "pedido_vendedor_linea",
+      "type": "int8",
+      "default": null
+    },
+    {
+      "col": "es_personalizado",
+      "name": "pedido_vendedor_linea",
+      "type": "bool",
+      "default": "false"
+    },
+    {
+      "col": "descripcion",
+      "name": "pedido_vendedor_linea",
+      "type": "text",
+      "default": null
+    },
+    {
+      "col": "unidad_medida",
+      "name": "pedido_vendedor_linea",
+      "type": "text",
+      "default": null
+    },
+    {
+      "col": "cantidad",
+      "name": "pedido_vendedor_linea",
+      "type": "numeric",
+      "default": null
+    },
+    {
+      "col": "factor",
+      "name": "pedido_vendedor_linea",
+      "type": "numeric",
+      "default": "1"
+    },
+    {
+      "col": "precio_lista",
+      "name": "pedido_vendedor_linea",
+      "type": "numeric",
+      "default": null
+    },
+    {
+      "col": "precio_minimo",
+      "name": "pedido_vendedor_linea",
+      "type": "numeric",
+      "default": null
+    },
+    {
+      "col": "precio_unitario",
+      "name": "pedido_vendedor_linea",
+      "type": "numeric",
+      "default": null
+    },
+    {
+      "col": "resultado",
+      "name": "pedido_vendedor_linea",
+      "type": "text",
+      "default": null
+    },
+    {
+      "col": "venta_linea_id",
+      "name": "pedido_vendedor_linea",
+      "type": "int8",
+      "default": null
+    },
+    {
+      "col": "cantidad_final",
+      "name": "pedido_vendedor_linea",
+      "type": "numeric",
+      "default": null
+    },
+    {
+      "col": "precio_final",
+      "name": "pedido_vendedor_linea",
+      "type": "numeric",
+      "default": null
+    },
+    {
+      "col": "motivo_caja",
+      "name": "pedido_vendedor_linea",
+      "type": "text",
+      "default": null
+    }
+  ],
+  "functions": [
+    {
+      "name": "registrar_movimiento_pos",
+      "definition": "CREATE OR REPLACE FUNCTION hermes.registrar_movimiento_pos(p_mov_id bigint)\n RETURNS bigint\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'hermes'\nAS $function$\ndeclare m public.movimiento_caja%rowtype; p_id bigint; c_id bigint; pos_id bigint; a record;\n rest numeric; intent jsonb; apps jsonb; pedido_cliente bigint;\nbegin\n select * into m from public.movimiento_caja where id=p_mov_id;\n if not found or m.tipo::text<>'ANTICIPO' then raise exception 'Movimiento no es un cobro de cliente'; end if;\n pos_id:=m.cliente_id;\n if m.pedido_id is not null then\n   select cliente_id into pedido_cliente from public.pedido where id=m.pedido_id;\n   if pos_id is not null and pos_id is distinct from pedido_cliente then raise exception 'Pedido y cliente no coinciden'; end if;\n   pos_id:=pedido_cliente;\n end if;\n if pos_id is null then raise exception 'Cobro sin cliente'; end if;\n -- Los clientes actuales indican expresamente que retail queda solo en caja.\n -- Los clientes anteriores mantienen el contrato de la RPC existente.\n if coalesce((m.hermes_intencion->>'excluir_retail')::boolean,false)\n   and exists(select 1 from public.cliente where id=pos_id and tipo_precio::text='retail') then\n   if jsonb_array_length(coalesce(nullif(m.hermes_intencion->'aplicaciones','null'::jsonb),'[]'::jsonb))>0 then\n     raise exception 'Los clientes retail no tienen partidas en el conciliador';\n   end if;\n   return null;\n end if;\n c_id:=hermes.asegurar_cliente_pos(pos_id);\n perform 1 from hermes.cliente where id=c_id for update;\n select id into p_id from hermes.pago where idempotencia_clave='pos-pago-mov-'||m.id;\n if p_id is not null then\n   if not exists(select 1 from hermes.pago where id=p_id and cliente_id=c_id and monto=m.monto and medio::text=m.metodo::text) then\n     raise exception 'El movimiento ya tiene un pago con datos diferentes';\n   end if;\n   return p_id;\n end if;\n intent:=coalesce(m.hermes_intencion,'{}'::jsonb);\n insert into hermes.pago(cliente_id,medio,monto,estado,fecha_recepcion,referencia,idempotencia_clave,creado_por,no_imputar)\n values(c_id,m.metodo::text::hermes.medio_pago,m.monto,'PROPUESTO',\n   (m.creado_en at time zone 'America/La_Paz')::date,\n   coalesce(nullif(intent->>'referencia',''),m.nota,'Cobro POS'),\n   'pos-pago-mov-'||m.id,coalesce(m.creado_por,'pos'),coalesce((intent->>'no_imputar')::boolean,false))\n returning id into p_id;\n apps:=nullif(intent->'aplicaciones','null'::jsonb);\n if coalesce((intent->>'no_imputar')::boolean,false) then\n   if apps is not null and jsonb_array_length(apps)>0 then raise exception 'Un anticipo sin imputación no admite reparto'; end if;\n elsif apps is not null then\n   perform hermes.imputar_pago_pos_interno(p_id,apps,m.creado_por);\n elsif m.pedido_id is not null then\n   rest:=m.monto;\n   for a in select ve.partida_id,ve.pendiente from hermes.v_partida_estado ve\n      where ve.cliente_id=c_id and ve.pedido_id=m.pedido_id and ve.estado='ABIERTA' and ve.pendiente>0\n      order by ve.creado_en,ve.partida_id loop\n     exit when rest<=0;\n     insert into hermes.pago_aplicacion(pago_id,partida_id,monto) values(p_id,a.partida_id,least(rest,a.pendiente));\n     rest:=rest-least(rest,a.pendiente);\n   end loop;\n end if;\n return p_id;\nend $function$\n"
+    },
+    {
+      "name": "cobrar_pedido_vendedor",
+      "definition": "CREATE OR REPLACE FUNCTION public.cobrar_pedido_vendedor(p_pedido_ids bigint[], p_lineas jsonb, p_pagos jsonb, p_sesion_caja_id bigint, p_idempotencia text, p_quitadas jsonb DEFAULT '[]'::jsonb, p_descuento_total numeric DEFAULT 0, p_cliente_id bigint DEFAULT NULL::bigint, p_motivo_reserva text DEFAULT NULL::text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\r\ndeclare\r\n  c_tope constant numeric := 0.10;\r\n  v_uid  uuid := auth.uid();\r\n  v_rol  text := app_rol_actual();\r\n  v_usuario text;\r\n  v_ses  sesion_caja%rowtype;\r\n  v_ids  bigint[];\r\n  v_ped  pedido_vendedor%rowtype;\r\n  v_n    int := 0;\r\n  v_l    jsonb;\r\n  v_ix   int := 0;\r\n  v_plid bigint;\r\n  v_pl   pedido_vendedor_linea%rowtype;\r\n  v_vistas bigint[] := '{}';\r\n  v_prod producto%rowtype;\r\n  v_pres presentacion%rowtype;\r\n  v_unit numeric; v_cant numeric; v_lista numeric; v_min numeric; v_motivo text;\r\n  v_out  jsonb := '[]'::jsonb;\r\n  v_meta jsonb := '[]'::jsonb;\r\n  v_q    jsonb;\r\n  v_res  jsonb;\r\n  v_venta venta%rowtype;\r\n  v_vendedor uuid;\r\nbegin\r\n  if v_rol is null or v_rol not in ('cajero', 'gerente', 'admin') then\r\n    raise exception 'No autorizado para cobrar' using errcode = '42501';\r\n  end if;\r\n  if p_idempotencia is null or btrim(p_idempotencia) = '' or length(p_idempotencia) > 180 then\r\n    raise exception 'Clave de idempotencia obligatoria (máx. 180 caracteres)';\r\n  end if;\r\n  select array_agg(distinct x order by x) into v_ids from unnest(p_pedido_ids) x where x is not null;\r\n  if v_ids is null then\r\n    raise exception 'Hay que indicar al menos un pedido a cobrar';\r\n  end if;\r\n  if p_lineas is null or jsonb_typeof(p_lineas) <> 'array' or jsonb_array_length(p_lineas) = 0 then\r\n    raise exception 'p_lineas debe ser un array no vacío';\r\n  end if;\r\n  if p_quitadas is null or jsonb_typeof(p_quitadas) <> 'array' then\r\n    raise exception 'p_quitadas debe ser un array';\r\n  end if;\r\n\r\n  perform pg_advisory_xact_lock(hashtextextended('cobro_pdv:' || p_idempotencia, 0));\r\n\r\n  -- Reintento: la venta ya existe con esta clave y cerró estos mismos pedidos.\r\n  select * into v_venta from venta where idempotencia_clave = p_idempotencia;\r\n  if found then\r\n    if (select count(*) from pedido_vendedor\r\n         where id = any(v_ids) and estado = 'COBRADO' and venta_id = v_venta.id) = array_length(v_ids, 1) then\r\n      return jsonb_build_object('reintento', true, 'venta_id', v_venta.id, 'numero', v_venta.numero,\r\n                                'subtotal', v_venta.subtotal, 'descuento_total', v_venta.descuento_total,\r\n                                'total', v_venta.total, 'pedidos', to_jsonb(v_ids),\r\n                                'vendedor_id', v_venta.vendedor_id);\r\n    end if;\r\n    raise exception 'La clave de idempotencia ya se usó en otra venta';\r\n  end if;\r\n\r\n  select * into v_ses from sesion_caja where id = p_sesion_caja_id;\r\n  if not found or v_ses.estado <> 'ABIERTA' then\r\n    raise exception 'No hay una sesión de caja abierta (%).', p_sesion_caja_id;\r\n  end if;\r\n  if v_rol = 'cajero' and v_ses.cajero_id is distinct from v_uid then\r\n    raise exception 'Solo puedes cobrar en tu propio turno';\r\n  end if;\r\n  select coalesce(email, 'sistema') into v_usuario from perfil where id = v_uid;\r\n\r\n  for v_ped in select * from pedido_vendedor where id = any(v_ids) order by id for update loop\r\n    v_n := v_n + 1;\r\n    if v_ped.estado <> 'EN_CAJA' or v_ped.sesion_caja_id is distinct from p_sesion_caja_id then\r\n      raise exception 'El pedido % no está tomado en esta caja', v_ped.numero_dia;\r\n    end if;\r\n  end loop;\r\n  if v_n <> array_length(v_ids, 1) then\r\n    raise exception 'Alguno de los pedidos indicados no existe';\r\n  end if;\r\n\r\n  for v_l in select * from jsonb_array_elements(p_lineas) loop\r\n    v_ix := v_ix + 1;\r\n    v_plid := nullif(v_l ->> 'pedido_linea_id', '')::bigint;\r\n    v_unit := (v_l ->> 'precio_unitario')::numeric;\r\n    v_lista := null; v_min := null; v_motivo := null;\r\n\r\n    if v_plid is not null then\r\n      select * into v_pl from pedido_vendedor_linea where id = v_plid and pedido_id = any(v_ids);\r\n      if not found then\r\n        raise exception 'La línea % no pertenece a los pedidos que se están cobrando', v_plid;\r\n      end if;\r\n      if v_plid = any(v_vistas) then\r\n        raise exception 'La línea % del pedido viene repetida', v_plid;\r\n      end if;\r\n      v_vistas := v_vistas || v_plid;\r\n      if not coalesce((v_l ->> 'verificada')::boolean, false) then\r\n        raise exception 'Falta verificar la línea % del pedido antes de cobrar', v_pl.orden;\r\n      end if;\r\n      if not v_pl.es_personalizado\r\n         and nullif(v_l ->> 'producto_id', '')::bigint is distinct from v_pl.producto_id then\r\n        raise exception 'La línea % del pedido no puede cambiar de producto: quítala y agrega el producto nuevo', v_pl.orden;\r\n      end if;\r\n    end if;\r\n\r\n    if coalesce((v_l ->> 'es_personalizado')::boolean, false) then\r\n      v_cant := coalesce((v_l ->> 'cantidad_base')::numeric, (v_l ->> 'cantidad')::numeric);\r\n    else\r\n      select * into v_prod from producto where id = (v_l ->> 'producto_id')::bigint;\r\n      if not found then\r\n        raise exception 'Línea %: el producto % no existe', v_ix, v_l ->> 'producto_id';\r\n      end if;\r\n      if nullif(v_l ->> 'presentacion_id', '') is null then\r\n        select * into v_pres from presentacion where producto_id = v_prod.id and es_base and activo limit 1;\r\n        v_cant := coalesce((v_l ->> 'cantidad_base')::numeric, (v_l ->> 'cantidad')::numeric);\r\n      else\r\n        select * into v_pres from presentacion\r\n         where id = (v_l ->> 'presentacion_id')::bigint and producto_id = v_prod.id and activo;\r\n        v_cant := (v_l ->> 'cantidad_presentacion')::numeric;\r\n      end if;\r\n      if not found then\r\n        raise exception '%: la presentación no existe o no es de este producto', v_prod.nombre;\r\n      end if;\r\n\r\n      v_lista := case when coalesce(v_prod.precio_base, 0) > 0\r\n                      then round(v_prod.precio_base * v_pres.factor_unidad_base, 2) end;\r\n      v_min := case when v_lista is not null and v_pres.es_base\r\n                    then round(v_lista * (1 - c_tope), 2) end;\r\n      -- El cajero no tiene tope, pero pasar del 10 % deja escrito el porqué.\r\n      if v_min is not null and v_unit < v_min then\r\n        v_motivo := nullif(btrim(v_l ->> 'motivo_descuento'), '');\r\n        if v_motivo is null then\r\n          raise exception '%: Bs % está más de % %% por debajo de la lista (Bs %). Falta el motivo del descuento',\r\n            v_prod.nombre, v_unit, round(c_tope * 100), v_lista\r\n            using errcode = 'check_violation';\r\n        end if;\r\n      end if;\r\n      -- La lista la pone el servidor: el POS manda como \"lista\" el precio cobrado.\r\n      if v_lista is not null then\r\n        v_l := v_l || jsonb_build_object('precio_lista', v_lista);\r\n      end if;\r\n    end if;\r\n\r\n    v_out := v_out || jsonb_build_array(v_l);\r\n    v_meta := v_meta || jsonb_build_array(jsonb_build_object(\r\n                'ix', v_ix, 'plid', v_plid, 'cant', v_cant, 'unit', v_unit, 'motivo', left(v_motivo, 200)));\r\n  end loop;\r\n\r\n  for v_q in select * from jsonb_array_elements(p_quitadas) loop\r\n    v_plid := nullif(v_q ->> 'pedido_linea_id', '')::bigint;\r\n    perform 1 from pedido_vendedor_linea where id = v_plid and pedido_id = any(v_ids);\r\n    if not found then\r\n      raise exception 'La línea quitada % no pertenece a los pedidos que se están cobrando', v_q ->> 'pedido_linea_id';\r\n    end if;\r\n    if v_plid = any(v_vistas) then\r\n      raise exception 'La línea % del pedido figura cobrada y quitada a la vez', v_plid;\r\n    end if;\r\n    v_vistas := v_vistas || v_plid;\r\n  end loop;\r\n\r\n  select count(*) into v_n from pedido_vendedor_linea where pedido_id = any(v_ids);\r\n  if v_n <> coalesce(array_length(v_vistas, 1), 0) then\r\n    raise exception 'Faltan % línea(s) del pedido por verificar o quitar', v_n - coalesce(array_length(v_vistas, 1), 0);\r\n  end if;\r\n\r\n  v_res := _registrar_venta_nucleo(\r\n    v_out, p_pagos, p_sesion_caja_id, p_cliente_id, coalesce(p_descuento_total, 0),\r\n    v_usuario, p_idempotencia, nullif(btrim(p_motivo_reserva), '') is not null, nullif(btrim(p_motivo_reserva), ''));\r\n  select * into v_venta from venta where id = (v_res ->> 'venta_id')::bigint;\r\n\r\n  -- El núcleo inserta exactamente una venta_linea por elemento y en el mismo orden:\r\n  -- la posición las empareja con las líneas del pedido.\r\n  select count(*) into v_n from venta_linea where venta_id = v_venta.id;\r\n  if v_n <> jsonb_array_length(v_out) then\r\n    raise exception 'La venta quedó con % líneas y se enviaron %', v_n, jsonb_array_length(v_out);\r\n  end if;\r\n\r\n  -- venta_linea.precio_modificado es una columna generada (precio_unitario <> precio_lista):\r\n  -- con la lista puesta por el servidor se marca sola, no hay que escribirla.\r\n\r\n  with vl as (\r\n    select id, row_number() over (order by id) as rn from venta_linea where venta_id = v_venta.id\r\n  ), m as (\r\n    select * from jsonb_to_recordset(v_meta) as x(ix int, plid bigint, cant numeric, unit numeric, motivo text)\r\n  )\r\n  update pedido_vendedor_linea l\r\n     set resultado = 'COBRADA', venta_linea_id = vl.id, cantidad_final = m.cant, precio_final = m.unit\r\n    from m join vl on vl.rn = m.ix\r\n   where m.plid is not null and l.id = m.plid;\r\n\r\n  insert into venta_evento (venta_id, linea_id, accion, motivo, usuario)\r\n  select v_venta.id, vl.id, 'DESCUENTO_SOBRE_TOPE', m.motivo, v_usuario\r\n    from jsonb_to_recordset(v_meta) as m(ix int, motivo text)\r\n    join (select id, row_number() over (order by id) as rn from venta_linea where venta_id = v_venta.id) vl\r\n      on vl.rn = m.ix\r\n   where m.motivo is not null;\r\n\r\n  update pedido_vendedor_linea l\r\n     set resultado = 'QUITADA', motivo_caja = left(nullif(btrim(q.motivo), ''), 200)\r\n    from jsonb_to_recordset(p_quitadas) as q(pedido_linea_id bigint, motivo text)\r\n   where l.id = q.pedido_linea_id;\r\n\r\n  update pedido_vendedor\r\n     set estado = 'COBRADO', venta_id = v_venta.id, cobrado_en = now(), actualizado_en = now()\r\n   where id = any(v_ids);\r\n\r\n  -- Un solo vendedor detrás de la venta: queda en venta.vendedor_id.\r\n  select case when count(distinct vendedor_id) = 1 then min(vendedor_id::text)::uuid end\r\n    into v_vendedor from pedido_vendedor where id = any(v_ids);\r\n  if v_vendedor is not null then\r\n    update venta set vendedor_id = v_vendedor where id = v_venta.id;\r\n  end if;\r\n\r\n  insert into venta_evento (venta_id, accion, motivo, usuario)\r\n  values (v_venta.id, 'PEDIDO_VENDEDOR',\r\n          'Pedido(s) de vendedor: ' || (select string_agg('PDV-' || x, ', ' order by x) from unnest(v_ids) x),\r\n          v_usuario);\r\n\r\n  return v_res || jsonb_build_object('reintento', false, 'pedidos', to_jsonb(v_ids), 'vendedor_id', v_vendedor);\r\nend;\r\n$function$\n"
+    },
+    {
+      "name": "cobrar_vtd",
+      "definition": "CREATE OR REPLACE FUNCTION public.cobrar_vtd(p_venta_ids bigint[], p_sesion_caja_id bigint, p_pagos jsonb, p_idempotencia text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public'\nAS $function$\r\ndeclare\r\n  v_rol        text;\r\n  v_ses        sesion_caja%rowtype;\r\n  v_perfil     perfil%rowtype;\r\n  v_usuario    text;\r\n  v_ids        bigint[];\r\n  v_venta      venta%rowtype;\r\n  v_total      numeric := 0;\r\n  v_pagado     numeric := 0;\r\n  v_cambio     numeric := 0;\r\n  v_pago       jsonb;\r\n  v_metodo     metodo_pago;\r\n  v_rest_pago  numeric;\r\n  v_rest_venta numeric;\r\n  v_toma       numeric;\r\n  v_verif      text;\r\n  v_recibido   numeric;\r\n  v_n          int := 0;\r\n  v_idx        int;\r\n  v_resto      jsonb := '[]'::jsonb;\r\n  v_ventas_out jsonb := '[]'::jsonb;\r\n  v_previa     jsonb;\r\nbegin\r\n  v_rol := app_rol_actual();\r\n  if v_rol is null or v_rol not in ('cajero', 'gerente', 'admin') then\r\n    raise exception 'No autorizado para cobrar';\r\n  end if;\r\n\r\n  if p_idempotencia is null or btrim(p_idempotencia) = '' or length(p_idempotencia) > 180 then\r\n    raise exception 'Clave de idempotencia obligatoria (máx. 180 caracteres)';\r\n  end if;\r\n  perform pg_advisory_xact_lock(hashtextextended('cobro_vtd:' || p_idempotencia, 0));\r\n\r\n  -- Reintento: si ya se cobró con esta clave, devolver lo mismo sin duplicar.\r\n  select jsonb_build_object(\r\n           'reintento', true,\r\n           'ventas', jsonb_agg(distinct v.numero),\r\n           'total', sum(m.monto))\r\n    into v_previa\r\n    from movimiento_caja m join venta v on v.id = m.venta_id\r\n   where m.idempotencia_clave like 'cobro_vtd:' || p_idempotencia || ':%';\r\n  if v_previa ->> 'total' is not null then\r\n    return v_previa;\r\n  end if;\r\n\r\n  -- Sesión: abierta; un cajero solo cobra en su propio turno.\r\n  select * into v_ses from sesion_caja where id = p_sesion_caja_id;\r\n  if not found or v_ses.estado <> 'ABIERTA' then\r\n    raise exception 'No hay una sesión de caja abierta (%).', p_sesion_caja_id;\r\n  end if;\r\n  if v_rol = 'cajero' and v_ses.cajero_id is distinct from auth.uid() then\r\n    raise exception 'Solo podés cobrar en tu propio turno';\r\n  end if;\r\n\r\n  select * into v_perfil from perfil where id = auth.uid();\r\n  v_usuario := coalesce(v_perfil.email, 'sistema');\r\n\r\n  -- Ventas: sin duplicados, bloqueadas en orden para evitar deadlocks.\r\n  select array_agg(distinct x order by x) into v_ids from unnest(p_venta_ids) x where x is not null;\r\n  if v_ids is null or array_length(v_ids, 1) = 0 then\r\n    raise exception 'Hay que indicar al menos una VTD a cobrar';\r\n  end if;\r\n\r\n  for v_venta in select * from venta where id = any(v_ids) order by id for update loop\r\n    v_n := v_n + 1;\r\n    if v_venta.numero is null or v_venta.numero not like 'VTD-%' then\r\n      raise exception 'La venta % no es una venta directa (VTD)', v_venta.id;\r\n    end if;\r\n    if v_venta.estado = 'ANULADA' then\r\n      raise exception '% está anulada', v_venta.numero;\r\n    end if;\r\n    if not v_venta.cobro_exigible then\r\n      raise exception '% es histórica y está fuera del circuito de cobro', v_venta.numero;\r\n    end if;\r\n    if exists (select 1 from venta_pago where venta_id = v_venta.id) then\r\n      raise exception '% ya tiene un cobro registrado', v_venta.numero;\r\n    end if;\r\n    if coalesce(v_venta.total, 0) <= 0 then\r\n      raise exception '% tiene total 0', v_venta.numero;\r\n    end if;\r\n    v_total := v_total + v_venta.total;\r\n  end loop;\r\n  if v_n <> array_length(v_ids, 1) then\r\n    raise exception 'Alguna de las VTD indicadas no existe';\r\n  end if;\r\n\r\n  -- Pagos: solo medios de mostrador; la suma debe dar el total exacto.\r\n  if p_pagos is null or jsonb_typeof(p_pagos) <> 'array' or jsonb_array_length(p_pagos) = 0 then\r\n    raise exception 'p_pagos debe ser un array no vacío';\r\n  end if;\r\n  for v_pago in select * from jsonb_array_elements(p_pagos) loop\r\n    v_metodo := (v_pago ->> 'metodo')::metodo_pago;\r\n    if v_metodo not in ('EFECTIVO', 'QR', 'TRANSFERENCIA') then\r\n      raise exception 'Método % no permitido para VTD (retail): solo EFECTIVO, QR o TRANSFERENCIA', v_metodo;\r\n    end if;\r\n    if coalesce((v_pago ->> 'monto')::numeric, 0) <= 0 then\r\n      raise exception 'Cada pago debe tener monto positivo';\r\n    end if;\r\n    v_recibido := (v_pago ->> 'recibido')::numeric;\r\n    if v_recibido is not null then\r\n      if v_metodo <> 'EFECTIVO' then\r\n        raise exception '\"recibido\" solo aplica a EFECTIVO';\r\n      end if;\r\n      if v_recibido < (v_pago ->> 'monto')::numeric then\r\n        raise exception 'El monto recibido (%) no puede ser menor al pago (%)', v_recibido, (v_pago ->> 'monto')::numeric;\r\n      end if;\r\n      v_cambio := v_cambio + (v_recibido - (v_pago ->> 'monto')::numeric);\r\n    end if;\r\n    v_pagado := v_pagado + (v_pago ->> 'monto')::numeric;\r\n    v_resto := v_resto || jsonb_build_array(jsonb_build_object(\r\n                 'metodo', v_metodo::text,\r\n                 'monto', (v_pago ->> 'monto')::numeric,\r\n                 'resto', (v_pago ->> 'monto')::numeric,\r\n                 'recibido', v_recibido,\r\n                 'referencia', v_pago ->> 'referencia'));\r\n  end loop;\r\n  if round(v_pagado, 2) <> round(v_total, 2) then\r\n    raise exception 'El pago (%) no coincide con el total de las VTD (%)', v_pagado, v_total;\r\n  end if;\r\n\r\n  -- Reparto: se llenan las VTD en orden de id con los pagos en el orden recibido.\r\n  -- Un pago puede partirse entre dos VTD; \"recibido\" solo se guarda si el pago\r\n  -- entero cae en una sola VTD (el cambio total va en la respuesta).\r\n  v_idx := 0;\r\n  v_n := 0;\r\n  for v_venta in select * from venta where id = any(v_ids) order by id loop\r\n    v_rest_venta := v_venta.total;\r\n    while v_rest_venta > 0 loop\r\n      v_rest_pago := (v_resto -> v_idx ->> 'resto')::numeric;\r\n      if v_rest_pago <= 0 then\r\n        v_idx := v_idx + 1;\r\n        continue;\r\n      end if;\r\n      v_toma   := least(v_rest_pago, v_rest_venta);\r\n      v_metodo := (v_resto -> v_idx ->> 'metodo')::metodo_pago;\r\n      v_verif  := case when v_metodo in ('QR', 'TRANSFERENCIA') then 'PENDIENTE' else 'NO_APLICA' end;\r\n      v_n := v_n + 1;\r\n\r\n      insert into venta_pago (venta_id, metodo, monto, recibido, referencia, estado_verificacion)\r\n      values (v_venta.id, v_metodo, v_toma,\r\n              case when v_toma = (v_resto -> v_idx ->> 'monto')::numeric\r\n                   then (v_resto -> v_idx ->> 'recibido')::numeric end,\r\n              v_resto -> v_idx ->> 'referencia', v_verif);\r\n\r\n      insert into movimiento_caja (sesion_caja_id, tipo, metodo, monto, venta_id, cliente_id,\r\n                                   creado_por, idempotencia_clave, nota)\r\n      values (p_sesion_caja_id, 'VENTA', v_metodo, v_toma, v_venta.id, v_venta.cliente_id,\r\n              v_usuario, 'cobro_vtd:' || p_idempotencia || ':' || v_n, 'Cobro ' || v_venta.numero);\r\n\r\n      v_resto := jsonb_set(v_resto, array[v_idx::text, 'resto'], to_jsonb(v_rest_pago - v_toma));\r\n      v_rest_venta := v_rest_venta - v_toma;\r\n    end loop;\r\n\r\n    insert into venta_evento (venta_id, accion, motivo, usuario)\r\n    values (v_venta.id, 'COBRADA', 'Cobro en caja, sesión ' || p_sesion_caja_id, v_usuario);\r\n\r\n    v_ventas_out := v_ventas_out || jsonb_build_array(jsonb_build_object(\r\n                      'venta_id', v_venta.id, 'numero', v_venta.numero,\r\n                      'total', v_venta.total, 'estado', v_venta.estado));\r\n  end loop;\r\n\r\n  return jsonb_build_object(\r\n    'reintento', false,\r\n    'sesion_caja_id', p_sesion_caja_id,\r\n    'ventas', v_ventas_out,\r\n    'total', v_total,\r\n    'cambio', v_cambio,\r\n    'pendiente_verificacion', exists (\r\n      select 1 from venta_pago where venta_id = any(v_ids) and estado_verificacion = 'PENDIENTE')\r\n  );\r\nend;\r\n$function$\n"
+    }
+  ]
+}
