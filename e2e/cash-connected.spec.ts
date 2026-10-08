@@ -8,7 +8,7 @@ const summary = { apertura: 500, ventas: { EFECTIVO: 120, QR: 80 }, ventas_retai
 const movements = [
   { id: 903, tipo: 'EGRESO', subtipo: 'GASTO', metodo: 'EFECTIVO', monto: 25, nota: 'Flete', creado_en: openedAt, cliente: null, pedido: null, venta: null, caja_gasto: { motivo: 'Flete a Carlos por entrega PED-PRUEBA-001', estado: 'APROBADO', comprobante_path: null } },
   { id: 902, tipo: 'ANTICIPO', subtipo: null, metodo: 'EFECTIVO', monto: 350, nota: 'Anticipo sin imputar', creado_en: openedAt, cliente: { nombre: 'Cliente con un nombre muy largo para comprobar el ajuste de texto en móvil' }, pedido: null, venta: null, caja_gasto: null },
-  { id: 901, tipo: 'VENTA', subtipo: null, metodo: 'EFECTIVO', monto: 120, nota: '', creado_en: openedAt, cliente: null, pedido: null, venta: { numero: 'VTA-PRUEBA-001' }, caja_gasto: null },
+  { id: 901, venta_id: 1, tipo: 'VENTA', subtipo: null, metodo: 'EFECTIVO', monto: 120, nota: '', creado_en: openedAt, cliente: null, pedido: null, venta: { numero: 'VTA-PRUEBA-001' }, caja_gasto: null },
 ]
 
 async function fixture(page: Page, role = 'gerente', initialOpen = true, authenticate = true, lostPaymentResponse = false, lostExpenseResponse = false, creditor = false) {
@@ -220,3 +220,59 @@ test('cajero registra pago en la cartera actual y reintenta sin cambiar su clave
   expect(attempts[0].body).toMatchObject({ p_cliente_id: 83, p_sesion_id: 900, p_monto: 25, p_no_imputar: true })
   expect(attempts[1].body.p_idempotencia).toBe(attempts[0].body.p_idempotencia)
 })
+
+
+for (const prefix of ['VTA', 'VTD']) {
+  test(`productos de ${prefix}: detalle guardado visible en actividad, tickets e histórico móvil`, async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 800 })
+    await fixture(page)
+    const numero = `${prefix}-PRUEBA-001`
+    await page.route('**/rest/v1/movimiento_caja?**', route => {
+      const url = new URL(route.request().url())
+      return route.fulfill({ json: url.searchParams.get('select') === 'venta_id' ? [{ venta_id: 1 }] : movements.map(m => m.venta ? { ...m, venta: { numero } } : m) })
+    })
+    await page.route('**/rest/v1/venta?**', route => {
+      const url = new URL(route.request().url())
+      const venta = { id: 1, numero, estado: 'COMPLETADA', creado_en: openedAt, subtotal: 120, descuento_total: 5, total: 115, cliente: { nombre: 'Cliente prueba' } }
+      return route.fulfill({ json: url.searchParams.has('id') && url.searchParams.get('id')?.startsWith('eq.') ? venta : [venta] })
+    })
+    await page.route('**/rest/v1/venta_linea?**', route => route.fulfill({ json: [
+      { id: 1, cantidad: 24, cantidad_presentacion: 2, precio_unitario: 50, producto: { nombre: 'Tornillos para madera', sku_interno: 'TOR-01' }, presentacion: { nombre: 'Caja de 12' } },
+      { id: 2, cantidad: 1, cantidad_presentacion: null, precio_unitario: 20, producto: null, descripcion: 'Corte a medida', unidad_medida: 'SERVICIO' },
+    ] }))
+    await page.goto('/')
+    const row = page.locator('.cash-ledger-row').filter({ hasText: numero })
+    await row.getByRole('button', { name: 'Ver productos' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toContainText(`Productos · ${numero}`)
+    await expect(dialog).toContainText('Tornillos para madera')
+    await expect(dialog).toContainText('Caja de 12')
+    await expect(dialog).toContainText('2 × Bs 50,00')
+    await expect(dialog).toContainText('Corte a medida')
+    await expect(dialog).toContainText('115,00')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    const bounds = await dialog.boundingBox()
+    expect(bounds!.x).toBeGreaterThanOrEqual(0)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(360)
+    await page.screenshot({ path: `.ui-review.local/caja-productos-${prefix.toLowerCase()}.png` })
+    await dialog.getByRole('button', { name: 'Cerrar detalle' }).click()
+    await page.getByRole('button', { name: 'Mi caja', exact: true }).click()
+    await page.locator('.turno-ticket-row').filter({ hasText: numero }).getByRole('button', { name: 'Ver productos' }).click()
+    await expect(dialog).toContainText('Corte a medida')
+    await dialog.getByRole('button', { name: 'Cerrar detalle' }).click()
+    await page.getByRole('button', { name: 'Turnos', exact: true }).click()
+    await page.getByRole('button', { name: /Caja Tienda · #900/ }).click()
+    await row.getByRole('button', { name: 'Ver productos' }).click()
+    await expect(dialog).toContainText('Tornillos para madera')
+    await dialog.getByRole('button', { name: 'Cerrar detalle' }).click()
+    let fail = true
+    await page.route('**/rest/v1/venta_linea?**', route => fail
+      ? route.fulfill({ status: 500, json: { message: 'Error de prueba' } })
+      : route.fulfill({ json: [] }))
+    await row.getByRole('button', { name: 'Ver productos' }).click()
+    await expect(dialog.getByRole('alert')).toContainText('No se pudo cargar')
+    fail = false
+    await dialog.getByRole('button', { name: 'Reintentar' }).click()
+    await expect(dialog).toContainText('Esta venta no tiene líneas de productos disponibles.')
+  })
+}
