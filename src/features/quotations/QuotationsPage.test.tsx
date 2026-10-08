@@ -12,7 +12,7 @@ import { QuotationsPage } from './QuotationsPage'
 // devuelve la cabecera con lines: [] (como en producción tras el brief anterior) y
 // quoteService.getById() devuelve las líneas reales — el editor debe mostrar las de
 // getById, nunca las de list().
-const { quoteHeaderOnly, quoteWithLines, getByIdMock, duplicateMock, saveMock, orderSaveMock } = vi.hoisted(() => {
+const { quoteHeaderOnly, quoteWithLines, getByIdMock, duplicateMock, saveMock, orderSaveMock, disponibilidadMock } = vi.hoisted(() => {
   const header: QuoteDraft = {
     id: '218', number: 'COT-2026-00218', customerId: 'c1', customerName: 'Cliente Uno', channel: 'mayoreo',
     status: 'draft', conditionPago: 'CONTADO', version: 3, validUntil: '2026-09-01', terms: '', notes: '', generalDiscountCents: 0,
@@ -22,7 +22,7 @@ const { quoteHeaderOnly, quoteWithLines, getByIdMock, duplicateMock, saveMock, o
     ...header,
     lines: [{ id: 'l1', productId: 'p1', name: 'Producto Fresco', sku: 'P1', quantity: 1, unitPriceCents: 90000, discountBasisPoints: 0 }],
   }
-  return { quoteHeaderOnly: header, quoteWithLines: withLines, getByIdMock: vi.fn(), duplicateMock: vi.fn(), saveMock: vi.fn(), orderSaveMock: vi.fn() }
+  return { quoteHeaderOnly: header, quoteWithLines: withLines, getByIdMock: vi.fn(), duplicateMock: vi.fn(), saveMock: vi.fn(), orderSaveMock: vi.fn(), disponibilidadMock: vi.fn() }
 })
 
 vi.mock('../../infrastructure/services', () => ({
@@ -32,6 +32,7 @@ vi.mock('../../infrastructure/services', () => ({
   customerService: { list: vi.fn().mockResolvedValue([{ id: 'c2', name: 'Cliente Dos', type: 'wholesale', document: '', phone: '', email: '', address: '', usualChannel: 'mayoreo', paymentTerms: '' }]) },
   productRepository: { search: vi.fn().mockResolvedValue({ items: [], total: 0 }), getById: vi.fn().mockResolvedValue(null) },
   getStockByProduct: vi.fn().mockResolvedValue({}),
+  getDisponibilidadPedido: (ids: number[]) => disponibilidadMock(ids),
   listPresentations: vi.fn().mockResolvedValue([]),
   listLineIdentifiers: vi.fn().mockResolvedValue({}),
   authSessionProvider: { getSession: vi.fn().mockResolvedValue(null) },
@@ -51,6 +52,7 @@ beforeEach(() => {
   duplicateMock.mockReset()
   saveMock.mockReset().mockImplementation(async (quote: QuoteDraft) => quote)
   orderSaveMock.mockReset().mockResolvedValue({})
+  disponibilidadMock.mockReset().mockResolvedValue({})
   window.history.pushState({}, '', '/')
   localStorage.clear()
 })
@@ -80,7 +82,7 @@ describe('QuotationsPage — duplicar y convertir la edición actual', () => {
   })
   it('guarda el cliente cambiado antes de convertir el borrador en pedido', async () => {
     window.history.pushState({}, '', '/cotizaciones/218')
-    vi.spyOn(window,'confirm').mockReturnValue(true)
+    const confirmSpy = vi.spyOn(window,'confirm').mockReturnValue(true)
     render(<QuotationsPage notify={vi.fn()} onOrderCreated={vi.fn()} />)
     const input = await screen.findByRole('textbox',{name:/Cliente/})
     fireEvent.focus(input)
@@ -91,6 +93,8 @@ describe('QuotationsPage — duplicar y convertir la edición actual', () => {
     expect(saveMock).toHaveBeenCalledWith(expect.objectContaining({id:'218',version:3,customerId:'c2',customerName:'Cliente Dos'}))
     expect(orderSaveMock).toHaveBeenCalledWith(expect.objectContaining({sourceQuoteId:'218',customerName:'Cliente Dos'}))
     expect(saveMock.mock.invocationCallOrder[0]).toBeLessThan(orderSaveMock.mock.invocationCallOrder[0])
+    // La confirmación ya no vive en convert: sin faltantes no se pregunta nada.
+    expect(confirmSpy).not.toHaveBeenCalled()
   })
 })
 
@@ -119,5 +123,55 @@ describe('QuotationsPage — vista previa trae la cotización fresca', () => {
 
     await waitFor(() => expect(getByIdMock).toHaveBeenCalledWith('218'))
     expect((await screen.findAllByText('Producto Fresco')).length).toBeGreaterThan(0)
+  })
+})
+
+// Brief S-PC: la decisión "comprar el faltante" se asocia por posición con las líneas que
+// la base reinsertó al guardar el borrador (ids nuevos, mismo orden).
+describe('QuotationsPage — convertir con faltantes (Por comprar)', () => {
+  const quoteConFaltante: QuoteDraft = {
+    ...quoteWithLines,
+    lines: [
+      { id: 'l1', productId: '7', name: 'Resma', sku: 'R7', quantity: 10, unitPriceCents: 1000, discountBasisPoints: 0 },
+      { id: 'l2', productId: '8', name: 'Lápiz', sku: 'L8', quantity: 2, unitPriceCents: 500, discountBasisPoints: 0 },
+    ],
+  }
+  const abrirYComprar = async () => {
+    window.history.pushState({}, '', '/cotizaciones/218')
+    getByIdMock.mockResolvedValue(quoteConFaltante)
+    disponibilidadMock.mockResolvedValue({ '7': { stockFisico: 6, reservado: 0, disponible: 6 }, '8': { stockFisico: 9, reservado: 0, disponible: 9 } })
+    const notify = vi.fn()
+    render(<QuotationsPage notify={notify} onOrderCreated={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Comprar el faltante Resma' }))
+    return notify
+  }
+
+  it('manda p_por_comprar mapeado por posición a los ids de las líneas guardadas', async () => {
+    saveMock.mockImplementation(async (quote: QuoteDraft) => ({ ...quote, lines: [{ ...quote.lines[0], id: '501' }, { ...quote.lines[1], id: '502' }] }))
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await abrirYComprar()
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: 'Convertir a pedido' })) })
+    await waitFor(() => expect(orderSaveMock).toHaveBeenCalledTimes(1))
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(confirmSpy.mock.calls[0][0]).toContain('Resma')
+    expect(orderSaveMock).toHaveBeenCalledWith(expect.objectContaining({ sourceQuoteId: '218', porComprar: { '501': 4 } }))
+  })
+
+  it('si las líneas guardadas no coinciden con las del editor, falla antes de crear el pedido', async () => {
+    saveMock.mockImplementation(async (quote: QuoteDraft) => ({ ...quote, lines: [{ ...quote.lines[0], id: '501' }, { ...quote.lines[1], id: '502', productId: '99' }] }))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await abrirYComprar()
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: 'Convertir a pedido' })) })
+    expect(await screen.findByText('No se pudo asociar las líneas guardadas con el pedido. Volvé a abrir la cotización e intentá de nuevo.')).toBeTruthy()
+    expect(orderSaveMock).not.toHaveBeenCalled()
+  })
+
+  it('si cambia la cantidad de líneas guardadas también falla', async () => {
+    saveMock.mockImplementation(async (quote: QuoteDraft) => ({ ...quote, lines: [{ ...quote.lines[0], id: '501' }] }))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await abrirYComprar()
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: 'Convertir a pedido' })) })
+    expect(await screen.findByText(/No se pudo asociar las líneas guardadas/)).toBeTruthy()
+    expect(orderSaveMock).not.toHaveBeenCalled()
   })
 })

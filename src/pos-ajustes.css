@@ -127,3 +127,10 @@
 .version-line-badge-added{background:#3d8750;color:#fff}
 .version-line-badge-changed{background:#a76a19;color:#fff}
 .version-line-badge-removed{background:#ad4b3c;color:#fff}
+
+/* Brief S-PC — líneas POR_COMPRAR en el detalle del pedido (activas, no tachadas). */
+.order-line-por-comprar-badge{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:#ffe1b3;color:#a35b00;margin-left:6px}
+.order-por-comprar-block{border:1px solid #f0c987;background:#fff8ec;border-radius:10px;padding:10px 12px;margin:0 0 12px}
+.order-por-comprar-block h4{margin:0 0 6px;font-size:13px;color:#a35b00}
+.order-por-comprar-block ul{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.order-por-comprar-block li{display:flex;justify-content:space-between;gap:8px;font-size:12px}

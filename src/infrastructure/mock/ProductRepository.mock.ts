@@ -43,6 +43,17 @@ export const getStockByProduct = async (productId: number): Promise<{ onHand: Ar
   }
 }
 
+export const getDisponibilidadPedido = async (productIds: number[]): Promise<Record<string, { stockFisico: number; reservado: number; disponible: number }>> => {
+  const result: Record<string, { stockFisico: number; reservado: number; disponible: number }> = {}
+  for (const id of productIds) {
+    const product = products.find((item) => item.id === id)
+    if (!product) continue
+    const total = product.stockTienda + product.stockAlmacen
+    result[String(id)] = { stockFisico: total, reservado: 0, disponible: total }
+  }
+  return result
+}
+
 // Mock mode: derive the batch stock map straight from each mock product's own
 // stockTienda/stockAlmacen fields — no separate stock_actual table to query.
 // Brief S9: el mock no modela producto_sucursal/sucursal.control_stock_default (no hay

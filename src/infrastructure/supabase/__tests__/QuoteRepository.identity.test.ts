@@ -28,7 +28,7 @@ beforeEach(() => {
   fromMock.mockReset().mockImplementation((table:string) => {
     const filters:Record<string,unknown> = {}
     const query = {
-      select:() => query,eq:(key:string,value:unknown) => {filters[key]=value;return query},
+      select:() => query,eq:(key:string,value:unknown) => {filters[key]=value;return query},order:() => query,
       maybeSingle:async () => ({data:table==='cliente_contacto' ? contactValid ? {id:12} : null : filters.id===99 ? createdHeader : sourceHeader,error:null}),
       then:(resolve:(result:unknown) => unknown) => Promise.resolve({data:sourceLines,error:null}).then(resolve),
     }

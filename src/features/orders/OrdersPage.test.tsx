@@ -50,6 +50,7 @@ vi.mock('../../infrastructure/supabase/OrderAdmin.supabase', () => ({
 }))
 vi.mock('../../infrastructure/supabase/OrderRepository.supabase', () => ({
   buildLineasJsonb: vi.fn().mockReturnValue([]),
+  listComprasDePedido: vi.fn().mockResolvedValue([]),
   marcarPedidoAtencionVista: (id: number) => marcarVistaMock(id),
 }))
 vi.mock('../../infrastructure/hermes/client', () => ({

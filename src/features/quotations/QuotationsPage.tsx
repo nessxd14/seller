@@ -27,6 +27,20 @@ const total = (quote: QuoteDraft) => quote.lines.reduce((sum, line) => sum + Mat
 // undefined ahí, donde `lines` siempre está completo).
 const listTotal = (quote: QuoteDraft) => quote.totalCents ?? total(quote)
 
+// Brief S-PC: guardar el borrador borra y reinserta sus líneas (ids nuevos, mismo orden), así
+// que la cantidad a comprar de cada línea del editor se asocia con la línea guardada por
+// posición. Si las listas no coinciden no se adivina: mejor abortar antes de convertir.
+const mapPorComprar = (quote: QuoteDraft, saved: QuoteDraft): Record<string, number> => {
+  const mismatch = saved.lines.length !== quote.lines.length
+    || quote.lines.some((line, i) => saved.lines[i].productId !== line.productId || Boolean(saved.lines[i].isCustomItem) !== Boolean(line.isCustomItem))
+  if (mismatch) throw new Error('No se pudo asociar las líneas guardadas con el pedido. Volvé a abrir la cotización e intentá de nuevo.')
+  const porComprar: Record<string, number> = {}
+  quote.lines.forEach((line, i) => {
+    if ((line.cantidadPorComprar ?? 0) > 0) porComprar[saved.lines[i].id] = line.cantidadPorComprar!
+  })
+  return porComprar
+}
+
 const DAY_MS = 86_400_000
 // Days until validUntil is reached; negative once past. Used to flag near/past expiry.
 const daysUntil = (validUntil: string) => Math.ceil((new Date(validUntil).getTime() - Date.now()) / DAY_MS)
@@ -190,12 +204,13 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
     if(readOnly){notify('Modo solo lectura');return}
     // TAREA 3 (Ronda 9): sin cliente no se puede convertir — mismo requisito que guardar.
     if(!quote.customerId){notify('Esta cotización no tiene cliente. Abrila y elegí uno en el buscador antes de convertirla.');return}
-    if (!confirm(`¿Convertir ${quote.number} en pedido?`)) return false
+    // La confirmación (incluida la lista de ítems que van a Compras) vive en el editor.
     if (featureFlags.supabase) {
       await sensitiveOperations.execute('convert_quote', quote.id, async () => {
         // La conversión lee la cotización en la base: guardar primero los cambios del formulario.
         const saved = quote.status === 'draft' ? await quoteService.save(quote) : quote
-        return orderService.save({ id: '', number: '', customerName: saved.customerName, channel: saved.channel, status: 'draft', createdAt: new Date().toISOString(), sourceQuoteId: saved.id, solicitanteId: saved.solicitanteId, lines: [], events: [] })
+        const porComprar = mapPorComprar(quote, saved)
+        return orderService.save({ id: '', number: '', customerName: saved.customerName, channel: saved.channel, status: 'draft', createdAt: new Date().toISOString(), sourceQuoteId: saved.id, solicitanteId: saved.solicitanteId, porComprar, lines: [], events: [] })
       })
     } else {
       const snapshot = await sensitiveOperations.execute('convert_quote',quote.id,()=>quoteService.markConverted(quote.id, crypto.randomUUID()))
@@ -228,7 +243,7 @@ export function QuotationsPage({ notify, onOrderCreated, readOnly = false, initi
             <button title="Vista previa / exportar" disabled={previewLoadingId === quote.id} onClick={() => void openPreview(quote.id)}>{previewLoadingId === quote.id ? <LoaderCircle className="spin" /> : <Eye />}</button>
             <button title="Duplicar" disabled={duplicateLoadingId !== null} onClick={() => void duplicate(quote.id)}>{duplicateLoadingId === quote.id ? <LoaderCircle className="spin" /> : <Copy />}</button>
             <button title="Editar" onClick={() => navigate(cotizacionPath(quote.id))}>{quote.status === 'draft' ? 'Editar' : 'Ver'}</button>
-            {quote.status === 'approved' && <button title={quote.customerId ? 'Convertir en pedido' : 'Sin cliente — abrí la cotización y elegí uno'} onClick={() => convert(quote)}><ShoppingCart /></button>}
+            {quote.status === 'approved' && <button title={quote.customerId ? 'Convertir en pedido' : 'Sin cliente — abrí la cotización y elegí uno'} onClick={() => navigate(cotizacionPath(quote.id))}><ShoppingCart /></button>}
           </div>
         </article>
       })}

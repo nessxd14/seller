@@ -39,7 +39,11 @@ export interface WorkflowLine {
   // undefined, sin líneas RECHAZADO/CAMBIADA/RETIRADA que distinguir). Las acciones que
   // producen estos tres estados se disparan desde Almacén (brief aparte); acá es de solo
   // lectura, para dar tratamiento visual distinto a una línea activa.
-  lineStatus?: 'POR_DESPACHAR' | 'DESPACHADA' | 'PENDIENTE' | 'COMPRADO_DIRECTO' | 'ESPECIAL' | 'RECHAZADO' | 'CAMBIADA' | 'RETIRADA'
+  // Brief S-PC: decisión de UI "comprar el faltante" (nunca se persiste en la cotización).
+  comprarFaltante?: boolean
+  // Brief S-PC: cantidad en unidades base que se manda a Compras; transitoria, solo al enviar.
+  cantidadPorComprar?: number
+  lineStatus?: 'POR_DESPACHAR' | 'DESPACHADA' | 'PENDIENTE' | 'COMPRADO_DIRECTO' | 'ESPECIAL' | 'POR_COMPRAR' | 'RECHAZADO' | 'CAMBIADA' | 'RETIRADA'
   // Brief: cuando lineStatus === 'CAMBIADA', esto trae un resumen de la línea que
   // la reemplazó (pedido_linea.reemplazada_por_id, ya con FK propia — PostgREST
   // la resuelve anidada sin nada especial del lado de la query).
@@ -100,6 +104,8 @@ export interface OrderView {
   status: OrderWorkflowStatus
   createdAt: string
   sourceQuoteId?: string
+  // Brief S-PC: id de cotizacion_linea → unidades base a comprar (solo en la ruta de conversión).
+  porComprar?: Record<string, number>
   lines: Array<WorkflowLine & { prepared: number; allocations: { location: 'Tienda' | 'Almacén'; quantity: number }[] }>
   events: { at: string; label: string; detail: string }[]
   // Mock backend only: remembers the status a cancelled order had before anulación,

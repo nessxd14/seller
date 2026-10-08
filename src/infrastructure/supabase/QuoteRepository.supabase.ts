@@ -178,7 +178,7 @@ const fetchQuoteById = async (id: number): Promise<(QuoteDraft & Versioned) | nu
   const { data: header, error: headerError } = await supabase.from('cotizacion').select('*, cliente(nombre)').eq('id', id).maybeSingle()
   if (headerError) throw headerError
   if (!header) return null
-  const { data: lines, error: linesError } = await supabase.from('cotizacion_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').eq('cotizacion_id', id)
+  const { data: lines, error: linesError } = await supabase.from('cotizacion_linea').select('*, producto(nombre,sku_interno), presentacion(nombre,factor_unidad_base)').eq('cotizacion_id', id).order('id')
   if (linesError) throw linesError
   return rowToQuoteDraft(header as CotizacionRow, (lines ?? []) as CotizacionLineaRow[])
 }
