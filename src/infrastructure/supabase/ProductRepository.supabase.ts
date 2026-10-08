@@ -384,6 +384,22 @@ export const getStockByProduct = async (
   return { onHand, saldoDisponible: num(saldoRow?.saldo_libre) }
 }
 
+export interface DisponibilidadPedido { stockFisico: number; reservado: number; disponible: number }
+
+/**
+ * Disponibilidad para pedidos mayoristas (Almacén + Tienda − reservas de pedidos abiertos),
+ * en unidades base. Claves: String(producto_id).
+ */
+export const getDisponibilidadPedido = async (productIds: number[]): Promise<Record<string, DisponibilidadPedido>> => {
+  if (productIds.length === 0) return {}
+  const { data, error } = await supabase.rpc('disponibilidad_pedido', { p_producto_ids: productIds })
+  if (error) throw error
+  const rows = (data ?? []) as Array<{ producto_id: number | string; stock_fisico: number | string; reservado: number | string; disponible: number | string }>
+  const result: Record<string, DisponibilidadPedido> = {}
+  for (const row of rows) result[String(row.producto_id)] = { stockFisico: num(row.stock_fisico), reservado: num(row.reservado), disponible: num(row.disponible) }
+  return result
+}
+
 export interface Presentation { id: number; nombre: string; factorUnidadBase: number; esBase: boolean }
 
 /** Presentations for a product (e.g. "Caja" with factor 12, "Unidad" base with factor 1). */

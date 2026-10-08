@@ -14,7 +14,7 @@ vi.mock('../../config/featureFlags', () => ({featureFlags:{supabase:true}}))
 vi.mock('../../infrastructure/services', () => ({
   customerService:{list:vi.fn(async () => customers)},
   productRepository:{search:vi.fn().mockResolvedValue({items:[],total:0}),getById:vi.fn().mockResolvedValue(null)},
-  getStockByProduct:vi.fn().mockResolvedValue({}),listPresentations:vi.fn().mockResolvedValue([]),
+  getStockByProduct:vi.fn().mockResolvedValue({}),getDisponibilidadPedido:vi.fn().mockResolvedValue({}),listPresentations:vi.fn().mockResolvedValue([]),
   listLineIdentifiers:vi.fn().mockResolvedValue({}),authSessionProvider:{getSession:vi.fn().mockResolvedValue(null)},
 }))
 vi.mock('../../components/SaldoBadge', () => ({SaldoBadge:() => null}))
@@ -63,6 +63,8 @@ describe('Cotizaciones — búsquedas pendientes y envíos', () => {
   it('cancelar la conversión conserva el borrador recuperable', async () => {
     const key = borradorKey('cotizacion:42','pos')
     localStorage.setItem(key,JSON.stringify({datos:source,guardadoEn:Date.now()}))
+    // El ítem a pedido de la cotización siempre va a Compras: el editor pide confirmar antes de convertir.
+    vi.spyOn(window,'confirm').mockReturnValue(true)
     const onConvert = vi.fn(() => false as const)
     render(<DraftOrderEditor quote={source} isExistingQuote onClose={() => {}} onSave={vi.fn()} onConvert={onConvert} />)
     await screen.findByRole('button',{name:'Retomar'})

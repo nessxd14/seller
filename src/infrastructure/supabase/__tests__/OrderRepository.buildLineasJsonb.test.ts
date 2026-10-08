@@ -18,3 +18,16 @@ describe('buildLineasJsonb (pedido) — unidad de medida de ítems personalizado
     expect('unidad_medida' in catalogo).toBe(false)
   })
 })
+
+describe('buildLineasJsonb (pedido) — cantidad_por_comprar', () => {
+  it('una línea de catálogo con cantidadPorComprar > 0 la manda; sin ella (o en 0) no la manda', () => {
+    const [con, cero, sin] = buildLineasJsonb([baseLine({ cantidadPorComprar: 4 }), baseLine({ cantidadPorComprar: 0 }), baseLine()], 'mayoreo') as Record<string, unknown>[]
+    expect(con.cantidad_por_comprar).toBe(4)
+    expect('cantidad_por_comprar' in cero).toBe(false)
+    expect('cantidad_por_comprar' in sin).toBe(false)
+  })
+  it('los ítems personalizados nunca la mandan', () => {
+    const [custom] = buildLineasJsonb([baseLine({ productId: '', isCustomItem: true, cantidadPorComprar: 2 })], 'mayoreo') as Record<string, unknown>[]
+    expect('cantidad_por_comprar' in custom).toBe(false)
+  })
+})

@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, Barcode, Briefcase, Building2, Check, FileTe
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { QuoteDraft, WorkflowLine } from '../../application/shared/models'
 import type { CustomerRecord } from '../../application/shared/models'
-import { customerService, productRepository, getStockByProduct, listPresentations, listLineIdentifiers, authSessionProvider } from '../../infrastructure/services'
+import { customerService, productRepository, getStockByProduct, getDisponibilidadPedido, listPresentations, listLineIdentifiers, authSessionProvider } from '../../infrastructure/services'
 import { featureFlags } from '../../config/featureFlags'
 import { aggregateStockBySucursal } from '../inventory/stockAggregation'
 import { formatMoney, money } from '../../domain/common/money'
@@ -20,6 +20,7 @@ import { coincideBusqueda } from '../../domain/customers/textSearch'
 import { formatQtyWithUnit, normalizeUnit } from '../../domain/sales/unitOfMeasure'
 import { UnitOfMeasureField } from '../../components/UnitOfMeasureField'
 import { requiereCotizacionOrigen } from '../../domain/quotations/requiereCotizacionOrigen'
+import { calcularFaltantes, resumenPorComprar, type DisponibilidadMap } from '../../domain/quotations/faltantes'
 import { ProductQuickAdd } from '../../components/ProductQuickAdd'
 import { AmbiguousScanPicker } from '../../components/AmbiguousScanPicker'
 import { cleanProductQuery } from '../../domain/catalog/productSearch'
@@ -99,7 +100,10 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const retomarBorrador = () => {
     if (!canRestoreDraft) return
     setValue({
-      ...borradorPendiente.datos, id: quote.id, number: quote.number, status: quote.status,
+      ...borradorPendiente.datos,
+      // Las decisiones de compra dependen del stock de este momento: no se restauran.
+      lines: borradorPendiente.datos.lines.map((line) => ({ ...line, comprarFaltante: undefined, cantidadPorComprar: undefined })),
+      id: quote.id, number: quote.number, status: quote.status,
       createdAt: quote.createdAt, creadoPor: quote.creadoPor,
       // Conservar la versión del borrador existente para detectar ediciones posteriores.
       version: isExistingQuote ? borradorPendiente.datos.version : undefined,
@@ -109,6 +113,10 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // Item 2/3: per-productId caches so stock + presentations are fetched once (on add), not
   // on every render or toggle interaction.
   const [stockByProduct, setStockByProduct] = useState<Record<string, LineStock>>({})
+  // Brief S-PC: disponibilidad para pedido (Almacén + Tienda − reservas) por productId, en
+  // unidades base. `disponibilidadKey` recuerda para qué conjunto de ids se cargó por última vez.
+  const [disponibilidad, setDisponibilidad] = useState<DisponibilidadMap>({})
+  const [disponibilidadKey, setDisponibilidadKey] = useState('')
   const [presentationsByProduct, setPresentationsByProduct] = useState<Record<string, LinePresentation[]>>({})
   // Base (per-base-unit) price captured at add-time, used to suggest a price when the
   // presentation changes; keyed by line id so overrides via PricePopover aren't disturbed.
@@ -395,25 +403,44 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     updateLine(lineId, { unitPriceCents, priceOverridden: unitPriceCents !== (line?.listPriceCents ?? unitPriceCents) })
   }
 
-  // Item 2: stock validation against the currently selected origin only. Base-unit quantity
-  // = quantity * factorUnidadBase (item 3's presentation math folded in here).
-  const lineErrors = useMemo(() => {
-    const errors: Record<string, string> = {}
-    for (const line of catalogLines) {
-      const stock = stockByProduct[line.productId]
-      if (!stock) continue
-      const factor = line.factorUnidadBase ?? 1
-      const baseQty = line.quantity * factor
-      const origin = line.sourceLocation ?? 'Almacén'
-      const available = origin === 'Tienda' ? stock.tienda : stock.almacen
-      if (baseQty > available) {
-        errors[line.id] = `${origin} tiene ${fmtQty(available)}, necesitás ${fmtQty(baseQty)}`
-      }
-    }
-    return errors
-  }, [catalogLines, stockByProduct])
+  // Brief S-PC: disponibilidad (Almacén + Tienda − reservas de pedidos abiertos) de los
+  // productos del documento; se vuelve a pedir cuando cambia el conjunto de productos. Las
+  // cifras por sucursal (stockByProduct) se siguen mostrando aparte.
+  const catalogProductIds = Array.from(new Set(catalogLines.map((line) => Number(line.productId)).filter((id) => Number.isFinite(id) && id > 0))).sort((a, b) => a - b)
+  const catalogIdsKey = catalogProductIds.join(',')
+  useEffect(() => {
+    let cancelled = false
+    void getDisponibilidadPedido(catalogProductIds)
+      .then((result) => { if (!cancelled) { setDisponibilidad(result); setDisponibilidadKey(catalogIdsKey) } })
+      // Sin dato no se inventa faltante; el chequeo al enviar vuelve a pedirlo y falla a la vista.
+      .catch(() => { if (!cancelled) { setDisponibilidad({}); setDisponibilidadKey(catalogIdsKey) } })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- catalogProductIds se deriva de catalogIdsKey
+  }, [catalogIdsKey])
+  const disponibilidadCargando = disponibilidadKey !== catalogIdsKey
 
-  const hasStockErrors = Object.keys(lineErrors).length > 0
+  // Brief S-PC: faltante por línea (saldo corrido por producto, en unidades base).
+  const faltantes = useMemo(() => calcularFaltantes(value.lines, disponibilidad), [value.lines, disponibilidad])
+  const faltantesSinDecidir = catalogLines.filter((line) => (faltantes[line.id]?.faltante ?? 0) > 0 && !line.comprarFaltante)
+  const resumen = useMemo(() => resumenPorComprar(value.lines, faltantes), [value.lines, faltantes])
+
+  // Una línea que ya no tiene faltante (bajó la cantidad, cambió la disponibilidad) deja de
+  // estar "decidida": si el faltante vuelve a aparecer hay que decidir de nuevo.
+  const idsDecididasSinFaltante = value.lines.filter((line) => line.comprarFaltante && faltantes[line.id] && faltantes[line.id].faltante === 0).map((line) => line.id).join(',')
+  useEffect(() => {
+    if (!idsDecididasSinFaltante) return
+    const ids = new Set(idsDecididasSinFaltante.split(','))
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- normaliza la decisión cuando el faltante desaparece
+    setValue((v) => ({ ...v, lines: v.lines.map((line) => (ids.has(line.id) ? { ...line, comprarFaltante: false } : line)) }))
+  }, [idsDecididasSinFaltante])
+
+  const comprarTodosLosFaltantes = () => {
+    const ids = new Set(faltantesSinDecidir.map((line) => line.id))
+    setValue((v) => ({ ...v, lines: v.lines.map((line) => (ids.has(line.id) ? { ...line, comprarFaltante: true } : line)) }))
+  }
+
+  const confirmacionCompras = (items: typeof resumen) =>
+    `Se van a mandar a Compras: ${items.map((item) => item.esPersonalizado ? `${item.name} (${fmtQty(item.cantidad)}, a pedido)` : `${item.name} (${fmtQty(item.faltante)} de ${fmtQty(item.baseQty)})`).join('; ')}. ¿Continuar?`
   // TAREA 3 (Ronda 9): cliente obligatorio para guardar/convertir una cotización.
   // "Cliente de mostrador" (customerId vacío) no cuenta — es UI-only, no toca la base
   // (8 cotizaciones viejas sin cliente siguen abriéndose porque esto solo bloquea el
@@ -459,6 +486,28 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       setSaving(false)
     }
   }
+
+  // Brief S-PC: crear pedido / convertir. Antes de enviar se vuelve a leer la disponibilidad
+  // (pudo cambiar mientras se armaba el pedido), se confirma lo que va a Compras y cada línea
+  // lleva su cantidadPorComprar (unidades base) hacia crear_pedido / convertir_cotizacion_a_pedido.
+  const runOrderAction = (action: EditorAction) => runAction(async (current) => {
+    const fresh = await getDisponibilidadPedido(catalogProductIds)
+    setDisponibilidad(fresh)
+    setDisponibilidadKey(catalogIdsKey)
+    const nuevosFaltantes = calcularFaltantes(current.lines, fresh)
+    if (current.lines.some((line) => !line.isCustomItem && (nuevosFaltantes[line.id]?.faltante ?? 0) > 0 && !line.comprarFaltante)) {
+      throw new Error('El stock cambió mientras armabas el pedido. Revisá las líneas marcadas.')
+    }
+    const items = resumenPorComprar(current.lines, nuevosFaltantes)
+    if (items.length > 0 && !confirm(confirmacionCompras(items))) return false
+    return action({
+      ...current,
+      lines: current.lines.map((line) => {
+        const faltante = !line.isCustomItem && line.comprarFaltante ? (nuevosFaltantes[line.id]?.faltante ?? 0) : 0
+        return { ...line, comprarFaltante: line.comprarFaltante, cantidadPorComprar: faltante }
+      }),
+    })
+  })
 
   const onPresentationChange = (line: WorkflowLine, presentation: LinePresentation) => {
     const basePriceCents = basePriceCentsByLine[line.id] ?? line.unitPriceCents
@@ -573,12 +622,21 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         {(scanError || productSearchError) && <p className="scan-feedback error" role="alert">{scanError || productSearchError}</p>}
         <div className="editor-lines draft-lines">
           <header><strong>Detalle del documento</strong><span>{catalogLines.length} producto{catalogLines.length === 1 ? '' : 's'}</span></header>
+          {faltantesSinDecidir.length >= 2 && (
+            <div className="line-shortage-bulk"><button type="button" onClick={comprarTodosLosFaltantes}>Comprar todos los faltantes</button></div>
+          )}
           {catalogLines.map((line) => {
             const stock = stockByProduct[line.productId]
             const presentations = presentationsByProduct[line.productId] ?? []
             const origin = line.sourceLocation ?? 'Almacén'
-            const stockError = lineErrors[line.id]
             const factor = line.factorUnidadBase ?? 1
+            const faltanteInfo = faltantes[line.id]
+            const faltante = faltanteInfo?.faltante ?? 0
+            const decidida = faltante > 0 && line.comprarFaltante === true
+            const sinDecidir = faltante > 0 && !decidida
+            // "Bajar a X" solo si X es una cantidad entera de la presentación de la línea.
+            const bajarQty = faltanteInfo ? faltanteInfo.disponibleParaLinea / factor : 0
+            const puedeBajar = !readOnly && faltanteInfo != null && faltanteInfo.disponibleParaLinea > 0 && Number.isInteger(bajarQty) && bajarQty >= 1
             const showEquivalence = factor !== 1
             const identifiers = identifiersByProduct[line.productId]
             // TAREA 5 — Almacén-default-with-conditional-Tienda-unlock: Tienda is only
@@ -591,7 +649,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             return (
               <div
                 key={line.id}
-                className={`draft-line-row presentation-line-row ${stockError ? 'has-stock-error' : ''}`}
+                className={`draft-line-row presentation-line-row ${sinDecidir ? 'has-stock-error' : ''}`}
                 onClick={() => !readOnly && setEditLineModalId(line.id)}
                 onKeyDown={(e) => { if (e.target === e.currentTarget && !readOnly && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setEditLineModalId(line.id) } }}
                 role={readOnly ? undefined : 'button'}
@@ -649,7 +707,22 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                   </div>
                 </div>
                 {!readOnly && <PrecioSugeridoHint sugerido={precioSugeridoByLine[line.id]} unitPriceCents={line.unitPriceCents} onApply={(bs) => applySuggestedPrice(line.id, bs)} />}
-                {stockError && <small className="line-stock-error">{stockError}</small>}
+                {faltante > 0 && (
+                  <div className={`line-shortage ${decidida ? 'decided' : ''}`} onClick={(e) => e.stopPropagation()}>
+                    {decidida ? (
+                      <>
+                        <span className="line-shortage-text">Se compran {fmtQty(faltante)}</span>
+                        <button type="button" className="line-shortage-undo" aria-label={`Deshacer compra del faltante ${line.name}`} onClick={() => updateLine(line.id, { comprarFaltante: false })}>Deshacer</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="line-shortage-text">Disponible {fmtQty(faltanteInfo.disponibleParaLinea)} · faltan {fmtQty(faltante)}</span>
+                        <button type="button" className="line-shortage-buy" aria-label={`Comprar el faltante ${line.name}`} onClick={() => updateLine(line.id, { comprarFaltante: true })}>Comprar el faltante</button>
+                        {puedeBajar && <button type="button" className="line-shortage-lower" aria-label={`Bajar ${line.name} a ${fmtQty(faltanteInfo.disponibleParaLinea)}`} onClick={() => updateLine(line.id, { quantity: bajarQty })}>Bajar a {fmtQty(faltanteInfo.disponibleParaLinea)}</button>}
+                      </>
+                    )}
+                  </div>
+                )}
                 {editLineModalId === line.id && (
                   // Modal se porta con createPortal fuera del DOM de esta fila, pero React
                   // sigue burbujeando el evento por el árbol de React (no el del DOM) — sin
@@ -741,13 +814,28 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             stock (se asume que la mercadería se compra para surtirlas). El aviso ya no
             bloquea, solo informa; el bloqueo real sigue en "Convertir a pedido"/"Crear
             pedido", que sí necesitan stock real antes de reservarlo. */}
-        {hasStockErrors && <div className="stock-block-notice">{Object.keys(lineErrors).length} línea{Object.keys(lineErrors).length === 1 ? '' : 's'} sin stock suficiente. Se pueden cotizar; para convertir a pedido hay que resolverlas.</div>}
+        {faltantesSinDecidir.length > 0 && <div className="stock-block-notice">{faltantesSinDecidir.length} línea{faltantesSinDecidir.length === 1 ? '' : 's'} sin stock suficiente: elegí comprar el faltante, bajar la cantidad o cambiar el producto.</div>}
         {/* TAREA 5: si el cliente elegido requiere cotización de origen, mejor prevenirlo
             que solo mostrar el error después de que la base lo rechace. */}
         {requiereCotizacion && !isExistingQuote && (
           <div className="stock-block-notice">
             {selectedCustomer?.name} requiere una cotización de origen para tener pedido — guardá esto como cotización y convertila después, no se puede crear el pedido directo.
           </div>
+        )}
+        {resumen.length > 0 && (
+          <section className="por-comprar-summary" aria-label="Por comprar">
+            <h4>Por comprar</h4>
+            <ul>
+              {resumen.map((item) => (
+                <li key={item.lineId}>
+                  {item.esPersonalizado
+                    ? <><span>{item.name} · {fmtQty(item.cantidad)}</span><small className="por-comprar-tag">a pedido</small></>
+                    : <span>{item.name} · {fmtQty(item.faltante)} de {fmtQty(item.baseQty)}</span>}
+                </li>
+              ))}
+            </ul>
+            <footer>{resumen.length} línea{resumen.length === 1 ? '' : 's'} van a Compras</footer>
+          </section>
         )}
         {saveError && <div className="field-error" role="alert"><p>{saveError}</p></div>}
         </aside>
@@ -770,14 +858,14 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         {!readOnly && !isExistingQuote && onCreateOrder && (
           <button
             className="primary-button"
-            disabled={!value.lines.length || saving || hasStockErrors || requiereCotizacion || missingCustomer || missingSolicitante || missingConditionPago}
-            title={missingCustomer ? 'Elegí un cliente para crear el pedido' : requiereCotizacion ? `${selectedCustomer?.name} requiere una cotización de origen — usá "Guardar como cotización"` : missingSolicitante ? 'Elegí un solicitante para crear el pedido' : missingConditionPago ? 'Elegí una condición de pago para crear el pedido' : undefined}
-            onClick={() => void runAction(onCreateOrder)}
+            disabled={!value.lines.length || saving || faltantesSinDecidir.length > 0 || disponibilidadCargando || requiereCotizacion || missingCustomer || missingSolicitante || missingConditionPago}
+            title={faltantesSinDecidir.length > 0 ? 'Decidí qué hacer con las líneas sin stock' : missingCustomer ? 'Elegí un cliente para crear el pedido' : requiereCotizacion ? `${selectedCustomer?.name} requiere una cotización de origen — usá "Guardar como cotización"` : missingSolicitante ? 'Elegí un solicitante para crear el pedido' : missingConditionPago ? 'Elegí una condición de pago para crear el pedido' : undefined}
+            onClick={() => void runOrderAction(onCreateOrder)}
           >
             Crear pedido <ArrowRight />
           </button>
         )}
-        {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || hasStockErrors || missingCustomer || missingSolicitante || missingConditionPago} title={missingCustomer ? 'Elegí un cliente para convertir' : missingSolicitante ? 'Elegí un solicitante para convertir' : missingConditionPago ? 'Elegí una condición de pago para convertir' : undefined} onClick={() => void runAction(onConvert)}>Convertir a pedido</button>}
+        {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || faltantesSinDecidir.length > 0 || disponibilidadCargando || missingCustomer || missingSolicitante || missingConditionPago} title={faltantesSinDecidir.length > 0 ? 'Decidí qué hacer con las líneas sin stock' : missingCustomer ? 'Elegí un cliente para convertir' : missingSolicitante ? 'Elegí un solicitante para convertir' : missingConditionPago ? 'Elegí una condición de pago para convertir' : undefined} onClick={() => void runOrderAction(onConvert)}>Convertir a pedido</button>}
       </footer>
       {ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onClose={() => setAmbiguousIds(null)} onPick={(product) => { addCatalogProduct(product); setAmbiguousIds(null); setScanSku('') }} />}
       {customModalOpen && (

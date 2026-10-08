@@ -8,7 +8,7 @@ import {
 } from './mappers'
 
 type EstadoPedido = 'ABIERTO' | 'COMPLETADO' | 'CANCELADO'
-type EstadoLinea = 'POR_DESPACHAR' | 'DESPACHADA' | 'PENDIENTE' | 'COMPRADO_DIRECTO' | 'ESPECIAL' | 'RECHAZADO' | 'CAMBIADA' | 'RETIRADA'
+type EstadoLinea = 'POR_DESPACHAR' | 'DESPACHADA' | 'PENDIENTE' | 'COMPRADO_DIRECTO' | 'ESPECIAL' | 'POR_COMPRAR' | 'RECHAZADO' | 'CAMBIADA' | 'RETIRADA'
 
 const estadoPedidoToStatus = (estado: EstadoPedido): OrderWorkflowStatus => {
   switch (estado) {
@@ -243,6 +243,8 @@ export const buildLineasJsonb = (lines: WorkflowLine[], channel: OrderView['chan
       precio_unitario: centsToNumeric(line.unitPriceCents),
       descuento_pct: bpToPct(line.discountBasisPoints),
       descripcion: line.maskName || null,
+      // Brief S-PC: unidades base que la base manda a Compras (POR_COMPRAR); la línea se parte en dos.
+      ...(line.cantidadPorComprar != null && line.cantidadPorComprar > 0 ? { cantidad_por_comprar: line.cantidadPorComprar } : {}),
       ...(line.presentacionId != null ? { presentacion_id: line.presentacionId, cantidad_presentacion: line.quantity } : {}),
     }
   })
@@ -297,6 +299,7 @@ export class SupabaseOrderRepository implements OrderRepository {
         p_cotizacion_id: Number(value.sourceQuoteId),
         p_usuario: actor,
         p_solicitante_id: value.solicitanteId ? Number(value.solicitanteId) : null,
+        p_por_comprar: value.porComprar && Object.keys(value.porComprar).length ? value.porComprar : null,
       })
       if (error) throw error
       // Brief S11 Bloque B1: versión 1 al crear, para que haya algo que navegar/comparar
@@ -327,6 +330,31 @@ export class SupabaseOrderRepository implements OrderRepository {
     if (!created) throw new NotFoundError('No se pudo releer el pedido recién creado')
     return created
   }
+}
+
+export interface CompraDePedido {
+  pedidoLineaId: string
+  estado: 'SOLICITADA' | 'COMPRADA'
+  cantidadBase: number
+  cantidadRecibida: number
+  solicitadoEn: string
+}
+
+/** Brief S-PC: solicitudes de compra abiertas de las líneas de un pedido. Solo lectura. */
+export const listComprasDePedido = async (lineIds: number[]): Promise<CompraDePedido[]> => {
+  if (lineIds.length === 0) return []
+  const { data, error } = await supabase.from('compra_solicitud')
+    .select('pedido_linea_id, estado, cantidad_base, cantidad_recibida, solicitado_en')
+    .in('pedido_linea_id', lineIds)
+    .in('estado', ['SOLICITADA', 'COMPRADA'])
+  if (error) throw error
+  return ((data ?? []) as Array<{ pedido_linea_id: number | string; estado: 'SOLICITADA' | 'COMPRADA'; cantidad_base: number | string; cantidad_recibida: number | string | null; solicitado_en: string }>).map((row) => ({
+    pedidoLineaId: String(row.pedido_linea_id),
+    estado: row.estado,
+    cantidadBase: num(row.cantidad_base),
+    cantidadRecibida: num(row.cantidad_recibida),
+    solicitadoEn: row.solicitado_en,
+  }))
 }
 
 const guardarVersionPedidoSilencioso = async (pedidoId: number, motivo: string, usuario: string): Promise<void> => {

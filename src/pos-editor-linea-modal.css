@@ -41,3 +41,18 @@
 /* Tarea 4: número de documento como primera columna de las grillas — monoespaciado,
    dígitos de ancho fijo para que la columna no "baile" fila a fila. */
 .doc-number-cell { font-variant-numeric: tabular-nums; font-family: monospace }
+
+/* Brief S-PC: faltante por línea (comprar / bajar cantidad) y bloque "Por comprar". */
+.line-shortage { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: #a76a19 }
+.line-shortage.decided { color: #a35b00 }
+.line-shortage-text { font-weight: 600 }
+.line-shortage button { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 6px; border: 1px solid #d9a441; background: #fff; color: #a35b00; cursor: pointer }
+.line-shortage button.line-shortage-undo { border: 0; background: none; padding: 0; text-decoration: underline; font-weight: 500 }
+.line-shortage-bulk { display: flex; justify-content: flex-end; padding: 6px 0 }
+.line-shortage-bulk button { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 6px; border: 1px solid #d9a441; background: #fff8e1; color: #a35b00; cursor: pointer }
+.por-comprar-summary { border: 1px solid #f0c987; background: #fff8ec; border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 12px }
+.por-comprar-summary h4 { margin: 0 0 6px; font-size: 12px; color: #a35b00 }
+.por-comprar-summary ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px }
+.por-comprar-summary li { display: flex; justify-content: space-between; gap: 8px }
+.por-comprar-tag { font-weight: 600; padding: 1px 7px; border-radius: 99px; background: #ffe1b3; color: #a35b00 }
+.por-comprar-summary footer { margin-top: 8px; font-weight: 600; color: #a35b00 }

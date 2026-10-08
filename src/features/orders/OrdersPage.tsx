@@ -12,7 +12,7 @@ import type { Product } from '../../types'
 import { featureFlags } from '../../config/featureFlags'
 import { useCashSession } from '../../context/CashSessionContext'
 import { contarVersionesPedidos, eliminarPedido, listVersionesPedido, puedeEliminarsePedido, type PedidoVersion, type PuedeEliminarsePedido } from '../../infrastructure/supabase/OrderAdmin.supabase'
-import { buildLineasJsonb, marcarPedidoAtencionVista } from '../../infrastructure/supabase/OrderRepository.supabase'
+import { buildLineasJsonb, listComprasDePedido, marcarPedidoAtencionVista, type CompraDePedido } from '../../infrastructure/supabase/OrderRepository.supabase'
 import { diffVersionLines } from '../../domain/orders/versionDiff'
 import { decidirEliminacionPedido } from '../../domain/orders/deletionDecision'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
@@ -49,6 +49,7 @@ const metodoPagoLabel: Record<string, string> = { EFECTIVO: 'Efectivo', QR: 'QR'
 // Brief S-I Tarea 3: las acciones que producen estos tres estados (Rechazar/Cambiar/Restar)
 // se disparan desde Almacén — acá solo se muestran, distintas de una línea activa.
 const lineaEstadoLabel: Record<string, string> = { RECHAZADO: 'Rechazada', CAMBIADA: 'Cambiada', RETIRADA: 'Retirada' }
+const compraEstadoLabel: Record<CompraDePedido['estado'], string> = { SOLICITADA: 'Solicitada', COMPRADA: 'Comprada' }
 const lineaInactiva = (status?: string): boolean =>
   status === 'RECHAZADO' || status === 'CAMBIADA' || status === 'RETIRADA'
 
@@ -109,6 +110,8 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   // mirando — null = la vigente.
   const [versionCounts, setVersionCounts] = useState<Record<string, number>>({})
   const [versions, setVersions] = useState<PedidoVersion[]>([])
+  // Brief S-PC: solicitudes de compra abiertas de las líneas POR_COMPRAR / a pedido (solo lectura).
+  const [compras, setCompras] = useState<CompraDePedido[]>([])
   const [viewingVersionIndex, setViewingVersionIndex] = useState<number | null>(null)
   const [deleteCheck, setDeleteCheck] = useState<PuedeEliminarsePedido | null>(null)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
@@ -144,6 +147,17 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     if (segmento !== 'todos') void orderService.list().then((items) => setConteosSegmento(contarPorSegmento(items)))
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar; cambiar de segmento pasa por cambiarSegmento, no por este efecto
   }, [])
+  const comprasLineIdsKey = selected && featureFlags.supabase
+    ? selected.lines.filter((line) => line.lineStatus === 'POR_COMPRAR' || line.isCustomItem).map((line) => line.id).join(',')
+    : ''
+  useEffect(() => {
+    let cancelled = false
+    const ids = comprasLineIdsKey ? comprasLineIdsKey.split(',').map(Number).filter(Number.isFinite) : []
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- limpia al cambiar de pedido, sin esperar la respuesta
+    if (!ids.length) { setCompras([]); return }
+    void listComprasDePedido(ids).then((rows) => { if (!cancelled) setCompras(rows) }).catch(() => { if (!cancelled) setCompras([]) })
+    return () => { cancelled = true }
+  }, [comprasLineIdsKey])
   useEffect(() => { void (selected ? cashService.getAdvancesForOrder(selected.id) : Promise.resolve([])).then(setAdvances) }, [selected])
   // Brief S3 Parte A: /pedidos/:id sobrevive al refresco y es compartible — la lista
   // (con sus filtros) nunca se desmonta, así que "Volver" (navigate('/')) los conserva
@@ -371,9 +385,29 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       {!viewingCurrent && (
         <p className="version-readonly-banner">Estás viendo una versión anterior — no es la vigente, solo lectura. <button type="button" onClick={() => setViewingVersionIndex(null)}>Volver a la vigente</button></p>
       )}
+      {viewingCurrent && (() => {
+        const filas = selected.lines.filter((line) => line.lineStatus === 'POR_COMPRAR' || (line.isCustomItem && compras.some((c) => c.pedidoLineaId === line.id)))
+        if (!filas.length) return null
+        return (
+          <section className="order-por-comprar-block" aria-label="Por comprar">
+            <h4>Por comprar</h4>
+            <ul>
+              {filas.map((line) => {
+                const compra = compras.find((c) => c.pedidoLineaId === line.id)
+                return (
+                  <li key={line.id}>
+                    <span>{line.name} · {line.quantity}</span>
+                    <span>{compra ? `${compraEstadoLabel[compra.estado]}${compra.cantidadRecibida > 0 ? ` · recibido ${compra.cantidadRecibida} de ${compra.cantidadBase}` : ''}` : 'Pendiente de solicitud'}</span>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )
+      })()}
       <h3>{viewingCurrent ? 'Productos y preparación' : 'Productos de esta versión'}</h3>
       {viewingCurrent ? <>
-        {selected.lines.filter((line) => !line.isCustomItem).map((line) => <article key={line.id} className={lineaInactiva(line.lineStatus) ? 'order-line-inactive' : ''}><header><div><strong>{line.name}</strong><small>{line.sku}{line.sourceLocation ? ` · Origen: ${line.sourceLocation}` : ''}</small>{lineaInactiva(line.lineStatus) && <span className="order-line-inactive-badge">{lineaEstadoLabel[line.lineStatus!]}</span>}{line.lineStatus === 'CAMBIADA' && line.replacedByName && <small className="order-line-replacement">→ ahora: {line.replacedByName} × {line.replacedByQuantity}</small>}</div><span>{line.prepared}/{line.quantity} preparadas</span></header><div className="allocation-bars">{line.allocations.map((allocation) => <div key={allocation.location}><span>{allocation.location}</span><b>{allocation.quantity} uds.</b></div>)}</div></article>)}
+        {selected.lines.filter((line) => !line.isCustomItem).map((line) => <article key={line.id} className={lineaInactiva(line.lineStatus) ? 'order-line-inactive' : ''}><header><div><strong>{line.name}</strong><small>{line.sku}{line.sourceLocation ? ` · Origen: ${line.sourceLocation}` : ''}</small>{lineaInactiva(line.lineStatus) && <span className="order-line-inactive-badge">{lineaEstadoLabel[line.lineStatus!]}</span>}{line.lineStatus === 'POR_COMPRAR' && <span className="order-line-por-comprar-badge">Por comprar</span>}{line.lineStatus === 'CAMBIADA' && line.replacedByName && <small className="order-line-replacement">→ ahora: {line.replacedByName} × {line.replacedByQuantity}</small>}</div><span>{line.prepared}/{line.quantity} preparadas</span></header><div className="allocation-bars">{line.allocations.map((allocation) => <div key={allocation.location}><span>{allocation.location}</span><b>{allocation.quantity} uds.</b></div>)}</div></article>)}
         {selected.lines.some((line) => line.isCustomItem) && <><h3>Ítems especiales / a pedido</h3>{selected.lines.filter((line) => line.isCustomItem).map((line) => <article key={line.id} className={lineaInactiva(line.lineStatus) ? 'order-line-inactive' : ''}><header><div><strong>{line.name}</strong><small>Personalizado{line.unitOfMeasure ? ` · ${line.unitOfMeasure}` : ''}</small>{lineaInactiva(line.lineStatus) && <span className="order-line-inactive-badge">{lineaEstadoLabel[line.lineStatus!]}</span>}{line.lineStatus === 'CAMBIADA' && line.replacedByName && <small className="order-line-replacement">→ ahora: {line.replacedByName} × {line.replacedByQuantity}</small>}</div><span>{line.prepared}/{line.quantity} preparadas</span></header></article>)}</>}
       </> : viewedVersion && (
         <div className="version-lines">
