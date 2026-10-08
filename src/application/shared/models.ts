@@ -402,6 +402,7 @@ export interface TurnoTicket {
 }
 
 export interface TurnoMovimiento {
+  ventaId?: string
   clienteAcreedor?: boolean
   saldoFavorAplicadoBs?: number
   id: string

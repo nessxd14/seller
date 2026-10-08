@@ -85,3 +85,23 @@ describe('cobros fuera del arqueo', () => {
     expect((await getResumenTurno('4')).cobrosFueraArqueoBs).toBe(0)
   })
 })
+
+
+describe('detalle de productos del turno', () => {
+  it('conserva la venta de VTA, VTD y saldo sin asociar gastos a una venta', async () => {
+    const cash = [
+      { id: 1, venta_id: 21, tipo: 'VENTA', venta: { numero: 'VTA-21' } },
+      { id: 2, venta_id: 32, tipo: 'VENTA', venta: { numero: 'VTD-32' } },
+      { id: 3, venta_id: null, tipo: 'EGRESO', venta: null },
+    ].map(row => ({ ...row, monto: 10, metodo: 'EFECTIVO', creado_en: '2026-10-08T10:00:00Z' }))
+    const balance = [{ id: 4, venta_id: 43, monto: 10, creado_en: '2026-10-08T10:00:00Z', venta: { numero: 'VTA-43' } }]
+    const selects: string[] = []
+    from.mockImplementation((table: string) => ({ select: (fields: string) => {
+      selects.push(fields)
+      return { eq: () => ({ order: () => ({ limit: () => Promise.resolve({ data: table === 'saldo_cliente_uso' ? balance : cash, error: null }) }) }) }
+    } }))
+    const rows = await listMovimientosTurno('4')
+    expect(rows.map(row => row.ventaId)).toEqual(['21', '32', undefined, '43'])
+    expect(selects.every(fields => fields.split(',').includes('venta_id'))).toBe(true)
+  })
+})

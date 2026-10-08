@@ -18,6 +18,7 @@ import { featureFlags } from '../../config/featureFlags'
 import { useCashSession } from '../../context/CashSessionContext'
 import { useCashRefresh } from './useCashRefresh'
 import { createUuid } from '../../application/shared/createUuid'
+import { VentaDetalleModal } from './VentaDetalleModal'
 
 const bs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const ENTREGA_CIERRE_PREFIJO = 'Entrega de cierre a '
@@ -151,6 +152,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
   const [closing, setClosing] = useState(false)
   const [closeResult, setCloseResult] = useState<{ estado: string } | null>(null)
   const [reprintId, setReprintId] = useState<string | null>(null)
+  const [detalleVentaId, setDetalleVentaId] = useState<string | null>(null)
   const [movimientos, setMovimientos] = useState<TurnoMovimiento[]>([])
   const [loadError, setLoadError] = useState('')
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
@@ -246,7 +248,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
       <header><div><h3>Actividad del turno</h3><p>Ventas, pagos, anticipos y gastos del cajero que cobró.</p></div><select aria-label="Filtrar movimientos" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="TODOS">Todos los movimientos</option><option value="VENTA">Ventas</option><option value="ACREEDOR">Clientes con saldo a favor</option><option value="SALDO_FAVOR">Aplicaciones de saldo</option><option value="ANTICIPO">Pagos y anticipos</option><option value="GASTO">Gastos</option><option value="REMESA">Remesas</option><option value="INYECCION">Inyecciones</option><option value="ANULACION">Anulaciones</option></select>{filter === 'ANULACION' && <InfoHint title={HINTS.anulacion.title} text={HINTS.anulacion.text} />}</header>
       <div className="cash-ledger-head"><span>Movimiento / detalle</span><span>Método</span><span>Importe</span></div>
       {filteredMovements.map((m) => <article className={`cash-ledger-row ${m.clienteAcreedor ? 'cash-acreedor-row' : ''}`} key={m.id}>
-        <div><strong>{m.documento ?? (m.tipo === 'ANTICIPO' ? 'Pago / anticipo' : m.subtipo ?? m.tipo)}</strong><span>{m.clienteNombre}</span>{m.clienteAcreedor && <small className="credit-client-tag">Cliente con saldo a favor</small>}<p>{m.detalle || 'Sin detalle registrado'}</p><small>{new Date(m.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}{m.estadoGasto ? ` · ${m.estadoGasto.toLowerCase()}` : ''}</small>{m.tipo === 'ANULACION' && <InfoHint title={HINTS.anulacion.title} text={HINTS.anulacion.text} />}{m.fueraDeArqueo && <span className="fuera-arqueo-badge">Fuera del arqueo<InfoHint title={HINTS.fueraArqueo.title} text={HINTS.fueraArqueo.text} /></span>}{esEncargado && sesion.estado === 'ABIERTA' && m.tipo === 'ANTICIPO' && m.metodo === 'EFECTIVO' && <button type="button" className="fuera-arqueo-toggle" onClick={() => void alternarFueraDeArqueo(m)}>{m.fueraDeArqueo ? 'Volver al arqueo' : 'Sacar del arqueo'}</button>}{m.comprobantePath && <button onClick={() => { void turnoService.comprobanteUrl(m.comprobantePath!).then((url) => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); else notify('No se pudo abrir el comprobante') }) }}><ReceiptText /> Ver comprobante</button>}</div>
+        <div><strong>{m.documento ?? (m.tipo === 'ANTICIPO' ? 'Pago / anticipo' : m.subtipo ?? m.tipo)}</strong><span>{m.clienteNombre}</span>{m.clienteAcreedor && <small className="credit-client-tag">Cliente con saldo a favor</small>}{m.detalle && <p>{m.detalle}</p>}{m.ventaId ? <button type="button" onClick={() => setDetalleVentaId(m.ventaId!)}><ReceiptText /> Ver productos</button> : !m.detalle && <p>Sin detalle registrado</p>}<small>{new Date(m.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}{m.estadoGasto ? ` · ${m.estadoGasto.toLowerCase()}` : ''}</small>{m.tipo === 'ANULACION' && <InfoHint title={HINTS.anulacion.title} text={HINTS.anulacion.text} />}{m.fueraDeArqueo && <span className="fuera-arqueo-badge">Fuera del arqueo<InfoHint title={HINTS.fueraArqueo.title} text={HINTS.fueraArqueo.text} /></span>}{esEncargado && sesion.estado === 'ABIERTA' && m.tipo === 'ANTICIPO' && m.metodo === 'EFECTIVO' && <button type="button" className="fuera-arqueo-toggle" onClick={() => void alternarFueraDeArqueo(m)}>{m.fueraDeArqueo ? 'Volver al arqueo' : 'Sacar del arqueo'}</button>}{m.comprobantePath && <button onClick={() => { void turnoService.comprobanteUrl(m.comprobantePath!).then((url) => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); else notify('No se pudo abrir el comprobante') }) }}><ReceiptText /> Ver comprobante</button>}</div>
         <span>{m.metodo === 'SALDO_FAVOR' ? 'Saldo a favor' : metodoLabel[m.metodo] ?? m.metodo}</span><b>{['EGRESO', 'ANULACION'].includes(m.tipo) ? '− ' : ''}Bs {bs(m.montoBs)}</b>
       </article>)}
       {!movimientos.length && <p className="cash-muted">Los movimientos aparecerán aquí cuando se registren.</p>}
@@ -260,7 +262,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
         <span>{t.metodos.map((m) => (m.metodo === 'SALDO_FAVOR' ? 'Saldo a favor' : metodoLabel[m.metodo] ?? m.metodo)).join(' + ') || '—'}</span>
         {t.metodos.some((m) => m.estadoVerificacion === 'PENDIENTE') && <span className="qr-pendiente-chip">QR pendiente</span>}
         <b>Bs {bs(t.totalBs)}</b>
-        <button type="button" onClick={() => setReprintId(t.ventaId)}><Printer /> Reimprimir</button>
+        <div className="cash-ticket-actions"><button type="button" onClick={() => setDetalleVentaId(t.ventaId)}><ReceiptText /> Ver productos</button><button type="button" onClick={() => setReprintId(t.ventaId)}><Printer /> Reimprimir</button></div>
       </div>) : <FeatureState type="empty" text="Sin ventas todavía en este turno" />}
     </section>
     {!readOnly && <button className="close-cash-button" onClick={() => void abrirCierre()}><LockKeyhole /> Cerrar turno</button>}
@@ -271,6 +273,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
       <footer className="modal-actions"><button className="primary-button full-button" onClick={() => { setCloseResult(null); onClosed() }}>Aceptar</button></footer>
     </Modal>}
     {reprintId && <VentaTicket id={reprintId} onClose={() => setReprintId(null)} />}
+    {detalleVentaId && <VentaDetalleModal key={detalleVentaId} id={detalleVentaId} onClose={() => setDetalleVentaId(null)} />}
   </div>
 }
 

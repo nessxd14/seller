@@ -161,6 +161,16 @@
 .cash-workspace :is(.turno-ticket-row,.turno-gasto-row,.turno-revision-row,.turno-faltante-row) { border-color:var(--cash-line); font-size:13px; overflow-wrap:anywhere; }
 .cash-workspace :is(.turno-ticket-row,.turno-gasto-row,.turno-revision-row,.pago-verificar-row,.movimiento-banco-row) small { color:var(--cash-muted); font-size:11px; margin-top:5px; }
 .cash-workspace .turno-ticket-row { grid-template-columns:minmax(0,1fr) auto auto auto; }
+.cash-ticket-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.cash-sale-detail .modal-body { overflow-wrap:anywhere; }
+.cash-sale-lines { list-style:none; padding:0; margin:20px 0; }
+.cash-sale-lines li { padding:14px 0; border-bottom:1px solid #dce5f1; }
+.cash-sale-lines li > strong, .cash-sale-lines li > small { display:block; }
+.cash-sale-lines small { margin-top:4px; color:#526279; }
+.cash-sale-lines li > div, .cash-sale-totals > div { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; margin-top:10px; }
+.cash-sale-lines b, .cash-sale-totals dd { font-variant-numeric:tabular-nums; }
+.cash-sale-totals dd { margin:0; }
+.cash-sale-totals > div:last-child { font-weight:700; padding-top:12px; border-top:1px solid #dce5f1; }
 .cash-workspace .feature-state { color:var(--cash-muted); }
 .customer-search input, .customer-picker input { font:500 15px 'Manrope Variable',sans-serif; }
 .customer-search-results button, .customer-result-row { text-align:left; min-height:54px; line-height:1.5; }
