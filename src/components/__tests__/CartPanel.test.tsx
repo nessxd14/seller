@@ -72,7 +72,7 @@ describe('CartPanel — cobro de VTD desde el carrito (Brief Caja VTD)', () => {
     listPorCobrar.mockResolvedValue([vtdSeleccionable])
     render(<Wrapper withCatalogItem={false} />)
 
-    fireEvent.click(await screen.findByText('+ Agregar VTD'))
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar VTD' }))
     await waitFor(() => expect(screen.getByText('VTD-2026-00001')).toBeTruthy())
     fireEvent.click(screen.getByText('VTD-2026-00001').closest('label')!.querySelector('input[type="checkbox"]')!)
     fireEvent.click(screen.getByRole('button', { name: /Agregar \(1\)/ }))
@@ -86,7 +86,7 @@ describe('CartPanel — cobro de VTD desde el carrito (Brief Caja VTD)', () => {
     listPorCobrar.mockResolvedValue([vtdSeleccionable])
     render(<Wrapper withCatalogItem />)
 
-    fireEvent.click(await screen.findByText('+ Agregar VTD'))
+    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar VTD' }))
     await waitFor(() => expect(screen.getByText('VTD-2026-00001')).toBeTruthy())
     fireEvent.click(screen.getByText('VTD-2026-00001').closest('label')!.querySelector('input[type="checkbox"]')!)
     fireEvent.click(screen.getByRole('button', { name: /Agregar \(1\)/ }))
@@ -125,7 +125,7 @@ describe('CartPanel — "+ Pedido de vendedor" (Brief Caja pedido de vendedor)',
     renderPanel({ pedidosVendedorEnEspera: 3, onOpenPedidosVendedor: abrir })
     const link = await screen.findByRole('button', { name: /\+ Pedido de vendedor/ }) as HTMLButtonElement
     expect(link.dataset.posAction).toBe('pedido-vendedor')
-    expect(screen.getByText('3 en espera')).toBeTruthy()
+    expect(screen.getByLabelText('3 en espera')).toBeTruthy()
     await waitFor(() => expect(link.disabled).toBe(false))
     fireEvent.click(link)
     expect(abrir).toHaveBeenCalledOnce()
@@ -137,7 +137,7 @@ describe('CartPanel — "+ Pedido de vendedor" (Brief Caja pedido de vendedor)',
     expect(screen.queryByLabelText(/en espera/)).toBeNull()
     cleanup()
     renderPanel({})
-    await screen.findByText('+ Agregar VTD')
+    await screen.findByRole('button', { name: '+ Agregar VTD' })
     expect(screen.queryByText(/Pedido de vendedor/)).toBeNull()
   })
 })
