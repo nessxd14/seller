@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import type { CajaReceipt } from '../../application/shared/cajaCheckout'
 import { CajaTicket } from '../CajaTicket'
 const mocks=vi.hoisted(()=>({ticket:vi.fn(),bank:vi.fn()}))
@@ -23,4 +23,30 @@ it('una operación anulada impide reimprimir el documento como válido',async()=
   mocks.ticket.mockResolvedValue({estado:'ANULADA',pagos:[]});render(<CajaTicket receipt={receipt()} onClose={()=>{}} />)
   await screen.findByText('CONTIENE UNA OPERACIÓN ANULADA')
   expect((screen.getByRole('button',{name:'Imprimir'}) as HTMLButtonElement).disabled).toBe(true)
+})
+it('deja de sondear cuando el estado deja de ser pendiente',async()=>{
+  vi.useFakeTimers()
+  try{
+    let pendiente=true
+    mocks.ticket.mockImplementation(async()=>({estado:'COMPLETADA',pagos:[{estadoVerificacion:pendiente?'PENDIENTE':'VERIFICADO'}]}))
+    render(<CajaTicket receipt={receipt()} onClose={()=>{}} />)
+    await act(async()=>{await vi.advanceTimersByTimeAsync(0)})
+    const inicial=mocks.ticket.mock.calls.length
+    pendiente=false
+    await act(async()=>{await vi.advanceTimersByTimeAsync(5000)})
+    const alResolver=mocks.ticket.mock.calls.length
+    expect(alResolver).toBeGreaterThan(inicial)
+    await act(async()=>{await vi.advanceTimersByTimeAsync(60_000)})
+    expect(mocks.ticket.mock.calls.length).toBe(alResolver)
+  }finally{vi.useRealTimers()}
+})
+it('deja de sondear a los 3 minutos aunque siga pendiente',async()=>{
+  vi.useFakeTimers()
+  try{
+    render(<CajaTicket receipt={receipt()} onClose={()=>{}} />)
+    await act(async()=>{await vi.advanceTimersByTimeAsync(180_000)})
+    const n=mocks.ticket.mock.calls.length
+    await act(async()=>{await vi.advanceTimersByTimeAsync(60_000)})
+    expect(mocks.ticket.mock.calls.length).toBe(n)
+  }finally{vi.useRealTimers()}
 })
