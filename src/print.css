@@ -5,4 +5,5 @@
 .vtd-modo-pill.por-cobrar{border:2px dashed #000;color:#000}
 .vtd-barcode-wrap{margin-top:12px;text-align:center}
 .vtd-barcode-wrap small{display:block;letter-spacing:2px;margin-top:3px}
+.vtd-barcode-wrap .vtd-documento-qr{display:block;width:30mm;height:30mm;margin:0 auto;background:white;object-fit:contain}
 
