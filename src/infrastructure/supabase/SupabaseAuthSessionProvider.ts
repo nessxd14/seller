@@ -59,7 +59,8 @@ export class SupabaseAuthSessionProvider implements AuthSessionProvider {
     // INITIAL_SESSION con sesión null (arranque en frío, nunca hubo login) es
     // legítimo y sigue mostrando el login, pero ya no se trata como una expulsión.
     supabase.auth.onAuthStateChange((event: string, authSession: { user: { id: string } } | null) => {
-      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN' || event === 'USER_UPDATED') invalidarSesionCache()
+      // Supabase re-emite SIGNED_IN al recuperar el foco: solo invalida si cambió el usuario.
+      if (event === 'SIGNED_OUT' || event === 'USER_UPDATED' || (event === 'SIGNED_IN' && authSession?.user.id !== cache?.userId)) invalidarSesionCache()
       if (event === 'SIGNED_OUT') {
         this.listeners.forEach((listener) => listener(null))
         return

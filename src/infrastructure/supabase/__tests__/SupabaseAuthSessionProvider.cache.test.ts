@@ -60,6 +60,25 @@ describe('SupabaseAuthSessionProvider — caché de perfil', () => {
     expect(h.maybeSingle).toHaveBeenCalledTimes(2)
   })
 
+  it('dos SIGNED_IN del mismo usuario dentro de 5 min hacen una sola consulta a perfil', async () => {
+    const provider = new SupabaseAuthSessionProvider()
+    await provider.getSession()
+    h.authCb?.('SIGNED_IN', { user: { id: 'u1' } })
+    await vi.advanceTimersByTimeAsync(60_000)
+    h.authCb?.('SIGNED_IN', { user: { id: 'u1' } })
+    await vi.advanceTimersByTimeAsync(0)
+    await provider.getSession()
+    expect(h.maybeSingle).toHaveBeenCalledTimes(1)
+  })
+
+  it('SIGNED_IN de otro usuario invalida la caché', async () => {
+    const provider = new SupabaseAuthSessionProvider()
+    await provider.getSession()
+    h.authCb?.('SIGNED_IN', { user: { id: 'u2' } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.maybeSingle).toHaveBeenCalledTimes(2)
+  })
+
   it('TOKEN_REFRESHED reutiliza la caché si el usuario no cambió', async () => {
     const provider = new SupabaseAuthSessionProvider()
     const listener = vi.fn()
