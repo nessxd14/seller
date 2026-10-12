@@ -1,7 +1,8 @@
 import { Printer } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Modal } from './Modal'
-import { Barcode128 } from './Barcode128'
+import { DocQr } from './DocQr'
+import { qrContentForVtd } from '../domain/documents/qrContent'
 import { empresaStore as empresa } from '../config/empresaStore'
 import { readDefaultPrintFormat, type PrintFormat } from './printFormat'
 import type { VentaDirectaRecord } from '../application/shared/models'
@@ -12,11 +13,16 @@ const money = (cents: number) => (cents / 100).toLocaleString('es-BO', { minimum
  * Brief VTD 2.3 — ticket del VTD, reutilizando la infraestructura térmica del documento
  * ROARI v1.1 (mismas clases .ticket/.ticket-58/.ticket-80 y las reglas @media print de
  * workflows.css). Lleva, como mínimo: identificador (numero VTD-2026-NNNNN, ver B1),
- * Code128 del mismo identificador, marca "VENTA DIRECTA" inequívoca, modo PAGADO/POR
+ * QR para preparación y verificación en Almacén, marca "VENTA DIRECTA", modo PAGADO/POR
  * COBRAR bien visible, y cantidades en unidades de PRESENTACIÓN (nunca base).
  */
 export function VtdTicketPreviewModal({ venta, onClose }: { venta: VentaDirectaRecord; onClose: () => void }) {
   const [format, setFormat] = useState<PrintFormat>(readDefaultPrintFormat)
+  const [qrListo, setQrListo] = useState('')
+  const [qrError, setQrError] = useState(false)
+  const content = qrContentForVtd(venta.id)
+  const ready = useCallback(() => { setQrListo(content); setQrError(false) }, [content])
+  const failed = useCallback(() => setQrError(true), [])
   return (
     <Modal title="Ticket de venta directa" subtitle="Documento no fiscal" onClose={onClose}>
       <div className="print-options">
@@ -51,14 +57,15 @@ export function VtdTicketPreviewModal({ venta, onClose }: { venta: VentaDirectaR
           <div><strong>TOTAL</strong><strong>Bs {money(venta.totalCents)}</strong></div>
         </div>
         <div className="vtd-barcode-wrap">
-          <Barcode128 value={venta.numero} />
+          <DocQr content={content} className="vtd-documento-qr" resolution={320} margin={4} onReady={ready} onError={failed} />
           <small>{venta.numero}</small>
         </div>
         <p>Entregar contra este ticket en Almacén Central</p>
       </div>
       <footer className="modal-actions">
+        {qrError && <span role="alert">No se pudo generar el QR. Cierra y vuelve a abrir el ticket.</span>}
         <button className="secondary-button" onClick={onClose}>Cerrar</button>
-        <button className="primary-button" onClick={() => window.print()}><Printer /> Imprimir</button>
+        <button className="primary-button" disabled={qrListo !== content || qrError} onClick={() => window.print()}><Printer /> {qrListo === content ? 'Imprimir' : 'Preparando QR…'}</button>
       </footer>
     </Modal>
   )
