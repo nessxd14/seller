@@ -20,17 +20,23 @@ export function CajaTicket({ receipt, onClose }: { receipt: CajaReceipt; onClose
   }, [])
   useEffect(() => {
     let active = true
+    let interval: number | undefined
+    const stop = () => { if (interval !== undefined) { window.clearInterval(interval); interval = undefined } }
     const check = async () => {
       if (active) setNow(Date.now())
       try {
         const tickets = await Promise.all(receipt.saleIds.map(id => saleService.getTicket(id)))
         if (!active) return
-        setStatus(tickets.some(t => !t) ? 'error' : tickets.some(t => t?.estado === 'ANULADA') ? 'cancelled' : tickets.some(t => t?.pagos.some(p => p.estadoVerificacion === 'RECHAZADO')) ? 'rejected' : tickets.some(t => t?.pagos.some(p => p.estadoVerificacion === 'PENDIENTE')) ? 'pending' : 'ready')
+        const next = (tickets.some(t => !t) ? 'error' : tickets.some(t => t?.estado === 'ANULADA') ? 'cancelled' : tickets.some(t => t?.pagos.some(p => p.estadoVerificacion === 'RECHAZADO')) ? 'rejected' : tickets.some(t => t?.pagos.some(p => p.estadoVerificacion === 'PENDIENTE')) ? 'pending' : 'ready') as typeof status
+        setStatus(next)
+        if (next !== 'pending') stop()
       } catch { if (active) setStatus('error') }
     }
     void check()
-    const interval = window.setInterval(() => void check(), 5000)
-    return () => { active = false; window.clearInterval(interval) }
+    interval = window.setInterval(() => { if (document.visibilityState !== 'hidden') void check() }, 5000)
+    // Tope de 3 minutos pase lo que pase.
+    const cap = window.setTimeout(stop, 180_000)
+    return () => { active = false; stop(); window.clearTimeout(cap) }
   }, [receipt.saleIds])
   const qrWaiting = status === 'pending' && receipt.pagos.some(p => p.metodo === 'QR') && bankOnline !== false && now - Date.parse(receipt.creadoEn) < 90_000
   return <Modal title={`Comprobante ${receipt.numero}`} subtitle="Documento no fiscal · cobro único" onClose={onClose}>

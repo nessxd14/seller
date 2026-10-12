@@ -13,9 +13,10 @@ export function useCashRefresh(refresh: () => Promise<void>, key: string) {
     }
     const visibility = () => { if (document.visibilityState === 'visible') update() }
     update()
-    const interval = window.setInterval(update, 15_000)
+    const interval = window.setInterval(update, 60_000)
     window.addEventListener('focus', update)
     document.addEventListener('visibilitychange', visibility)
+    // La publicación supabase_realtime está vacía hoy: el sondeo es la única fuente de frescura.
     let channel: ReturnType<typeof supabase.channel> | undefined
     // Los adaptadores de pruebas pueden no implementar Realtime.
     if (typeof supabase.channel === 'function') {

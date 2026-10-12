@@ -23,6 +23,28 @@ const resolveSession = async (userId: string): Promise<AuthSession> => {
   return { user, expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString() }
 }
 
+// Caché del perfil: getSession() lo llaman muchos componentes (incl. CashSessionContext en
+// cada tick) y cada llamada era un GET /perfil. El token se lee local; el perfil se reusa 5 min.
+const PROFILE_TTL_MS = 5 * 60000
+let cache: { userId: string; session: AuthSession; fetchedAt: number } | null = null
+let inflight: { userId: string; promise: Promise<AuthSession> } | null = null
+let generation = 0
+
+export const invalidarSesionCache = () => { cache = null; inflight = null; generation++ }
+
+const resolveSessionCached = (userId: string): Promise<AuthSession> => {
+  if (cache && cache.userId === userId && Date.now() - cache.fetchedAt < PROFILE_TTL_MS) return Promise.resolve(cache.session)
+  if (inflight && inflight.userId === userId) return inflight.promise
+  const gen = generation
+  const promise: Promise<AuthSession> = resolveSession(userId).then((session) => {
+    // No se cachean errores (rechazan arriba) ni resultados de antes de una invalidación.
+    if (gen === generation) cache = { userId, session, fetchedAt: Date.now() }
+    return session
+  }).finally(() => { if (inflight?.promise === promise) inflight = null })
+  inflight = { userId, promise }
+  return promise
+}
+
 export class SupabaseAuthSessionProvider implements AuthSessionProvider {
   private listeners = new Set<(session: AuthSession | null) => void>()
 
@@ -37,6 +59,7 @@ export class SupabaseAuthSessionProvider implements AuthSessionProvider {
     // INITIAL_SESSION con sesión null (arranque en frío, nunca hubo login) es
     // legítimo y sigue mostrando el login, pero ya no se trata como una expulsión.
     supabase.auth.onAuthStateChange((event: string, authSession: { user: { id: string } } | null) => {
+      if (event === 'SIGNED_OUT' || event === 'SIGNED_IN' || event === 'USER_UPDATED') invalidarSesionCache()
       if (event === 'SIGNED_OUT') {
         this.listeners.forEach((listener) => listener(null))
         return
@@ -46,7 +69,7 @@ export class SupabaseAuthSessionProvider implements AuthSessionProvider {
         return
       }
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
-        void resolveSession(authSession.user.id).then((session) => this.listeners.forEach((listener) => listener(session)))
+        void resolveSessionCached(authSession.user.id).then((session) => this.listeners.forEach((listener) => listener(session)))
       }
     })
   }
@@ -56,7 +79,7 @@ export class SupabaseAuthSessionProvider implements AuthSessionProvider {
     if (error) throw error
     const authSession = data.session
     if (!authSession) return null
-    return resolveSession(authSession.user.id)
+    return resolveSessionCached(authSession.user.id)
   }
 
   async setMockUser(): Promise<void> {

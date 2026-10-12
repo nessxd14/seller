@@ -22,7 +22,7 @@ import type { PedidoEnCarrito } from '../../application/shared/cajaCheckout'
 const bs = (cents: number) => (cents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const MOTIVOS_QUITAR = ['No lo lleva', 'Sin stock', 'Cambió por otro']
 const MOTIVOS_DESCUENTO = ['Producto dañado', 'Cliente frecuente', 'Autorizó gerente']
-const COLA_REFRESH_MS = 5000
+const COLA_REFRESH_MS = 20_000
 const presentacionesCache = new Map<number, PresentacionPiso[]>()
 const aProducto = (p: Product): ProductoPiso => ({ id: p.id, nombre: p.nombre, sku: p.sku, precioRetail: p.precioRetail })
 
@@ -76,7 +76,10 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
     if (paso !== 'cola') return
     void cargarCola()
     const id = window.setInterval(() => { if (document.visibilityState === 'visible') void cargarCola() }, COLA_REFRESH_MS)
-    return () => window.clearInterval(id)
+    const alVolver = () => { if (document.visibilityState === 'visible') void cargarCola() }
+    window.addEventListener('focus', alVolver)
+    document.addEventListener('visibilitychange', alVolver)
+    return () => { window.clearInterval(id); window.removeEventListener('focus', alVolver); document.removeEventListener('visibilitychange', alVolver) }
   }, [paso, cargarCola])
 
   const tomar = useCallback(async (pedidoId: string) => {

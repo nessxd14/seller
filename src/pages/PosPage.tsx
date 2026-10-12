@@ -103,8 +103,10 @@ function PosContent() {
       pedidoVendedorService.cola().then((cola) => { if (!cancelado) setEnEspera(cola.filter((p) => p.estado === 'ENVIADO').length) }).catch(() => undefined)
     }
     consultar()
-    const id = window.setInterval(consultar, 10_000)
-    return () => { cancelado = true; window.clearInterval(id) }
+    const id = window.setInterval(consultar, 30_000)
+    window.addEventListener('focus', consultar)
+    document.addEventListener('visibilitychange', consultar)
+    return () => { cancelado = true; window.clearInterval(id); window.removeEventListener('focus', consultar); document.removeEventListener('visibilitychange', consultar) }
   }, [puedeCobrarPedidos, sessionId, activeModule, refrescoCola])
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2800) }
   const handleNew = () => { if (localStorage.getItem(`roari-saldo-cobro:${operationId}`)) { notify('Comprueba el cobro anterior desde Cobrar o desde Caja antes de iniciar otra operación'); return }; if (pedidoEnCarrito) { setPedidosVendedor({}); notify('Devuelve o anula el pedido desde su revisión antes de iniciar otra operación'); return }; if ((cart.length || vtdsEnCarrito.length) && !window.confirm('¿Crear una nueva operación y limpiar el carrito actual?')) return; newOperation(); setSearch(''); setCategory('Todos'); notify('Nueva operación lista') }

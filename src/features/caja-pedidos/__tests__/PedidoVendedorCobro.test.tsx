@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { PedidoVendedorLinea, PedidoVendedorRecord } from '../../../application/shared/models'
 
 const svc = vi.hoisted(() => ({ cola: vi.fn(), tomar: vi.fn(), devolver: vi.fn(), anular: vi.fn(), cobrar: vi.fn() }))
@@ -292,5 +292,21 @@ describe('Salir sin cobrar', () => {
     expect(screen.queryByRole('dialog', { name: 'Salir del pedido' })).toBeNull()
     expect(svc.devolver).not.toHaveBeenCalled()
     expect(svc.anular).not.toHaveBeenCalled()
+  })
+})
+
+describe('Sondeo de la cola', () => {
+  afterEach(() => vi.useRealTimers())
+  it('consulta la cola cada 20 s y al recuperar el foco', async () => {
+    vi.useFakeTimers()
+    montar()
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(svc.cola).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(19_000) })
+    expect(svc.cola).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(svc.cola).toHaveBeenCalledTimes(2)
+    await act(async () => { window.dispatchEvent(new Event('focus')); await vi.advanceTimersByTimeAsync(0) })
+    expect(svc.cola).toHaveBeenCalledTimes(3)
   })
 })

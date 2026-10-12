@@ -48,11 +48,15 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const update = () => { void refresh().catch(() => setSessionId(null)) }
+    // Sondeo lento y solo con la pestaña visible; al volver a verla se actualiza al instante.
+    const tick = () => { if (document.visibilityState !== 'hidden') update() }
+    const visibility = () => { if (document.visibilityState === 'visible') update() }
     update()
     const unsubscribe = authSessionProvider.subscribe?.(update)
     window.addEventListener('focus', update)
-    const timer = window.setInterval(update, 15_000)
-    return () => { unsubscribe?.(); window.removeEventListener('focus', update); clearInterval(timer) }
+    document.addEventListener('visibilitychange', visibility)
+    const timer = window.setInterval(tick, 60_000)
+    return () => { unsubscribe?.(); window.removeEventListener('focus', update); document.removeEventListener('visibilitychange', visibility); clearInterval(timer) }
   }, [refresh])
 
   const value = useMemo(() => ({ sessionId, loading, refresh }), [sessionId, loading, refresh])
