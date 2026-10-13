@@ -71,7 +71,7 @@ interface PedidoLineaRow {
 
 interface PedidoEventoRow {
   id: number
-  accion: 'ANULADO' | 'RESTAURADO' | 'LINEA_RECHAZADA' | 'LINEA_CAMBIADA' | 'LINEA_RETIRADA' | 'LINEAS_AGREGADAS'
+  accion: 'ANULADO' | 'RESTAURADO' | 'LINEA_RECHAZADA' | 'PEDIDO_RECHAZADO' | 'LINEA_CAMBIADA' | 'LINEA_RETIRADA' | 'LINEAS_AGREGADAS'
   motivo: string | null
   estado_previo: string | null
   usuario: string
@@ -89,6 +89,7 @@ const accionLabel: Record<PedidoEventoRow['accion'], string> = {
   ANULADO: 'Pedido anulado',
   RESTAURADO: 'Pedido restaurado',
   LINEA_RECHAZADA: 'Línea rechazada',
+  PEDIDO_RECHAZADO: 'Pendientes rechazados en almacén',
   LINEA_CAMBIADA: 'Línea cambiada',
   LINEA_RETIRADA: 'Línea retirada',
   LINEAS_AGREGADAS: 'Ítems agregados',
