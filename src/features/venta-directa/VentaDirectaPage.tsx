@@ -1,5 +1,5 @@
-import { AlertTriangle, Ban, CheckCircle2, HandCoins, Minus, Printer } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { AlertTriangle, Ban, HandCoins, Minus, Printer, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
 import { VtdTicketPreviewModal } from '../../components/VtdTicketPreviewModal'
@@ -20,17 +20,54 @@ const money = (cents: number) => (cents / 100).toLocaleString('es-BO', { minimum
  */
 export function VentaDirectaPage({ notify }: { notify: (message: string) => void }) {
   const { sessionId } = useCashSession()
+  if (!sessionId) return <FeatureShell eyebrow="ALMACÉN" title="Venta Directa" subtitle="Ventas abiertas de este turno de caja"><FeatureState type="empty" text="Abrí la caja para ver la bandeja de venta directa" /></FeatureShell>
+  return <VentaDirectaBandeja key={sessionId} sessionId={sessionId} notify={notify} />
+}
+
+function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify: (message: string) => void }) {
   const [ventas, setVentas] = useState<VentaDirectaRecord[] | null>(null)
   const [ajustando, setAjustando] = useState<VentaDirectaRecord | null>(null)
   const [ticketing, setTicketing] = useState<VentaDirectaRecord | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [cobrando, setCobrando] = useState<VentaDirectaRecord | null>(null)
   const [pagoPosterior, setPagoPosterior] = useState<VentaDirectaRecord | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
+  const requests = useRef({ active: true, sequence: 0 })
   const [, setTick] = useState(0)
 
-  const load = () => { if (sessionId) void ventaDirectaService.listAbiertas(sessionId).then(setVentas) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- load() cierra sobre sessionId, no necesita re-crearse como dependencia
-  useEffect(() => { load() }, [sessionId])
+  const load = useCallback(async () => {
+    const state = requests.current
+    if (!state.active) return
+    const current = ++state.sequence
+    setRefreshing(true)
+    try {
+      const abiertas = await ventaDirectaService.listAbiertas(sessionId)
+      if (!state.active || current !== state.sequence) return
+      setVentas(abiertas)
+      setLoadError('')
+    } catch (error) {
+      if (state.active && current === state.sequence) setLoadError(error instanceof Error ? error.message : 'No se pudo actualizar la bandeja')
+    } finally {
+      if (state.active && current === state.sequence) setRefreshing(false)
+    }
+  }, [sessionId])
+  useEffect(() => {
+    const state = requests.current
+    state.active = true
+    void Promise.resolve().then(load)
+    const refreshVisible = () => { if (document.visibilityState !== 'hidden') void load() }
+    const timer = setInterval(refreshVisible, 60000)
+    window.addEventListener('focus', refreshVisible)
+    document.addEventListener('visibilitychange', refreshVisible)
+    return () => {
+      state.active = false
+      ++state.sequence
+      clearInterval(timer)
+      window.removeEventListener('focus', refreshVisible)
+      document.removeEventListener('visibilitychange', refreshVisible)
+    }
+  }, [load])
   // Refresca la antigüedad mostrada cada 30s — es solo un aviso visual, no re-fetchea.
   useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 30000); return () => clearInterval(id) }, [])
 
@@ -38,7 +75,7 @@ export function VentaDirectaPage({ notify }: { notify: (message: string) => void
   const confirmarCobro = async (venta: VentaDirectaRecord, payments: SaleCheckoutPayment[]) => {
     if (await cobro.cobrar([venta.id], payments)) {
       setCobrando(null)
-      load()
+      void load()
     }
   }
 
@@ -50,14 +87,19 @@ export function VentaDirectaPage({ notify }: { notify: (message: string) => void
     }
   }
 
-  const completar = async (venta: VentaDirectaRecord) => {
+  const consultarEntrega = async (venta: VentaDirectaRecord) => {
     setBusyId(venta.id)
     try {
-      await ventaDirectaService.completar(venta.id)
-      notify(`${venta.numero} completada — stock descontado`)
-      load()
+      const actual = await ventaDirectaService.getById(venta.id)
+      if (!actual) throw new Error('No se encontró la venta directa')
+      notify(actual.estado === 'COMPLETADA'
+        ? `${venta.numero}: Almacén ya autorizó la salida`
+        : actual.estado === 'ANULADA'
+          ? `${venta.numero} está anulada`
+          : `${venta.numero}: pendiente de autorizar la salida en Almacén`)
+      await load()
     } catch (error) {
-      manejarError(error, 'completar la venta')
+      manejarError(error, 'consultar la entrega')
     } finally {
       setBusyId(null)
     }
@@ -69,7 +111,7 @@ export function VentaDirectaPage({ notify }: { notify: (message: string) => void
     try {
       await ventaDirectaService.anular(venta.id, venta.sesionCajaId || sessionId || undefined)
       notify(`${venta.numero} anulada`)
-      load()
+      void load()
     } catch (error) {
       manejarError(error, 'anular la venta')
     } finally {
@@ -77,11 +119,12 @@ export function VentaDirectaPage({ notify }: { notify: (message: string) => void
     }
   }
 
-  if (!sessionId) return <FeatureShell eyebrow="ALMACÉN" title="Venta Directa" subtitle="Ventas abiertas de este turno de caja"><FeatureState type="empty" text="Abrí la caja para ver la bandeja de venta directa" /></FeatureShell>
-  if (ventas === null) return <FeatureShell eyebrow="ALMACÉN" title="Venta Directa" subtitle="Ventas abiertas de este turno de caja"><FeatureState type="skeleton" text="Cargando…" /></FeatureShell>
+  if (ventas === null) return <FeatureShell eyebrow="ALMACÉN" title="Venta Directa" subtitle="Ventas abiertas de este turno de caja">{loadError ? <><p role="alert">{loadError}</p><button disabled={refreshing} onClick={() => void load()}>Reintentar</button></> : <FeatureState type="skeleton" text="Cargando…" />}</FeatureShell>
 
   return (
-    <FeatureShell eyebrow="ALMACÉN" title="Venta Directa" subtitle="Ventas abiertas de este turno de caja — se cierran solas al cerrar caja">
+    <FeatureShell eyebrow="ALMACÉN" title="Venta Directa" subtitle="Caja registra el cobro. Almacén verifica y autoriza la salida.">
+      <button className="secondary-button" disabled={refreshing} onClick={() => void load()}><RefreshCw size={12} /> {refreshing ? 'Actualizando…' : 'Actualizar bandeja'}</button>
+      {loadError && <p role="alert">{loadError}</p>}
       {!ventas.length
         ? <FeatureState type="empty" text="No hay ventas directas abiertas en este turno" />
         : <div className="vtd-bandeja-cards">
@@ -89,8 +132,7 @@ export function VentaDirectaPage({ notify }: { notify: (message: string) => void
               const antiguedad = antiguedadMinutos(venta.creadoEn)
               const vieja = antiguedad >= VTD_ANTIGUEDAD_AVISO_MIN
               const pagado = venta.paidCents > 0
-              // POR COBRAR: exigible, sin pago y sin marca de pago posterior. Es la única
-              // señal que bloquea "Completar" (el trigger de venta lo rechazaría igual).
+              // El cobro y la entrega son pasos independientes; Almacén autoriza la salida.
               const porCobrar = !pagado && !venta.pagoPosterior && venta.cobroExigible && venta.totalCents > 0
               return (
                 <article className={`vtd-card ${vieja ? 'vtd-card-vieja' : ''}`} key={venta.id}>
@@ -118,7 +160,7 @@ export function VentaDirectaPage({ notify }: { notify: (message: string) => void
                     <button disabled={busyId === venta.id} onClick={() => setAjustando(venta)}><Minus size={12} /> Ajustar</button>
                     {porCobrar && <button className="primary-button vtd-card-cobrar" disabled={busyId === venta.id} onClick={() => { cobro.clearError(); setCobrando(venta) }}><HandCoins size={12} /> Cobrar</button>}
                     {porCobrar && <button className="vtd-card-pago-posterior-btn" disabled={busyId === venta.id} onClick={() => setPagoPosterior(venta)}>Pago posterior…</button>}
-                    <button className="vtd-card-completar" disabled={busyId === venta.id || porCobrar} title={porCobrar ? 'Cobra la venta o márcala como pago posterior para poder entregar' : undefined} onClick={() => void completar(venta)}><CheckCircle2 size={12} /> Completar</button>
+                    <button className="vtd-card-completar" disabled={busyId === venta.id} onClick={() => void consultarEntrega(venta)}><RefreshCw size={12} /> Consultar entrega</button>
                     <button className="danger-button" disabled={busyId === venta.id} onClick={() => void anular(venta)}><Ban size={12} /> Anular</button>
                   </div>
                 </article>

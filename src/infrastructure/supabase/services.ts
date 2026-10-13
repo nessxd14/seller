@@ -15,6 +15,7 @@ import { reportsRepository } from './ReportsRepository.supabase'
 import { comisionesRepository } from './ComisionRepository.supabase'
 import { sensitiveOperations } from '../mock/services'
 import { checkoutFingerprint } from '../../domain/sales/checkoutFingerprint'
+import { cobroVtdFingerprint } from '../../domain/sales/cobroVtdFingerprint'
 import { expectedCash } from '../../application/cash/CashService'
 import type { CategoriaPedido } from './mappers'
 import { ventaDirectaRepository, getUbicacionVentasDirectas } from './VentaDirectaRepository.supabase'
@@ -270,12 +271,7 @@ export const ventaDirectaService = {
    */
   async cobrarVtd(input: { ventaIds: string[]; sesionCajaId: string; pagos: SaleCheckoutPayment[] }) {
     const actorId = await currentActorId()
-    const aggregateId = `${input.sesionCajaId}:${checkoutFingerprint({
-      lines: input.ventaIds.map((id) => ({ productId: id, quantity: 1, unitPriceCents: 0 })),
-      discountCents: 0,
-      cashSessionId: input.sesionCajaId,
-      payments: input.pagos.map((p) => ({ method: p.method, amountCents: p.amountCents })),
-    })}`
+    const aggregateId = cobroVtdFingerprint({ ...input, actorId })
     return sensitiveOperations.execute('cobrar_vtd', aggregateId, (idempotencyKey) =>
       ventaDirectaRepository.cobrarVtd(input, { actorId, idempotencyKey }),
     )

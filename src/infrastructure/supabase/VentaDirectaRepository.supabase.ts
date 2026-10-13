@@ -236,7 +236,7 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
   }
 
   // Brief Caja VTD — cobrar_vtd: cobro de uno o más VTD postcobrados en un solo recibo.
-  // No toca Kardex (eso sigue siendo completar_venta, desde la bandeja de Venta Directa).
+  // No toca Kardex: la salida se autoriza desde Operaciones de Almacén.
   async cobrarVtd(input: { ventaIds: string[]; sesionCajaId: string; pagos: SaleCheckoutPayment[] }, context: MutationContext & { idempotencyKey: string }): Promise<CobrarVtdResultado> {
     const { data, error } = await supabase.rpc('cobrar_vtd', {
       p_venta_ids: input.ventaIds.map(Number),

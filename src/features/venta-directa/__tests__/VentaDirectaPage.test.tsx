@@ -24,19 +24,20 @@ const base: VentaDirectaRecord = {
   creadoEn: new Date().toISOString(), lines: [{ id: 'l1', productId: '9', name: 'Resma', sku: 'R', cantidadPresentacion: 1, precioUnitarioCents: 15000 }],
 }
 const TRIGGER_MSG = 'VTD-2026-00001 no está cobrada. Cóbrala en caja antes de entregar, o márcala como pago posterior con motivo.'
-const completar = () => screen.getByRole('button', { name: /Completar/ }) as HTMLButtonElement
+const entrega = () => screen.getByRole('button', { name: /Consultar entrega/ }) as HTMLButtonElement
 
 beforeEach(() => { vi.clearAllMocks(); mocks.listAbiertas.mockResolvedValue([base]) })
 afterEach(cleanup)
 
 describe('Bandeja de Venta Directa — cobro obligatorio (Brief Caja VTD obligatorio A3/A5)', () => {
-  it('una VTD sin cobrar muestra POR COBRAR, "Cobrar" y "Pago posterior…", y Completar está deshabilitado', async () => {
+  it('una VTD sin cobrar ofrece cobro y consulta de entrega sin descontar stock desde Caja', async () => {
     render(<VentaDirectaPage notify={() => {}} />)
     await screen.findByText('POR COBRAR')
     expect(screen.getByRole('button', { name: /^Cobrar$/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Pago posterior…' })).toBeTruthy()
-    expect(completar().disabled).toBe(true)
-    expect(completar().title).toBe('Cobra la venta o márcala como pago posterior para poder entregar')
+    expect(entrega().disabled).toBe(false)
+    expect(screen.queryByRole('button', { name: /Completar/ })).toBeNull()
+    expect(mocks.completar).not.toHaveBeenCalled()
   })
 
   it('"Cobrar" confirma con cobrar_vtd para esa única venta y encola el ticket pagado', async () => {
@@ -53,7 +54,7 @@ describe('Bandeja de Venta Directa — cobro obligatorio (Brief Caja VTD obligat
     expect(mocks.listAbiertas.mock.calls.length).toBeGreaterThan(1)
   })
 
-  it('una VTD pagada o con pago posterior se completa como siempre; la de pago posterior muestra motivo y contacto', async () => {
+  it('una VTD pagada o con pago posterior permite consultar su entrega y muestra motivo y contacto', async () => {
     mocks.listAbiertas.mockResolvedValue([
       { ...base, id: '2', numero: 'VTD-2026-00002', paidCents: 15000 },
       { ...base, id: '3', numero: 'VTD-2026-00003', pagoPosterior: true, pagoPosteriorMotivo: 'Cliente paga el viernes', pagoPosteriorContacto: 'Ana 70011223' },
@@ -63,18 +64,58 @@ describe('Bandeja de Venta Directa — cobro obligatorio (Brief Caja VTD obligat
     expect(screen.getByText('PAGO POSTERIOR')).toBeTruthy()
     expect(screen.getByText('Cliente paga el viernes')).toBeTruthy()
     expect(screen.getByText(/Ana 70011223/)).toBeTruthy()
-    for (const button of screen.getAllByRole('button', { name: /Completar/ })) expect((button as HTMLButtonElement).disabled).toBe(false)
+    for (const button of screen.getAllByRole('button', { name: /Consultar entrega/ })) expect((button as HTMLButtonElement).disabled).toBe(false)
     expect(screen.queryByRole('button', { name: /^Cobrar$/ })).toBeNull()
   })
 
-  it('el mensaje del trigger llega tal cual a la cajera al completar (sin texto genérico)', async () => {
+  it('muestra el error recibido al consultar la entrega', async () => {
     mocks.listAbiertas.mockResolvedValue([{ ...base, cobroExigible: false }])
-    mocks.completar.mockRejectedValue(new Error(TRIGGER_MSG))
+    mocks.getById.mockRejectedValue(new Error(TRIGGER_MSG))
     const notify = vi.fn()
     render(<VentaDirectaPage notify={notify} />)
     await screen.findByText('Histórica')
-    fireEvent.click(completar())
+    fireEvent.click(entrega())
     await waitFor(() => expect(notify).toHaveBeenCalledWith(TRIGGER_MSG))
+  })
+
+  it('reconoce la entrega ya autorizada en Almacén y retira la VTD sin repetir la salida', async () => {
+    mocks.getById.mockResolvedValue({ ...base, estado: 'COMPLETADA', paidCents: 15000 })
+    const notify = vi.fn()
+    render(<VentaDirectaPage notify={notify} />)
+    await screen.findByText(base.numero!)
+    mocks.listAbiertas.mockResolvedValue([])
+    fireEvent.click(entrega())
+    await screen.findByText('No hay ventas directas abiertas en este turno')
+    expect(notify).toHaveBeenCalledWith(`${base.numero}: Almacén ya autorizó la salida`)
+    expect(mocks.completar).not.toHaveBeenCalled()
+    expect(mocks.cobrarVtd).not.toHaveBeenCalled()
+  })
+
+  it('una entrega pendiente explica que debe autorizarla Almacén', async () => {
+    mocks.getById.mockResolvedValue(base)
+    const notify = vi.fn()
+    render(<VentaDirectaPage notify={notify} />)
+    await screen.findByText(base.numero!)
+    fireEvent.click(entrega())
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(`${base.numero}: pendiente de autorizar la salida en Almacén`))
+    expect(mocks.completar).not.toHaveBeenCalled()
+  })
+
+  it('al volver a Caja consulta los cambios de Almacén', async () => {
+    render(<VentaDirectaPage notify={vi.fn()} />)
+    await screen.findByText(base.numero!)
+    mocks.listAbiertas.mockResolvedValue([])
+    fireEvent.focus(window)
+    await screen.findByText('No hay ventas directas abiertas en este turno')
+  })
+
+  it('permite reintentar cuando la carga falla', async () => {
+    mocks.listAbiertas.mockRejectedValueOnce(new Error('Sin conexión'))
+    render(<VentaDirectaPage notify={vi.fn()} />)
+    expect((await screen.findByRole('alert')).textContent).toBe('Sin conexión')
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    await screen.findByText(base.numero!)
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   describe('Pago posterior…', () => {
