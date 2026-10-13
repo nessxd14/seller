@@ -29,6 +29,7 @@ const lines = [
 const eventos = [
   { id: 1, accion: 'LINEA_RECHAZADA', motivo: 'Sin stock', estado_previo: null, usuario: 'almacen@cation', creado_en: '2026-08-05T00:00:00Z' },
   { id: 2, accion: 'ANULADO', motivo: 'Cliente canceló', estado_previo: 'ABIERTO', usuario: 'vendedor@cation', creado_en: '2026-08-06T00:00:00Z' },
+  { id: 3, accion: 'PEDIDO_RECHAZADO', motivo: 'Faltantes de almacén', estado_previo: null, usuario: 'almacen@cation', creado_en: '2026-08-07T00:00:00Z' },
 ]
 
 const pedidoBuilder = { select: () => pedidoBuilder, eq: () => pedidoBuilder, maybeSingle: () => Promise.resolve({ data: header, error: null }) }
@@ -47,6 +48,13 @@ vi.mock('../supabaseClient', () => ({
 }))
 
 describe('SupabaseOrderRepository.getById — historial y reemplazo de línea', () => {
+  it('identifica el rechazo de pendientes y conserva su responsable y motivo', async () => {
+    const { orderRepository } = await import('../OrderRepository.supabase')
+    const order = await orderRepository.getById('501')
+    const event = order?.events.find(e => e.detail.includes('Faltantes de almacén'))
+    expect(event?.label).toBe('Pendientes rechazados en almacén')
+    expect(event?.detail).toBe('almacen@cation · Faltantes de almacén')
+  })
   it('etiqueta LINEA_RECHAZADA como "Línea rechazada", nunca "Pedido restaurado"', async () => {
     const { orderRepository } = await import('../OrderRepository.supabase')
     const order = await orderRepository.getById('501')

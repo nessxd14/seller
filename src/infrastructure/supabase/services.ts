@@ -102,20 +102,19 @@ export const orderService = {
     void id
     throw new Error('El despacho se gestiona desde el WMS en modo Supabase.')
   },
-  // TAREA 2 (Ronda 9): anular_pedido/restaurar_pedido do the estado change + bitácora
-  // insert atomically server-side (see db/migrations/2026-07-28_pedido_evento.sql, not
-  // yet applied). p_usuario is the real session email, never a free-text field.
+  // Estado, cartera y bitácora se resuelven juntos; el servidor determina el autor.
+  // Sin las RPC nuevas se bloquea la acción, sin volver a la cancelación antigua.
   async cancel(id: string, motivo: string): Promise<OrderView> {
-    const actorId = await currentActorId()
-    const { error } = await supabase.rpc('anular_pedido', { p_pedido_id: Number(id), p_motivo: motivo, p_usuario: actorId })
+    const { error } = await supabase.rpc('anular_pedido_con_cartera', { p_pedido_id: Number(id), p_motivo: motivo })
+    if (error?.code === 'PGRST202') throw new Error('La cancelación con revisión de cartera aún no está habilitada. Solicita la actualización del sistema.')
     if (error) throw error
     const updated = await orderRepository.getById(id)
     if (!updated) throw new Error('No se pudo releer el pedido anulado')
     return updated
   },
   async restore(id: string, motivo: string): Promise<OrderView> {
-    const actorId = await currentActorId()
-    const { error } = await supabase.rpc('restaurar_pedido', { p_pedido_id: Number(id), p_motivo: motivo, p_usuario: actorId })
+    const { error } = await supabase.rpc('restaurar_pedido_con_cartera', { p_pedido_id: Number(id), p_motivo: motivo })
+    if (error?.code === 'PGRST202') throw new Error('La restauración con revisión de cartera aún no está habilitada. Solicita la actualización del sistema.')
     if (error) throw error
     const updated = await orderRepository.getById(id)
     if (!updated) throw new Error('No se pudo releer el pedido restaurado')
