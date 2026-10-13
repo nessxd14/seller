@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ventaDirectaService } from '../../infrastructure/services'
 import type { SaleCheckoutPayment } from '../../application/ports/repositories'
 import type { VentaDirectaRecord } from '../../application/shared/models'
@@ -13,12 +13,14 @@ const money = (value: number) => value.toLocaleString('es-BO', { minimumFraction
  */
 export function useCobroVtd({ sessionId, notify }: { sessionId: string | null | undefined; notify: (message: string) => void }) {
   const [submitting, setSubmitting] = useState(false)
+  const inFlight = useRef(false)
   const [error, setError] = useState('')
   const [ticketQueue, setTicketQueue] = useState<VentaDirectaRecord[]>([])
 
   /** true si el cobro quedó registrado (incluye el reintento idempotente). */
   const cobrar = async (ventaIds: string[], payments: SaleCheckoutPayment[]): Promise<boolean> => {
-    if (!sessionId || submitting || !ventaIds.length) return false
+    if (!sessionId || inFlight.current || !ventaIds.length) return false
+    inFlight.current = true
     setSubmitting(true)
     setError('')
     try {
@@ -36,6 +38,7 @@ export function useCobroVtd({ sessionId, notify }: { sessionId: string | null | 
       setError(err instanceof Error ? err.message : 'No se pudo cobrar la venta directa')
       return false
     } finally {
+      inFlight.current = false
       setSubmitting(false)
     }
   }
