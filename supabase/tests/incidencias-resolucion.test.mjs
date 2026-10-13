@@ -186,7 +186,12 @@ export async function testIncidenciasResolucion(db,claims) {
  await assert.rejects(()=>db.query('delete from hermes.resolucion_operacion where id=$1',[result.operacion_id]),/permission denied/)
  await db.exec('reset role')
  await assert.rejects(()=>db.query("update hermes.resolucion_operacion set motivo='Otro' where id=$1",[result.operacion_id]),/conserva/)
+ await create(db,881047);await pay(db,881047,50,false)
+ const authResolution=await request(881047,'SALDO_FAVOR',{recepcion:true})
  await db.exec('set role authenticated')
+ const resolvedAsUser=(await resolve(authResolution)).rows[0].r
+ assert.equal(resolvedAsUser.dinero_resuelto,'50.00')
+ assert.equal((await db.query('select hermes.obtener_resolucion_pedido(881047) r')).rows[0].r.partidas[0].estado,'ANULADA')
  const authorized=(await db.query('select hermes.obtener_resolucion_pedido(881030) r')).rows[0].r
  assert.equal(authorized.puede_resolver,true)
  await assert.rejects(()=>db.query("insert into public.pedido_evento(pedido_id,accion,motivo,usuario) values(881020,'REMANENTE_CANCELADO','Falso','Otro')"),/operación autorizada/)
