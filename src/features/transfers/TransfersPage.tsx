@@ -86,6 +86,16 @@ export function TransfersPage({ notify, initialRequest = null, onInitialRequestC
   const enTransito = useMemo(() => filteredTransfers.filter((t) => t.estado === 'EN_TRANSITO'), [filteredTransfers])
   const cerrados = useMemo(() => filteredTransfers.filter((t) => t.estado === 'RECIBIDO' || t.estado === 'CANCELADO' || t.estado === 'RECHAZADO'), [filteredTransfers])
 
+  const openTransfer = async (transfer: TransferRecord) => {
+    try {
+      const current = await transferService.getById(transfer.id)
+      if (!current) throw new Error('La solicitud de traslado ya no está disponible')
+      setSelected(current)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo cargar el traslado completo')
+    }
+  }
+
   const dispatchTransfer = async (transfer: TransferRecord) => {
     try {
       const updated = await transferService.dispatch(transfer.id)
@@ -148,15 +158,15 @@ export function TransfersPage({ notify, initialRequest = null, onInitialRequestC
   return <FeatureShell eyebrow="LOGÍSTICA" title="Traslados" subtitle="Bandeja: despachar, recibir y revertir traslados Almacén ↔ Tienda" action={<button className="primary-button" onClick={() => setCreating(true)}><Plus /> Nueva solicitud</button>}>
     {!!transfers.length && <FeatureToolbar query={query} onQuery={setQuery} placeholder="Buscar por número o asunto..." />}
     {status === 'loading' ? <FeatureState type="skeleton" text="Cargando traslados" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !transfers.length ? <FeatureState type="empty" text="No hay solicitudes de traslado" /> : !filteredTransfers.length ? <FeatureState type="no-results" text="No hay traslados que coincidan con la búsqueda" /> : <div className="traslados-bandeja">
-      <TrasladoGrupo titulo="Por despachar" items={porDespachar} onSelect={setSelected} now={now} />
-      <TrasladoGrupo titulo="En tránsito" items={enTransito} onSelect={setSelected} now={now} />
+      <TrasladoGrupo titulo="Por despachar" items={porDespachar} onSelect={(t) => void openTransfer(t)} now={now} />
+      <TrasladoGrupo titulo="En tránsito" items={enTransito} onSelect={(t) => void openTransfer(t)} now={now} />
       <div className="traslados-grupo">
         <button type="button" className="traslados-grupo-header traslados-grupo-toggle" onClick={() => setCerradosAbierto((v) => !v)}>
           <span>Cerrados<b>{cerrados.length}</b></span>
           {cerradosAbierto ? <ChevronUp /> : <ChevronDown />}
         </button>
         {cerradosAbierto && (cerrados.length
-          ? <div className="traslados-grupo-cards">{cerrados.map((t) => <TrasladoCard key={t.id} transfer={t} onSelect={setSelected} now={now} />)}</div>
+          ? <div className="traslados-grupo-cards">{cerrados.map((t) => <TrasladoCard key={t.id} transfer={t} onSelect={(t) => void openTransfer(t)} now={now} />)}</div>
           : <p className="traslados-grupo-empty">Sin traslados cerrados todavía.</p>)}
       </div>
     </div>}

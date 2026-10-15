@@ -76,13 +76,33 @@ const rowToTransferRecord = (header: SolicitudTrasladoRow, lines: SolicitudTrasl
 
 const LINE_SELECT = '*, producto(nombre,sku_interno), presentacion(nombre)'
 
+// El límite de filas de PostgREST también afecta a .in(): una consulta para toda
+// la bandeja dejaba los traslados más recientes con solo parte de sus productos.
+// Avanzamos por id hasta una página vacía, incluso si el servidor reduce el lote.
+const fetchTransferLines = async (ids: number[]): Promise<SolicitudTrasladoLineaRow[]> => {
+  const lines: SolicitudTrasladoLineaRow[] = []
+  for (let start = 0; start < ids.length; start += 100) {
+    const batchIds = ids.slice(start, start + 100)
+    let after = 0
+    for (;;) {
+      let query = supabase.from('solicitud_traslado_linea').select(LINE_SELECT)
+      query = batchIds.length === 1 ? query.eq('solicitud_id', batchIds[0]) : query.in('solicitud_id', batchIds)
+      const { data, error } = await query.gt('id', after).order('id', { ascending: true }).limit(500)
+      if (error) throw error
+      const page = (data ?? []) as SolicitudTrasladoLineaRow[]
+      if (!page.length) break
+      lines.push(...page)
+      after = page[page.length - 1].id
+    }
+  }
+  return lines
+}
+
 const fetchTransferById = async (id: number): Promise<TransferRecord | null> => {
   const { data: header, error: headerError } = await supabase.from('solicitud_traslado').select('*').eq('id', id).maybeSingle()
   if (headerError) throw headerError
   if (!header) return null
-  const { data: lines, error: linesError } = await supabase.from('solicitud_traslado_linea').select(LINE_SELECT).eq('solicitud_id', id)
-  if (linesError) throw linesError
-  return rowToTransferRecord(header as SolicitudTrasladoRow, (lines ?? []) as SolicitudTrasladoLineaRow[])
+  return rowToTransferRecord(header as SolicitudTrasladoRow, await fetchTransferLines([id]))
 }
 
 export interface CreateTransferLineInput {
@@ -113,17 +133,26 @@ const buildLineasJsonb = (lines: CreateTransferLineInput[]) =>
 
 export class SupabaseTransferRepository {
   async list(filters?: { estado?: TransferEstado }): Promise<TransferRecord[]> {
-    let builder = supabase.from('solicitud_traslado').select('*')
-    if (filters?.estado) builder = builder.eq('estado', filters.estado)
-    const { data, error } = await builder.order('id', { ascending: false })
-    if (error) throw error
-    const headers = (data ?? []) as SolicitudTrasladoRow[]
-    const ids = headers.map((h) => h.id)
-    const { data: allLines, error: linesError } = ids.length
-      ? await supabase.from('solicitud_traslado_linea').select(LINE_SELECT).in('solicitud_id', ids)
-      : { data: [] as SolicitudTrasladoLineaRow[], error: null }
-    if (linesError) throw linesError
-    return headers.map((header) => rowToTransferRecord(header, (allLines ?? []).filter((l) => l.solicitud_id === header.id) as SolicitudTrasladoLineaRow[]))
+    const headers: SolicitudTrasladoRow[] = []
+    let before: number | undefined
+    for (;;) {
+      let query = supabase.from('solicitud_traslado').select('*')
+      if (filters?.estado) query = query.eq('estado', filters.estado)
+      if (before != null) query = query.lt('id', before)
+      const { data, error } = await query.order('id', { ascending: false }).limit(500)
+      if (error) throw error
+      const page = (data ?? []) as SolicitudTrasladoRow[]
+      if (!page.length) break
+      headers.push(...page)
+      before = page[page.length - 1].id
+    }
+    const linesByTransfer = new Map<number, SolicitudTrasladoLineaRow[]>()
+    for (const line of await fetchTransferLines(headers.map((h) => h.id))) {
+      const group = linesByTransfer.get(line.solicitud_id) ?? []
+      group.push(line)
+      linesByTransfer.set(line.solicitud_id, group)
+    }
+    return headers.map((header) => rowToTransferRecord(header, linesByTransfer.get(header.id) ?? []))
   }
 
   async getById(id: string): Promise<TransferRecord | null> {

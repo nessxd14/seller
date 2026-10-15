@@ -7,6 +7,7 @@ import { empresaStore as empresa, loadEmpresaConfig } from '../config/empresaSto
 import { LineIdentifiersRow, type LineIdentifiers } from './LineIdentifiersRow'
 import { fechaFmt, fmtQty, motivoLabel, sucursalLabel } from '../features/transfers/TransfersPage'
 import { nombreArchivoDocumento } from '../domain/documents/nombreArchivoDocumento'
+import { DocumentPrintPages, DocumentTableColumns } from './DocumentPrintPages'
 
 // Brief S8: un componente nuevo, no un cuarto modo de DocumentoExportable — un traslado
 // no tiene cliente, canal ni precios, tiene origen→destino y tres cantidades por línea.
@@ -66,6 +67,7 @@ export function TrasladoExportable({ transfer, onClose }: { transfer: TransferRe
 
   return (
     <Modal title={modalTitleFor[mode]} subtitle={empresa.razonSocial} onClose={onClose} wide>
+      <DocumentPrintPages number={numero} lineCount={transfer.lines.length} />
       <div className={`print-document documento-exportable traslado-a4 traslado-doc-${mode}`}>
         {anulado && <div className="doc-watermark">{transfer.estado}</div>}
         <header>
@@ -125,6 +127,7 @@ export function TrasladoExportable({ transfer, onClose }: { transfer: TransferRe
 function PickingTable({ lines, identifiers }: { lines: TransferLine[]; identifiers: Record<string, LineIdentifiers> }) {
   return (
     <table className="doc-table">
+      <DocumentTableColumns widths={[4, 4, 44, 18, 17, 13]} />
       <thead><tr><th aria-label="Marcar"></th><th>Nº</th><th>Descripción</th><th>Presentación</th><th>Cantidad</th><th>Equivalencia</th></tr></thead>
       <tbody>
         {lines.map((line, index) => {
@@ -153,6 +156,7 @@ function PickingTable({ lines, identifiers }: { lines: TransferLine[]; identifie
 function GuiaTable({ lines, identifiers }: { lines: TransferLine[]; identifiers: Record<string, LineIdentifiers> }) {
   return (
     <table className="doc-table">
+      <DocumentTableColumns widths={[4, 46, 18, 16, 16]} />
       <thead><tr><th>Nº</th><th>Descripción</th><th>Presentación</th><th>Solicitado</th><th>Despachado</th></tr></thead>
       <tbody>
         {lines.map((line, index) => {
@@ -179,6 +183,7 @@ function GuiaTable({ lines, identifiers }: { lines: TransferLine[]; identifiers:
 function ConstanciaTable({ lines, identifiers }: { lines: TransferLine[]; identifiers: Record<string, LineIdentifiers> }) {
   return (
     <table className="doc-table">
+      <DocumentTableColumns widths={[4, 32, 16, 12, 12, 12, 12]} />
       <thead><tr><th>Nº</th><th>Descripción</th><th>Presentación</th><th>Solicitado</th><th>Despachado</th><th>Recibido</th><th>Dif.</th></tr></thead>
       <tbody>
         {lines.map((line, index) => {
