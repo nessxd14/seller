@@ -182,8 +182,13 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
   // Brief VTD 2.4, ahora para turno: mismo chequeo proactivo que la caja legacy.
   const abrirCierre = async () => {
     const abiertas = await ventaDirectaService.listAbiertas(sesion.id)
-    if (abiertas.length) { notify(`No se puede cerrar el turno: hay ${abiertas.length} venta${abiertas.length > 1 ? 's' : ''} directa${abiertas.length > 1 ? 's' : ''} de almacén abierta${abiertas.length > 1 ? 's' : ''}. Resolvelas en Venta Directa antes de cerrar.`); return }
+    // Misma regla que cerrar_turno: solo bloquean las VTD abiertas que aún deben dinero. Las ya
+    // cobradas esperan a Almacén y se completan al despacharse.
+    const porCobrar = abiertas.filter((v) => v.cobroExigible && !v.pagoPosterior && v.totalCents > 0 && v.paidCents < v.totalCents)
+    const porDespachar = abiertas.filter((v) => !porCobrar.includes(v))
+    if (porCobrar.length) { notify(`No se puede cerrar el turno: hay ${porCobrar.length} venta(s) directa(s) sin cobrar. Cóbralas, márcalas como pago posterior o anúlalas antes de cerrar.`); return }
     setClosing(true)
+    if (porDespachar.length) notify(`${porDespachar.length} venta(s) directa(s) cobrada(s) siguen pendientes de despacho en Almacén. El turno se puede cerrar; quedan en la cola de Almacén.`)
   }
   // Entrega de efectivo (remesa) antes del conteo de cierre. La clave de idempotencia la genera
   // el modal una sola vez por instancia: un reintento no crea una segunda remesa.
