@@ -146,6 +146,9 @@ const currentMockActor = async (): Promise<string> => {
 }
 
 export const transferService = {
+  getById(id: string) {
+    return rawTransferService.getById(id)
+  },
   async list(filters?: { estado?: TransferEstado }): Promise<TransferRecord[]> {
     return rawTransferService.list(filters)
   },

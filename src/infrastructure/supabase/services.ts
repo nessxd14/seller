@@ -333,6 +333,9 @@ export const borradorOperacionService = {
 }
 
 export const transferService = {
+  getById(id: string) {
+    return transferRepository.getById(id)
+  },
   async list(filters?: { estado?: TransferEstado }): Promise<TransferRecord[]> {
     return transferRepository.list(filters)
   },

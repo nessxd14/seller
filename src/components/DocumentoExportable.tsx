@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FileDown, Printer } from 'lucide-react'
 import type { WorkflowLine } from '../application/shared/models'
 import { customerService, listLineIdentifiers } from '../infrastructure/services'
@@ -13,6 +13,7 @@ import { featureFlags } from '../config/featureFlags'
 import { resolveNombrePorEmail } from '../infrastructure/supabase/PerfilRepository.supabase'
 import { readDefaultDocPrintFormat, type DocPrintFormat } from './docPrintFormat'
 import { formatQtyWithUnit } from '../domain/sales/unitOfMeasure'
+import { DocumentPrintPages, DocumentTableColumns } from './DocumentPrintPages'
 
 export interface ExportableDoc {
   number: string
@@ -61,35 +62,6 @@ const medioPagoLabel: Record<string, string> = {
 }
 
 const lineTotalCents = (line: WorkflowLine) => Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000)
-
-// Brief "Correcciones de impresión de documentos" Parte 2: la página 1 lleva el membrete
-// completo (más alto); las páginas 2..N llevan la cabecera compacta de una sola línea
-// (más baja, aunque acotada por abajo por el QR de 16mm que se mantiene en todas las
-// páginas). El brief sugería arrancar en 12/16 — con el membrete ya corregido (logo
-// 56px, sin los overrides de 132/208/264px que existían antes, y el bug de
-// .doc-id-block-with-qr apilándose en vertical por especificidad CSS, también corregido)
-// esos números todavía partían cada página lógica en dos físicas. 9 primera / 11
-// siguientes sí entra: medido con Playwright imprimiendo a PDF tamaño carta y contando
-// páginas físicas contra "Página N de M" hasta que coincidieron exactamente (confirmado
-// con nombres de producto largos que fuerzan 2 líneas de wrap). Un nombre aún más largo
-// que fuerce 3 líneas todavía puede desbordar una hoja ocasionalmente — CSS de impresión
-// no da un hook para medir antes de romper página; si eso se vuelve un problema real, la
-// solución de fondo es binning por altura medida en vez de por cantidad fija de líneas.
-const NE_LINES_FIRST_PAGE = 9
-const NE_LINES_OTHER_PAGES = 11
-
-const chunkVariable = <T,>(items: T[], firstSize: number, restSize: number): T[][] => {
-  if (!items.length) return [[]]
-  const pages: T[][] = []
-  let i = 0
-  let size = firstSize
-  while (i < items.length) {
-    pages.push(items.slice(i, i + size))
-    i += size
-    size = restSize
-  }
-  return pages
-}
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 const formatFecha = (date: Date) => `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`
@@ -217,6 +189,7 @@ export function DocumentoExportable({ doc, mode, onClose }: { doc: ExportableDoc
 
   return (
     <Modal title={modalTitle} subtitle={empresa.razonSocial} onClose={onClose} wide>
+      <DocumentPrintPages number={doc.number} lineCount={doc.lines.length} />
       {(mode === 'cotizacion' || supportsRollo) && (
         <div className="doc-view-toggle">
           {mode === 'cotizacion' && (
@@ -298,6 +271,7 @@ function CotizacionDoc({ doc, vistaCliente, customerDoc, asesorNombre, identifie
           {asesorNombre && <div className="doc-kv"><div className="k">Asesor</div><div className="v">{asesorNombre}</div></div>}
         </section>
         <table className="doc-table">
+          <DocumentTableColumns widths={[4, 39, 10, 6, 8, 12, 8, 13]} />
           <thead>
             <tr><th>Nº</th><th>Descripción</th><th>Medida</th><th>Cant</th><th>Equiv.</th><th>P/U</th><th>Desc.</th><th>Total</th></tr>
           </thead>
@@ -334,21 +308,23 @@ function CotizacionDoc({ doc, vistaCliente, customerDoc, asesorNombre, identifie
             </table>
           </div>
         )}
-        <footer className="doc-totals">
-          <div className="doc-total-row"><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
-          {Boolean(doc.generalDiscountCents) && (
-            <div className="doc-total-row"><span>Descuento general</span><strong>−{formatMoney(money(doc.generalDiscountCents ?? 0))}</strong></div>
+        <div className="doc-commercial-closing">
+          <footer className="doc-totals">
+            <div className="doc-total-row"><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
+            {Boolean(doc.generalDiscountCents) && (
+              <div className="doc-total-row"><span>Descuento general</span><strong>−{formatMoney(money(doc.generalDiscountCents ?? 0))}</strong></div>
+            )}
+            <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))))}</strong></div>
+          </footer>
+          {(doc.validUntil || doc.conditionPago || doc.medioPago) && (
+            <div className="doc-footer-notes">
+              {doc.validUntil && <span>Vigencia: {doc.validUntil}</span>}
+              {doc.conditionPago && <span>Condición de pago: {conditionPagoLabel[doc.conditionPago] ?? doc.conditionPago}</span>}
+              {doc.medioPago && <span>Medio de pago: {medioPagoLabel[doc.medioPago] ?? doc.medioPago}</span>}
+            </div>
           )}
-          <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))))}</strong></div>
-        </footer>
-        {(doc.validUntil || doc.conditionPago || doc.medioPago) && (
-          <div className="doc-footer-notes">
-            {doc.validUntil && <span>Vigencia: {doc.validUntil}</span>}
-            {doc.conditionPago && <span>Condición de pago: {conditionPagoLabel[doc.conditionPago] ?? doc.conditionPago}</span>}
-            {doc.medioPago && <span>Medio de pago: {medioPagoLabel[doc.medioPago] ?? doc.medioPago}</span>}
-          </div>
-        )}
-        <PrintedSignoff />
+          <PrintedSignoff />
+        </div>
       </div>
     </div>
   )
@@ -392,6 +368,7 @@ function PedidoDoc({ doc, customerDoc, asesorNombre, identifiersByProduct }: {
           {asesorNombre && <div className="doc-kv"><div className="k">Asesor</div><div className="v">{asesorNombre}</div></div>}
         </section>
         <table className="doc-table">
+          <DocumentTableColumns widths={[4, 32, 10, 6, 7, 11, 7, 11, 12]} />
           <thead>
             <tr><th>Nº</th><th>Descripción</th><th>Medida</th><th>Cant</th><th>Equiv.</th><th>P/U</th><th>Desc.</th><th>Total</th><th>Estado</th></tr>
           </thead>
@@ -430,24 +407,26 @@ function PedidoDoc({ doc, customerDoc, asesorNombre, identifiersByProduct }: {
             </table>
           </div>
         )}
-        <footer className="doc-totals">
-          <div className="doc-total-row"><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
-          {Boolean(doc.generalDiscountCents) && (
-            <div className="doc-total-row"><span>Descuento general</span><strong>−{formatMoney(money(doc.generalDiscountCents ?? 0))}</strong></div>
+        <div className="doc-commercial-closing">
+          <footer className="doc-totals">
+            <div className="doc-total-row"><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
+            {Boolean(doc.generalDiscountCents) && (
+              <div className="doc-total-row"><span>Descuento general</span><strong>−{formatMoney(money(doc.generalDiscountCents ?? 0))}</strong></div>
+            )}
+            <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))))}</strong></div>
+          </footer>
+          {(doc.conditionPago || doc.medioPago) && (
+            <div className="doc-footer-notes">
+              {doc.conditionPago && <span>Condición de pago: {conditionPagoLabel[doc.conditionPago] ?? doc.conditionPago}</span>}
+              {doc.medioPago && <span>Medio de pago: {medioPagoLabel[doc.medioPago] ?? doc.medioPago}</span>}
+            </div>
           )}
-          <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))))}</strong></div>
-        </footer>
-        {(doc.conditionPago || doc.medioPago) && (
-          <div className="doc-footer-notes">
-            {doc.conditionPago && <span>Condición de pago: {conditionPagoLabel[doc.conditionPago] ?? doc.conditionPago}</span>}
-            {doc.medioPago && <span>Medio de pago: {medioPagoLabel[doc.medioPago] ?? doc.medioPago}</span>}
-          </div>
-        )}
-        <p className="doc-disclaimer">
-          Documento interno de seguimiento. No constituye comprobante de entrega ni documento fiscal.<br />
-          La entrega física se acredita con la Nota de Entrega correspondiente a cada tanda.
-        </p>
-        <PrintedSignoff />
+          <p className="doc-disclaimer">
+            Documento interno de seguimiento. No constituye comprobante de entrega ni documento fiscal.<br />
+            La entrega física se acredita con la Nota de Entrega correspondiente a cada tanda.
+          </p>
+          <PrintedSignoff />
+        </div>
       </div>
     </div>
   )
@@ -465,14 +444,6 @@ function NotaEntregaDoc({ doc, customerDoc, bultos, onBultosChange, printedAt, i
   identifiersByProduct: Record<string, LineIdentifiers>
   format: DocPrintFormat
 }) {
-  const pages = useMemo(() => chunkVariable(doc.lines, NE_LINES_FIRST_PAGE, NE_LINES_OTHER_PAGES), [doc.lines])
-  const totalPages = pages.length
-  const pageStartIndexes = useMemo(() => {
-    const starts: number[] = []
-    let running = 0
-    for (const pageLines of pages) { starts.push(running); running += pageLines.length }
-    return starts
-  }, [pages])
   // Brief 1.4: documentDate puede faltar (ver comentario junto a printedAt en el
   // componente padre) — sin esto, la NE imprimía la hora sola, rompiendo la conciliación
   // contra el timestamp de Cation en la verificación de evidencia.
@@ -485,119 +456,92 @@ function NotaEntregaDoc({ doc, customerDoc, bultos, onBultosChange, printedAt, i
 
   return (
     <div className="print-document documento-exportable delivery-a4">
-      {pages.map((pageLines, pageIndex) => {
-        const startIndex = pageStartIndexes[pageIndex]
-        const isFirstPage = pageIndex === 0
-        const isLastPage = pageIndex === totalPages - 1
-        return (
-          <div className="doc-page" key={pageIndex}>
-            {isFirstPage ? (
-              <header>
-                <DocBrand />
-                <div className="doc-id-block-with-qr">
-                  {doc.orderId && <DocQr content={qrContentForNotaEntrega(doc.orderId, doc.number)} />}
-                  <div className="doc-id-block">
-                    <strong>NOTA DE<br />ENTREGA</strong>
-                    <span className="doc-number-mono">{doc.number}</span>
-                    <span className="doc-page-info">Página {pageIndex + 1} de {totalPages}</span>
-                  </div>
-                </div>
-              </header>
-            ) : (
-              // Brief "Correcciones de impresión" Parte 2: cabecera de una sola línea en
-              // páginas 2..N — la completa (membrete + grilla) repetida en cada hoja se
-              // comía ~45mm por página, casi una hoja entera perdida en una NE de 4. El QR
-              // se mantiene siempre: es lo que le permite al agente de Telegram identificar
-              // el pedido si le llega la foto de una hoja suelta.
-              <header className="doc-page-header-compact">
-                <img className="doc-page-header-compact-logo" src={empresa.logoSrc} alt={empresa.razonSocial} onError={(e) => { e.currentTarget.style.display = 'none' }} />
-                <span className="doc-page-header-compact-title">NOTA DE ENTREGA · {doc.number} · {doc.customerName}</span>
-                {doc.orderId && <DocQr content={qrContentForNotaEntrega(doc.orderId, doc.number)} />}
-                <span className="doc-page-info">Página {pageIndex + 1} de {totalPages}</span>
-              </header>
-            )}
-            {isFirstPage && (
-              <>
-                <section className="doc-kv-grid">
-                  <div className="doc-kv"><div className="k">Cliente</div><div className="v">{doc.customerName}{customerDoc && ` · ${customerDoc}`}</div></div>
-                  <div className="doc-kv"><div className="k">Fecha y hora</div><div className="v">{fechaMostrada} · {horaMostrada}</div></div>
-                  {doc.originOrderNumber && <div className="doc-kv"><div className="k">Origen</div><div className="v">Pedido #{doc.originOrderNumber}</div></div>}
-                  <div className="doc-kv"><div className="k">Canal</div><div className="v">{doc.channel}</div></div>
-                  <div className="doc-kv">
-                    <div className="k">Bultos</div>
-                    <div className="v">
-                      {/* Brief 1.3: el placeholder del input ("Ej. 3 cajas...") se imprimía
+      <div className="doc-page">
+        <header>
+          <DocBrand />
+          <div className="doc-id-block">
+            <strong>NOTA DE<br />ENTREGA</strong>
+            <span className="doc-number-mono">{doc.number}</span>
+          </div>
+        </header>
+        <section className="doc-kv-grid">
+          <div className="doc-kv"><div className="k">Cliente</div><div className="v">{doc.customerName}{customerDoc && ` · ${customerDoc}`}</div></div>
+          <div className="doc-kv"><div className="k">Fecha y hora</div><div className="v">{fechaMostrada} · {horaMostrada}</div></div>
+          {doc.originOrderNumber && <div className="doc-kv"><div className="k">Origen</div><div className="v">Pedido #{doc.originOrderNumber}</div></div>}
+          <div className="doc-kv"><div className="k">Canal</div><div className="v">{doc.channel}</div></div>
+          <div className="doc-kv">
+            <div className="k">Bultos</div>
+            <div className="v">
+              {/* Brief 1.3: el placeholder del input ("Ej. 3 cajas...") se imprimía
                           como si fuera un valor cargado. En @media print el input nunca se
                           pinta — .doc-bultos-print (texto o línea en blanco) lo reemplaza. */}
-                      <input type="text" value={bultos} onChange={(e) => onBultosChange(e.target.value)} placeholder="Ej. 3 cajas · 1 rollo" className="doc-bultos-input doc-bultos-input-screen" />
-                      <span className="doc-bultos-print">{bultos ? bultos : <span className="doc-fill doc-fill-sm" />}</span>
-                    </div>
-                  </div>
-                </section>
-                <section className="doc-kv-grid doc-kv-grid-wide">
-                  <div className="doc-kv"><div className="k">Transportista (opcional)</div><div className="v"><span className="doc-fill" /></div></div>
-                  <div className="doc-kv"><div className="k">Placa</div><div className="v"><span className="doc-fill doc-fill-sm" /></div></div>
-                  <div />
-                </section>
-              </>
-            )}
-            <table className="doc-table">
-              <thead>
-                <tr>
-                  <th>Nº</th><th>Descripción</th><th>Medida</th><th>Pedido</th><th>Despachado</th>
-                  <th className="doc-col-check">C</th><th className="doc-col-check">P</th><th className="doc-col-check">N</th><th className="doc-col-check">R</th>
-                  <th>Origen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageLines.map((line, i) => {
-                  const factor = line.factorUnidadBase ?? 1
-                  const hasEquivalence = factor !== 1
-                  return (
-                    <Fragment key={line.id}>
-                      <tr>
-                        <td>{startIndex + i + 1}</td>
-                        <td>{line.name}<LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} isCustomItem={line.isCustomItem} /></td>
-                        <td>{line.presentacionNombre ?? 'Unidad'}</td>
-                        <td>{line.quantity}{hasEquivalence && <span className="doc-equivalence line-equivalence">{line.quantity * factor} u</span>}</td>
-                        <td><span className="doc-qty-fill" /></td>
-                        <td className="doc-col-check"><span className="doc-checkbox" /></td>
-                        <td className="doc-col-check"><span className="doc-checkbox" /></td>
-                        <td className="doc-col-check"><span className="doc-checkbox" /></td>
-                        <td className="doc-col-check"><span className="doc-checkbox" /></td>
-                        <td>{line.sourceLocation ?? '—'}</td>
-                      </tr>
-                      <tr className="doc-motivo-row">
-                        <td></td>
-                        <td colSpan={9}>Motivo:<span className="doc-motivo-line" /></td>
-                      </tr>
-                    </Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
-            <div className="doc-legend">
-              C = Completo · P = Parcial · N = No despachado (almacén) · R = Rechazado al recibir<br />
-              Equivalencia en unidades base debajo de la cantidad pedida.
+              <input type="text" value={bultos} onChange={(e) => onBultosChange(e.target.value)} placeholder="Ej. 3 cajas · 1 rollo" className="doc-bultos-input doc-bultos-input-screen" />
+              <span className="doc-bultos-print">{bultos ? bultos : <span className="doc-fill doc-fill-sm" />}</span>
             </div>
-            {isLastPage && (
-              <>
-                <div className="doc-obs">Observaciones: <span className="doc-fill doc-fill-lg" /></div>
-                <div className="doc-manual-signs">
-                  <div className="doc-manual-sign"><div className="doc-manual-sign-line" /><span>Entrega (nombre y firma)</span></div>
-                  <div className="doc-manual-sign"><div className="doc-manual-sign-line" /><span>Recibe (nombre, CI y firma)</span></div>
-                  {empresa.selloUrl && (
-                    <div className="doc-stamp-only">
-                      <img src={empresa.selloUrl} alt="Sello" className="doc-sello-img" onError={(e) => { e.currentTarget.style.display = 'none' }} />
-                    </div>
-                  )}
-                </div>
-                <div className="doc-telegram-note">Fotografiar TODAS las páginas y enviarlas al grupo de Telegram al momento del despacho.</div>
-              </>
+          </div>
+          <div className="doc-kv doc-carrier">
+            <div><div className="k">Transportista (opcional)</div><div className="v"><span className="doc-fill" /></div></div>
+            <div><div className="k">Placa</div><div className="v"><span className="doc-fill" /></div></div>
+          </div>
+        </section>
+        <table className="doc-table doc-delivery-table">
+          <DocumentTableColumns widths={[4, 40, 10, 8, 12, 4, 4, 4, 4, 10]} />
+          <thead>
+            <tr className="doc-delivery-repeat"><td colSpan={10}>
+              <div className="doc-delivery-reference">
+                <span>{doc.number} · {doc.customerName}</span>
+                {doc.orderId && <DocQr content={qrContentForNotaEntrega(doc.orderId, doc.number)} />}
+              </div>
+            </td></tr>
+            <tr>
+              <th>Nº</th><th>Descripción</th><th>Medida</th><th>Pedido</th><th>Despachado</th>
+              <th className="doc-col-check">C</th><th className="doc-col-check">P</th><th className="doc-col-check">N</th><th className="doc-col-check">R</th>
+              <th>Origen</th>
+            </tr>
+          </thead>
+          {doc.lines.map((line, i) => {
+            const factor = line.factorUnidadBase ?? 1
+            const hasEquivalence = factor !== 1
+            return (
+              <tbody className="doc-delivery-item" key={line.id}>
+                <tr>
+                  <td>{i + 1}</td>
+                  <td>{line.name}<LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} isCustomItem={line.isCustomItem} /></td>
+                  <td>{line.presentacionNombre ?? 'Unidad'}</td>
+                  <td>{line.quantity}{hasEquivalence && <span className="doc-equivalence line-equivalence">{line.quantity * factor} u</span>}</td>
+                  <td><span className="doc-qty-fill" /></td>
+                  <td className="doc-col-check"><span className="doc-checkbox" /></td>
+                  <td className="doc-col-check"><span className="doc-checkbox" /></td>
+                  <td className="doc-col-check"><span className="doc-checkbox" /></td>
+                  <td className="doc-col-check"><span className="doc-checkbox" /></td>
+                  <td>{line.sourceLocation ?? '—'}</td>
+                </tr>
+                <tr className="doc-motivo-row">
+                  <td></td>
+                  <td colSpan={9}>Motivo:<span className="doc-motivo-line" /></td>
+                </tr>
+              </tbody>
+            )
+          })}
+        </table>
+        <div className="doc-delivery-closing">
+          <div className="doc-legend">
+            C = Completo · P = Parcial · N = No despachado (almacén) · R = Rechazado al recibir<br />
+            Equivalencia en unidades base debajo de la cantidad pedida.
+          </div>
+          <div className="doc-obs">Observaciones: <span className="doc-fill doc-fill-lg" /></div>
+          <div className="doc-manual-signs">
+            <div className="doc-manual-sign"><div className="doc-manual-sign-line" /><span>Entrega (nombre y firma)</span></div>
+            <div className="doc-manual-sign"><div className="doc-manual-sign-line" /><span>Recibe (nombre, CI y firma)</span></div>
+            {empresa.selloUrl && (
+              <div className="doc-stamp-only">
+                <img src={empresa.selloUrl} alt="Sello" className="doc-sello-img" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+              </div>
             )}
           </div>
-        )
-      })}
+          <div className="doc-telegram-note">Fotografiar TODAS las páginas y enviarlas al grupo de Telegram al momento del despacho.</div>
+        </div>
+      </div>
     </div>
   )
 }

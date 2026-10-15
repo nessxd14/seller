@@ -90,18 +90,65 @@
 .doc-footer-notes-line { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 14px; padding-top: 8px; border-top: 1px solid #eee; font-size: var(--fs-label); color: #8a867f }
 .doc-footer-notes-line b { color: #292724; font-weight: 600 }
 
-/* ---------- Paginado de la nota de entrega: cada .doc-page es una hoja física ---------- */
-@media screen {
-  .documento-exportable .doc-page + .doc-page { margin-top: 24px; border-top: 2px dashed #ddd; padding-top: 24px }
-}
+/* Flujo continuo: los saltos dependen de la altura real, no de una cuota de ítems.
+   @page aporta el único margen de cada hoja. Evitar padding adicional de 15mm. */
+.documento-exportable section.doc-kv-grid { display: grid }
+.doc-delivery-reference { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 8pt; font-weight: 600 }
+.doc-delivery-reference .doc-qr { width: 20mm; height: 20mm }
+.doc-delivery-repeat { display: table-row }
+.doc-carrier { display: grid; grid-template-columns: 1.5fr 1fr; gap: 8px }
+.doc-carrier .doc-fill { min-width: 0; width: 100% }
 @media print {
-  /* La nota de entrega multipágina reparte el padding por hoja (.doc-page), no en el
-     contenedor entero — si no, el margen de impresión solo aparecería en la primera y
-     la última hoja. Se apunta con dos clases para no tocar .traslado-a4 (mismo selector
-     compartido hoy, otro componente). */
-  .quote-a4.print-document, .order-a4.print-document, .delivery-a4.print-document { padding: 0 }
-  .documento-exportable .doc-page { padding: 15mm }
-  .documento-exportable .doc-page + .doc-page { page-break-before: always; break-before: page }
+  body:has(.documento-exportable) { background: white !important; min-height: 0 }
+  body:has(.documento-exportable) > :not(.modal-backdrop:has(.documento-exportable)) { display: none !important }
+  .modal-backdrop:has(.documento-exportable) {
+    position: static; inset: auto; display: block; padding: 0;
+    height: auto; overflow: visible; backdrop-filter: none; background: white;
+  }
+  .modal:has(.documento-exportable) {
+    display: block; position: static; width: 100% !important; max-width: none !important;
+    height: auto; max-height: none; overflow: visible; border: 0; border-radius: 0;
+    box-shadow: none; transform: none;
+  }
+  .modal:has(.documento-exportable) > :not(.documento-exportable):not(style) { display: none !important }
+  .print-document.documento-exportable {
+    position: static; width: auto; min-height: 0; margin: 0; padding: 0;
+    overflow: visible; zoom: 1; font-size: 9pt; line-height: 1.35;
+    --fs-body: 9pt; --fs-label: 8pt; --fs-eyebrow: 7pt; --fs-figure: 12pt;
+  }
+  .documento-exportable:not(.doc-roll) { page: pos-document }
+  .documento-exportable.doc-roll { page: pos-roll; width: 80mm; padding: 4mm }
+  @page pos-roll { size: 80mm 279mm; margin: 0 }
+  .documento-exportable .doc-roll-item { break-inside: avoid }
+  .documento-exportable .doc-page { min-height: 0; padding: 0; break-before: auto; break-inside: auto }
+  .documento-exportable header { padding-bottom: 8px; break-inside: avoid; break-after: avoid }
+  .documento-exportable .doc-kv-grid, .documento-exportable .doc-meta { break-inside: avoid }
+  .documento-exportable .doc-table { font-size: 8pt; margin-top: 10px; table-layout: auto; break-after: avoid }
+  .documento-exportable .doc-table:has(colgroup) { table-layout: fixed }
+  .documento-exportable .doc-table thead { display: table-header-group; break-inside: avoid; break-after: avoid }
+  .documento-exportable .doc-table tr, .doc-delivery-item { break-inside: avoid; page-break-inside: avoid }
+  .documento-exportable .doc-table > tbody:last-of-type > tr:last-child { break-after: avoid }
+  .documento-exportable .doc-table > tbody:last-of-type { break-after: avoid }
+  .documento-exportable .doc-table th, .documento-exportable .doc-table td { padding: 5px 4px; vertical-align: top; overflow-wrap: anywhere }
+  .documento-exportable .doc-table th { letter-spacing: 0; font-size: 7pt }
+  .documento-exportable .doc-table td:first-child { white-space: nowrap }
+  .documento-exportable .doc-col-check { width: 5mm; min-width: 5mm; padding-left: 2px; padding-right: 2px }
+  .documento-exportable .doc-qty-fill { width: 14mm }
+  .documento-exportable .doc-motivo-row td { padding-bottom: 4px !important }
+  .documento-exportable .doc-delivery-repeat { display: table-row }
+  .documento-exportable .doc-delivery-repeat td { border: 0; padding: 4px 0 }
+  .documento-exportable .doc-totals, .documento-exportable .doc-signoff,
+  .doc-delivery-closing, .doc-commercial-closing, .documento-exportable .doc-signatures { break-inside: avoid; break-before: avoid }
+  .documento-exportable .doc-footer-notes, .documento-exportable .doc-disclaimer { break-inside: avoid; break-before: avoid }
+  .documento-exportable .doc-totals { width: 76mm; margin-left: auto }
+  .documento-exportable .doc-signoff { margin-top: 10mm }
+  .documento-exportable .doc-signoff-stamp { min-height: 18mm; gap: 10mm }
+  .documento-exportable .doc-firma-blank { height: 18mm; width: 65mm }
+  .documento-exportable .doc-firma-img { max-height: 22mm; max-width: 65mm }
+  .documento-exportable .doc-sello-img { max-height: 25mm; max-width: 30mm }
+  .documento-exportable .doc-manual-signs { margin-top: 14mm }
+  .documento-exportable .doc-picking-qty { font-size: 13pt }
+  .documento-exportable .doc-watermark { margin: 0 0 10px }
 }
 
 /* ---------- Brief "Correcciones de impresión" 1.1: el modal necesita más ancho para que

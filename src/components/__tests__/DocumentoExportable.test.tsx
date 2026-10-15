@@ -64,7 +64,7 @@ describe('DocumentoExportable — nota de entrega', () => {
     expect(await screen.findByText(/NOTA DE/)).toBeTruthy()
     expect(screen.queryByText('P/U')).toBeNull()
     expect(screen.queryByText('Subtotal')).toBeNull()
-    expect(screen.getByText('Página 1 de 1')).toBeTruthy()
+    expect(document.querySelector('style')?.textContent).toContain('counter(pages)')
     expect(screen.getByText('C')).toBeTruthy()
     expect(screen.getByText(/Fotografiar TODAS las páginas/)).toBeTruthy()
     expect(screen.getByText('Pedido #PED-04821')).toBeTruthy()
@@ -72,19 +72,16 @@ describe('DocumentoExportable — nota de entrega', () => {
     expect(screen.getByPlaceholderText('Ej. 3 cajas · 1 rollo')).toBeTruthy()
   })
 
-  it('pagina cuando hay más líneas que las que entran en una hoja, muestra la cabecera compacta desde la página 2 y firmas solo en la última', async () => {
-    // Página 1: 12 líneas (membrete completo, más alto). Páginas siguientes: 16 (cabecera
-    // compacta) — ver NE_LINES_FIRST_PAGE/NE_LINES_OTHER_PAGES en el componente. 29 líneas
-    // da 12 + 16 + 1 = 3 páginas.
+  it('mantiene el flujo completo, repite la referencia y QR en el encabezado de tabla y conserva una sola firma final', async () => {
     const lines: WorkflowLine[] = Array.from({ length: 29 }, (_, i) => ({ ...baseLine, id: `l${i}`, name: `Producto ${i}` }))
-    const doc: ExportableDoc = { ...baseDoc, lines }
+    const doc: ExportableDoc = { ...baseDoc, lines, orderId: 'ord-1' }
     render(<DocumentoExportable mode="nota-entrega" doc={doc} onClose={() => {}} />)
-    expect(await screen.findByText('Página 1 de 3')).toBeTruthy()
-    expect(screen.getByText('Página 2 de 3')).toBeTruthy()
-    expect(screen.getByText('Página 3 de 3')).toBeTruthy()
+    await screen.findByText(/NOTA DE/)
+    expect(document.querySelectorAll('.doc-page')).toHaveLength(1)
+    expect(document.querySelectorAll('.doc-delivery-item')).toHaveLength(29)
+    expect(screen.getByText('Producto 28')).toBeTruthy()
     expect(screen.getAllByText(/Entrega \(nombre y firma\)/)).toHaveLength(1)
-    // Brief 1.2 (Parte 2): cabecera compacta en páginas 2 y 3, completa solo en la 1.
-    expect(document.querySelectorAll('.doc-page-header-compact')).toHaveLength(2)
+    await waitFor(() => expect(document.querySelector('.doc-delivery-repeat img.doc-qr')).toBeTruthy())
   })
 
   it('siempre muestra una fecha real, aunque documentDate venga vacío (brief 1.4)', async () => {
