@@ -6,6 +6,7 @@ import { CashSessionProvider } from '../../../context/CashSessionContext'
 import type { AuthSession } from '../../../application/auth/AuthSessionProvider'
 import type { TurnoMovimiento, TurnoResumen, TurnoSesion } from '../../../application/shared/models'
 import { useEffect } from 'react'
+import { ventaDirectaService } from '../../../infrastructure/services'
 
 vi.mock('../useCashRefresh', () => ({ useCashRefresh: (refresh: () => Promise<void>) => { useEffect(() => { void refresh() }, [refresh]) } }))
 
@@ -288,5 +289,42 @@ describe('Pistas "i" en Caja (Brief Caja VTD obligatorio E)', () => {
     listarMovimientos.mockResolvedValue([mov({ id: '5', tipo: 'ANULACION', metodo: 'EFECTIVO' })])
     await cargarCaja()
     await screen.findByRole('button', { name: 'Qué es Anulación' })
+  })
+})
+
+describe('Cerrar turno — VTD abiertas (cobradas no bloquean)', () => {
+  const vtd = (over: Record<string, unknown> = {}) => ({ id: 'v1', cobroExigible: true, pagoPosterior: false, totalCents: 10000, paidCents: 0, ...over })
+  const listAbiertas = () => ventaDirectaService.listAbiertas as unknown as ReturnType<typeof vi.fn>
+  const pulsarCerrar = () => fireEvent.click(screen.getByRole('button', { name: /Cerrar turno/ }))
+
+  it('una VTD abierta sin cobrar bloquea el cierre y avisa "sin cobrar"', async () => {
+    listAbiertas().mockResolvedValue([vtd()])
+    await cargarCaja()
+    pulsarCerrar()
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('No se puede cerrar el turno: hay 1 venta(s) directa(s) sin cobrar. Cóbralas, márcalas como pago posterior o anúlalas antes de cerrar.'))
+    expect(screen.queryByText('¿Entregas efectivo antes de cerrar?')).toBeNull()
+  })
+
+  it('una VTD abierta ya cobrada abre el cierre y avisa que sigue en Almacén', async () => {
+    listAbiertas().mockResolvedValue([vtd({ paidCents: 10000 })])
+    await cargarCaja()
+    pulsarCerrar()
+    await screen.findByText('¿Entregas efectivo antes de cerrar?')
+    expect(notify).toHaveBeenCalledWith('1 venta(s) directa(s) cobrada(s) siguen pendientes de despacho en Almacén. El turno se puede cerrar; quedan en la cola de Almacén.')
+  })
+
+  it('una VTD abierta con pago posterior abre el cierre', async () => {
+    listAbiertas().mockResolvedValue([vtd({ pagoPosterior: true })])
+    await cargarCaja()
+    pulsarCerrar()
+    await screen.findByText('¿Entregas efectivo antes de cerrar?')
+  })
+
+  it('sin VTD abiertas abre el cierre sin aviso', async () => {
+    listAbiertas().mockResolvedValue([])
+    await cargarCaja()
+    pulsarCerrar()
+    await screen.findByText('¿Entregas efectivo antes de cerrar?')
+    expect(notify).not.toHaveBeenCalled()
   })
 })
