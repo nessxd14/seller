@@ -79,3 +79,15 @@ describe('SupabaseOrderRepository.getById — historial y reemplazo de línea', 
     expect(linea?.replacedByQuantity).toBe(3)
   })
 })
+
+it('convierte el despacho parcial en base a la presentación, conservando el cero', async () => {
+  const saved = { ...lines[0] }
+  try {
+    Object.assign(lines[0], { estado: 'POR_DESPACHAR', cantidad_base: '72', cantidad_presentacion: '6', presentacion_id: 4, cantidad_despachada: '30', presentacion: { nombre: 'Caja', factor_unidad_base: '12' } })
+    const { orderRepository } = await import('../OrderRepository.supabase')
+    const order = await orderRepository.getById('501')
+    expect(order?.lines[0].dispatchedQuantity).toBe(2.5)
+    Object.assign(lines[0], { cantidad_despachada: 0 })
+    expect((await orderRepository.getById('501'))?.lines[0].dispatchedQuantity).toBe(0)
+  } finally { Object.assign(lines[0], saved) }
+})

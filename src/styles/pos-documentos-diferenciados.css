@@ -4,6 +4,32 @@
    prueba_impresion_documentos.html adjunta al brief para la referencia visual. */
 
 /* ---------- Metadatos: patrón .k / .v compartido por los tres documentos ---------- */
+.documento-exportable { color: #252b31 }
+.documento-exportable header .doc-brand b { font-size: 18px; letter-spacing: .4px }
+.documento-exportable .doc-id-block strong { font-size: 14px; text-align: right; letter-spacing: .7px }
+.doc-purpose { display: flex; justify-content: space-between; gap: 12px; padding: 6px 9px; margin-bottom: 12px; border-left: 3px solid #313a43; background: #f2f4f5; font-size: 8pt; line-height: 1.4 }
+.doc-purpose b { white-space: nowrap }
+.doc-purpose-alert { border-color: #813a32; background: #faf0ed }
+.documento-exportable section.doc-recipient-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 8px 18px; margin: 10px 0; padding: 9px 0; border-top: 1px solid #dce0e3; border-bottom: 1px solid #dce0e3 }
+.doc-recipient-grid .v { white-space: pre-wrap; overflow-wrap: anywhere }
+.doc-items-summary { font-size: 8pt; color: #58616a; margin: 10px 0 5px }
+.doc-line-state, .doc-line-note { display: block; font-size: 7.5pt; line-height: 1.4; margin-top: 3px; color: #58616a; overflow-wrap: anywhere; white-space: pre-wrap }
+.doc-line-state { font-weight: 600 }
+.doc-written-notes { margin-top: 10px; font-size: 8.5pt; padding: 8px 10px; border-left: 2px solid #bbc2c8; break-inside: avoid }
+.doc-written-notes b { font-size: 8pt }
+.doc-written-notes p { margin: 3px 0 0; white-space: pre-wrap; overflow-wrap: anywhere }
+.doc-result-checks { display: flex; align-items: center; justify-content: space-between; gap: 3px; white-space: nowrap; font-size: 7pt }
+.doc-result-checks > span { display: inline-flex; align-items: center; gap: 2px }
+.doc-signoff-label { display: block; margin-top: 4px; font-size: 8pt; color: #58616a }
+.documento-exportable .doc-signoff-stamp.doc-stamp-alone { justify-content: flex-end }
+.doc-details-editor { margin: 12px 22px; border: 1px solid #dce0e3; border-radius: 8px; font-size: 12px; padding: 10px 12px }
+.doc-details-editor summary { cursor: pointer; font-weight: 700; color: #313a43 }
+.doc-details-editor p { color: #68717a; font-size: 11px }
+.doc-details-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px }
+.doc-details-fields label { display: grid; gap: 4px; font-size: 11px; color: #505962 }
+.doc-details-fields input, .doc-details-fields textarea { width: 100%; min-width: 0; border: 1px solid #d2d8dd; background: white; color: #252b31; border-radius: 5px; padding: 7px; font-size: 12px }
+.doc-details-full { grid-column: 1 / -1 }
+.doc-details-save { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; font-size: 11px }
 .doc-kv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 16px; margin: 10px 0 }
 .doc-kv-grid.doc-kv-grid-wide { grid-template-columns: 1.6fr 1fr 1fr }
 .doc-kv .k { font-size: 7.5pt; color: #8a867f; text-transform: uppercase; letter-spacing: .3px }
@@ -34,6 +60,7 @@
    (el input ya muestra lo mismo ahí), visible solo al imprimir. */
 .doc-bultos-print { display: none }
 @media print {
+  .doc-details-editor { display: none !important }
   .doc-bultos-input-screen { display: none }
   .doc-bultos-print { display: inline-block }
 }
@@ -92,8 +119,9 @@
 
 /* Flujo continuo: los saltos dependen de la altura real, no de una cuota de ítems.
    @page aporta el único margen de cada hoja. Evitar padding adicional de 15mm. */
-.documento-exportable section.doc-kv-grid { display: grid }
-.doc-delivery-reference { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 8pt; font-weight: 600 }
+.documento-exportable section.doc-kv-grid { display: grid; gap: 6px 16px }
+.doc-delivery-reference { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 8pt; font-weight: 600; width: 100%; min-width: 0 }
+.doc-delivery-reference > span { min-width: 0; flex: 1; overflow-wrap: anywhere; white-space: normal }
 .doc-delivery-reference .doc-qr { width: 20mm; height: 20mm }
 .doc-delivery-repeat { display: table-row }
 .doc-carrier { display: grid; grid-template-columns: 1.5fr 1fr; gap: 8px }
@@ -122,13 +150,13 @@
   .documento-exportable .doc-roll-item { break-inside: avoid }
   .documento-exportable .doc-page { min-height: 0; padding: 0; break-before: auto; break-inside: auto }
   .documento-exportable header { padding-bottom: 8px; break-inside: avoid; break-after: avoid }
-  .documento-exportable .doc-kv-grid, .documento-exportable .doc-meta { break-inside: avoid }
-  .documento-exportable .doc-table { font-size: 8pt; margin-top: 10px; table-layout: auto; break-after: avoid }
+  .documento-exportable .doc-kv-grid, .documento-exportable .doc-meta, .documento-exportable .doc-recipient-grid { break-inside: avoid }
+  .documento-exportable .doc-table { font-size: 8pt; margin-top: 10px; table-layout: auto; break-after: auto }
   .documento-exportable .doc-table:has(colgroup) { table-layout: fixed }
   .documento-exportable .doc-table thead { display: table-header-group; break-inside: avoid; break-after: avoid }
   .documento-exportable .doc-table tr, .doc-delivery-item { break-inside: avoid; page-break-inside: avoid }
-  .documento-exportable .doc-table > tbody:last-of-type > tr:last-child { break-after: avoid }
-  .documento-exportable .doc-table > tbody:last-of-type { break-after: avoid }
+  .documento-exportable .doc-table > tbody:last-of-type > tr:last-child { break-after: auto }
+  .documento-exportable .doc-table > tbody:last-of-type { break-after: auto }
   .documento-exportable .doc-table th, .documento-exportable .doc-table td { padding: 5px 4px; vertical-align: top; overflow-wrap: anywhere }
   .documento-exportable .doc-table th { letter-spacing: 0; font-size: 7pt }
   .documento-exportable .doc-table td:first-child { white-space: nowrap }
@@ -136,12 +164,13 @@
   .documento-exportable .doc-qty-fill { width: 14mm }
   .documento-exportable .doc-motivo-row td { padding-bottom: 4px !important }
   .documento-exportable .doc-delivery-repeat { display: table-row }
-  .documento-exportable .doc-delivery-repeat td { border: 0; padding: 4px 0 }
+  .documento-exportable .doc-delivery-repeat td { border: 0; padding: 4px 0; white-space: normal }
   .documento-exportable .doc-totals, .documento-exportable .doc-signoff,
-  .doc-delivery-closing, .doc-commercial-closing, .documento-exportable .doc-signatures { break-inside: avoid; break-before: avoid }
+  .doc-delivery-closing, .documento-exportable .doc-signatures { break-inside: avoid; break-before: auto }
+  .doc-commercial-closing { break-inside: auto }
   .documento-exportable .doc-footer-notes, .documento-exportable .doc-disclaimer { break-inside: avoid; break-before: avoid }
   .documento-exportable .doc-totals { width: 76mm; margin-left: auto }
-  .documento-exportable .doc-signoff { margin-top: 10mm }
+  .documento-exportable .doc-signoff { margin-top: 6mm }
   .documento-exportable .doc-signoff-stamp { min-height: 18mm; gap: 10mm }
   .documento-exportable .doc-firma-blank { height: 18mm; width: 65mm }
   .documento-exportable .doc-firma-img { max-height: 22mm; max-width: 65mm }

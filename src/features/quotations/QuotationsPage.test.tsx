@@ -29,7 +29,7 @@ vi.mock('../../infrastructure/services', () => ({
   quoteService: { list: vi.fn().mockResolvedValue([quoteHeaderOnly]), getById: (id: string) => getByIdMock(id), save: (quote: QuoteDraft) => saveMock(quote), duplicate: (id: string) => duplicateMock(id), markConverted: vi.fn() },
   orderService: { save: (...args: unknown[]) => orderSaveMock(...args) },
   sensitiveOperations: { execute: (_kind: string, _id: string, action: () => unknown) => action() },
-  customerService: { list: vi.fn().mockResolvedValue([{ id: 'c2', name: 'Cliente Dos', type: 'wholesale', document: '', phone: '', email: '', address: '', usualChannel: 'mayoreo', paymentTerms: '' }]) },
+  customerService: { list: vi.fn().mockResolvedValue([{ id: 'c2', name: 'Cliente Dos', type: 'wholesale', document: '', phone: '', email: '', address: '', usualChannel: 'mayoreo', paymentTerms: '' }]), getById: vi.fn().mockResolvedValue(null) },
   productRepository: { search: vi.fn().mockResolvedValue({ items: [], total: 0 }), getById: vi.fn().mockResolvedValue(null) },
   getStockByProduct: vi.fn().mockResolvedValue({}),
   getDisponibilidadPedido: (ids: number[]) => disponibilidadMock(ids),

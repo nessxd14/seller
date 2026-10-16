@@ -31,6 +31,22 @@ const baseTransfer: TransferRecord = {
 }
 
 describe('TrasladoExportable', () => {
+  it.each(['CANCELADO', 'RECHAZADO'] as const)('%s: identifica el cierre y no inventa cantidades', async (estado) => {
+    render(<TrasladoExportable transfer={{ ...baseTransfer, estado }} onClose={() => {}} />)
+    expect(await screen.findByText(`TRASLADO ${estado}`)).toBeTruthy()
+    expect(screen.queryByText('CONSTANCIA DE RECEPCIÓN')).toBeNull()
+    expect(screen.getByText(/no autoriza salida/)).toBeTruthy()
+    const cells = document.querySelectorAll('.doc-table tbody tr:first-child td')
+    expect(cells[4].textContent).toBe('—')
+    expect(cells[5].textContent).toBe('—')
+    expect(cells[6].textContent).toBe('—')
+  })
+
+  it('RECIBIDO con cero recibido: conserva el cero y muestra el faltante real', () => {
+    render(<TrasladoExportable transfer={{ ...baseTransfer, estado: 'RECIBIDO', lines: [{ ...baseTransfer.lines[0], cantidadBase: 5, cantidadDespachada: 5, cantidadRecibida: 0 }] }} onClose={() => {}} />)
+    expect(document.querySelector('.doc-diff-flag')?.textContent).toBe('−5')
+    expect(document.querySelectorAll('.doc-table tbody td')[5].textContent).toBe('0')
+  })
   it('SOLICITADO: hoja de picking — sin columnas de despachado/recibido ni ningún importe', async () => {
     render(<TrasladoExportable transfer={baseTransfer} onClose={() => {}} />)
     expect(await screen.findByText('SOLICITUD DE TRASLADO')).toBeTruthy()
