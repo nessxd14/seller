@@ -123,6 +123,7 @@ export const orderService = {
 }
 
 export const customerService = {
+  getById(id: string) { return customerRepository.getById(id) },
   // TAREA 4: optional {query, page} so the inline cart customer picker can search
   // server-side (nombre/documento, see CustomerRepository.supabase.ts's list()) with a
   // small page size, while existing no-arg callers (DraftOrderEditor) keep getting the

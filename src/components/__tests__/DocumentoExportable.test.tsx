@@ -5,7 +5,7 @@ import type { WorkflowLine } from '../../application/shared/models'
 import { DocumentoExportable, type ExportableDoc } from '../DocumentoExportable'
 
 vi.mock('../../infrastructure/services', () => ({
-  customerService: { list: vi.fn().mockResolvedValue([]) },
+  customerService: { list: vi.fn().mockResolvedValue([]), getById: vi.fn().mockResolvedValue({ name: 'Cliente', document: '123456', address: 'Calle Beni 123', phone: '70000000' }) },
   listLineIdentifiers: vi.fn().mockResolvedValue({}),
 }))
 vi.mock('../../config/empresaStore', () => ({
@@ -22,7 +22,7 @@ vi.mock('qrcode', () => ({
   default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,fake') },
 }))
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); localStorage.clear() })
 
 const baseLine: WorkflowLine = {
   id: 'l1', productId: 'p1', name: 'Resma papel bond A4', sku: 'SKU1',
@@ -125,5 +125,63 @@ describe('DocumentoExportable — formato rollo (80mm)', () => {
     expect(screen.getByText('— FIN —')).toBeTruthy()
     expect(screen.getByText(/Fotografiar TODO el rollo/)).toBeTruthy()
     expect(screen.queryByText(/Página \d de \d/)).toBeNull()
+  })
+})
+
+describe('datos operativos del impreso', () => {
+  it('guarda los datos del documento y los recupera al reabrir, sin mezclarlos con otro', async () => {
+    const view = render(<DocumentoExportable mode="cotizacion" doc={baseDoc} onClose={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Lugar / dirección de entrega'), { target: { value: 'Depósito Norte' } })
+    fireEvent.change(screen.getByLabelText('Plazo de entrega'), { target: { value: '3 días hábiles' } })
+    fireEvent.click(screen.getByText('Guardar datos para reimpresión'))
+    expect(screen.getByRole('status').textContent).toContain('Datos guardados')
+    view.unmount()
+    const reopened = render(<DocumentoExportable mode="cotizacion" doc={baseDoc} onClose={() => {}} />)
+    expect((screen.getByLabelText('Lugar / dirección de entrega') as HTMLInputElement).value).toBe('Depósito Norte')
+    expect(document.querySelector('.print-document')?.textContent).toContain('3 días hábiles')
+    reopened.rerender(<DocumentoExportable mode="cotizacion" doc={{ ...baseDoc, number: 'COT-OTRA' }} onClose={() => {}} />)
+    expect((screen.getByLabelText('Lugar / dirección de entrega') as HTMLInputElement).value).toBe('')
+  })
+
+  it('imprime datos del cliente por ID y la fecha real del pedido', async () => {
+    render(<DocumentoExportable mode="pedido" doc={{ ...baseDoc, customerId: 'c1', createdAt: '2026-10-16T14:00:00Z' }} onClose={() => {}} />)
+    await waitFor(() => expect(document.querySelector('.print-document')?.textContent).toContain('Calle Beni 123'))
+    expect(document.querySelector('.print-document')?.textContent).toContain('123456')
+    expect(document.querySelector('.print-document')?.textContent).toContain('16/10/2026')
+    expect(document.querySelector('.print-document')?.textContent).toContain('10:00')
+  })
+
+  it('imprime despacho y pendiente en su presentación y usa los totales guardados', () => {
+    const line: WorkflowLine = { ...baseLine, quantity: 6, dispatchedQuantity: 2.5, presentacionNombre: 'Caja', factorUnidadBase: 12, lineStatus: 'POR_DESPACHAR' }
+    render(<DocumentoExportable mode="pedido" doc={{ ...baseDoc, lines: [line], subtotalCents: 99900, totalCents: 98000 }} onClose={() => {}} />)
+    const row = document.querySelector('.doc-order-table tbody tr')!
+    const cells = row.querySelectorAll('td')
+    expect(cells[4].textContent).toBe((2.5).toLocaleString('es-BO'))
+    expect(cells[5].textContent).toBe((3.5).toLocaleString('es-BO'))
+    expect(row.textContent).toContain('Entrega parcial')
+    expect(document.querySelector('.doc-totals')?.textContent).toContain('980')
+  })
+
+  it('la nota manual incluye recibido, transporte y referencia y excluye líneas retiradas', () => {
+    render(<DocumentoExportable mode="nota-entrega" doc={{ ...baseDoc, lines: [baseLine, { ...baseLine, id: 'retirada', name: 'Producto retirado', lineStatus: 'RETIRADA' }] }} onClose={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Referencia de esta entrega (opcional)'), { target: { value: 'Entrega 2 - Norte' } })
+    fireEvent.change(screen.getByLabelText('Transportista'), { target: { value: 'Transporte Beni' } })
+    const print = document.querySelector('.print-document')!
+    expect(print.textContent).toContain('Registro manual')
+    expect(print.textContent).toContain('Entrega 2 - Norte')
+    expect(print.textContent).toContain('Transporte Beni')
+    expect(print.textContent).toContain('Recibido')
+    expect(print.textContent).not.toContain('Producto retirado')
+    expect(document.querySelectorAll('.doc-delivery-item')).toHaveLength(1)
+  })
+
+  it('conserva plazo, condiciones y observaciones en el rollo', () => {
+    render(<DocumentoExportable mode="cotizacion" doc={{ ...baseDoc, terms: 'Entrega coordinada', notes: 'Recepción de lunes a viernes' }} onClose={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Plazo de entrega'), { target: { value: '48 horas' } })
+    fireEvent.change(screen.getByDisplayValue('Carta'), { target: { value: 'rollo-80' } })
+    const print = document.querySelector('.doc-roll')!
+    expect(print.textContent).toContain('48 horas')
+    expect(print.textContent).toContain('Entrega coordinada')
+    expect(print.textContent).toContain('Recepción de lunes a viernes')
   })
 })

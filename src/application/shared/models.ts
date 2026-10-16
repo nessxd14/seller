@@ -10,6 +10,8 @@ export interface WorkflowLine {
   name: string
   sku: string
   quantity: number
+  /** Cantidad despachada acumulada, expresada en la presentación de la línea. */
+  dispatchedQuantity?: number
   unitPriceCents: number
   discountBasisPoints: number
   // Optional Supabase-backed extensions (all optional so mock consumers are unaffected):

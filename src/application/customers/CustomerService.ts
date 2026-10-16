@@ -4,6 +4,7 @@ import { coincideBusqueda } from '../../domain/customers/textSearch'
 
 export class CustomerService {
   constructor(private readonly repository: LocalRepository<CustomerRecord>) {}
+  getById(id: string) { return this.repository.get(id) }
 
   // TAREA 4: the inline customer picker needs to search (nombre/documento) and paginate
   // against the same call shape as the Supabase adapter (`customerService.list({ query, page })`).

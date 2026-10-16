@@ -5,7 +5,8 @@ import { listLineIdentifiers } from '../infrastructure/services'
 import { Modal } from './Modal'
 import { empresaStore as empresa, loadEmpresaConfig } from '../config/empresaStore'
 import { LineIdentifiersRow, type LineIdentifiers } from './LineIdentifiersRow'
-import { fechaFmt, fmtQty, motivoLabel, sucursalLabel } from '../features/transfers/TransfersPage'
+import { motivoLabel, sucursalLabel } from '../features/transfers/TransfersPage'
+import { formatDocumentDate as fechaFmt, formatDocumentQuantity as fmtQty } from '../domain/documents/documentProgress'
 import { nombreArchivoDocumento } from '../domain/documents/nombreArchivoDocumento'
 import { DocumentPrintPages, DocumentTableColumns } from './DocumentPrintPages'
 
@@ -14,21 +15,23 @@ import { DocumentPrintPages, DocumentTableColumns } from './DocumentPrintPages'
 // El mismo componente imprime uno de tres documentos según transfer.estado: hoja de
 // picking (SOLICITADO), guía de despacho (EN_TRANSITO), o constancia de recepción
 // (RECIBIDO y los estados cerrados CANCELADO/RECHAZADO).
-type TrasladoDocMode = 'picking' | 'guia' | 'constancia'
+type TrasladoDocMode = 'picking' | 'guia' | 'constancia' | 'cerrado'
 
 const modeFor = (estado: TransferEstado): TrasladoDocMode =>
-  estado === 'SOLICITADO' ? 'picking' : estado === 'EN_TRANSITO' ? 'guia' : 'constancia'
+  estado === 'SOLICITADO' ? 'picking' : estado === 'EN_TRANSITO' ? 'guia' : estado === 'RECIBIDO' ? 'constancia' : 'cerrado'
 
 const titleFor: Record<TrasladoDocMode, string> = {
   picking: 'SOLICITUD DE TRASLADO',
   guia: 'GUÍA DE TRASLADO',
   constancia: 'CONSTANCIA DE RECEPCIÓN',
+  cerrado: 'TRASLADO CERRADO',
 }
 
 const modalTitleFor: Record<TrasladoDocMode, string> = {
   picking: 'Vista previa de hoja de picking',
   guia: 'Vista previa de guía de traslado',
   constancia: 'Vista previa de constancia de recepción',
+  cerrado: 'Vista previa de traslado cerrado',
 }
 
 // Mismo criterio que TransferDetailPanel: cantidadDespachada/cantidadRecibida siempre
@@ -50,7 +53,7 @@ export function TrasladoExportable({ transfer, onClose }: { transfer: TransferRe
   }, [transfer.lines])
 
   const mode = modeFor(transfer.estado)
-  const title = titleFor[mode]
+  const title = mode === 'cerrado' ? `TRASLADO ${transfer.estado}` : titleFor[mode]
   // Brief T3: el identificador es el correlativo real (numero) — referencia es el asunto
   // libre y se muestra aparte, nunca como si fuera el número.
   const numero = transfer.numero
@@ -63,13 +66,14 @@ export function TrasladoExportable({ transfer, onClose }: { transfer: TransferRe
     document.title = nombreArchivoDocumento(numero)
     return () => { document.title = previousTitle }
   }, [numero])
-  const lineasIncompletas = mode === 'guia' && transfer.lines.some((line) => (line.cantidadDespachada ?? line.cantidadBase) < line.cantidadBase)
+  const lineasIncompletas = mode === 'guia' && transfer.lines.some((line) => line.cantidadDespachada != null && line.cantidadDespachada < line.cantidadBase)
 
   return (
     <Modal title={modalTitleFor[mode]} subtitle={empresa.razonSocial} onClose={onClose} wide>
       <DocumentPrintPages number={numero} lineCount={transfer.lines.length} />
       <div className={`print-document documento-exportable traslado-a4 traslado-doc-${mode}`}>
         {anulado && <div className="doc-watermark">{transfer.estado}</div>}
+        <div className={`doc-purpose ${anulado ? 'doc-purpose-alert' : ''}`}><span>{mode === 'picking' ? 'Preparación de mercadería · marcar cada producto' : mode === 'guia' ? 'Salida de mercadería · controlar al recibir' : mode === 'constancia' ? 'Recepción registrada · revisar diferencias' : 'Registro de cierre · no autoriza salida de mercadería'}</span><b>{transfer.estado.replaceAll('_', ' ')}</b></div>
         <header>
           <div className="doc-brand">
             <img src={empresa.logoSrc} alt={empresa.razonSocial} onError={(e) => { e.currentTarget.style.display = 'none' }} />
@@ -88,12 +92,15 @@ export function TrasladoExportable({ transfer, onClose }: { transfer: TransferRe
           <p><b>Motivo:</b> {motivoLabel[transfer.motivo]}</p>
           {transfer.referencia && <p><b>Asunto:</b> {transfer.referencia}</p>}
           <p><b>Solicitado por:</b> {transfer.solicitadoPor} · {fechaFmt(transfer.solicitadoEn)}</p>
+          {transfer.despachadoEn && <p><b>Despachado el:</b> {fechaFmt(transfer.despachadoEn)}</p>}
+          {transfer.recibidoEn && <p><b>Recibido el:</b> {fechaFmt(transfer.recibidoEn)}</p>}
           {transfer.nota && <p><b>Nota:</b> {transfer.nota}</p>}
         </section>
 
         {mode === 'picking' && <PickingTable lines={transfer.lines} identifiers={identifiersByProduct} />}
         {mode === 'guia' && <GuiaTable lines={transfer.lines} identifiers={identifiersByProduct} />}
-        {mode === 'constancia' && <ConstanciaTable lines={transfer.lines} identifiers={identifiersByProduct} />}
+        {(mode === 'constancia' || mode === 'cerrado') && <ConstanciaTable lines={transfer.lines} identifiers={identifiersByProduct} />}
+        <p className="doc-items-summary">{transfer.lines.length} productos · Cantidades según la presentación indicada. — = cantidad sin registrar.</p>
 
         {mode === 'guia' && (
           <>
@@ -161,15 +168,15 @@ function GuiaTable({ lines, identifiers }: { lines: TransferLine[]; identifiers:
       <tbody>
         {lines.map((line, index) => {
           const factor = factorFor(line)
-          const despachada = line.cantidadDespachada ?? line.cantidadBase
-          const incompleta = despachada < line.cantidadBase
+          const despachada = line.cantidadDespachada
+          const incompleta = despachada != null && despachada < line.cantidadBase
           return (
             <tr key={line.id} className={incompleta ? 'doc-line-incompleta' : undefined}>
               <td>{index + 1}</td>
               <td>{line.name}<LineIdentifiersRow identifiers={identifiers[line.productId]} /></td>
               <td>{line.presentacionNombre ?? 'Unidad'}</td>
               <td>{formatQty(line.cantidadBase, factor, line.presentacionNombre)}</td>
-              <td>{formatQty(despachada, factor, line.presentacionNombre)}{incompleta && ' *'}</td>
+              <td>{despachada == null ? '—' : formatQty(despachada, factor, line.presentacionNombre)}{incompleta && ' *'}</td>
             </tr>
           )
         })}
@@ -188,19 +195,19 @@ function ConstanciaTable({ lines, identifiers }: { lines: TransferLine[]; identi
       <tbody>
         {lines.map((line, index) => {
           const factor = factorFor(line)
-          const despachada = line.cantidadDespachada ?? line.cantidadBase
-          const recibida = line.cantidadRecibida ?? despachada
-          const diff = recibida - despachada
-          const diffSign = diff > 0 ? '+' : diff < 0 ? '−' : ''
+          const despachada = line.cantidadDespachada
+          const recibida = line.cantidadRecibida
+          const diff = despachada != null && recibida != null ? recibida - despachada : null
+          const diffSign = diff != null && diff > 0 ? '+' : diff != null && diff < 0 ? '−' : ''
           return (
             <tr key={line.id}>
               <td>{index + 1}</td>
               <td>{line.name}<LineIdentifiersRow identifiers={identifiers[line.productId]} /></td>
               <td>{line.presentacionNombre ?? 'Unidad'}</td>
               <td>{formatQty(line.cantidadBase, factor, line.presentacionNombre)}</td>
-              <td>{formatQty(despachada, factor, line.presentacionNombre)}</td>
-              <td>{line.cantidadRecibida != null ? formatQty(recibida, factor, line.presentacionNombre) : '—'}</td>
-              <td className={diff !== 0 ? 'doc-diff-flag' : undefined}>{diff !== 0 ? `${diffSign}${formatQty(Math.abs(diff), factor, line.presentacionNombre)}` : ''}</td>
+              <td>{despachada != null ? formatQty(despachada, factor, line.presentacionNombre) : '—'}</td>
+              <td>{recibida != null ? formatQty(recibida, factor, line.presentacionNombre) : '—'}</td>
+              <td className={diff != null && diff !== 0 ? 'doc-diff-flag' : undefined}>{diff == null ? '—' : diff !== 0 ? `${diffSign}${formatQty(Math.abs(diff), factor, line.presentacionNombre)}` : ''}</td>
             </tr>
           )
         })}

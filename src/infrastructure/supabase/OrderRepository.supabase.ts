@@ -119,12 +119,18 @@ const lineaRowToOrderLine = (row: PedidoLineaRow): OrderLine => {
   const baseQuantity = num(row.cantidad_base)
   const quantity = row.presentacion_id != null ? num(row.cantidad_presentacion) : baseQuantity
   const prepared = row.estado === 'DESPACHADA' || row.estado === 'COMPRADO_DIRECTO' ? baseQuantity : 0
+  const factor = row.presentacion?.factor_unidad_base != null
+    ? num(row.presentacion.factor_unidad_base)
+    : quantity > 0 ? baseQuantity / quantity : 1
   return {
     id: String(row.id),
     productId: row.producto_id != null ? String(row.producto_id) : '',
     name: row.es_personalizado ? (row.descripcion ?? 'Ítem especial') : (row.producto?.nombre ?? row.descripcion ?? ''),
     sku: row.producto?.sku_interno ?? '',
     quantity,
+    dispatchedQuantity: row.cantidad_despachada != null && factor > 0
+      ? num(row.cantidad_despachada) / factor
+      : undefined,
     unitPriceCents: numericToCents(num(row.precio_unitario)),
     discountBasisPoints: bpToPctSafe(num(row.descuento_pct)),
     listPriceCents: row.precio_lista != null ? numericToCents(num(row.precio_lista)) : undefined,
