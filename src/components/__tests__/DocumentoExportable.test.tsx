@@ -67,7 +67,10 @@ describe('DocumentoExportable — nota de entrega', () => {
     expect(document.querySelector('style')?.textContent).toContain('counter(pages)')
     expect(screen.getByText('C')).toBeTruthy()
     expect(screen.getByText(/Fotografiar TODAS las páginas/)).toBeTruthy()
-    expect(screen.getByText('Pedido #PED-04821')).toBeTruthy()
+    // "Origen" solo aparece cuando la entrega tiene referencia propia (si no, el encabezado ya dice el pedido).
+    expect(screen.queryByText('Pedido PED-04821')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Referencia de esta entrega (opcional)'), { target: { value: 'Entrega 2' } })
+    expect(screen.getByText('Pedido PED-04821')).toBeTruthy()
     // Bultos: input editable, precarga vacío (no hay caller que lo pase todavía).
     expect(screen.getByPlaceholderText('Ej. 3 cajas · 1 rollo')).toBeTruthy()
   })
