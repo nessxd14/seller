@@ -139,6 +139,17 @@
     box-shadow: none; transform: none;
   }
   .modal:has(.documento-exportable) > :not(.documento-exportable):not(style) { display: none !important }
+  /* pos-glassmorphism.css se importa después y su `.modal:not(.side-panel)` empata en
+     especificidad con las reglas de arriba: sin este reset el modal conserva borde de 1px,
+     fondo y backdrop-filter, y ese borde cae en una hoja extra sin nombre (hoja en blanco). */
+  html:has(.print-document, .ticket) { background: #fff !important }
+  .modal-backdrop:has(.print-document, .ticket),
+  .modal:not(.side-panel):has(.print-document, .ticket) {
+    border: 0 !important; border-radius: 0 !important; outline: 0 !important;
+    background: #fff !important; box-shadow: none !important;
+    backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+    padding: 0 !important; margin: 0 !important;
+  }
   .print-document.documento-exportable {
     position: static; width: auto; min-height: 0; margin: 0; padding: 0;
     overflow: visible; zoom: 1; font-size: 9pt; line-height: 1.35;
@@ -146,7 +157,7 @@
   }
   .documento-exportable:not(.doc-roll) { page: pos-document }
   .documento-exportable.doc-roll { page: pos-roll; width: 80mm; padding: 4mm }
-  @page pos-roll { size: 80mm 279mm; margin: 0 }
+  .print-document.documento-exportable.doc-roll { font-size: 9.5pt; line-height: 1.4 }
   .documento-exportable .doc-roll-item { break-inside: avoid }
   .documento-exportable .doc-page { min-height: 0; padding: 0; break-before: auto; break-inside: auto }
   .documento-exportable header { padding-bottom: 8px; break-inside: avoid; break-after: avoid }
@@ -196,7 +207,7 @@
 }
 .doc-roll-center { text-align: center }
 .doc-roll-logo { width: 40px; height: 40px; object-fit: contain; display: block; margin: 0 auto 4px }
-.doc-roll .doc-qr.doc-roll-qr { width: 22mm; height: 22mm; margin: 6px auto }
+.doc-roll .doc-qr.doc-roll-qr { width: 22mm; height: 22mm; margin: 6px auto; display: inline-block }
 .doc-roll-rule { border: 0; border-top: 1px dashed #666; margin: 6px 0 }
 .doc-roll-line { margin: 2px 0; word-break: break-word }
 .doc-roll-line b { font-weight: 700 }
@@ -214,4 +225,36 @@
 }
 @media print {
   .doc-roll.print-document { padding: 4mm; margin: 0 }
+}
+
+/* ---------- Impresión: cierre de cotización/pedido en dos columnas ---------- */
+@media print {
+  .documento-exportable .doc-commercial-closing { display: grid; grid-template-columns: minmax(0,1fr) 76mm; column-gap: 8mm; align-items: start; grid-auto-flow: row dense; margin-top: 4mm }
+  .documento-exportable .doc-commercial-closing > .doc-totals { grid-column: 2; grid-row: 1; width: auto; margin: 0; break-before: avoid }
+  .documento-exportable .doc-commercial-closing > .doc-signoff { grid-column: 2; grid-row: 2 / span 4; margin-top: 3mm }
+  .documento-exportable .doc-commercial-closing > :not(.doc-totals):not(.doc-signoff) { grid-column: 1; margin-top: 0 }
+  .documento-exportable .doc-commercial-closing > .doc-footer-notes { display: grid; gap: 1mm; justify-content: start; border-top: 0; padding-top: 0; break-before: auto }
+  .documento-exportable .doc-commercial-closing .doc-written-notes,
+  .documento-exportable .doc-disclaimer { break-inside: auto; break-before: auto; margin-top: 2mm }
+  .documento-exportable .doc-signoff-stamp { min-height: 0; gap: 4mm; justify-content: center }
+  .documento-exportable .doc-firma-img { max-height: 16mm; max-width: 45mm }
+  .documento-exportable .doc-firma-blank { height: 12mm; width: 45mm }
+  .documento-exportable .doc-sello-img { max-height: 20mm; max-width: 22mm }
+}
+
+/* ---------- Impresión: nota de entrega compacta, cierre dentro del último ítem ---------- */
+@media print {
+  .documento-exportable .doc-delivery-closing-row td, .documento-exportable .doc-closing-row td { border: 0 !important; padding: 6px 0 0 !important; white-space: normal }
+  .documento-exportable .doc-manual-signs { margin-top: 10mm; break-inside: avoid; align-items: flex-end }
+  .documento-exportable .doc-manual-signs .doc-sello-img { max-height: 16mm }
+  .documento-exportable .doc-legend, .documento-exportable .doc-obs { margin-top: 4px; line-height: 1.35 }
+  .documento-exportable .doc-delivery-reference .doc-qr { width: 14mm; height: 14mm }
+  .documento-exportable .doc-delivery-table td { padding-top: 3px; padding-bottom: 2px }
+  .documento-exportable .doc-motivo-row td { padding: 0 3px 3px !important; font-size: 7pt; line-height: 1.1 }
+  .documento-exportable .doc-motivo-line { height: 9px }
+  .documento-exportable .doc-delivery-table .line-identifiers { font-size: 7pt; margin-top: 0 }
+}
+
+@media print {
+  .documento-exportable .doc-last-rows { break-inside: avoid }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ImgHTMLAttributes, type Ref } from 'react'
 import { FileDown, Printer } from 'lucide-react'
 import type { CustomerRecord, WorkflowLine } from '../application/shared/models'
 import { customerService, listLineIdentifiers } from '../infrastructure/services'
@@ -99,11 +99,20 @@ function DocObservations({ values }: { values: DocPrintDetails }) {
   return values.observations ? <div className="doc-written-notes"><b>Observaciones</b><p>{values.observations}</p></div> : null
 }
 
+/** <img> que se oculta solo mientras el `src` que falló siga siendo el actual: si más tarde
+ * llega una URL firmada nueva, la imagen vuelve a intentarse (un display:none imperativo
+ * sobre el nodo la dejaba oculta para siempre). */
+function SafeImg({ src, alt, ...rest }: ImgHTMLAttributes<HTMLImageElement> & { src: string }) {
+  const [broken, setBroken] = useState<string | null>(null)
+  if (broken === src) return null
+  return <img {...rest} src={src} alt={alt} onError={() => setBroken(src)} />
+}
+
 /** Brand + logo, idéntico en los tres documentos. */
 function DocBrand() {
   return (
     <div className="doc-brand">
-      <img src={empresa.logoSrc} alt={empresa.razonSocial} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+      <SafeImg src={empresa.logoSrc} alt={empresa.razonSocial} />
       <div>
         <b>{empresa.razonSocial}</b>
         <span>{empresa.direccion}</span>
@@ -124,9 +133,9 @@ function PrintedSignoff() {
     <div className="doc-signoff">
       <div className={`doc-signoff-stamp ${!hasSignature ? 'doc-stamp-alone' : ''}`}>
         {empresa.firmaUrl
-          ? <img src={empresa.firmaUrl} alt="Firma" className="doc-firma-img" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+          ? <SafeImg src={empresa.firmaUrl} alt="Firma" className="doc-firma-img" />
           : hasSignature ? <div className="doc-firma-blank" /> : null}
-        {empresa.selloUrl && <img src={empresa.selloUrl} alt="Sello" className="doc-sello-img" onError={(e) => { e.currentTarget.style.display = 'none' }} />}
+        {empresa.selloUrl && <SafeImg src={empresa.selloUrl} alt="Sello" className="doc-sello-img" />}
       </div>
       <small className="doc-signoff-label">{hasSignature ? 'Firma / autorización comercial' : 'Sello de la empresa'}</small>
       {(empresa.firmaNombre || empresa.firmaCargo) && (
@@ -186,7 +195,38 @@ function ExportableDocument({ doc: sourceDoc, mode, onClose }: { doc: Exportable
   // hoja completa). Arranca en el default de Configuración > Impresión.
   const [docFormat, setDocFormat] = useState<DocPrintFormat>(readDefaultDocPrintFormat)
   const supportsRollo = mode === 'cotizacion' || mode === 'nota-entrega'
-  useEffect(() => { void loadEmpresaConfig() }, [])
+  const isRoll = supportsRollo && docFormat === 'rollo-80'
+  // loadEmpresaConfig solo muta el store: el contador fuerza el re-render con las URLs firmadas
+  // (sello/firma) recién obtenidas, en vez de dibujar la primera vez con las que vencieron.
+  const [, setEmpresaVersion] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    void loadEmpresaConfig().then(() => { if (!cancelled) setEmpresaVersion((version) => version + 1) })
+    return () => { cancelled = true }
+  }, [])
+  const [printing, setPrinting] = useState(false)
+  // Imprimir antes de que carguen logo/firma/sello/QR deja huecos en el papel.
+  const printWhenReady = async () => {
+    setPrinting(true)
+    try {
+      const images = Array.from(document.querySelectorAll<HTMLImageElement>('.print-document img'))
+      await Promise.all(images.map((image) => image.decode().catch(() => undefined)))
+    } finally {
+      setPrinting(false)
+    }
+    window.print()
+  }
+  // Rollo 80 mm: el largo de la hoja es el del contenido renderizado (rollo continuo).
+  const [rollElement, setRollElement] = useState<HTMLDivElement | null>(null)
+  const [rollHeightMm, setRollHeightMm] = useState(0)
+  useEffect(() => {
+    if (!rollElement || typeof ResizeObserver === 'undefined') return
+    const measure = () => setRollHeightMm(Math.ceil(rollElement.offsetHeight * 25.4 / 96))
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(rollElement)
+    return () => observer.disconnect()
+  }, [rollElement])
   useEffect(() => {
     let cancelled = false
     const lookup = doc.customerId ? customerService.getById(doc.customerId) : customerService.list().then((customers) => {
@@ -230,6 +270,7 @@ function ExportableDocument({ doc: sourceDoc, mode, onClose }: { doc: Exportable
 
   return (
     <Modal title={modalTitle} subtitle={empresa.razonSocial} onClose={onClose} wide>
+      {isRoll && rollHeightMm > 0 && <style>{`@media print { @page pos-roll { size: 80mm ${rollHeightMm + 12}mm; margin: 0 } }`}</style>}
       <DocumentPrintPages number={mode === 'nota-entrega' ? details.deliveryReference || `Pedido ${doc.number}` : doc.number} lineCount={doc.lines.filter((line) => mode !== 'nota-entrega' || !isInactiveDocumentLine(line)).length} />
       <DocumentPrintDetails mode={mode} values={details} onChange={changeDetail} onSave={() => setSaveMessage(saveDocPrintDetails(detailsKey, details) ? 'Datos guardados en este navegador.' : 'No se pudieron guardar. Puedes imprimir los datos actuales.')} message={saveMessage} />
       {(mode === 'cotizacion' || supportsRollo) && (
@@ -251,7 +292,7 @@ function ExportableDocument({ doc: sourceDoc, mode, onClose }: { doc: Exportable
           )}
         </div>
       )}
-      {mode === 'cotizacion' && <CotizacionDoc doc={doc} details={details} vistaCliente={vistaCliente} customerDoc={customerDoc} asesorNombre={asesorNombre} identifiersByProduct={identifiersByProduct} format={docFormat} />}
+      {mode === 'cotizacion' && <CotizacionDoc doc={doc} details={details} vistaCliente={vistaCliente} customerDoc={customerDoc} asesorNombre={asesorNombre} identifiersByProduct={identifiersByProduct} format={docFormat} rollRef={setRollElement} />}
       {mode === 'pedido' && <PedidoDoc doc={doc} details={details} customerDoc={customerDoc} asesorNombre={asesorNombre} identifiersByProduct={identifiersByProduct} />}
       {mode === 'nota-entrega' && (
         <NotaEntregaDoc
@@ -263,12 +304,13 @@ function ExportableDocument({ doc: sourceDoc, mode, onClose }: { doc: Exportable
           printedAt={printedAt}
           identifiersByProduct={identifiersByProduct}
           format={docFormat}
+          rollRef={setRollElement}
         />
       )}
       <p className="print-header-footer-hint">Si el PDF sale con fecha y URL arriba/abajo, es el encabezado que agrega el navegador — desactivalo en el diálogo de impresión, en "Más ajustes" → "Encabezados y pies de página".</p>
       <footer className="modal-actions">
-        <button className="secondary-button" onClick={() => window.print()}><FileDown /> Guardar PDF</button>
-        <button className="primary-button" onClick={() => window.print()}><Printer /> Imprimir</button>
+        <button className="secondary-button" disabled={printing} onClick={() => void printWhenReady()}><FileDown /> Guardar PDF</button>
+        <button className="primary-button" disabled={printing} onClick={() => void printWhenReady()}><Printer /> Imprimir</button>
       </footer>
     </Modal>
   )
@@ -279,7 +321,7 @@ function ExportableDocument({ doc: sourceDoc, mode, onClose }: { doc: Exportable
 // maskName, ítems especiales, vista de cliente, firma/sello preimpresos) — lo único que
 // cambia es el lenguaje visual, para que la cotización se lea como parte de la misma
 // familia que pedido y nota de entrega (ver brief, sección 3).
-function CotizacionDoc({ doc, details, vistaCliente, customerDoc, asesorNombre, identifiersByProduct, format }: {
+function CotizacionDoc({ doc, details, vistaCliente, customerDoc, asesorNombre, identifiersByProduct, format, rollRef }: {
   doc: ExportableDoc
   details: DocPrintDetails
   vistaCliente: boolean
@@ -287,6 +329,7 @@ function CotizacionDoc({ doc, details, vistaCliente, customerDoc, asesorNombre, 
   asesorNombre: string
   identifiersByProduct: Record<string, LineIdentifiers>
   format: DocPrintFormat
+  rollRef: Ref<HTMLDivElement>
 }) {
   const catalogLines = doc.lines.filter((line) => !line.isCustomItem)
   const customLines = doc.lines.filter((line) => line.isCustomItem)
@@ -294,8 +337,51 @@ function CotizacionDoc({ doc, details, vistaCliente, customerDoc, asesorNombre, 
   const subtotalCents = doc.subtotalCents ?? doc.lines.reduce((sum, line) => sum + lineTotalCents(line), 0)
 
   if (format === 'rollo-80') {
-    return <CotizacionRoll doc={doc} details={details} lines={primaryLines} customerDoc={customerDoc} asesorNombre={asesorNombre} subtotalCents={subtotalCents} />
+    return <CotizacionRoll doc={doc} details={details} lines={primaryLines} customerDoc={customerDoc} asesorNombre={asesorNombre} subtotalCents={subtotalCents} rollRef={rollRef} />
   }
+
+  // El cierre viaja dentro del <tbody> de la última fila: así nunca queda una hoja con solo
+  // firma/observaciones. Con ítems especiales debajo de la tabla, el cierre va al final.
+  const attachClosing = primaryLines.length > 0 && (vistaCliente || customLines.length === 0)
+  const renderRow = (line: WorkflowLine, index: number) => {
+        const factor = line.factorUnidadBase ?? 1
+        const hasEquivalence = factor !== 1
+        const displayName = line.maskName ?? line.name
+        return (
+          <tr key={line.id}>
+            <td>{index + 1}</td>
+            <td>{displayName}<LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} isCustomItem={line.isCustomItem} />{line.note && <small className="doc-line-note">{line.note}</small>}</td>
+            <td>{line.presentacionNombre ?? (line.isCustomItem ? line.unitOfMeasure : undefined) ?? 'Unidad'}</td>
+            <td>{line.quantity}</td>
+            <td className="doc-equivalence">{hasEquivalence ? `${line.quantity * factor} u` : '—'}</td>
+            <td>{formatMoney(money(line.unitPriceCents))}</td>
+            <td>{(line.discountBasisPoints / 100).toFixed(1)}%</td>
+            <td>{formatMoney(money(lineTotalCents(line)))}</td>
+          </tr>
+        )
+  }
+
+  const closing = (
+  <div className="doc-commercial-closing">
+    <footer className="doc-totals">
+      <div className="doc-total-row"><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
+      {Boolean(doc.generalDiscountCents) && (
+        <div className="doc-total-row"><span>Descuento general</span><strong>−{formatMoney(money(doc.generalDiscountCents ?? 0))}</strong></div>
+      )}
+      <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(doc.totalCents ?? Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))))}</strong></div>
+    </footer>
+    {(doc.validUntil || doc.conditionPago || doc.medioPago) && (
+      <div className="doc-footer-notes">
+        {doc.validUntil && <span>Vigencia: {doc.validUntil}</span>}
+        {doc.conditionPago && <span>Condición de pago: {conditionPagoLabel[doc.conditionPago] ?? doc.conditionPago}</span>}
+        {doc.medioPago && <span>Medio de pago: {medioPagoLabel[doc.medioPago] ?? doc.medioPago}</span>}
+      </div>
+    )}
+    {doc.terms && <div className="doc-written-notes"><b>Condiciones comerciales</b><p>{doc.terms}</p></div>}
+    <DocObservations values={details} />
+    <PrintedSignoff />
+  </div>
+  )
 
   return (
     <div className="print-document documento-exportable quote-a4">
@@ -322,24 +408,14 @@ function CotizacionDoc({ doc, details, vistaCliente, customerDoc, asesorNombre, 
             <tr><th>Nº</th><th>Descripción</th><th>Medida</th><th>Cant</th><th>Equiv.</th><th>P/U</th><th>Desc.</th><th>Total</th></tr>
           </thead>
           <tbody>
-            {primaryLines.map((line, index) => {
-              const factor = line.factorUnidadBase ?? 1
-              const hasEquivalence = factor !== 1
-              const displayName = line.maskName ?? line.name
-              return (
-                <tr key={line.id}>
-                  <td>{index + 1}</td>
-                  <td>{displayName}<LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} isCustomItem={line.isCustomItem} />{line.note && <small className="doc-line-note">{line.note}</small>}</td>
-                  <td>{line.presentacionNombre ?? (line.isCustomItem ? line.unitOfMeasure : undefined) ?? 'Unidad'}</td>
-                  <td>{line.quantity}</td>
-                  <td className="doc-equivalence">{hasEquivalence ? `${line.quantity * factor} u` : '—'}</td>
-                  <td>{formatMoney(money(line.unitPriceCents))}</td>
-                  <td>{(line.discountBasisPoints / 100).toFixed(1)}%</td>
-                  <td>{formatMoney(money(lineTotalCents(line)))}</td>
-                </tr>
-              )
-            })}
+            {primaryLines.map((line, index) => (attachClosing && index === primaryLines.length - 1 ? null : renderRow(line, index)))}
           </tbody>
+          {attachClosing && (
+            <tbody className="doc-last-rows">
+              {renderRow(primaryLines[primaryLines.length - 1], primaryLines.length - 1)}
+              <tr className="doc-closing-row"><td colSpan={8}>{closing}</td></tr>
+            </tbody>
+          )}
         </table>
         {!vistaCliente && customLines.length > 0 && (
           <div className="doc-custom-block">
@@ -354,25 +430,7 @@ function CotizacionDoc({ doc, details, vistaCliente, customerDoc, asesorNombre, 
             </table>
           </div>
         )}
-        <div className="doc-commercial-closing">
-          <footer className="doc-totals">
-            <div className="doc-total-row"><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
-            {Boolean(doc.generalDiscountCents) && (
-              <div className="doc-total-row"><span>Descuento general</span><strong>−{formatMoney(money(doc.generalDiscountCents ?? 0))}</strong></div>
-            )}
-            <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(doc.totalCents ?? Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))))}</strong></div>
-          </footer>
-          {(doc.validUntil || doc.conditionPago || doc.medioPago) && (
-            <div className="doc-footer-notes">
-              {doc.validUntil && <span>Vigencia: {doc.validUntil}</span>}
-              {doc.conditionPago && <span>Condición de pago: {conditionPagoLabel[doc.conditionPago] ?? doc.conditionPago}</span>}
-              {doc.medioPago && <span>Medio de pago: {medioPagoLabel[doc.medioPago] ?? doc.medioPago}</span>}
-            </div>
-          )}
-          {doc.terms && <div className="doc-written-notes"><b>Condiciones comerciales</b><p>{doc.terms}</p></div>}
-          <DocObservations values={details} />
-          <PrintedSignoff />
-        </div>
+        {!attachClosing && closing}
       </div>
     </div>
   )
@@ -395,6 +453,38 @@ function PedidoDoc({ doc, details, customerDoc, asesorNombre, identifiersByProdu
   const pending = active.filter((line) => (documentLineProgress(line).pending ?? 0) > 0).length
   const unknown = active.filter((line) => documentLineProgress(line).dispatched == null).length
   const subtotalCents = doc.subtotalCents ?? active.reduce((sum, line) => sum + lineTotalCents(line), 0)
+  const renderRow = (line: PedidoLine, index: number) => {
+        const inactive = isInactiveDocumentLine(line)
+        const progress = documentLineProgress(line)
+        return <tr key={line.id} className={inactive ? 'doc-line-status-cambiada' : undefined}>
+          <td>{index + 1}</td>
+          <td>{line.maskName ?? line.name}<LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} isCustomItem={line.isCustomItem} />
+            <small className="doc-line-state">{lineaEstadoPedido(line)}</small>{line.note && <small className="doc-line-note">{line.note}</small>}
+          </td>
+          <td>{line.presentacionNombre ?? (line.isCustomItem ? line.unitOfMeasure : undefined) ?? 'Unidad'}{(line.factorUnidadBase ?? 1) !== 1 && <small className="doc-line-note">1 = {qty(line.factorUnidadBase!)} u</small>}</td>
+          <td>{qty(line.quantity)}</td>
+          <td>{inactive || progress.dispatched == null ? '—' : qty(progress.dispatched)}</td>
+          <td>{inactive || progress.pending == null ? '—' : qty(progress.pending)}</td>
+          <td>{inactive ? '—' : formatMoney(money(line.unitPriceCents))}{!inactive && line.discountBasisPoints > 0 && <small className="doc-line-note">Desc. {(line.discountBasisPoints / 100).toFixed(1)}%</small>}</td>
+          <td>{inactive ? '—' : formatMoney(money(lineTotalCents(line)))}</td>
+        </tr>
+  }
+  const closing = (
+    <div className="doc-commercial-closing">
+      <footer className="doc-totals">
+        <div className="doc-total-row"><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
+        {Boolean(doc.generalDiscountCents) && <div className="doc-total-row"><span>Descuento general</span><strong>−{formatMoney(money(doc.generalDiscountCents ?? 0))}</strong></div>}
+        <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(doc.totalCents ?? Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))))}</strong></div>
+      </footer>
+      {(doc.conditionPago || doc.medioPago) && <div className="doc-footer-notes">
+        {doc.conditionPago && <span>Condición de pago: {conditionPagoLabel[doc.conditionPago] ?? doc.conditionPago}</span>}
+        {doc.medioPago && <span>Medio de pago: {medioPagoLabel[doc.medioPago] ?? doc.medioPago}</span>}
+      </div>}
+      <DocObservations values={details} />
+      <p className="doc-disclaimer">Documento interno de seguimiento. Las cantidades despachadas son acumuladas del pedido.<br />La recepción se registra con las cantidades y firmas de cada entrega.</p>
+      <PrintedSignoff />
+    </div>
+  )
   return <div className="print-document documento-exportable order-a4">
     <div className="doc-page">
       <DocPurpose doc={doc} mode="pedido" />
@@ -420,37 +510,15 @@ function PedidoDoc({ doc, details, customerDoc, asesorNombre, identifiersByProdu
       <table className="doc-table doc-order-table">
         <DocumentTableColumns widths={[4, 34, 11, 9, 10, 10, 11, 11]} />
         <thead><tr><th>Nº</th><th>Descripción / estado</th><th>Medida</th><th>Solicitado</th><th>Despachado</th><th>Pendiente</th><th>P/U</th><th>Importe</th></tr></thead>
-        <tbody>{doc.lines.map((line, index) => {
-          const inactive = isInactiveDocumentLine(line)
-          const progress = documentLineProgress(line)
-          return <tr key={line.id} className={inactive ? 'doc-line-status-cambiada' : undefined}>
-            <td>{index + 1}</td>
-            <td>{line.maskName ?? line.name}<LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} isCustomItem={line.isCustomItem} />
-              <small className="doc-line-state">{lineaEstadoPedido(line)}</small>{line.note && <small className="doc-line-note">{line.note}</small>}
-            </td>
-            <td>{line.presentacionNombre ?? (line.isCustomItem ? line.unitOfMeasure : undefined) ?? 'Unidad'}{(line.factorUnidadBase ?? 1) !== 1 && <small className="doc-line-note">1 = {qty(line.factorUnidadBase!)} u</small>}</td>
-            <td>{qty(line.quantity)}</td>
-            <td>{inactive || progress.dispatched == null ? '—' : qty(progress.dispatched)}</td>
-            <td>{inactive || progress.pending == null ? '—' : qty(progress.pending)}</td>
-            <td>{inactive ? '—' : formatMoney(money(line.unitPriceCents))}{!inactive && line.discountBasisPoints > 0 && <small className="doc-line-note">Desc. {(line.discountBasisPoints / 100).toFixed(1)}%</small>}</td>
-            <td>{inactive ? '—' : formatMoney(money(lineTotalCents(line)))}</td>
-          </tr>
-        })}</tbody>
+        <tbody>{doc.lines.map((line, index) => (index === doc.lines.length - 1 ? null : renderRow(line, index)))}</tbody>
+        {doc.lines.length > 0 && (
+          <tbody className="doc-last-rows">
+            {renderRow(doc.lines[doc.lines.length - 1], doc.lines.length - 1)}
+            <tr className="doc-closing-row"><td colSpan={8}>{closing}</td></tr>
+          </tbody>
+        )}
       </table>
-      <div className="doc-commercial-closing">
-        <footer className="doc-totals">
-          <div className="doc-total-row"><span>Subtotal</span><strong>{formatMoney(money(subtotalCents))}</strong></div>
-          {Boolean(doc.generalDiscountCents) && <div className="doc-total-row"><span>Descuento general</span><strong>−{formatMoney(money(doc.generalDiscountCents ?? 0))}</strong></div>}
-          <div className="doc-total-row doc-total-line"><span>Total</span><strong>{formatMoney(money(doc.totalCents ?? Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))))}</strong></div>
-        </footer>
-        {(doc.conditionPago || doc.medioPago) && <div className="doc-footer-notes">
-          {doc.conditionPago && <span>Condición de pago: {conditionPagoLabel[doc.conditionPago] ?? doc.conditionPago}</span>}
-          {doc.medioPago && <span>Medio de pago: {medioPagoLabel[doc.medioPago] ?? doc.medioPago}</span>}
-        </div>}
-        <DocObservations values={details} />
-        <p className="doc-disclaimer">Documento interno de seguimiento. Las cantidades despachadas son acumuladas del pedido.<br />La recepción se registra con las cantidades y firmas de cada entrega.</p>
-        <PrintedSignoff />
-      </div>
+      {doc.lines.length === 0 && closing}
     </div>
   </div>
 }
@@ -458,7 +526,7 @@ function PedidoDoc({ doc, details, customerDoc, asesorNombre, identifiersByProdu
 // ============================== NOTA DE ENTREGA ==============================
 // Rehecha por completo: sin precios ni totales, con paginado real y todos los campos
 // operativos que necesita quien despacha/recibe (ver brief, sección 1).
-function NotaEntregaDoc({ doc, details, customerDoc, bultos, onBultosChange, printedAt, identifiersByProduct, format }: {
+function NotaEntregaDoc({ doc, details, customerDoc, bultos, onBultosChange, printedAt, identifiersByProduct, format, rollRef }: {
   doc: ExportableDoc
   details: DocPrintDetails
   customerDoc: string
@@ -467,6 +535,7 @@ function NotaEntregaDoc({ doc, details, customerDoc, bultos, onBultosChange, pri
   printedAt: Date
   identifiersByProduct: Record<string, LineIdentifiers>
   format: DocPrintFormat
+  rollRef: Ref<HTMLDivElement>
 }) {
   // Brief 1.4: documentDate puede faltar (ver comentario junto a printedAt en el
   // componente padre) — sin esto, la NE imprimía la hora sola, rompiendo la conciliación
@@ -476,8 +545,29 @@ function NotaEntregaDoc({ doc, details, customerDoc, bultos, onBultosChange, pri
   const lines = doc.lines.filter((line) => !isInactiveDocumentLine(line))
 
   if (format === 'rollo-80') {
-    return <NotaEntregaRoll doc={doc} details={details} lines={lines} customerDoc={customerDoc} bultos={bultos} onBultosChange={onBultosChange} fechaMostrada={fechaMostrada} horaMostrada={horaMostrada} identifiersByProduct={identifiersByProduct} />
+    return <NotaEntregaRoll doc={doc} details={details} lines={lines} customerDoc={customerDoc} bultos={bultos} onBultosChange={onBultosChange} fechaMostrada={fechaMostrada} horaMostrada={horaMostrada} identifiersByProduct={identifiersByProduct} rollRef={rollRef} />
   }
+
+  const closing = (
+    <div className="doc-delivery-closing">
+        <div className="doc-legend">
+          C = Completo · P = Parcial · N = No despachado (almacén) · R = Rechazado al recibir<br />
+          Equivalencia en unidades base debajo de la cantidad pedida.
+        </div>
+        <div className="doc-obs">Observaciones de recepción: <span className="doc-fill doc-fill-lg" /></div>
+        <div className="doc-obs">Fecha y hora de recepción: <span className="doc-fill" /></div>
+        <div className="doc-manual-signs">
+          <div className="doc-manual-sign"><div className="doc-manual-sign-line" /><span>Entrega (nombre y firma)</span></div>
+          <div className="doc-manual-sign"><div className="doc-manual-sign-line" /><span>Recibe (nombre, CI y firma)</span></div>
+          {empresa.selloUrl && (
+            <div className="doc-stamp-only">
+              <SafeImg src={empresa.selloUrl} alt="Sello" className="doc-sello-img" />
+            </div>
+          )}
+        </div>
+        <div className="doc-telegram-note">Fotografiar TODAS las páginas y enviarlas al grupo de Telegram al momento del despacho.</div>
+    </div>
+  )
 
   return (
     <div className="print-document documento-exportable delivery-a4">
@@ -493,7 +583,7 @@ function NotaEntregaDoc({ doc, details, customerDoc, bultos, onBultosChange, pri
         <section className="doc-kv-grid">
           <div className="doc-kv"><div className="k">Cliente</div><div className="v">{doc.customerName}{customerDoc && ` · ${customerDoc}`}</div></div>
           <div className="doc-kv"><div className="k">Impreso el</div><div className="v">{fechaMostrada} · {horaMostrada}</div></div>
-          {doc.originOrderNumber && <div className="doc-kv"><div className="k">Origen</div><div className="v">Pedido #{doc.originOrderNumber}</div></div>}
+          {details.deliveryReference && doc.originOrderNumber && <div className="doc-kv"><div className="k">Origen</div><div className="v">Pedido {doc.originOrderNumber}</div></div>}
           <div className="doc-kv"><div className="k">Canal</div><div className="v">{doc.channel}</div></div>
           {doc.documentDate && <div className="doc-kv"><div className="k">Fecha del pedido</div><div className="v">{doc.documentDate}</div></div>}
           <div className="doc-kv">
@@ -512,6 +602,7 @@ function NotaEntregaDoc({ doc, details, customerDoc, bultos, onBultosChange, pri
           </div>
         </section>
         <DocumentRecipient values={details} />
+        <DocObservations values={details} />
         <p className="doc-items-summary">{lines.length} productos · Completar las cantidades entregadas y recibidas en esta salida.</p>
         <table className="doc-table doc-delivery-table">
           <DocumentTableColumns widths={[4, 32, 10, 8, 10, 10, 18, 8]} />
@@ -527,6 +618,7 @@ function NotaEntregaDoc({ doc, details, customerDoc, bultos, onBultosChange, pri
               <th>Origen</th>
             </tr>
           </thead>
+          {lines.length === 0 && <tbody className="doc-delivery-item"><tr className="doc-delivery-closing-row"><td colSpan={8}>{closing}</td></tr></tbody>}
           {lines.map((line, i) => {
             const factor = line.factorUnidadBase ?? 1
             const hasEquivalence = factor !== 1
@@ -546,29 +638,11 @@ function NotaEntregaDoc({ doc, details, customerDoc, bultos, onBultosChange, pri
                   <td></td>
                   <td colSpan={7}>Motivo / diferencia:<span className="doc-motivo-line" /></td>
                 </tr>
+                {i === lines.length - 1 && <tr className="doc-delivery-closing-row"><td colSpan={8}>{closing}</td></tr>}
               </tbody>
             )
           })}
         </table>
-        <div className="doc-delivery-closing">
-          <div className="doc-legend">
-            C = Completo · P = Parcial · N = No despachado (almacén) · R = Rechazado al recibir<br />
-            Equivalencia en unidades base debajo de la cantidad pedida.
-          </div>
-          <DocObservations values={details} />
-          <div className="doc-obs">Observaciones de recepción: <span className="doc-fill doc-fill-lg" /></div>
-          <div className="doc-obs">Fecha y hora de recepción: <span className="doc-fill" /></div>
-          <div className="doc-manual-signs">
-            <div className="doc-manual-sign"><div className="doc-manual-sign-line" /><span>Entrega (nombre y firma)</span></div>
-            <div className="doc-manual-sign"><div className="doc-manual-sign-line" /><span>Recibe (nombre, CI y firma)</span></div>
-            {empresa.selloUrl && (
-              <div className="doc-stamp-only">
-                <img src={empresa.selloUrl} alt="Sello" className="doc-sello-img" onError={(e) => { e.currentTarget.style.display = 'none' }} />
-              </div>
-            )}
-          </div>
-          <div className="doc-telegram-note">Fotografiar TODAS las páginas y enviarlas al grupo de Telegram al momento del despacho.</div>
-        </div>
       </div>
     </div>
   )
@@ -584,19 +658,20 @@ function NotaEntregaDoc({ doc, details, customerDoc, bultos, onBultosChange, pri
 /** Cotización en rollo: mismo contenido que la de carta (precios, descuentos, totales,
  * vigencia/condición/medio de pago), apilado en bloques en vez de tabla. Sin QR — mismo
  * criterio que la cotización en carta, todavía no hay un caso de uso claro para uno. */
-function CotizacionRoll({ doc, details, lines, customerDoc, asesorNombre, subtotalCents }: {
+function CotizacionRoll({ doc, details, lines, customerDoc, asesorNombre, subtotalCents, rollRef }: {
   doc: ExportableDoc
   details: DocPrintDetails
   lines: WorkflowLine[]
   customerDoc: string
   asesorNombre: string
   subtotalCents: number
+  rollRef: Ref<HTMLDivElement>
 }) {
   const totalCents = doc.totalCents ?? Math.max(0, subtotalCents - (doc.generalDiscountCents ?? 0))
   return (
-    <div className="print-document documento-exportable doc-roll">
+    <div className="print-document documento-exportable doc-roll" ref={rollRef}>
       <div className="doc-roll-center">
-        <img src={empresa.logoSrc} alt={empresa.razonSocial} className="doc-roll-logo" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+        <SafeImg src={empresa.logoSrc} alt={empresa.razonSocial} className="doc-roll-logo" />
         <div className="doc-roll-line"><b>{empresa.razonSocial}</b></div>
         <div className="doc-roll-line">{empresa.direccion}</div>
       </div>
@@ -650,7 +725,7 @@ function CotizacionRoll({ doc, details, lines, customerDoc, asesorNombre, subtot
  * que reemplaza al paginado acá: sin él, una tira larga reintroduce exactamente el
  * problema que el paginado resuelve en carta — el agente de Telegram no tendría forma de
  * saber si la última foto llega al final del rollo o si falta más. */
-function NotaEntregaRoll({ doc, details, lines, customerDoc, bultos, onBultosChange, fechaMostrada, horaMostrada, identifiersByProduct }: {
+function NotaEntregaRoll({ doc, details, lines, customerDoc, bultos, onBultosChange, fechaMostrada, horaMostrada, identifiersByProduct, rollRef }: {
   doc: ExportableDoc
   details: DocPrintDetails
   lines: WorkflowLine[]
@@ -660,19 +735,20 @@ function NotaEntregaRoll({ doc, details, lines, customerDoc, bultos, onBultosCha
   fechaMostrada: string
   horaMostrada: string
   identifiersByProduct: Record<string, LineIdentifiers>
+  rollRef: Ref<HTMLDivElement>
 }) {
   return (
-    <div className="print-document documento-exportable doc-roll">
+    <div className="print-document documento-exportable doc-roll" ref={rollRef}>
       <div className="doc-roll-center">
-        <img src={empresa.logoSrc} alt={empresa.razonSocial} className="doc-roll-logo" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+        <SafeImg src={empresa.logoSrc} alt={empresa.razonSocial} className="doc-roll-logo" />
         <div className="doc-roll-line"><b>{empresa.razonSocial}</b></div>
         <div className="doc-roll-line">{empresa.direccion}</div>
       </div>
-      {doc.orderId && <DocQr margin={4} content={qrContentForNotaEntrega(doc.orderId, doc.number)} className="doc-roll-qr" />}
+      {doc.orderId && <div className="doc-roll-center"><DocQr margin={4} content={qrContentForNotaEntrega(doc.orderId, doc.number)} className="doc-roll-qr" /></div>}
       <div className="doc-roll-center">
         <div className="doc-roll-line"><b>NOTA DE ENTREGA</b></div>
-        {doc.originOrderNumber && <div className="doc-roll-line">Pedido #{doc.originOrderNumber}</div>}
-        <div className="doc-roll-line">{details.deliveryReference || `Referencia: ${doc.number}`}</div>
+        <div className="doc-roll-line">{details.deliveryReference || `Pedido ${doc.number}`}</div>
+        {details.deliveryReference && doc.originOrderNumber && <div className="doc-roll-line">Origen: Pedido {doc.originOrderNumber}</div>}
         <div className="doc-roll-line">Impreso: {fechaMostrada} · {horaMostrada}</div>
         <div className="doc-roll-line">Registro manual de esta entrega</div>
       </div>
@@ -697,9 +773,9 @@ function NotaEntregaRoll({ doc, details, lines, customerDoc, bultos, onBultosCha
           <div className="doc-roll-item" key={line.id}>
             <div className="doc-roll-line">{index + 1}. {line.name.toUpperCase()}<LineIdentifiersRow identifiers={identifiersByProduct[line.productId]} isCustomItem={line.isCustomItem} /></div>
             <div className="doc-roll-line">
-              {line.presentacionNombre ?? 'Unidad'} · Pedido: {line.quantity}{hasEquivalence ? ` (${line.quantity * factor} u)` : ''} · {line.sourceLocation ?? '—'}
+              {line.presentacionNombre ?? (line.isCustomItem ? line.unitOfMeasure : undefined) ?? 'Unidad'} · Pedido: {line.quantity}{hasEquivalence ? ` (${line.quantity * factor} u)` : ''} · {line.sourceLocation ?? '—'}
             </div>
-            <div className="doc-roll-line">Despachado: <span className="doc-fill doc-fill-sm" /></div>
+            <div className="doc-roll-line">Entregado: <span className="doc-fill doc-fill-sm" /></div>
             <div className="doc-roll-line">Recibido: <span className="doc-fill doc-fill-sm" /></div>
             <div className="doc-roll-checks">
               <span><span className="doc-checkbox" /> C</span>
