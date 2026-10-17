@@ -520,3 +520,7 @@ body:has(.remote-cash-app) { min-width:0; overflow:auto; margin:0; background:#f
   .cash-workspace .actividad-filtro { flex-shrink:0; }
   .cash-workspace .actividad-detalle .credit-client-tag { display:none !important; }
 }
+
+/* Caja (app remota): la barra de acciones se fija debajo de la barra superior y de las pestañas. */
+.remote-cash-app .turno-actionbar { top:calc(88px + env(safe-area-inset-top,0px)); }
+.remote-cash-app:has(.remote-tabs) .turno-actionbar { top:calc(150px + env(safe-area-inset-top,0px)); }
