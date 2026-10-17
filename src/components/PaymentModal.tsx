@@ -1,6 +1,7 @@
 import { Banknote, CreditCard, Printer, QrCode, Shuffle, Smartphone, Wallet } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { usePos } from '../context/PosContext'
+import { useCajaAlmacen } from '../context/CajaAlmacenContext'
 import { Modal } from './Modal'
 import { featureFlags } from '../config/featureFlags'
 import { useCashSession } from '../context/CashSessionContext'
@@ -45,11 +46,13 @@ const metodosBs = (payments: { method: 'cash' | 'qr' | 'transfer'; amountCents: 
   payments.reduce<Partial<Record<'cash' | 'qr' | 'transfer', number>>>((acc, p) => ({ ...acc, [p.method]: ((acc[p.method] ?? 0) * 100 + p.amountCents) / 100 }), {})
 
 export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => void; onCheckoutSuccess?: () => void }) {
+  const almacen = useCajaAlmacen()
+  const { warehouseLocked } = usePos()
   const { cart, discount, total: normalTotal, pedidoEnCarrito, vtdsEnCarrito = [], vendedorId, newOperation, customer, operationId, notifyVentaCompletada } = usePos()
   const pedidoCents = pedidoEnCarrito ? pedidoTotalCents(pedidoEnCarrito.lineas.filter(l => l.verificada)) : 0
   const newSaleCents = Math.round(normalTotal * 100) + pedidoCents
   const total = (newSaleCents + vtdsEnCarrito.reduce((sum,v) => sum+Math.round(v.totalBs*100),0))/100
-  const unified = !!pedidoEnCarrito || vtdsEnCarrito.length > 0 || !!vendedorId
+  const unified = warehouseLocked || !!pedidoEnCarrito || vtdsEnCarrito.length > 0 || !!vendedorId
   const submittingRef = useRef(false)
   const [receipt, setReceipt] = useState<CajaReceipt | null>(null)
   const { sessionId } = useCashSession()
@@ -112,6 +115,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
     setSubmitting(true)
     setError('')
     try {
+      await almacen.flush()
       const payments = buildPayments()
       {
         const attempt = { context: paymentContext, cashSessionId: checkoutSessionId, balanceCents, payments }
@@ -156,6 +160,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
       const unifiedReceipt = unified ? await checkoutCaja({ ...input, pedido: pedidoEnCarrito, vtds: vtdsEnCarrito, vendedorId: pedidoEnCarrito ? undefined : vendedorId }, `checkout:${operationId}`) : null
       const checkout = unifiedReceipt ? { saleId: unifiedReceipt.saleIds[0], numero: unifiedReceipt.numero, totalCents: unifiedReceipt.totalCents, isRetry: unifiedReceipt.isRetry, balanceAppliedCents: unifiedReceipt.balanceCents } : await saleService.checkout(input)
       setReceipt(unifiedReceipt)
+      await almacen.refresh().catch(() => {})
       if (pedidoEnCarrito) auditEnd({ transactionId: `pdv-${pedidoEnCarrito.pedido.pedidoId}`, reason: 'completada', numero: checkout.numero, totalBs: pedidoCents/100, metodos: metodosBs(payments) })
       localStorage.removeItem(pendingKey)
       setResult({ saleId: checkout.saleId, numero: checkout.numero, totalCents: checkout.totalCents, isRetry: checkout.isRetry === true, balanceAppliedCents: 'balanceAppliedCents' in checkout ? Number(checkout.balanceAppliedCents ?? 0) : 0, balanceRemainingCents: 'balanceRemainingCents' in checkout ? Number(checkout.balanceRemainingCents) : undefined })
@@ -253,7 +258,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
     featureFlags.supabase
       ? (result?.isRetry ? `Esta venta ya estaba registrada (#${result.saleId}). No se cobró dos veces.` : 'Venta registrada en el backend.')
       : 'Esta es una simulación. No se registró ningún pago real.'
-  }</p>{result && result.balanceAppliedCents > 0 && <div className="credit-payment-summary"><strong>Saldo a favor aplicado: Bs {money(result.balanceAppliedCents / 100)}</strong><span>Dinero nuevo: Bs {money((result.totalCents - result.balanceAppliedCents) / 100)}</span>{result.balanceRemainingCents != null && <span>Saldo a favor restante: Bs {money(result.balanceRemainingCents / 100)}</span>}</div>}</div><footer className="modal-actions">{featureFlags.supabase && result && <button className="secondary-button" onClick={() => setTicketOpen(true)}><Printer /> Imprimir ticket</button>}<button className="primary-button full-button" onClick={() => { newOperation(); onClose() }}>Finalizar y nueva operación</button></footer>{ticketOpen && result && (receipt ? <CajaTicket receipt={receipt} onClose={() => setTicketOpen(false)} /> : <VentaTicket id={result.saleId} onClose={() => setTicketOpen(false)} />)}</Modal>
+  }</p>{result && result.balanceAppliedCents > 0 && <div className="credit-payment-summary"><strong>Saldo a favor aplicado: Bs {money(result.balanceAppliedCents / 100)}</strong><span>Dinero nuevo: Bs {money((result.totalCents - result.balanceAppliedCents) / 100)}</span>{result.balanceRemainingCents != null && <span>Saldo a favor restante: Bs {money(result.balanceRemainingCents / 100)}</span>}</div>}</div><footer className="modal-actions">{featureFlags.supabase && result && <button className="secondary-button" onClick={() => setTicketOpen(true)}><Printer /> Imprimir ticket</button>}<button className="primary-button full-button" onClick={() => { newOperation(); onClose() }}>{warehouseLocked ? 'Volver a la operación pendiente' : 'Finalizar y nueva operación'}</button></footer>{ticketOpen && result && (receipt ? <CajaTicket receipt={receipt} onClose={() => setTicketOpen(false)} /> : <VentaTicket id={result.saleId} onClose={() => setTicketOpen(false)} />)}</Modal>
 
   return <Modal title="Registrar cobro" subtitle={customer?.name ?? 'Cliente de mostrador'} onClose={() => { if (!submittingRef.current) onClose() }} escapeToClose={!submitting} className="payment-account-modal" wide>
     <div className="payment-total"><span>Total del cobro{unified ? " · un comprobante" : ""}</span><strong>Bs {money(total)}</strong></div>

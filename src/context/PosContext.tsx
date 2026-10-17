@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getPrice } from '../data/products'
 import type { CartItem, Product, SalesChannel } from '../types'
 import { ventaLineTotalCents } from '../domain/sales/ventaPricing'
@@ -10,6 +10,7 @@ import { consultarSaldos } from '../infrastructure/hermes/client'
 import { auditEnd, auditStart } from '../lib/auditoriaDvr'
 import { normalizeUnit } from '../domain/sales/unitOfMeasure'
 import { createUuid } from '../application/shared/createUuid'
+import type { CajaAlmacenDraft } from '../application/shared/cajaAlmacen'
 
 // Brief J: 1 = Almacén Central, 2 = Tienda (mismos ids que SUCURSAL_ALMACEN_ID/
 // SUCURSAL_TIENDA_ID en infrastructure/supabase/mappers.ts — no se importan de ahí
@@ -70,6 +71,11 @@ export interface CartCustomer {
 }
 
 interface PosState {
+  warehouseLocked: boolean
+  warehousePaid: boolean
+  setWarehouseLock: (locked: boolean, paid: boolean) => void
+  finishWarehouseOperation: () => void
+  recoverWarehouseOperation: (id: string, draft: Partial<CajaAlmacenDraft>, vtds: VtdPorCobrar[]) => void
   pedidoEnCarrito: PedidoEnCarrito | null
   setPedidoEnCarrito: (pedido: PedidoEnCarrito | null) => void
   vtdsEnCarrito: VtdPorCobrar[]
@@ -146,7 +152,15 @@ function readGroups(): { pedido: PedidoEnCarrito | null; vtds: VtdPorCobrar[]; s
 }
 
 export function PosProvider({ children }: { children: ReactNode }) {
+  const [warehouseLocked, setWarehouseLocked] = useState(false)
+  const [warehousePaid, setWarehousePaid] = useState(false)
+  const setWarehouseLock = (locked: boolean, paid: boolean) => { setWarehouseLocked(locked); setWarehousePaid(paid) }
   const [pedidoEnCarrito, setPedidoEnCarrito] = useState<PedidoEnCarrito | null>(() => readGroups().pedido)
+  const paidRef = useRef(warehousePaid)
+  useEffect(() => { paidRef.current = warehousePaid }, [warehousePaid])
+  // PedidoVendedorCobro publica cambios en un efecto; conservar la identidad del
+  // setter evita un ciclo padre/hijo al añadir el control de operación pagada.
+  const setPedidoSeguro = useCallback((pedido: PedidoEnCarrito | null) => { if (!paidRef.current) setPedidoEnCarrito(pedido) }, [])
   const [vtdsEnCarrito, setVtdsEnCarrito] = useState<VtdPorCobrar[]>(() => readGroups().vtds)
   const [vendedorId, setVendedorId] = useState<string | undefined>(() => readGroups().seller)
   const [channel, setChannelState] = useState<SalesChannel>('retail')
@@ -217,7 +231,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  const [mode, setMode] = useState<PosMode>('venta')
+  const [mode, setModeState] = useState<PosMode>('venta')
+  const setMode = (next: PosMode) => { if (!warehouseLocked || next === 'venta') setModeState(next) }
   const modeRef = useRef(mode)
   useEffect(() => { modeRef.current = mode }, [mode])
   const cartLengthRef = useRef(0)
@@ -247,6 +262,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
   // Brief Caja VTD obligatorio: el VTD se cobra antes de entregar, así que "Cobrar ahora" es el default.
   const [vtdPrecobrado, setVtdPrecobrado] = useState(true)
   const loadVtdDraft = (draft: { cart: CartItem[]; vtdUbicacionId: number | null; vtdPrecobrado: boolean }) => {
+    if (warehouseLocked) return
     setMode('ventaDirecta')
     setCart(draft.cart)
     setVtdUbicacionId(draft.vtdUbicacionId)
@@ -255,6 +271,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setUndoStack([])
   }
   const loadTrasladoDraft = (draft: { cart: CartItem[]; trasladoMotivo: TransferMotivo; trasladoOrigenId: number; trasladoDestinoId: number }) => {
+    if (warehouseLocked) return
     setMode('traslado')
     setCart(draft.cart)
     setTrasladoMotivoState(draft.trasladoMotivo)
@@ -384,6 +401,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setUndoStack([])
   }
   const newOperation = () => {
+    if (warehouseLocked) return
     if (!operationEndedRef.current && localStorage.getItem(`roari-saldo-cobro:${operationId}`)) return
     resetOperationState()
     setOperationNumber((number) => number + 1)
@@ -412,6 +430,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
   // TAREA 5 (Tanda 3): también vuelve a modo venta — restaurar una venta suspendida
   // mientras se estaba en modo traslado no debe dejar el modo a medio cambiar.
   const loadSuspendedSale = (sale: { channel: SalesChannel; cart: CartItem[]; discount: number; customer?: CartCustomer | null }) => {
+    if (warehouseLocked) return
     setMode('venta')
     setChannelState(sale.channel)
     setCart(sale.cart)
@@ -425,7 +444,27 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setUndoStack([])
   }
 
-  return <PosContext.Provider value={{ pedidoEnCarrito, setPedidoEnCarrito, vtdsEnCarrito, setVtdsEnCarrito, vendedorId, setVendedorId, channel, setChannel, cart, addProduct, addCustomItem, updateQuantity, updateItem, removeItem, clearCart, discount, setDiscount: safeSetDiscount, subtotal, total, operationNumber, operationId, newOperation, clearOperation: resetOperationState, loadSuspendedSale, customer, selectCustomer, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, selectedLineId, setSelectedLineId, undoLastAdd, notifyVentaCompletada, notifyVentaSuspendida }}>{children}</PosContext.Provider>
+  const recoverWarehouseOperation = (id: string, draft: Partial<CajaAlmacenDraft>, vtds: VtdPorCobrar[]) => {
+    sessionStorage.setItem(OPERACION_ID_KEY, id)
+    setOperationId(id)
+    setCart(draft.cart ?? [])
+    setChannelState(draft.channel ?? 'retail')
+    setDiscount(draft.discount ?? 0)
+    setCustomer(draft.customer ?? null)
+    setPedidoEnCarrito(draft.pedido ?? null)
+    setVendedorId(draft.vendedorId)
+    setVtdsEnCarrito(vtds)
+    setModeState('venta')
+  }
+  const finishWarehouseOperation = () => {
+    setWarehouseLocked(false)
+    setWarehousePaid(false)
+    operationEndedRef.current = true
+    resetOperationState()
+    setOperationNumber(n => n + 1)
+    setOperationId(nuevoOperacionId())
+  }
+  return <PosContext.Provider value={{ warehouseLocked, warehousePaid, setWarehouseLock, finishWarehouseOperation, recoverWarehouseOperation, pedidoEnCarrito, setPedidoEnCarrito: setPedidoSeguro, vtdsEnCarrito, setVtdsEnCarrito, vendedorId, setVendedorId, channel, setChannel: (c) => { if (!warehousePaid) setChannel(c) }, cart, addProduct: (p,q) => { if (!warehousePaid) addProduct(p,q) }, addCustomItem: (i) => { if (!warehousePaid) addCustomItem(i) }, updateQuantity: (id,q) => { if (!warehousePaid) updateQuantity(id,q) }, updateItem: (id,v) => { if (!warehousePaid) updateItem(id,v) }, removeItem: (id) => { if (!warehousePaid) removeItem(id) }, clearCart: () => { if (!warehouseLocked) clearCart() }, discount, setDiscount: (v) => { if (!warehousePaid) safeSetDiscount(v) }, subtotal, total, operationNumber, operationId, newOperation, clearOperation: () => { if (!warehouseLocked) resetOperationState() }, loadSuspendedSale, customer, selectCustomer: (c) => { if (!warehousePaid) selectCustomer(c) }, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, selectedLineId, setSelectedLineId, undoLastAdd: () => warehousePaid ? null : undoLastAdd(), notifyVentaCompletada, notifyVentaSuspendida }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {
