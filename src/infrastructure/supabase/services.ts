@@ -309,6 +309,7 @@ export const turnoService = {
   misTickets: turnoRepository.misTickets,
   gastosPendientes: turnoRepository.listGastosPendientes,
   turnosEnRevision: turnoRepository.listTurnosEnRevision,
+  conteoCierre: turnoRepository.getConteoCierre,
   faltantesPendientes: turnoRepository.listFaltantesPendientes,
   subirComprobante: turnoRepository.subirComprobante,
   comprobanteUrl: turnoRepository.getComprobanteUrl,
