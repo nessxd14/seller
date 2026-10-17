@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { PosProvider, usePos } from '../context/PosContext'
+import { CajaAlmacenProvider } from '../context/CajaAlmacenContext'
 import { CashSessionProvider, useCashSession } from '../context/CashSessionContext'
 import { CartPanel } from '../components/CartPanel'
 import { PosHeader } from '../components/PosHeader'
@@ -65,6 +66,7 @@ const PERMISOS_MODULO: Record<string, (s: AuthSession | null) => boolean> = {
 }
 
 function PosContent() {
+  const { warehouseLocked } = usePos()
   const { pedidoEnCarrito, setPedidoEnCarrito, operationId, vtdsEnCarrito, newOperation, cart, loadSuspendedSale, addProduct, mode, updateQuantity, removeItem, selectedLineId, setSelectedLineId, undoLastAdd } = usePos()
   // Brief S3 Parte A: /pedidos/:id, /cotizaciones/:id, /ventas/:id deben sobrevivir un
   // refresco — si el load arranca directo en una de esas URLs, hay que montar el módulo
@@ -109,7 +111,7 @@ function PosContent() {
     return () => { cancelado = true; window.clearInterval(id); window.removeEventListener('focus', consultar); document.removeEventListener('visibilitychange', consultar) }
   }, [puedeCobrarPedidos, sessionId, activeModule, refrescoCola])
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2800) }
-  const handleNew = () => { if (localStorage.getItem(`roari-saldo-cobro:${operationId}`)) { notify('Comprueba el cobro anterior desde Cobrar o desde Caja antes de iniciar otra operación'); return }; if (pedidoEnCarrito) { setPedidosVendedor({}); notify('Devuelve o anula el pedido desde su revisión antes de iniciar otra operación'); return }; if ((cart.length || vtdsEnCarrito.length) && !window.confirm('¿Crear una nueva operación y limpiar el carrito actual?')) return; newOperation(); setSearch(''); setCategory('Todos'); notify('Nueva operación lista') }
+  const handleNew = () => { if (warehouseLocked) { notify('Completa o resuelve el rechazo de esta operación. Puedes seguir agregando VTA y cobrar el conjunto.'); return }; if (localStorage.getItem(`roari-saldo-cobro:${operationId}`)) { notify('Comprueba el cobro anterior desde Cobrar o desde Caja antes de iniciar otra operación'); return }; if (pedidoEnCarrito) { setPedidosVendedor({}); notify('Devuelve o anula el pedido desde su revisión antes de iniciar otra operación'); return }; if ((cart.length || vtdsEnCarrito.length) && !window.confirm('¿Crear una nueva operación y limpiar el carrito actual?')) return; newOperation(); setSearch(''); setCategory('Todos'); notify('Nueva operación lista') }
   useEffect(() => {
     // TAREA 9 (Tanda 3): '/' solo secuestra el foco cuando NO se está escribiendo en un
     // campo — antes solo excluía <input>, así que tipear "24/06" en el <textarea> de
@@ -304,6 +306,7 @@ function PosContent() {
     else notify(`${name} estará disponible en una siguiente fase`)
   }
   const restoreSale = (sale: SuspendedSale) => {
+    if (warehouseLocked) { notify('Resuelve primero tu operación con Almacén.'); return }
     loadSuspendedSale({
       channel: sale.channel as 'retail' | 'mayoreo' | 'institucional',
       cart: sale.cart,
@@ -334,7 +337,7 @@ function PosContent() {
   }
   // Un vendedor que aún no fue redirigido (primer render) no debe ver ni un instante el POS completo.
   if (esVendedor && route.kind === 'none') return null
-  return <div className={`app-shell pos-root ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`} data-modo={mode}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} onRegistrarPago={() => setPagoModalOpen(true)} user={session?.user} onOpenSettings={() => navigate('Configuración')} onOpenShortcuts={() => setShortcutsOpen(true)} />{blockKind?<IntegrationState kind={blockKind}/>:!moduloPermitido?<main className="catalog"><div className="module-blocked" role="alert"><h2>Tu rol no permite abrir este módulo</h2></div></main>:page}</div>{activeModule === 'Venta'&&!blocked&&moduloPermitido && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} pedidosVendedorEnEspera={enEspera} onOpenPedidosVendedor={puedeCobrarPedidos ? () => setPedidosVendedor({}) : undefined} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}{pagoModalOpen && <PagoModal onClose={() => setPagoModalOpen(false)} notify={notify} />}{pedidosVendedor && sessionId && <PedidoVendedorCobro initialCart={pedidoEnCarrito} onCartChange={setPedidoEnCarrito} sessionId={sessionId} initialPedidoId={pedidosVendedor.pedidoId} notify={notify} onChanged={() => setRefrescoCola((n) => n + 1)} onClose={() => setPedidosVendedor(null)} />}{ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onPick={(product) => { addProduct(product); setAmbiguousIds(null); notify(`${product.nombre} agregado`) }} onClose={() => setAmbiguousIds(null)} />}{shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}</div>
+  return <div className={`app-shell pos-root ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`} data-modo={mode}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} newBlocked={warehouseLocked} onRegistrarPago={() => setPagoModalOpen(true)} user={session?.user} onOpenSettings={() => navigate('Configuración')} onOpenShortcuts={() => setShortcutsOpen(true)} />{blockKind?<IntegrationState kind={blockKind}/>:!moduloPermitido?<main className="catalog"><div className="module-blocked" role="alert"><h2>Tu rol no permite abrir este módulo</h2></div></main>:page}</div>{activeModule === 'Venta'&&!blocked&&moduloPermitido && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} pedidosVendedorEnEspera={enEspera} onOpenPedidosVendedor={puedeCobrarPedidos ? () => setPedidosVendedor({}) : undefined} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}{pagoModalOpen && <PagoModal onClose={() => setPagoModalOpen(false)} notify={notify} />}{pedidosVendedor && sessionId && <PedidoVendedorCobro initialCart={pedidoEnCarrito} onCartChange={setPedidoEnCarrito} sessionId={sessionId} initialPedidoId={pedidosVendedor.pedidoId} notify={notify} onChanged={() => setRefrescoCola((n) => n + 1)} onClose={() => setPedidosVendedor(null)} />}{ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onPick={(product) => { addProduct(product); setAmbiguousIds(null); notify(`${product.nombre} agregado`) }} onClose={() => setAmbiguousIds(null)} />}{shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}</div>
 }
 
-export function PosPage() { return <PosProvider><CashSessionProvider><PosContent /></CashSessionProvider></PosProvider> }
+export function PosPage() { return <PosProvider><CashSessionProvider><CajaAlmacenProvider><PosContent /></CajaAlmacenProvider></CashSessionProvider></PosProvider> }

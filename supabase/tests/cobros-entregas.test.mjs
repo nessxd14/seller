@@ -6,6 +6,7 @@ import { testSincronizacionAutomatica } from './sincronizacion-automatica.test.m
 import { testSaldoFavor } from './saldo-favor.test.mjs'
 import { testCheckoutCaja } from './checkout-caja.test.mjs'
 import { testBajasTrazabilidad } from './bajas-trazabilidad.test.mjs'
+import { testCajaAlmacen } from './caja-almacen.test.mjs'
 const backup=JSON.parse(await fs.readFile(new URL('./schema.fixture.json',import.meta.url),'utf8'))
 const meta=backup.metadata[0].metadata
 const db=new PGlite()
@@ -135,4 +136,5 @@ await testSincronizacionAutomatica(db, claims)
 await testSaldoFavor(db, claims)
 await testCheckoutCaja(db, claims)
 await testBajasTrazabilidad(db, claims)
+await testCajaAlmacen(db, claims)
 await db.close()

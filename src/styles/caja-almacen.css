@@ -1,0 +1,13 @@
+.caja-almacen-panel { flex: 0 0 auto; border: 1px solid #a9c9df; border-radius: 14px; padding: 10px; margin: 8px 12px; background: #eef7fd; color: #16354c; font-size: .82rem; }
+.caja-almacen-panel p { margin: 4px 0; font-size: .78rem; line-height: 1.3; }
+.caja-almacen-panel ul { padding: 0; list-style: none; margin: 10px 0; }
+.caja-almacen-panel li { display: flex; gap: 10px; flex-wrap: wrap; justify-content: space-between; padding: 10px 0; border-top: 1px solid #c5dbea; }
+.caja-almacen-panel li span { display: block; font-size: .8rem; margin-top: 4px; }
+.caja-almacen-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.caja-almacen-panel [role=alert] { color: #a52d25; }
+.caja-almacen-panel details { margin-bottom: 8px; }
+.caja-almacen-panel details[open] { max-height: 220px; overflow-y: auto; }
+.caja-almacen-panel summary { cursor: pointer; padding: 4px 0; }
+.caja-almacen-panel .secondary-button { min-height: 30px; padding: 6px 10px; font-size: .73rem; }
+.pos-root > .cart-panel:has(.caja-almacen-panel) { height: 100%; min-height: 0; overflow-y: auto; }
+.pos-root > .cart-panel:has(.caja-almacen-panel) .cart-actions { position: sticky; bottom: 0; flex-shrink: 0; z-index: 2; background: #fcfbf8; box-shadow: 0 -6px 14px #f4f1ec; }

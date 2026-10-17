@@ -65,9 +65,15 @@ En modo conectado estos registros manuales usan la base operativa. La verificaci
 
 ## Agregar VTD en modo Venta
 
-Agregar VTD selecciona una venta de almacén existente y pendiente de cobro. No agrega sus productos como una venta nueva ni suma su importe al botón de mostrador.
+Agregar VTD selecciona una venta de almacén existente y pendiente de cobro. Conserva su referencia para el cobro conjunto sin duplicar sus productos como otra venta de mostrador.
 
-El flujo actual exige cobrar la VTD sola. Con solo VTD seleccionadas, **Cobrar VTD** muestra el importe pendiente y el botón de mostrador queda deshabilitado. Si mezclas productos nuevos con VTD, se bloquean ambos cobros: retira las VTD de la selección, cobra primero los productos nuevos y luego vuelve a agregar la VTD para cobrarla sola. Cada operación tiene su propio documento. Por petición del usuario, este flujo se revisó para explicarlo y se conservó su comportamiento.
+El código local revisado el 17 de octubre de 2026 permite seleccionar productos de mostrador y VTD por cobrar en la misma operación: **Cobrar todo** suma ambos importes y `checkout_caja` registra el cobro conjunto, con un comprobante y las ventas vinculadas. Si una VTD tiene cliente, debe coincidir con el seleccionado. Esto sustituye la descripción anterior de cobros separados; no acredita por sí solo la versión desplegada en producción.
+
+El bloqueo del cajero hasta completar o resolver el rechazo y el flujo con un único verificador/despachador están implementados localmente, pendientes de migración y publicación. La solicitud nueva se crea y vincula de forma atómica, permite añadir VTA y mantiene la operación hasta resolverla. La revisión, pruebas y límites se documentan en [Caja y Almacén: operación obligatoria](docs/flujo-caja-almacen-operacion-obligatoria-2026-10-17.md).
+
+Precisión funcional: cuando una VTD está vinculada para cobrarse, la VTA de esa misma operación sigue habilitada para agregar productos antes del cobro y cobrar el conjunto. La restricción bloquea otra operación independiente y permite generar la VTA vinculada durante el cobro conjunto.
+
+Activación: publicar coordinadamente Seller y Almacén y aplicar una sola vez la migración compartida `20261017140005_caja_almacen_operacion_unica.sql`; actualizar las pestañas antiguas durante el cambio. Las dos copias versionadas tienen el mismo contenido. Esta sesión sólo ejecutó escrituras sobre PostgreSQL aislado con datos sintéticos.
 
 ## Verificación automatizada
 
