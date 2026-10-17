@@ -1,4 +1,4 @@
-import { ArrowDownLeft, ArrowUpRight, Calculator, ChevronDown, LockKeyhole, Printer, WalletCards, RefreshCw, ReceiptText } from 'lucide-react'
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Calculator, Check, ChevronDown, LockKeyhole, WalletCards, RefreshCw, ReceiptText } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
 import { hasPermission } from '../../application/auth/AuthSessionProvider'
@@ -9,7 +9,7 @@ import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
 import { NumberField } from '../../components/NumberField'
-import { DenominationCount, denominacionesTotal } from '../../components/DenominationCount'
+import { DENOMINACIONES, DenominationCount, denominacionesLimpias, denominacionesRestantes, denominacionesTotal } from '../../components/DenominationCount'
 import { VentaTicket } from '../../components/VentaTicket'
 import { CajaComprobantes } from './CajaComprobantes'
 import { InfoHint } from '../../components/InfoHint'
@@ -19,6 +19,7 @@ import { useCashSession } from '../../context/CashSessionContext'
 import { useCashRefresh } from './useCashRefresh'
 import { createUuid } from '../../application/shared/createUuid'
 import { VentaDetalleModal } from './VentaDetalleModal'
+import { ActividadTurno } from './ActividadTurno'
 
 const bs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const ENTREGA_CIERRE_PREFIJO = 'Entrega de cierre a '
@@ -156,8 +157,6 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
   const [movimientos, setMovimientos] = useState<TurnoMovimiento[]>([])
   const [loadError, setLoadError] = useState('')
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
-  const [filter, setFilter] = useState('TODOS')
-  const filteredMovements = movimientos.filter((m) => filter === 'TODOS' || (filter === 'ACREEDOR' && m.clienteAcreedor) || (filter === 'SALDO_FAVOR' && ['SALDO_FAVOR','SALDO_REVERTIDO'].includes(m.tipo)) || m.tipo === filter || m.subtipo === filter)
 
   const load = useCallback(async () => {
     try {
@@ -218,6 +217,17 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
   }
 
   return <div className="cash-layout turno-layout">
+    {/* Acciones del turno siempre a mano: barra fija arriba en vez del botón de cierre al
+        final de la página (el cajero tenía que bajar todo para cerrar). */}
+    {!readOnly && <div className="turno-actionbar" role="toolbar" aria-label="Acciones del turno">
+      <div className="turno-actionbar-status"><span className="turno-actionbar-dot" aria-hidden="true" /><strong>Turno #{sesion.id}</strong><span>{sesion.abiertaPor ?? 'Cajero'}</span></div>
+      <div className="turno-actionbar-actions">
+        <span className="cash-action-with-hint"><button type="button" className="turno-action-gasto" onClick={() => setMovimientoOpen('GASTO')}><ArrowUpRight /> Registrar gasto</button><InfoHint title={HINTS.gasto.title} text={HINTS.gasto.text} /></span>
+        <span className="cash-action-with-hint"><button type="button" onClick={() => setMovimientoOpen('REMESA')}><ArrowUpRight /> Remesa</button><InfoHint title={HINTS.remesa.title} text={HINTS.remesa.text} /></span>
+        <span className="cash-action-with-hint"><button type="button" onClick={() => setMovimientoOpen('INYECCION')}><ArrowDownLeft /> Inyección</button><InfoHint title={HINTS.inyeccion.title} text={HINTS.inyeccion.text} /></span>
+        <button type="button" className="turno-action-cerrar" onClick={() => void abrirCierre()}><LockKeyhole /> Cerrar turno</button>
+      </div>
+    </div>}
     <div className="cash-refresh"><span>{updatedAt ? `Actualizado ${updatedAt.toLocaleTimeString('es-BO')} · cada 15 s` : 'Actualizando turno…'}</span><button onClick={() => void load()}><RefreshCw /> Actualizar</button></div>
     {loadError && <p role="alert" className="cash-error">{loadError}. Los datos visibles pueden estar desactualizados.</p>}
     <section className="cash-hero"><TurnoHeaderChip sesion={sesion} /><WalletCards />
@@ -244,33 +254,17 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
       <p className="vtd-por-cobrar-info">{resumen.vtdPorCobrar.cantidad} venta{resumen.vtdPorCobrar.cantidad > 1 ? 's' : ''} · Bs {bs(resumen.vtdPorCobrar.totalBs)}</p>
       <small>Informativo — fuera del arqueo</small>
     </section>}
-    {!readOnly && <section className="cash-movements cash-operation-actions"><header><h3>Movimientos de caja</h3><div>
-      <span className="cash-action-with-hint"><button onClick={() => setMovimientoOpen('GASTO')}><ArrowUpRight /> Registrar gasto</button><InfoHint title={HINTS.gasto.title} text={HINTS.gasto.text} /></span>
-      <span className="cash-action-with-hint"><button onClick={() => setMovimientoOpen('REMESA')}><ArrowUpRight /> Remesa</button><InfoHint title={HINTS.remesa.title} text={HINTS.remesa.text} /></span>
-      <span className="cash-action-with-hint"><button onClick={() => setMovimientoOpen('INYECCION')}><ArrowDownLeft /> Inyección</button><InfoHint title={HINTS.inyeccion.title} text={HINTS.inyeccion.text} /></span>
-    </div></header></section>}
-    <section className="cash-ledger">
-      <header><div><h3>Actividad del turno</h3><p>Ventas, pagos, anticipos y gastos del cajero que cobró.</p></div><select aria-label="Filtrar movimientos" value={filter} onChange={(e) => setFilter(e.target.value)}><option value="TODOS">Todos los movimientos</option><option value="VENTA">Ventas</option><option value="ACREEDOR">Clientes con saldo a favor</option><option value="SALDO_FAVOR">Aplicaciones de saldo</option><option value="ANTICIPO">Pagos y anticipos</option><option value="GASTO">Gastos</option><option value="REMESA">Remesas</option><option value="INYECCION">Inyecciones</option><option value="ANULACION">Anulaciones</option></select>{filter === 'ANULACION' && <InfoHint title={HINTS.anulacion.title} text={HINTS.anulacion.text} />}</header>
-      <div className="cash-ledger-head"><span>Movimiento / detalle</span><span>Método</span><span>Importe</span></div>
-      {filteredMovements.map((m) => <article className={`cash-ledger-row ${m.clienteAcreedor ? 'cash-acreedor-row' : ''}`} key={m.id}>
-        <div><strong>{m.documento ?? (m.tipo === 'ANTICIPO' ? 'Pago / anticipo' : m.subtipo ?? m.tipo)}</strong><span>{m.clienteNombre}</span>{m.clienteAcreedor && <small className="credit-client-tag">Cliente con saldo a favor</small>}{m.detalle && <p>{m.detalle}</p>}{m.ventaId ? <button type="button" onClick={() => setDetalleVentaId(m.ventaId!)}><ReceiptText /> Ver productos</button> : !m.detalle && <p>Sin detalle registrado</p>}<small>{new Date(m.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}{m.estadoGasto ? ` · ${m.estadoGasto.toLowerCase()}` : ''}</small>{m.tipo === 'ANULACION' && <InfoHint title={HINTS.anulacion.title} text={HINTS.anulacion.text} />}{m.fueraDeArqueo && <span className="fuera-arqueo-badge">Fuera del arqueo<InfoHint title={HINTS.fueraArqueo.title} text={HINTS.fueraArqueo.text} /></span>}{esEncargado && sesion.estado === 'ABIERTA' && m.tipo === 'ANTICIPO' && m.metodo === 'EFECTIVO' && <button type="button" className="fuera-arqueo-toggle" onClick={() => void alternarFueraDeArqueo(m)}>{m.fueraDeArqueo ? 'Volver al arqueo' : 'Sacar del arqueo'}</button>}{m.comprobantePath && <button onClick={() => { void turnoService.comprobanteUrl(m.comprobantePath!).then((url) => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); else notify('No se pudo abrir el comprobante') }) }}><ReceiptText /> Ver comprobante</button>}</div>
-        <span>{m.metodo === 'SALDO_FAVOR' ? 'Saldo a favor' : metodoLabel[m.metodo] ?? m.metodo}</span><b>{['EGRESO', 'ANULACION'].includes(m.tipo) ? '− ' : ''}Bs {bs(m.montoBs)}</b>
-      </article>)}
-      {!movimientos.length && <p className="cash-muted">Los movimientos aparecerán aquí cuando se registren.</p>}
-      {!!movimientos.length && !filteredMovements.length && <div className="cash-filter-empty" role="status"><p>No hay movimientos de este tipo en el turno.</p><button type="button" onClick={() => setFilter('TODOS')}>Ver todos los movimientos</button></div>}
-      {movimientos.length >= 500 && <p className="cash-muted">Se muestran los últimos 500 movimientos. El resumen incluye el turno completo.</p>}
-    </section>
+    <ActividadTurno
+      movimientos={movimientos}
+      tickets={tickets}
+      puedeMoverArqueo={esEncargado && sesion.estado === 'ABIERTA'}
+      hints={HINTS}
+      onVerProductos={setDetalleVentaId}
+      onReimprimir={setReprintId}
+      onVerComprobante={(path) => { void turnoService.comprobanteUrl(path).then((url) => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); else notify('No se pudo abrir el comprobante') }) }}
+      onAlternarArqueo={(m) => void alternarFueraDeArqueo(m)}
+    />
     {featureFlags.supabase && <CajaComprobantes sessionId={sesion.id} />}
-    <section className="cash-movements cash-tickets"><h3>Mis tickets</h3>
-      {tickets.length ? tickets.map((t) => <div key={t.ventaId} className={`turno-ticket-row ${t.clienteAcreedor ? 'cash-acreedor-row' : ''}`}>
-        <span>{t.numero ?? `#${t.ventaId}`}{t.clienteAcreedor && <small className="credit-client-tag">Cliente con saldo a favor</small>}<small>{new Date(t.creadoEn).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</small></span>
-        <span>{t.metodos.map((m) => (m.metodo === 'SALDO_FAVOR' ? 'Saldo a favor' : metodoLabel[m.metodo] ?? m.metodo)).join(' + ') || '—'}</span>
-        {t.metodos.some((m) => m.estadoVerificacion === 'PENDIENTE') && <span className="qr-pendiente-chip">QR pendiente</span>}
-        <b>Bs {bs(t.totalBs)}</b>
-        <div className="cash-ticket-actions"><button type="button" onClick={() => setDetalleVentaId(t.ventaId)}><ReceiptText /> Ver productos</button><button type="button" onClick={() => setReprintId(t.ventaId)}><Printer /> Reimprimir</button></div>
-      </div>) : <FeatureState type="empty" text="Sin ventas todavía en este turno" />}
-    </section>
-    {!readOnly && <button className="close-cash-button" onClick={() => void abrirCierre()}><LockKeyhole /> Cerrar turno</button>}
     {movimientoOpen && <MovimientoTurnoModal tipo={movimientoOpen} sesionId={sesion.id} onClose={() => setMovimientoOpen(null)} onConfirm={registrarMovimiento} />}
     {closing && <CerrarTurnoModal onClose={() => setClosing(false)} onConfirm={confirmarCierre} entrega={{ sesionId: sesion.id, registrar: registrarEntregaCierre }} />}
     {closeResult && <Modal className="cash-dialog" title={closeResult.estado === 'CERRADA' ? 'Turno cerrado' : 'Turno enviado a revisión'} onClose={() => { setCloseResult(null); onClosed() }}>
@@ -332,96 +326,135 @@ function CajonEnCeroCheck({ checked, onChange, disabled }: { checked: boolean; o
 }
 
 /**
- * Cierre en dos pasos cuando recibe `entrega` (cierre del cajero): 1) entrega de efectivo
- * (remesa) y 2) conteo de lo que queda. Sin `entrega` (Arqueo sorpresa del gerente) es solo el
- * conteo. Nunca muestra el esperado ni sugiere cuánto "debería" entregarse (conteo ciego).
+ * Cierre del cajero en tres pasos, en el orden en que cuentan la plata en la vida real:
+ *   1) cuenta TODO el cajón por billetes y monedas,
+ *   2) marca qué billetes entrega y a quién (nunca más de lo que contó, por denominación),
+ *   3) confirma: lo que queda en el cajón se calcula solo y es lo que va a cerrar_turno.
+ * La entrega se registra como remesa (con idempotencia) recién en el paso 3, justo antes del
+ * cierre. Sin `entrega` (Arqueo sorpresa del gerente) es solo el conteo. Nunca muestra el
+ * esperado ni sugiere cuánto "debería" entregarse (conteo ciego).
  */
 function CerrarTurnoModal({ onClose, onConfirm, entrega }: {
   onClose: () => void
   onConfirm: (denominaciones: Denominaciones, cajonVacio: boolean) => Promise<void>
   entrega?: { sesionId: string; registrar: (montoBs: number, motivo: string, idempotencyKey: string) => Promise<void> }
 }) {
-  const [paso, setPaso] = useState<'cargando' | 'entrega' | 'conteo'>(entrega ? 'cargando' : 'conteo')
-  const [entregadoBs, setEntregadoBs] = useState(0)
-  const [monto, setMonto] = useState(0)
-  const [receptor, setReceptor] = useState('')
-  const [entregaError, setEntregaError] = useState('')
-  const [denominaciones, setDenominaciones] = useState<Denominaciones>({})
+  const [paso, setPaso] = useState<'cargando' | 'conteo' | 'entrega' | 'confirmar'>(entrega ? 'cargando' : 'conteo')
+  // Entrega de cierre que ya existe en el turno (el cajero la registró y el cierre falló o se
+  // canceló): el cajón ya está sin esa plata, así que no se vuelve a pedir el paso 2.
+  const [entregaPreviaBs, setEntregaPreviaBs] = useState(0)
+  const [contado, setContado] = useState<Denominaciones>({})
   const [cajonEnCero, setCajonEnCero] = useState(false)
+  const [entregado, setEntregado] = useState<Denominaciones>({})
+  const [receptor, setReceptor] = useState('')
+  const [entregaRegistrada, setEntregaRegistrada] = useState(false)
+  const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   // Una clave por instancia del modal (se renueva solo si cambia lo que se entrega).
   const operacion = useRef({ key: createUuid(), content: '' })
   const sesionId = entrega?.sesionId
 
-  // Si ya hubo una entrega de cierre en este turno (el cajero cerró el paso 2 y volvió), sale
-  // de los movimientos del turno — no de estado local — y se salta directo al conteo.
   useEffect(() => {
     if (!sesionId) return
     let cancelled = false
     turnoService.movimientos(sesionId).then((movimientos) => {
       if (cancelled) return
-      const previo = movimientos.filter((m) => m.subtipo === 'REMESA' && m.detalle.startsWith(ENTREGA_CIERRE_PREFIJO)).reduce((sum, m) => sum + m.montoBs, 0)
-      setEntregadoBs(previo)
-      setPaso(previo > 0 ? 'conteo' : 'entrega')
-    }).catch(() => { if (!cancelled) setPaso('entrega') })
+      setEntregaPreviaBs(movimientos.filter((m) => m.subtipo === 'REMESA' && m.detalle.startsWith(ENTREGA_CIERRE_PREFIJO)).reduce((sum, m) => sum + m.montoBs, 0))
+      setPaso('conteo')
+    }).catch(() => { if (!cancelled) setPaso('conteo') })
     return () => { cancelled = true }
   }, [sesionId])
 
-  const total = denominacionesTotal(denominaciones)
-  const conteoBloqueado = total === 0 && !cajonEnCero
-  const entregaValida = Number.isFinite(monto) && monto > 0 && receptor.trim().length >= 2
+  const totalContado = denominacionesTotal(contado)
+  const conteoBloqueado = totalContado === 0 && !cajonEnCero
+  const totalEntregado = denominacionesTotal(entregado)
+  const restantes = denominacionesRestantes(contado, entregado)
+  const totalRestante = denominacionesTotal(restantes)
+  const entregaValida = totalEntregado > 0 && receptor.trim().length >= 2
+  const pideEntrega = !!entrega && entregaPreviaBs === 0 && totalContado > 0
 
-  const registrarEntrega = async () => {
-    if (!entrega || !entregaValida || busy) return
+  const cerrarModal = () => { if (!busy) onClose() }
+  const continuarConteo = () => {
+    if (conteoBloqueado) return
+    if (!entrega) { void confirmar(); return }
+    setPaso(pideEntrega ? 'entrega' : 'confirmar')
+  }
+  const sinEntrega = () => { setEntregado({}); setReceptor(''); setPaso('confirmar') }
+  const confirmar = async () => {
+    if (busy || conteoBloqueado) return
     setBusy(true)
-    setEntregaError('')
-    const motivo = `${ENTREGA_CIERRE_PREFIJO}${receptor.trim()}`
-    const content = JSON.stringify([monto, motivo])
-    if (operacion.current.content && operacion.current.content !== content) operacion.current.key = createUuid()
-    operacion.current.content = content
+    setError('')
     try {
-      await entrega.registrar(monto, motivo, operacion.current.key)
-      setEntregadoBs(monto)
-      setPaso('conteo')
+      if (entrega && totalEntregado > 0 && !entregaRegistrada) {
+        const motivo = `${ENTREGA_CIERRE_PREFIJO}${receptor.trim()}`
+        const content = JSON.stringify([totalEntregado, motivo])
+        if (operacion.current.content && operacion.current.content !== content) operacion.current.key = createUuid()
+        operacion.current.content = content
+        await entrega.registrar(totalEntregado, motivo, operacion.current.key)
+        setEntregaRegistrada(true)
+      }
+      const final = entrega ? restantes : denominacionesLimpias(contado)
+      await onConfirm(final, denominacionesTotal(final) === 0)
     } catch (err) {
-      setEntregaError(err instanceof Error ? err.message : 'No se pudo registrar la entrega. Reintenta.')
+      setError(err instanceof Error ? err.message : 'No se pudo registrar la entrega. Reintenta.')
     } finally {
       setBusy(false)
     }
   }
-  const confirmar = async () => {
-    if (busy || conteoBloqueado) return
-    setBusy(true)
-    try { await onConfirm(denominaciones, total === 0 && cajonEnCero) } finally { setBusy(false) }
+
+  const titulo = entrega ? 'Cerrar turno' : 'Arqueo sorpresa'
+  const pasos = entrega ? (entregaPreviaBs > 0 ? ['Contar', 'Confirmar'] : ['Contar', 'Entregar', 'Confirmar']) : null
+  const pasoActual = paso === 'conteo' ? 0 : paso === 'entrega' ? 1 : pasos ? pasos.length - 1 : 0
+  const stepper = pasos && <ol className="cierre-stepper" aria-label="Pasos del cierre">{pasos.map((p, i) => <li key={p} className={i === pasoActual ? 'active' : i < pasoActual ? 'done' : ''} aria-current={i === pasoActual ? 'step' : undefined}><span>{i < pasoActual ? <Check aria-hidden="true" /> : i + 1}</span>{p}</li>)}</ol>
+
+  if (paso === 'cargando') {
+    return <Modal className="cash-dialog" title={titulo} onClose={cerrarModal}><div className="modal-body"><p role="status">Revisando el turno…</p></div></Modal>
   }
 
-  if (paso !== 'conteo') {
-    return <Modal className="cash-dialog" title="Cerrar turno" subtitle="Primero registra el efectivo que entregas, si corresponde." onClose={() => { if (!busy) onClose() }} escapeToClose={!busy}>
-      {paso === 'cargando'
-        ? <div className="modal-body"><p role="status">Revisando el turno…</p></div>
-        : <>
-          <div className="modal-body cash-entrega-step">
-            <h3>¿Entregas efectivo antes de cerrar?</h3>
-            <label className="full">Monto entregado (Bs)<NumberField autoFocus disabled={busy} min={0} step={0.01} value={monto} onCommit={setMonto} /></label>
-            <label className="full">A quién se lo entregas<input type="text" maxLength={80} value={receptor} disabled={busy} onChange={(e) => setReceptor(e.target.value)} placeholder="Nombre de quien recibe" /></label>
-            {entregaError && <p role="alert" className="cash-error">{entregaError}</p>}
-          </div>
-          <footer className="modal-actions">
-            <button className="secondary-button" disabled={busy} onClick={onClose}>Cancelar</button>
-            <button className="secondary-button" disabled={busy} onClick={() => setPaso('conteo')}>No entrego nada</button>
-            <button className="primary-button" disabled={!entregaValida || busy} onClick={() => void registrarEntrega()}>{busy ? 'Registrando…' : 'Registrar entrega y continuar'}</button>
-          </footer>
-        </>}
+  if (paso === 'conteo') {
+    return <Modal className="cash-dialog cierre-dialog" title={titulo} subtitle={entrega ? 'Cuenta todo el efectivo del cajón, billete por billete.' : 'Cuenta el efectivo del cajón para registrar el arqueo.'} onClose={cerrarModal} escapeToClose={!busy} wide>
+      <div className="modal-body">
+        {stepper}
+        {entregaPreviaBs > 0 && <p className="cash-entrega-previa" role="status">Ya registraste una entrega de Bs {bs(entregaPreviaBs)} en este cierre. Cuenta lo que quedó en el cajón.</p>}
+        <DenominationCount value={contado} onChange={setContado} disabled={busy} />
+        {totalContado === 0 && <CajonEnCeroCheck checked={cajonEnCero} onChange={setCajonEnCero} disabled={busy} />}
+      </div>
+      <footer className="modal-actions"><button className="secondary-button" disabled={busy} onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || conteoBloqueado} onClick={continuarConteo}>{entrega ? 'Continuar' : busy ? 'Guardando conteo…' : 'Confirmar conteo'}</button></footer>
     </Modal>
   }
 
-  return <Modal className="cash-dialog" title="Cerrar turno" subtitle={entrega ? 'Cuenta el efectivo que queda en el cajón después de la entrega.' : 'Cuenta el efectivo del cajón para registrar tu cierre.'} onClose={() => { if (!busy) onClose() }} escapeToClose={!busy} wide>
+  if (paso === 'entrega') {
+    return <Modal className="cash-dialog cierre-dialog" title={titulo} subtitle="Marca los billetes y monedas que entregas. Si no entregas nada, sigue sin marcar." onClose={cerrarModal} escapeToClose={!busy} wide>
+      <div className="modal-body">
+        {stepper}
+        <div className="cierre-contado-chip"><span>Contaste</span><strong>Bs {bs(totalContado)}</strong></div>
+        <DenominationCount value={entregado} onChange={setEntregado} disabled={busy} limites={denominacionesLimpias(contado)} ariaLabelFor={(d) => `Billetes/monedas de ${d} que entregas`} totalLabel="Total que entregas" />
+        <label className="cierre-receptor">A quién se lo entregas<input type="text" maxLength={80} value={receptor} disabled={busy} onChange={(e) => setReceptor(e.target.value)} placeholder="Nombre de quien recibe" /></label>
+      </div>
+      <footer className="modal-actions">
+        <button className="secondary-button" disabled={busy} onClick={() => setPaso('conteo')}><ArrowLeft /> Volver</button>
+        <button className="secondary-button" disabled={busy} onClick={sinEntrega}>No entrego nada</button>
+        <button className="primary-button" disabled={busy || !entregaValida} onClick={() => setPaso('confirmar')}>Continuar</button>
+      </footer>
+    </Modal>
+  }
+
+  return <Modal className="cash-dialog cierre-dialog" title={titulo} subtitle="Revisa los montos antes de cerrar tu turno." onClose={cerrarModal} escapeToClose={!busy}>
     <div className="modal-body">
-      {entrega && entregadoBs > 0 && <p className="cash-entrega-previa" role="status">Ya registraste una entrega de Bs {bs(entregadoBs)} en este cierre.</p>}
-      <DenominationCount value={denominaciones} onChange={setDenominaciones} disabled={busy} />
-      {total === 0 && <CajonEnCeroCheck checked={cajonEnCero} onChange={setCajonEnCero} disabled={busy} />}
+      {stepper}
+      <dl className="cierre-resumen">
+        <div><dt>Contaste en el cajón</dt><dd>Bs {bs(totalContado)}</dd></div>
+        {totalEntregado > 0 && <div><dt>Entregas a {receptor.trim()}</dt><dd>− Bs {bs(totalEntregado)}</dd></div>}
+        {entregaPreviaBs > 0 && <div className="cierre-resumen-nota"><dt>Entrega ya registrada</dt><dd>Bs {bs(entregaPreviaBs)}</dd></div>}
+        <div className="cierre-resumen-total"><dt>Queda en el cajón</dt><dd>Bs {bs(totalRestante)}</dd></div>
+      </dl>
+      {totalRestante > 0 && <p className="cierre-desglose">{DENOMINACIONES.filter((d) => restantes[String(d)]).map((d) => `${restantes[String(d)]} × Bs ${d}`).join(' · ')}</p>}
+      {error && <p role="alert" className="cash-error">{error}</p>}
     </div>
-    <footer className="modal-actions"><button className="secondary-button" disabled={busy} onClick={onClose}>Cancelar</button><button className="primary-button" disabled={busy || conteoBloqueado} onClick={() => void confirmar()}>{busy ? 'Guardando conteo…' : 'Confirmar conteo'}</button></footer>
+    <footer className="modal-actions">
+      <button className="secondary-button" disabled={busy || entregaRegistrada} onClick={() => setPaso(pideEntrega ? 'entrega' : 'conteo')}><ArrowLeft /> Volver</button>
+      <button className="primary-button" disabled={busy} onClick={() => void confirmar()}>{busy ? 'Cerrando turno…' : 'Confirmar cierre'}</button>
+    </footer>
   </Modal>
 }
 
@@ -436,6 +469,7 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
   const [gastos, setGastos] = useState<CajaGastoRecord[]>([])
   const [enRevision, setEnRevision] = useState<TurnoSesion[]>([])
   const [faltantes, setFaltantes] = useState<CajaFaltanteRecord[]>([])
+  const [detalleCierre, setDetalleCierre] = useState<Record<string, DetalleCierre>>({})
   const [arqueoOpen, setArqueoOpen] = useState(false)
   // Brief Caja-2 B2 — "Pagos por verificar".
   const [estadoBanco, setEstadoBanco] = useState<EstadoBancoQr | null>(null)
@@ -459,29 +493,39 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
     setResumen(r); setGastos(g); setEnRevision(rev); setFaltantes(f)
     setEstadoBanco(banco); setPagosPorVerificar(pagos); setMovimientosSinVincular(movimientos)
     setLoadError('')
+    // Cifras de cada cierre en revisión (solo gerente): esperado sale de resumen_turno y el
+    // contado del conteo de CIERRE. Si una falla, esa tarjeta muestra "—" sin tumbar el panel.
+    const detalles = await Promise.all(rev.map(async (s): Promise<[string, DetalleCierre]> => {
+      try {
+        const [res, contadoBs] = await Promise.all([turnoService.resumen(s.id), turnoService.conteoCierre(s.id)])
+        return [s.id, { esperadoBs: res.esperadoEfectivoBs, contadoBs, entregadoBs: res.remesasBs }]
+      } catch { return [s.id, { esperadoBs: null, contadoBs: null, entregadoBs: null }] }
+    }))
+    setDetalleCierre(Object.fromEntries(detalles))
     } catch (error) { setLoadError(error instanceof Error ? error.message : 'No se pudo actualizar la supervisión') }
   }, [])
   useCashRefresh(load, 'supervision')
 
-  const resolverGasto = async (id: string, aprobar: boolean) => {
-    const nota = aprobar ? undefined : (window.prompt('Motivo del rechazo (opcional):') ?? undefined)
+  const resolverGasto = async (id: string, aprobar: boolean, nota?: string): Promise<boolean> => {
     try {
       await turnoService.resolverGasto(id, aprobar, nota)
       notify(aprobar ? 'Gasto aprobado' : 'Gasto rechazado — se generó un faltante para el cajero')
       await load()
+      return true
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo resolver el gasto')
+      return false
     }
   }
-  const aprobarCierre = async (sesionId: string) => {
-    const nota = window.prompt('Nota de revisión (obligatoria):')
-    if (!nota || !nota.trim()) { notify('La nota de revisión es obligatoria'); return }
+  const aprobarCierre = async (sesionId: string, nota: string): Promise<boolean> => {
     try {
-      await turnoService.revisar(sesionId, nota.trim())
-      notify('Turno aprobado')
+      await turnoService.revisar(sesionId, nota)
+      notify('Cierre aprobado')
       await load()
+      return true
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo aprobar el cierre')
+      return false
     }
   }
   const resolverFaltante = async (id: string, estado: 'REPUESTO' | 'CONDONADO') => {
@@ -544,22 +588,24 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
     {resumen && <section className="cash-methods"><h3>Ventas por método</h3>{Object.keys(resumen.ventasPorMetodo).length ? Object.entries(resumen.ventasPorMetodo).map(([m, v]) => <div key={m}><span>{metodoLabel[m] ?? m}</span><strong>Bs {bs(v)}</strong></div>) : <FeatureState type="empty" text="Sin ventas todavía" />}</section>}
     {sesion && <button className="secondary-button" onClick={() => setArqueoOpen(true)}><Calculator /> Arqueo sorpresa</button>}
 
-    <section className="cash-movements"><h3>Gastos pendientes</h3>
-      {gastos.length ? gastos.map((g) => <div key={g.id} className="turno-gasto-row">
-        <span>{g.motivo}<small>{g.registradoPor} · {new Date(g.registradoEn).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })}</small></span>
-        <b>Bs {bs(g.montoBs)}</b>
-        <div><button type="button" onClick={() => void resolverGasto(g.id, true)}>Aprobar</button><button type="button" onClick={() => void resolverGasto(g.id, false)}>Rechazar</button></div>
-      </div>) : <FeatureState type="empty" text="Sin gastos pendientes" />}
+    <div className="aprobaciones-resumen" aria-label="Pendientes de aprobación">
+      <a href="#bandeja-gastos" className="aprobacion-contador gasto"><span><ReceiptText aria-hidden="true" /> Gastos por aprobar</span><strong>{gastos.length}{gastos.length > 0 && <small> · Bs {bs(gastos.reduce((sum, g) => sum + g.montoBs, 0))}</small>}</strong></a>
+      <a href="#bandeja-cierres" className="aprobacion-contador cierre"><span><LockKeyhole aria-hidden="true" /> Cierres por aprobar</span><strong>{enRevision.length} {enRevision.length === 1 ? 'turno' : 'turnos'}</strong></a>
+      <a href="#bandeja-faltantes" className="aprobacion-contador faltante"><span><Calculator aria-hidden="true" /> Faltantes</span><strong>{faltantes.length}</strong></a>
+    </div>
+
+    <section id="bandeja-gastos" className="cash-movements bandeja-aprobacion bandeja-gastos" aria-labelledby="bandeja-gastos-titulo">
+      <header><h3 id="bandeja-gastos-titulo"><ReceiptText aria-hidden="true" /> Gastos por aprobar</h3><p>Plata que salió del cajón. Si lo rechazas, queda como faltante del cajero.</p></header>
+      {gastos.length ? gastos.map((g) => <GastoAprobacionRow key={g.id} gasto={g} onResolver={resolverGasto} onVerComprobante={(path) => { void turnoService.comprobanteUrl(path).then((url) => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); else notify('No se pudo abrir el comprobante') }) }} />) : <FeatureState type="empty" text="Sin gastos por aprobar" />}
     </section>
 
-    <section className="cash-movements"><h3>Turnos en revisión</h3>
-      {enRevision.length ? enRevision.map((s) => <div key={s.id} className="turno-revision-row">
-        <span>{s.cajaNombre}<small>{s.abiertaPor} · cerrado {s.cerradaEn ? new Date(s.cerradaEn).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' }) : ''}</small></span>
-        <button type="button" onClick={() => void aprobarCierre(s.id)}>Aprobar cierre</button>
-      </div>) : <FeatureState type="empty" text="Sin turnos en revisión" />}
+    <section id="bandeja-cierres" className="cash-movements bandeja-aprobacion bandeja-cierres" aria-labelledby="bandeja-cierres-titulo">
+      <header><h3 id="bandeja-cierres-titulo"><LockKeyhole aria-hidden="true" /> Cierres de turno por aprobar</h3><p>Turnos cuyo conteo no cuadró. Pasan a cerrados cuando los apruebas.</p></header>
+      {enRevision.length ? enRevision.map((s) => <CierreAprobacionRow key={s.id} sesion={s} detalle={detalleCierre[s.id]} onAprobar={aprobarCierre} />) : <FeatureState type="empty" text="Sin cierres por aprobar" />}
     </section>
 
-    <section className="cash-movements"><h3>Faltantes</h3>
+    <section id="bandeja-faltantes" className="cash-movements bandeja-aprobacion bandeja-faltantes" aria-labelledby="bandeja-faltantes-titulo">
+      <header><h3 id="bandeja-faltantes-titulo"><Calculator aria-hidden="true" /> Faltantes</h3><p>Diferencias de arqueo y gastos rechazados que el cajero debe reponer.</p></header>
       {faltantes.length ? faltantes.map((f) => <div key={f.id} className="turno-faltante-row">
         <span>{f.origen === 'ARQUEO' ? 'Faltante de arqueo' : 'Gasto rechazado'}<small>{f.cajeroId ?? 'sin cajero'} · {new Date(f.creadoEn).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })}</small></span>
         <b>Bs {bs(f.montoBs)}</b>
@@ -604,6 +650,72 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
 
     {arqueoOpen && <CerrarTurnoModal onClose={() => setArqueoOpen(false)} onConfirm={(denominaciones) => confirmarArqueo(denominaciones)} />}
   </div>
+}
+
+interface DetalleCierre { esperadoBs: number | null; contadoBs: number | null; entregadoBs: number | null }
+
+const fechaCorta = (iso: string) => new Date(iso).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })
+const quienRegistro = (email?: string) => (email ? email.split('@')[0] : 'Cajero')
+
+/** Fila de la bandeja ámbar: el rechazo pide su motivo en línea, sin prompt del navegador. */
+function GastoAprobacionRow({ gasto, onResolver, onVerComprobante }: { gasto: CajaGastoRecord; onResolver: (id: string, aprobar: boolean, nota?: string) => Promise<boolean>; onVerComprobante: (path: string) => void }) {
+  const [rechazando, setRechazando] = useState(false)
+  const [nota, setNota] = useState('')
+  const [busy, setBusy] = useState(false)
+  const resolver = async (aprobar: boolean) => {
+    if (busy) return
+    setBusy(true)
+    const ok = await onResolver(gasto.id, aprobar, aprobar ? undefined : nota.trim() || undefined)
+    setBusy(false)
+    if (ok) { setRechazando(false); setNota('') }
+  }
+  return <article className="aprobacion-row gasto" aria-label={`Gasto: ${gasto.motivo}`}>
+    <div className="aprobacion-row-main">
+      <span className="aprobacion-row-icon" aria-hidden="true"><ReceiptText /></span>
+      <div className="aprobacion-row-text"><strong>{gasto.motivo}</strong><small>{quienRegistro(gasto.registradoPor)}{gasto.sesionCajaId ? ` · Turno #${gasto.sesionCajaId}` : ''} · {fechaCorta(gasto.registradoEn)}</small>
+        {gasto.comprobantePath ? <button type="button" className="aprobacion-link" onClick={() => onVerComprobante(gasto.comprobantePath!)}>Ver comprobante</button> : <small className="aprobacion-sin-comprobante">Sin comprobante</small>}
+      </div>
+      <b className="aprobacion-monto">− Bs {bs(gasto.montoBs)}</b>
+    </div>
+    {rechazando
+      ? <div className="aprobacion-row-form">
+        <label>Motivo del rechazo (opcional)<input type="text" maxLength={300} value={nota} disabled={busy} autoFocus onChange={(e) => setNota(e.target.value)} placeholder="Por qué no se aprueba" /></label>
+        <div className="aprobacion-row-actions"><button type="button" disabled={busy} onClick={() => { setRechazando(false); setNota('') }}>Cancelar</button><button type="button" className="aprobacion-rechazar" disabled={busy} onClick={() => void resolver(false)}>Confirmar rechazo</button></div>
+      </div>
+      : <div className="aprobacion-row-actions"><button type="button" disabled={busy} onClick={() => setRechazando(true)}>Rechazar</button><button type="button" className="aprobacion-aprobar" disabled={busy} onClick={() => void resolver(true)}><Check aria-hidden="true" /> Aprobar gasto</button></div>}
+  </article>
+}
+
+/** Fila de la bandeja violeta: cifras del cierre y nota de revisión obligatoria en línea. */
+function CierreAprobacionRow({ sesion, detalle, onAprobar }: { sesion: TurnoSesion; detalle?: DetalleCierre; onAprobar: (sesionId: string, nota: string) => Promise<boolean> }) {
+  const [nota, setNota] = useState('')
+  const [busy, setBusy] = useState(false)
+  const diferencia = detalle?.contadoBs != null && detalle.esperadoBs != null ? Math.round((detalle.contadoBs - detalle.esperadoBs) * 100) / 100 : null
+  const cifra = (v: number | null | undefined) => (v == null ? '—' : `Bs ${bs(v)}`)
+  const aprobar = async () => {
+    if (busy || !nota.trim()) return
+    setBusy(true)
+    const ok = await onAprobar(sesion.id, nota.trim())
+    setBusy(false)
+    if (ok) setNota('')
+  }
+  return <article className="aprobacion-row cierre" aria-label={`Cierre del turno ${sesion.id}`}>
+    <div className="aprobacion-row-main">
+      <span className="aprobacion-row-icon" aria-hidden="true"><LockKeyhole /></span>
+      <div className="aprobacion-row-text"><strong>Turno #{sesion.id} · {sesion.abiertaPor ?? 'Cajero'}</strong><small>{sesion.cajaNombre}{sesion.cerradaEn ? ` · cerrado ${fechaCorta(sesion.cerradaEn)}` : ''}</small></div>
+      <span className="aprobacion-estado">En revisión</span>
+    </div>
+    <dl className="aprobacion-cifras">
+      <div><dt>Esperado</dt><dd>{cifra(detalle?.esperadoBs)}</dd></div>
+      <div><dt>Contado</dt><dd>{cifra(detalle?.contadoBs)}</dd></div>
+      <div><dt>Remesas</dt><dd>{cifra(detalle?.entregadoBs)}</dd></div>
+      <div><dt>Diferencia</dt><dd className={diferencia == null ? '' : diferencia < 0 ? 'negativa' : diferencia > 0 ? 'positiva' : ''}>{diferencia == null ? '—' : `${diferencia > 0 ? '+' : diferencia < 0 ? '−' : ''} Bs ${bs(Math.abs(diferencia))}`}</dd></div>
+    </dl>
+    <div className="aprobacion-row-form inline">
+      <label>Nota de revisión (obligatoria)<input type="text" maxLength={500} value={nota} disabled={busy} onChange={(e) => setNota(e.target.value)} placeholder="Qué revisaste y qué se decidió" /></label>
+      <button type="button" className="aprobacion-aprobar" disabled={busy || !nota.trim()} onClick={() => void aprobar()}><Check aria-hidden="true" /> Aprobar cierre</button>
+    </div>
+  </article>
 }
 
 // ============================================================================

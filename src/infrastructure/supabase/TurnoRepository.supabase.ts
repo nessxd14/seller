@@ -281,6 +281,15 @@ export async function listTurnosEnRevision(): Promise<TurnoSesion[]> {
   return ((data ?? []) as unknown as SesionRow[]).map(rowToSesion)
 }
 
+// Supervisión: total del conteo de CIERRE de un turno (lo que el cajero declaró que quedaba
+// en el cajón). Solo lo llama el panel del gerente; el cajero ya conoce su propio conteo y
+// el esperado sigue saliendo únicamente de resumen_turno (oculto para cajero server-side).
+export async function getConteoCierre(sesionId: string): Promise<number | null> {
+  const { data, error } = await supabase.from('sesion_caja_conteo').select('total').eq('sesion_caja_id', Number(sesionId)).eq('momento', 'CIERRE').maybeSingle()
+  if (error) throw toError(error)
+  return data ? num((data as { total: number | string }).total) : null
+}
+
 export async function listFaltantesPendientes(): Promise<CajaFaltanteRecord[]> {
   const { data, error } = await supabase.from('caja_faltante').select('*').eq('estado', 'PENDIENTE').order('creado_en', { ascending: true })
   if (error) throw toError(error)

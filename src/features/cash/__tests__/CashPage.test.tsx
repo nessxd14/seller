@@ -14,7 +14,7 @@ vi.mock('../useCashRefresh', () => ({ useCashRefresh: (refresh: () => Promise<vo
 // "esperado"/"diferencia" en la pantalla de Caja; un gerente sí. resumen_turno ya lo
 // esconde server-side (esperadoEfectivoBs: null para cajero) — este test cubre que el
 // frontend efectivamente respeta ese null y no lo recalcula por su cuenta.
-const { getSession, getResumenTurno, getSesionAbierta, abrirTurno, cerrarTurno, registrarMovimiento, listarMovimientos, marcarFuera, sesionAbierta, cajeroSession, gerenteSession, resumenBase } = vi.hoisted(() => {
+const { getSession, getResumenTurno, getSesionAbierta, abrirTurno, cerrarTurno, registrarMovimiento, listarMovimientos, marcarFuera, gastosPendientes, turnosEnRevision, resolverGasto, revisarTurno, conteoCierre, sesionAbierta, cajeroSession, gerenteSession, resumenBase } = vi.hoisted(() => {
   const sesionAbierta: TurnoSesion = {
     id: '1', cajaId: 1, cajaNombre: 'Caja Tienda', estado: 'ABIERTA', aperturaBs: 500,
     cajeroId: 'u1', abiertaPor: 'natalia@roari.com', abiertaEn: new Date().toISOString(), diferenciaRelevoBs: null,
@@ -27,7 +27,7 @@ const { getSession, getResumenTurno, getSesionAbierta, abrirTurno, cerrarTurno, 
   }
   const cajeroSession: AuthSession = { user: { id: 'u1', name: 'Natalia Cajera', role: 'cajero', active: true, email: 'natalia@roari.com' }, expiresAt: '2999-01-01T00:00:00Z' }
   const gerenteSession: AuthSession = { user: { id: 'u2', name: 'Rony Gerente', role: 'gerente', active: true, email: 'rony@roari.com' }, expiresAt: '2999-01-01T00:00:00Z' }
-  return { getSession: vi.fn(), getResumenTurno: vi.fn(), getSesionAbierta: vi.fn(), abrirTurno: vi.fn(), cerrarTurno: vi.fn(), registrarMovimiento: vi.fn(), listarMovimientos: vi.fn(), marcarFuera: vi.fn(), sesionAbierta, cajeroSession, gerenteSession, resumenBase }
+  return { getSession: vi.fn(), getResumenTurno: vi.fn(), getSesionAbierta: vi.fn(), abrirTurno: vi.fn(), cerrarTurno: vi.fn(), registrarMovimiento: vi.fn(), listarMovimientos: vi.fn(), marcarFuera: vi.fn(), gastosPendientes: vi.fn(), turnosEnRevision: vi.fn(), resolverGasto: vi.fn(), revisarTurno: vi.fn(), conteoCierre: vi.fn(), sesionAbierta, cajeroSession, gerenteSession, resumenBase }
 })
 
 vi.mock('../../../infrastructure/services', () => ({
@@ -43,9 +43,16 @@ vi.mock('../../../infrastructure/services', () => ({
     resumen: (...args: unknown[]) => getResumenTurno(...args),
     misTickets: vi.fn().mockResolvedValue([]),
     movimientos: (...args: unknown[]) => listarMovimientos(...args),
-    gastosPendientes: vi.fn().mockResolvedValue([]),
-    turnosEnRevision: vi.fn().mockResolvedValue([]),
+    gastosPendientes: (...args: unknown[]) => gastosPendientes(...args),
+    turnosEnRevision: (...args: unknown[]) => turnosEnRevision(...args),
     faltantesPendientes: vi.fn().mockResolvedValue([]),
+    resolverGasto: (...args: unknown[]) => resolverGasto(...args),
+    revisar: (...args: unknown[]) => revisarTurno(...args),
+    conteoCierre: (...args: unknown[]) => conteoCierre(...args),
+    comprobanteUrl: vi.fn().mockResolvedValue(null),
+    estadoBancoQr: vi.fn().mockResolvedValue({ ultimoLatido: null, minutosDesde: null, enLinea: true }),
+    pagosPorVerificar: vi.fn().mockResolvedValue([]),
+    movimientosBancoSinVincular: vi.fn().mockResolvedValue([]),
   },
   ventaDirectaService: { listAbiertas: vi.fn().mockResolvedValue([]) },
   sensitiveOperations: { execute: vi.fn() },
@@ -59,6 +66,11 @@ beforeEach(() => {
   cerrarTurno.mockResolvedValue({ sesionId: '1', estado: 'CERRADA' })
   registrarMovimiento.mockResolvedValue({ movimientoId: '1' })
   abrirTurno.mockResolvedValue({ sesionId: '1' })
+  gastosPendientes.mockResolvedValue([])
+  turnosEnRevision.mockResolvedValue([])
+  resolverGasto.mockResolvedValue(undefined)
+  revisarTurno.mockResolvedValue(undefined)
+  conteoCierre.mockResolvedValue(null)
 })
 
 describe('CashPage — conteo ciego (Brief Caja-1 B3)', () => {
@@ -119,9 +131,12 @@ const cargarCaja = async (session = cajeroSession, resumen: Record<string, unkno
   montarCaja()
   await screen.findByText('Mostrador (VTA)')
 }
-const cantidad = (valor: number) => { const input = screen.getByLabelText('Cantidad de billetes/monedas de 100'); fireEvent.focus(input); fireEvent.change(input, { target: { value: String(valor) } }); fireEvent.blur(input) }
-const abrirCierre = async () => { fireEvent.click(screen.getByRole('button', { name: /Cerrar turno/ })); await screen.findByText('¿Entregas efectivo antes de cerrar?') }
-const irAlConteo = async () => { await abrirCierre(); fireEvent.click(screen.getByRole('button', { name: 'No entrego nada' })); await screen.findByText('Cuenta el efectivo que queda en el cajón después de la entrega.') }
+const escribir = (label: string, valor: number | string) => { const input = screen.getByLabelText(label); fireEvent.focus(input); fireEvent.change(input, { target: { value: String(valor) } }); fireEvent.blur(input) }
+const cantidad = (valor: number, denominacion = 100) => escribir(`Cantidad de billetes/monedas de ${denominacion}`, valor)
+const entregar = (valor: number, denominacion = 100) => escribir(`Billetes/monedas de ${denominacion} que entregas`, valor)
+const PASO_CONTEO = 'Cuenta todo el efectivo del cajón, billete por billete.'
+const abrirCierre = async () => { fireEvent.click(screen.getByRole('button', { name: /Cerrar turno/ })); await screen.findByText(PASO_CONTEO) }
+const boton = (name: string | RegExp) => screen.getByRole('button', { name }) as HTMLButtonElement
 
 describe('Abrir turno — conteo en cero (Brief Caja VTD obligatorio B)', () => {
   const abrirVista = async () => { getSession.mockResolvedValue(cajeroSession); getSesionAbierta.mockResolvedValue(null); montarCaja(); await screen.findByRole('button', { name: 'Abrir mi turno' }) }
@@ -146,82 +161,203 @@ describe('Abrir turno — conteo en cero (Brief Caja VTD obligatorio B)', () => 
   })
 })
 
-describe('Cerrar turno — conteo y entrega (Brief Caja VTD obligatorio B y C)', () => {
-  const confirmar = () => screen.getByRole('button', { name: 'Confirmar conteo' }) as HTMLButtonElement
-
-  it('con total 0 exige "El cajón está en cero" y lo envía como cajonVacio = true', async () => {
+describe('Cerrar turno — contar, entregar y confirmar', () => {
+  it('el botón de cierre está en la barra de acciones de arriba, no al final', async () => {
     await cargarCaja()
-    await irAlConteo()
-    expect(confirmar().disabled).toBe(true)
+    const barra = screen.getByRole('toolbar', { name: 'Acciones del turno' })
+    expect(within(barra).getByRole('button', { name: /Cerrar turno/ })).toBeTruthy()
+    expect(within(barra).getByRole('button', { name: /Registrar gasto/ })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: /Cerrar turno/ })).toHaveLength(1)
+  })
+
+  it('paso 1 primero pide contar todo: con total 0 exige "El cajón está en cero" y cierra con cajonVacio = true', async () => {
+    await cargarCaja()
+    await abrirCierre()
+    expect(boton('Continuar').disabled).toBe(true)
     fireEvent.click(screen.getByLabelText('El cajón está en cero'))
-    expect(confirmar().disabled).toBe(false)
-    fireEvent.click(confirmar())
+    fireEvent.click(boton('Continuar'))
+    // Con el cajón en cero no hay nada que entregar: salta directo a confirmar.
+    await screen.findByText('Queda en el cajón')
+    fireEvent.click(boton('Confirmar cierre'))
+    await waitFor(() => expect(cerrarTurno).toHaveBeenCalledWith('1', {}, true))
+    expect(registrarMovimiento).not.toHaveBeenCalled()
+  })
+
+  it('sin entrega: cierra con lo contado y cajonVacio en false', async () => {
+    await cargarCaja()
+    await abrirCierre()
+    cantidad(3)
+    expect(screen.queryByLabelText('El cajón está en cero')).toBeNull()
+    fireEvent.click(boton('Continuar'))
+    fireEvent.click(await screen.findByRole('button', { name: 'No entrego nada' }))
+    await screen.findByText('Queda en el cajón')
+    fireEvent.click(boton('Confirmar cierre'))
+    await waitFor(() => expect(cerrarTurno).toHaveBeenCalledWith('1', { '100': 3 }, false))
+    expect(registrarMovimiento).not.toHaveBeenCalled()
+  })
+
+  it('con entrega por denominación: registra la remesa y cierra con lo que queda, calculado solo', async () => {
+    await cargarCaja()
+    await abrirCierre()
+    cantidad(5)
+    cantidad(4, 20)
+    fireEvent.click(boton('Continuar'))
+    await screen.findByLabelText('Billetes/monedas de 100 que entregas')
+    // Solo aparecen las denominaciones que se contaron.
+    expect(screen.queryByLabelText('Billetes/monedas de 50 que entregas')).toBeNull()
+    entregar(3)
+    expect(boton('Continuar').disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('A quién se lo entregas'), { target: { value: 'Rony' } })
+    fireEvent.click(boton('Continuar'))
+    await screen.findByText('Queda en el cajón')
+    expect(screen.getByText('Entregas a Rony')).toBeTruthy()
+    expect(document.body.textContent).toMatch(/Queda en el cajónBs\s*280,00/)
+    fireEvent.click(boton('Confirmar cierre'))
+    await waitFor(() => expect(cerrarTurno).toHaveBeenCalledWith('1', { '100': 2, '20': 4 }, false))
+    expect(registrarMovimiento).toHaveBeenCalledTimes(1)
+    expect(registrarMovimiento.mock.calls[0][0]).toMatchObject({ sesionId: '1', subtipo: 'REMESA', montoBs: 300, motivo: 'Entrega de cierre a Rony' })
+    expect(registrarMovimiento.mock.invocationCallOrder[0]).toBeLessThan(cerrarTurno.mock.invocationCallOrder[0])
+  })
+
+  it('no deja entregar más billetes de los que se contaron', async () => {
+    await cargarCaja()
+    await abrirCierre()
+    cantidad(2)
+    fireEvent.click(boton('Continuar'))
+    await screen.findByLabelText('Billetes/monedas de 100 que entregas')
+    entregar(9)
+    expect((screen.getByLabelText('Billetes/monedas de 100 que entregas') as HTMLInputElement).value).toBe('2')
+  })
+
+  it('si entrega todo, el cajón queda en cero y se envía cajonVacio = true', async () => {
+    await cargarCaja()
+    await abrirCierre()
+    cantidad(2)
+    fireEvent.click(boton('Continuar'))
+    await screen.findByLabelText('Billetes/monedas de 100 que entregas')
+    entregar(2)
+    fireEvent.change(screen.getByLabelText('A quién se lo entregas'), { target: { value: 'Rony' } })
+    fireEvent.click(boton('Continuar'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar cierre' }))
     await waitFor(() => expect(cerrarTurno).toHaveBeenCalledWith('1', {}, true))
   })
 
-  it('con conteo > 0 no hay checkbox y cajonVacio va en false', async () => {
+  it('un reintento de la entrega reutiliza la misma clave de idempotencia', async () => {
+    registrarMovimiento.mockRejectedValueOnce(new Error('Respuesta perdida'))
     await cargarCaja()
-    await irAlConteo()
+    await abrirCierre()
     cantidad(3)
-    expect(screen.queryByLabelText('El cajón está en cero')).toBeNull()
-    fireEvent.click(confirmar())
-    await waitFor(() => expect(cerrarTurno).toHaveBeenCalledWith('1', { '100': 3 }, false))
+    fireEvent.click(boton('Continuar'))
+    await screen.findByLabelText('Billetes/monedas de 100 que entregas')
+    entregar(1)
+    fireEvent.change(screen.getByLabelText('A quién se lo entregas'), { target: { value: 'Rony' } })
+    fireEvent.click(boton('Continuar'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar cierre' }))
+    await screen.findByText('Respuesta perdida')
+    expect(cerrarTurno).not.toHaveBeenCalled()
+    fireEvent.click(boton('Confirmar cierre'))
+    await waitFor(() => expect(cerrarTurno).toHaveBeenCalledWith('1', { '100': 2 }, false))
+    expect(registrarMovimiento).toHaveBeenCalledTimes(2)
+    const [primero, reintento] = registrarMovimiento.mock.calls.map((c) => c[0])
+    expect(typeof primero.idempotencyKey).toBe('string')
+    expect(reintento.idempotencyKey).toBe(primero.idempotencyKey)
   })
 
-  it('si marcó el cero y luego cuenta billetes, no se envía cajonVacio', async () => {
+  it('si la entrega ya se registró en este turno, no la vuelve a pedir y lo avisa', async () => {
+    listarMovimientos.mockResolvedValue([mov({ id: '8', tipo: 'EGRESO', subtipo: 'REMESA', metodo: 'EFECTIVO', montoBs: 50, detalle: 'Entrega de cierre a Rony' }), mov({ id: '9', tipo: 'EGRESO', subtipo: 'REMESA', montoBs: 999, detalle: 'Remesa al banco' })])
     await cargarCaja()
-    await irAlConteo()
-    fireEvent.click(screen.getByLabelText('El cajón está en cero'))
+    await abrirCierre()
+    await screen.findByText(/Ya registraste una entrega de Bs 50,00 en este cierre\./)
     cantidad(1)
-    fireEvent.click(confirmar())
+    fireEvent.click(boton('Continuar'))
+    await screen.findByText('Queda en el cajón')
+    expect(screen.queryByLabelText(/que entregas/)).toBeNull()
+    fireEvent.click(boton('Confirmar cierre'))
     await waitFor(() => expect(cerrarTurno).toHaveBeenCalledWith('1', { '100': 1 }, false))
+    expect(registrarMovimiento).not.toHaveBeenCalled()
   })
 
   it('el mensaje de la base al cerrar llega tal cual a la cajera', async () => {
     cerrarTurno.mockRejectedValue(new Error('No puedes cerrar el turno: hay 2 VTD entregadas sin cobrar.'))
     await cargarCaja()
-    await irAlConteo()
-    cantidad(1)
-    fireEvent.click(confirmar())
-    await waitFor(() => expect(notify).toHaveBeenCalledWith('No puedes cerrar el turno: hay 2 VTD entregadas sin cobrar.'))
-  })
-
-  it('paso 1: la entrega es una remesa y un reintento reutiliza la misma clave de idempotencia', async () => {
-    registrarMovimiento.mockRejectedValueOnce(new Error('Respuesta perdida'))
-    await cargarCaja()
     await abrirCierre()
-    fireEvent.change(screen.getByLabelText('Monto entregado (Bs)'), { target: { value: '150' } })
-    fireEvent.blur(screen.getByLabelText('Monto entregado (Bs)'))
-    const registrar = () => screen.getByRole('button', { name: 'Registrar entrega y continuar' }) as HTMLButtonElement
-    expect(registrar().disabled).toBe(true)
-    fireEvent.change(screen.getByLabelText('A quién se lo entregas'), { target: { value: 'Rony' } })
-    fireEvent.click(registrar())
-    await screen.findByText('Respuesta perdida')
-    fireEvent.click(registrar())
-    await screen.findByText('Cuenta el efectivo que queda en el cajón después de la entrega.')
-    expect(registrarMovimiento).toHaveBeenCalledTimes(2)
-    const [primero, reintento] = registrarMovimiento.mock.calls.map((c) => c[0])
-    expect(primero).toMatchObject({ sesionId: '1', subtipo: 'REMESA', montoBs: 150, motivo: 'Entrega de cierre a Rony' })
-    expect(reintento.idempotencyKey).toBe(primero.idempotencyKey)
-    expect(typeof primero.idempotencyKey).toBe('string')
-  })
-
-  it('si la entrega ya se registró en este turno, reabrir el cierre salta al conteo y lo avisa', async () => {
-    listarMovimientos.mockResolvedValue([mov({ id: '8', tipo: 'EGRESO', subtipo: 'REMESA', metodo: 'EFECTIVO', montoBs: 50, detalle: 'Entrega de cierre a Rony' }), mov({ id: '9', tipo: 'EGRESO', subtipo: 'REMESA', montoBs: 999, detalle: 'Remesa al banco' })])
-    await cargarCaja()
-    fireEvent.click(screen.getByRole('button', { name: /Cerrar turno/ }))
-    await screen.findByText(/Ya registraste una entrega de Bs 50,00 en este cierre\./)
-    expect(screen.queryByText('¿Entregas efectivo antes de cerrar?')).toBeNull()
-    expect(screen.getByText('Cuenta el efectivo que queda en el cajón después de la entrega.')).toBeTruthy()
+    cantidad(1)
+    fireEvent.click(boton('Continuar'))
+    fireEvent.click(await screen.findByRole('button', { name: 'No entrego nada' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar cierre' }))
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('No puedes cerrar el turno: hay 2 VTD entregadas sin cobrar.'))
   })
 
   it('conteo ciego: ningún paso del cierre muestra esperado ni diferencia', async () => {
     await cargarCaja()
     await abrirCierre()
     expect(document.body.textContent).not.toMatch(/esperad|diferenc/i)
-    fireEvent.click(screen.getByRole('button', { name: 'No entrego nada' }))
-    await screen.findByText(/Cuenta el efectivo que queda/)
+    cantidad(2)
+    fireEvent.click(boton('Continuar'))
+    await screen.findByLabelText('Billetes/monedas de 100 que entregas')
     expect(document.body.textContent).not.toMatch(/esperad|diferenc/i)
+    fireEvent.click(boton('No entrego nada'))
+    await screen.findByText('Queda en el cajón')
+    expect(document.body.textContent).not.toMatch(/esperad|diferenc/i)
+  })
+})
+
+describe('Supervisión — gastos y cierres separados', () => {
+  const gasto = { id: 'g1', sesionCajaId: '1', montoBs: 80, motivo: 'Flete a Carlos por PED-024', estado: 'PENDIENTE' as const, registradoPor: 'natalia@roari.com', registradoEn: new Date().toISOString() }
+  const enRevision: TurnoSesion = { ...sesionAbierta, id: '7', estado: 'EN_REVISION', abiertaPor: 'pedro@roari.com', cerradaEn: new Date().toISOString() }
+  const abrirSupervision = async (antes?: () => void) => {
+    await cargarCaja(gerenteSession)
+    antes?.()
+    fireEvent.click(screen.getByRole('button', { name: 'Supervisión' }))
+    await screen.findByRole('heading', { name: 'Gastos por aprobar' })
+  }
+
+  it('cada bandeja tiene su título y contador propio', async () => {
+    gastosPendientes.mockResolvedValue([gasto])
+    turnosEnRevision.mockResolvedValue([enRevision])
+    await abrirSupervision()
+    expect(screen.getByRole('heading', { name: 'Cierres de turno por aprobar' })).toBeTruthy()
+    const bandejaGastos = screen.getByRole('region', { name: 'Gastos por aprobar' })
+    const bandejaCierres = screen.getByRole('region', { name: 'Cierres de turno por aprobar' })
+    expect(within(bandejaGastos).getByText('Flete a Carlos por PED-024')).toBeTruthy()
+    expect(within(bandejaGastos).queryByRole('button', { name: /Aprobar cierre/ })).toBeNull()
+    expect(within(bandejaCierres).getByText(/Turno #7/)).toBeTruthy()
+    expect(within(bandejaCierres).queryByRole('button', { name: /Aprobar gasto/ })).toBeNull()
+  })
+
+  it('rechazar un gasto pide el motivo en línea, sin prompt del navegador', async () => {
+    const prompt = vi.spyOn(window, 'prompt')
+    gastosPendientes.mockResolvedValue([gasto])
+    await abrirSupervision()
+    fireEvent.click(screen.getByRole('button', { name: 'Rechazar' }))
+    fireEvent.change(screen.getByLabelText('Motivo del rechazo (opcional)'), { target: { value: 'Sin factura' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar rechazo' }))
+    await waitFor(() => expect(resolverGasto).toHaveBeenCalledWith('g1', false, 'Sin factura'))
+    expect(prompt).not.toHaveBeenCalled()
+  })
+
+  it('aprobar un gasto no pide nota', async () => {
+    gastosPendientes.mockResolvedValue([gasto])
+    await abrirSupervision()
+    fireEvent.click(screen.getByRole('button', { name: /Aprobar gasto/ }))
+    await waitFor(() => expect(resolverGasto).toHaveBeenCalledWith('g1', true, undefined))
+  })
+
+  it('el cierre muestra esperado, contado y diferencia, y exige la nota para aprobarse', async () => {
+    turnosEnRevision.mockResolvedValue([enRevision])
+    conteoCierre.mockResolvedValue(230)
+    // cargarCaja fija el resumen del turno abierto; después se distingue el del turno en revisión.
+    await abrirSupervision(() => getResumenTurno.mockImplementation(async (id: string) => ({ ...resumenBase, remesasBs: 1000, esperadoEfectivoBs: id === '7' ? 250 : 700 })))
+    const bandeja = screen.getByRole('region', { name: 'Cierres de turno por aprobar' })
+    await waitFor(() => expect(bandeja.textContent).toMatch(/Diferencia−\s*Bs\s*20,00/))
+    expect(bandeja.textContent).toMatch(/EsperadoBs\s*250,00/)
+    expect(bandeja.textContent).toMatch(/ContadoBs\s*230,00/)
+    const aprobar = within(bandeja).getByRole('button', { name: /Aprobar cierre/ }) as HTMLButtonElement
+    expect(aprobar.disabled).toBe(true)
+    fireEvent.change(within(bandeja).getByLabelText('Nota de revisión (obligatoria)'), { target: { value: 'Faltan Bs 20, se descuenta' } })
+    expect(aprobar.disabled).toBe(false)
+    fireEvent.click(aprobar)
+    await waitFor(() => expect(revisarTurno).toHaveBeenCalledWith('7', 'Faltan Bs 20, se descuenta'))
   })
 })
 
@@ -302,14 +438,14 @@ describe('Cerrar turno — VTD abiertas (cobradas no bloquean)', () => {
     await cargarCaja()
     pulsarCerrar()
     await waitFor(() => expect(notify).toHaveBeenCalledWith('No se puede cerrar el turno: hay 1 venta(s) directa(s) sin cobrar. Cóbralas, márcalas como pago posterior o anúlalas antes de cerrar.'))
-    expect(screen.queryByText('¿Entregas efectivo antes de cerrar?')).toBeNull()
+    expect(screen.queryByText(PASO_CONTEO)).toBeNull()
   })
 
   it('una VTD abierta ya cobrada abre el cierre y avisa que sigue en Almacén', async () => {
     listAbiertas().mockResolvedValue([vtd({ paidCents: 10000 })])
     await cargarCaja()
     pulsarCerrar()
-    await screen.findByText('¿Entregas efectivo antes de cerrar?')
+    await screen.findByText(PASO_CONTEO)
     expect(notify).toHaveBeenCalledWith('1 venta(s) directa(s) cobrada(s) siguen pendientes de despacho en Almacén. El turno se puede cerrar; quedan en la cola de Almacén.')
   })
 
@@ -317,14 +453,66 @@ describe('Cerrar turno — VTD abiertas (cobradas no bloquean)', () => {
     listAbiertas().mockResolvedValue([vtd({ pagoPosterior: true })])
     await cargarCaja()
     pulsarCerrar()
-    await screen.findByText('¿Entregas efectivo antes de cerrar?')
+    await screen.findByText(PASO_CONTEO)
   })
 
   it('sin VTD abiertas abre el cierre sin aviso', async () => {
     listAbiertas().mockResolvedValue([])
     await cargarCaja()
     pulsarCerrar()
-    await screen.findByText('¿Entregas efectivo antes de cerrar?')
+    await screen.findByText(PASO_CONTEO)
     expect(notify).not.toHaveBeenCalled()
+  })
+})
+
+describe('Actividad del turno compacta (una línea por movimiento)', () => {
+  const filas = () => document.querySelectorAll('.actividad-row')
+
+  it('la venta trae sus acciones de ticket en la misma fila y ya no existe la sección "Mis tickets"', async () => {
+    listarMovimientos.mockResolvedValue([mov({ id: '1', tipo: 'VENTA', documento: 'VTA-2026-00001', ventaId: '55' })])
+    await cargarCaja()
+    await waitFor(() => expect(filas()).toHaveLength(1))
+    const fila = filas()[0] as HTMLElement
+    expect(within(fila).getByRole('button', { name: 'Ver productos' })).toBeTruthy()
+    expect(within(fila).getByRole('button', { name: 'Reimprimir' })).toBeTruthy()
+    expect(screen.queryByText('Mis tickets')).toBeNull()
+  })
+
+  it('los filtros muestran cuántos hay de cada tipo y filtran con un clic', async () => {
+    listarMovimientos.mockResolvedValue([
+      mov({ id: '1', tipo: 'VENTA', documento: 'VTA-2026-00001', ventaId: '55' }),
+      mov({ id: '2', tipo: 'VENTA', documento: 'VTA-2026-00002', ventaId: '56' }),
+      mov({ id: '3', tipo: 'EGRESO', subtipo: 'GASTO', detalle: 'Flete de prueba', estadoGasto: 'PENDIENTE' }),
+    ])
+    await cargarCaja()
+    await waitFor(() => expect(filas()).toHaveLength(3))
+    const grupo = screen.getByRole('group', { name: 'Filtrar movimientos' })
+    expect(within(grupo).getByRole('button', { name: 'Todo 3' }).getAttribute('aria-pressed')).toBe('true')
+    // Solo aparecen los tipos que existen en el turno.
+    expect(within(grupo).queryByRole('button', { name: /Remesas/ })).toBeNull()
+    fireEvent.click(within(grupo).getByRole('button', { name: 'Gastos 1' }))
+    expect(filas()).toHaveLength(1)
+    expect(screen.getByText('Flete de prueba')).toBeTruthy()
+    fireEvent.click(within(grupo).getByRole('button', { name: 'Ventas 2' }))
+    expect(filas()).toHaveLength(2)
+  })
+
+  it('muestra los últimos 15 y "Ver más" carga el resto', async () => {
+    listarMovimientos.mockResolvedValue(Array.from({ length: 20 }, (_, i) => mov({ id: String(i + 1), tipo: 'VENTA', documento: `VTA-2026-${i + 1}`, ventaId: String(i + 1) })))
+    await cargarCaja()
+    await waitFor(() => expect(filas()).toHaveLength(15))
+    fireEvent.click(screen.getByRole('button', { name: /Ver 5 más/ }))
+    expect(filas()).toHaveLength(20)
+    expect(screen.queryByRole('button', { name: /más/ })).toBeNull()
+  })
+
+  it('un clic en el detalle lo despliega completo', async () => {
+    listarMovimientos.mockResolvedValue([mov({ id: '3', tipo: 'EGRESO', subtipo: 'GASTO', detalle: 'Un detalle largo del gasto' })])
+    await cargarCaja()
+    const texto = await screen.findByRole('button', { name: /Un detalle largo del gasto/ })
+    expect(texto.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(texto)
+    expect(texto.getAttribute('aria-expanded')).toBe('true')
+    expect(texto.closest('.actividad-row')?.classList.contains('abierta')).toBe(true)
   })
 })
