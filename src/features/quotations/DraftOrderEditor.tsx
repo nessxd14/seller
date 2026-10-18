@@ -439,8 +439,13 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     setValue((v) => ({ ...v, lines: v.lines.map((line) => (ids.has(line.id) ? { ...line, comprarFaltante: true } : line)) }))
   }
 
+  const comprarTexto = (item: Extract<(typeof resumen)[number], { esPersonalizado?: false }>) =>
+    item.factorUnidadBase > 1 && item.presentacionNombre
+      ? `${fmtQty(item.faltantePresentacion)} ${item.presentacionNombre} de ${fmtQty(item.cantidad)}`
+      : `${fmtQty(item.faltante)} de ${fmtQty(item.baseQty)}`
+
   const confirmacionCompras = (items: typeof resumen) =>
-    `Se van a mandar a Compras: ${items.map((item) => item.esPersonalizado ? `${item.name} (${fmtQty(item.cantidad)}, a pedido)` : `${item.name} (${fmtQty(item.faltante)} de ${fmtQty(item.baseQty)})`).join('; ')}. ¿Continuar?`
+    `Se van a mandar a Compras: ${items.map((item) => item.esPersonalizado ? `${item.name} (${fmtQty(item.cantidad)}, a pedido)` : `${item.name} (${comprarTexto(item)})`).join('; ')}. ¿Continuar?`
   // TAREA 3 (Ronda 9): cliente obligatorio para guardar/convertir una cotización.
   // "Cliente de mostrador" (customerId vacío) no cuenta — es UI-only, no toca la base
   // (8 cotizaciones viejas sin cliente siguen abriéndose porque esto solo bloquea el
@@ -634,9 +639,12 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             const faltante = faltanteInfo?.faltante ?? 0
             const decidida = faltante > 0 && line.comprarFaltante === true
             const sinDecidir = faltante > 0 && !decidida
-            // "Bajar a X" solo si X es una cantidad entera de la presentación de la línea.
-            const bajarQty = faltanteInfo ? faltanteInfo.disponibleParaLinea / factor : 0
+            // "Bajar a X": presentaciones enteras que alcanzan con lo disponible (≥ 1).
+            const enPresentacion = factor > 1 && !!line.presentacionNombre
+            const bajarQty = faltanteInfo ? (factor > 1 ? Math.floor(faltanteInfo.disponibleParaLinea / factor) : faltanteInfo.disponibleParaLinea) : 0
             const puedeBajar = !readOnly && faltanteInfo != null && faltanteInfo.disponibleParaLinea > 0 && Number.isInteger(bajarQty) && bajarQty >= 1
+            const bajarLabel = enPresentacion ? `${fmtQty(bajarQty)} ${line.presentacionNombre}` : fmtQty(bajarQty)
+            const faltanteLabel = enPresentacion ? `${fmtQty(faltanteInfo?.faltantePresentacion ?? 0)} ${line.presentacionNombre} (${fmtQty(faltante)} u.)` : fmtQty(faltante)
             const showEquivalence = factor !== 1
             const identifiers = identifiersByProduct[line.productId]
             // TAREA 5 — Almacén-default-with-conditional-Tienda-unlock: Tienda is only
@@ -711,14 +719,14 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                   <div className={`line-shortage ${decidida ? 'decided' : ''}`} onClick={(e) => e.stopPropagation()}>
                     {decidida ? (
                       <>
-                        <span className="line-shortage-text">Se compran {fmtQty(faltante)}</span>
+                        <span className="line-shortage-text">Se compran {faltanteLabel}</span>
                         <button type="button" className="line-shortage-undo" aria-label={`Deshacer compra del faltante ${line.name}`} onClick={() => updateLine(line.id, { comprarFaltante: false })}>Deshacer</button>
                       </>
                     ) : (
                       <>
-                        <span className="line-shortage-text">Disponible {fmtQty(faltanteInfo.disponibleParaLinea)} · faltan {fmtQty(faltante)}</span>
+                        <span className="line-shortage-text">Disponible {fmtQty(faltanteInfo.disponibleParaLinea)} · faltan {faltanteLabel}</span>
                         <button type="button" className="line-shortage-buy" aria-label={`Comprar el faltante ${line.name}`} onClick={() => updateLine(line.id, { comprarFaltante: true })}>Comprar el faltante</button>
-                        {puedeBajar && <button type="button" className="line-shortage-lower" aria-label={`Bajar ${line.name} a ${fmtQty(faltanteInfo.disponibleParaLinea)}`} onClick={() => updateLine(line.id, { quantity: bajarQty })}>Bajar a {fmtQty(faltanteInfo.disponibleParaLinea)}</button>}
+                        {puedeBajar && <button type="button" className="line-shortage-lower" aria-label={`Bajar ${line.name} a ${bajarLabel}`} onClick={() => updateLine(line.id, { quantity: bajarQty })}>Bajar a {bajarLabel}</button>}
                       </>
                     )}
                   </div>
@@ -830,7 +838,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                 <li key={item.lineId}>
                   {item.esPersonalizado
                     ? <><span>{item.name} · {fmtQty(item.cantidad)}</span><small className="por-comprar-tag">a pedido</small></>
-                    : <span>{item.name} · {fmtQty(item.faltante)} de {fmtQty(item.baseQty)}</span>}
+                    : <span>{item.name} · {comprarTexto(item)}</span>}
                 </li>
               ))}
             </ul>
