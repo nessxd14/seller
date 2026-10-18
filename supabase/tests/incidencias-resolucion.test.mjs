@@ -30,7 +30,7 @@ export async function testIncidenciasResolucion(db,claims) {
  alter table public.pedido_linea add column if not exists nota text;
  alter table public.pedido_linea add column if not exists descripcion text;`)
  const before=(await db.query('select count(*)::int n,sum(monto) total from hermes.movimiento_cuenta')).rows[0]
- await db.exec(await fs.readFile(new URL('../migrations/20261013210748_hermes_incidencias_resolucion.sql',import.meta.url),'utf8'))
+ await db.exec(await fs.readFile(new URL('../migrations/20261018000223_hermes_incidencias_resolucion.sql',import.meta.url),'utf8'))
  assert.deepEqual((await db.query('select count(*)::int n,sum(monto) total from hermes.movimiento_cuenta')).rows[0],before)
  const version = async id => (await db.query('select hermes.version_resolucion($1) v',[id])).rows[0].v
  const request = async (id,opcion='SALDO_FAVOR',extra={}) => ({id,opcion,version:await version(id),clave:`incidencia-${id}-${opcion}`,tipo:'CANCELACION_RESUELTA',lineas:[],destino:null,turno:null,medio:null,ref:null,recepcion:false,devuelto:false,...extra})

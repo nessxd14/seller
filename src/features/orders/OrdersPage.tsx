@@ -28,6 +28,10 @@ import { RowLink } from '../../router/RowLink'
 import { AutoriaBadge } from '../../components/AutoriaBadge'
 import { SaldoPedidoModal } from '../../components/SaldoPedidoModal'
 import { useSaldoCliente } from '../../hooks/useSaldoCliente'
+import { useCobrosPedidos } from '../../hooks/useCobrosPedidos'
+import { CobroPedidoBadge, ResumenCobroPedido } from '../../components/CobroPedidoBadge'
+import { DetalleCobroPedido } from '../../components/DetalleCobroPedido'
+import { etiquetasCobro, type EstadoCobroPedido } from '../../domain/orders/cobroPedido'
 
 type SortKey = 'number' | 'customerName' | 'channel' | 'status' | 'total' | 'createdAt'
 type SortDir = 'asc' | 'desc'
@@ -83,6 +87,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   const [conteosSegmento, setConteosSegmento] = useState<ConteosSegmento | null>(null)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | OrderWorkflowStatus>('all')
+  const [paymentFilter, setPaymentFilter] = useState<'all' | EstadoCobroPedido>('all')
   const [channelFilter, setChannelFilter] = useState('all')
   // Brief T3 Tarea 3: orden natural "lo último primero" — coincide con el cronológico
   // porque la numeración se asignó por fecha de creación.
@@ -90,6 +95,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [selected, setSelected] = useState<OrderView | null>(null)
+  const { getCobro, cobros, actualizado: cobrosActualizados, refresh: refreshCobros } = useCobrosPedidos([...orders.map(order => order.id), ...(selected ? [selected.id] : [])])
   // Brief: mismo bug que en Cotizaciones — list() ya no trae líneas (tope de 1.000 filas
   // de Supabase), así que abrir /pedidos/:id no puede reusar el objeto de `orders`.
   // selectedLoading solo gatea el modal de esqueleto mientras dura ese fetch por id.
@@ -242,6 +248,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     setAdvanceOpen(false)
     notify('Anticipo registrado')
     setAdvances(await cashService.getAdvancesForOrder(selected.id))
+    refreshCobros()
   }
   // Brief S-I: el mensaje distingue MISMA_PARTIDA (nada especial que avisar) de
   // PARTIDA_HIJA (una nueva entrega nació porque el pedido ya había salido parcialmente
@@ -253,6 +260,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       const resultado = await agregarLineasPedido({ pedidoId: selected.id, lineas: lineasJsonb, motivo: motivo || undefined })
       setAddItemsOpen(false)
       await load()
+      refreshCobros()
       notify(
         resultado.camino === 'PARTIDA_HIJA'
           ? `Se generó la Entrega ${resultado.entregaNumero ?? ''} — el pedido ya había salido parcialmente.`
@@ -306,12 +314,13 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       setReasonModal(null)
       setSelected(updated)
       await load()
+      refreshCobros()
       notify(action === 'cancel' ? 'Pedido anulado' : 'Pedido restaurado')
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo completar la acción')
     }
   }
-  return <FeatureShell eyebrow="OPERACIONES" title="Pedidos" subtitle={featureFlags.supabase ? "Pedidos confirmados desde el POS — despacho y estado se gestionan en el WMS" : "Reserva, preparación y despacho simulado"}>
+  return <FeatureShell className="orders-page" eyebrow="OPERACIONES" title="Pedidos" subtitle={featureFlags.supabase ? "Pedidos confirmados desde el POS — despacho y estado se gestionan en el WMS" : "Reserva, preparación y despacho simulado"}>
     {/* Brief P1: filtro de presentación por pedido.categoria — se compone con los filtros
         de abajo (estado/canal/búsqueda), no los reemplaza. */}
     <div className="pedidos-segmento-tabs">
@@ -329,10 +338,12 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     <FeatureToolbar query={query} onQuery={setQuery} placeholder="Buscar por pedido o cliente...">
       <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}><option value="all">Todos los estados</option>{['draft','confirmed','awaiting_stock','reserved','preparing','ready','dispatched','delivered','cancelled'].map((value) => <option key={value} value={value}>{statusLabel[value]}</option>)}</select>
       <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}><option value="all">Todos los canales</option>{Object.entries(channelNames).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
+      <select aria-label="Filtrar por cobro" value={paymentFilter} onChange={e => setPaymentFilter(e.target.value as typeof paymentFilter)}><option value="all">Todos los cobros</option>{(['pagado', 'parcial', 'por_verificar', 'pendiente', 'revisar', 'cancelado', 'sin_partida', 'sin_pendiente', 'no_aplica', 'no_disponible'] as EstadoCobroPedido[]).map(value => <option key={value} value={value}>{etiquetasCobro[value]}</option>)}</select>
     </FeatureToolbar>
-    {status === 'loading' ? <FeatureState type="skeleton" text="Cargando pedidos" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.length ? <FeatureState type={orders.length ? 'no-results' : 'empty'} text="No hay pedidos" /> : <div className="feature-table orders-table sticky-head">
-      <div className="table-head"><SortTh label="Nº" sortkey="number" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Cliente" sortkey="customerName" activeKey={sortKey} onToggle={toggleSort} /><span>Asunto</span><SortTh label="Canal" sortkey="channel" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Estado" sortkey="status" activeKey={sortKey} onToggle={toggleSort} /><span>Líneas</span><SortTh label="Total" sortkey="total" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Fecha" sortkey="createdAt" activeKey={sortKey} onToggle={toggleSort} /></div>
-      {filtered.map(({ order, total }) => {
+    <div className="order-payment-legend"><span><CheckCircle2 size={14} />Pagado = partidas saldadas con importes confirmados.</span><button type="button" onClick={refreshCobros}>Actualizar cobros</button>{cobrosActualizados && <small>Consultado {cobrosActualizados.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</small>}</div>
+    {status === 'loading' ? <FeatureState type="skeleton" text="Cargando pedidos" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.some(({ order }) => paymentFilter === 'all' || cobros?.get(order.id)?.estado === paymentFilter) ? <FeatureState type={orders.length ? 'no-results' : 'empty'} text={paymentFilter !== 'all' && !cobros ? 'Consultando cobros…' : 'No hay pedidos con estos filtros'} /> : <div className="feature-table orders-table sticky-head">
+      <div className="table-head"><SortTh label="Nº" sortkey="number" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Cliente" sortkey="customerName" activeKey={sortKey} onToggle={toggleSort} /><span>Asunto</span><SortTh label="Canal" sortkey="channel" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Estado" sortkey="status" activeKey={sortKey} onToggle={toggleSort} /><span>Cobro</span><SortTh label="Total" sortkey="total" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Fecha" sortkey="createdAt" activeKey={sortKey} onToggle={toggleSort} /></div>
+      {filtered.filter(({ order }) => paymentFilter === 'all' || cobros?.get(order.id)?.estado === paymentFilter).map(({ order, total }) => {
         // Nota del usuario (no es parte del brief original): resaltar pedidos anulados
         // (opacos, con X) y editados — más de una versión guardada — (amarillo, con lápiz)
         // para que salten a la vista en la grilla sin tener que abrir cada uno.
@@ -349,7 +360,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
           <span>{order.asunto || (order.sourceQuoteNumber ? `origen ${order.sourceQuoteNumber}` : '—')}</span>
           <span className="channel-chip">{channelNames[order.channel] ?? order.channel}</span>
           <span><span className={`status-chip ${statusChipClass(order.status)}`}>{statusLabel[order.status]}</span>{order.conditionPago && <small className="channel-chip">{condicionPagoLabel[order.conditionPago]}</small>}</span>
-          <span className="lines-unavailable" title="Abrí el pedido para ver el detalle de líneas">—</span>
+          <CobroPedidoBadge cobro={getCobro(order.id)} />
           <strong>{formatMoney(money(total))}</strong>
           <span>{new Date(order.createdAt).toLocaleDateString('es-BO')}</span>
         </article>
@@ -357,8 +368,10 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     </div>}
     {selectedLoading && <Modal title="Cargando pedido" onClose={() => navigate('/')}><FeatureState type="skeleton" text="Cargando pedido" /></Modal>}
     {selected && <Modal title={`Pedido ${selected.number}`} subtitle={selected.customerName} onClose={() => navigate('/')} wide className="commercial-modal product-detail-modal"><div className="modal-body order-detail">
+      <ResumenCobroPedido cobro={getCobro(selected.id)} />
+      <details className="cobro-traza-acordeon"><summary>Partidas saldadas y responsables de cobros</summary><DetalleCobroPedido pedidoId={selected.id} /></details>
       <div className="order-overview"><div><span>Total del pedido vigente</span><strong>{formatMoney(money(orderTotal(selected)))}</strong></div><div><span>Ítems del pedido vigente</span><strong>{selected.lines.filter((line) => !lineaInactiva(line.lineStatus)).length}</strong></div><div><span>Anticipos registrados</span><strong>{formatMoney(money(advances.reduce((sum, advance) => sum + advance.amountCents, 0)))}</strong></div></div>
-      <div className="panel-top-actions">{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && (orderBalance?.disponible ?? 0) > 0 && <button className="secondary-button credit-apply-button" disabled={!sessionId} onClick={() => setBalanceOpen(true)}><HandCoins /> Usar saldo a favor</button>}<button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" disabled={selected.status === 'cancelled' || !selected.lines.some((line) => !lineaInactiva(line.lineStatus))} title="Registro manual de cantidades y firmas de esta entrega" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={featureFlags.supabase && !sessionId} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button>{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && <button className="secondary-button" onClick={()=>setAddItemsOpen(true)}><PackagePlus /> Agregar ítems</button>}</div>
+      <div className="panel-top-actions">{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && (orderBalance?.disponible ?? 0) > 0 && <button className="secondary-button credit-apply-button" disabled={!sessionId} onClick={() => setBalanceOpen(true)}><HandCoins /> Usar saldo a favor</button>}<button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" disabled={selected.status === 'cancelled' || !selected.lines.some((line) => !lineaInactiva(line.lineStatus))} title="Registro manual de cantidades y firmas de esta entrega" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={readOnly || selected.status === 'cancelled' || (featureFlags.supabase && !sessionId)} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button>{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && <button className="secondary-button" onClick={()=>setAddItemsOpen(true)}><PackagePlus /> Agregar ítems</button>}</div>
       {(orderBalance?.aplicadoPedido ?? 0) > 0 && <div className="credit-payment-summary"><strong>Saldo a favor aplicado: Bs {orderBalance!.aplicadoPedido.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><span>Pendiente sin pagos en revisión: Bs {orderBalance!.pedidoPendiente.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>}<div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong>{statusLabel[selected.status]}</strong></div></div>
       {selected.conditionPago && <div className="autoria-row"><span className="channel-chip">{condicionPagoLabel[selected.conditionPago]}</span>{selected.medioPago && <span className="channel-chip">{metodoPagoLabel[selected.medioPago] ?? selected.medioPago}</span>}</div>}
       {/* Brief S3 Parte B: autoría — quién creó el pedido, y si nació de una conversión,

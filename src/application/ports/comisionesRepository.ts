@@ -27,6 +27,10 @@ export interface ComisionDevengoRow {
   // producto_id) y comisiona. Se congela junto con el resto en comision_registrar_pedido
   // / se completa en el backfill; no se recalcula recorriendo líneas en el cliente.
   tienePersonalizadoComisionable: boolean
+  cobroEstado?: string | null
+  partidasVigentes?: number | null
+  partidasSaldadas?: number | null
+  revisionMotivo?: string | null
 }
 
 // Brief Fase 2, 3.1: "qué falta para cobrar" — hermes.partida_abierta/pago tienen su

@@ -1,10 +1,18 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { OrderView } from '../../application/shared/models'
 import { OrdersPage } from './OrdersPage'
 import { CashSessionProvider } from '../../context/CashSessionContext'
 import { navigate } from '../../router/history'
+
+vi.mock('../../infrastructure/supabase/CobroPedido.supabase', () => ({
+  consultarDetalleCobroPedido: vi.fn().mockRejectedValue(new Error('Detalle de prueba sin activar')),
+  consultarCobrosPedidos: vi.fn().mockResolvedValue(new Map([
+    ['501', { estado: 'pagado', totalCents: 90000, aplicadoCents: 90000, enRevisionCents: 0, pendienteCents: 0, porCobrarCents: 0, partidas: 1 }],
+    ['503', { estado: 'por_verificar', totalCents: 50000, aplicadoCents: 0, enRevisionCents: 50000, pendienteCents: 50000, porCobrarCents: 0, partidas: 1 }],
+  ])),
+}))
 
 // Brief: mismo bug que en Cotizaciones — list() ya no trae líneas (tope de 1.000 filas
 // de Supabase a nivel de proyecto, que ningún .range() del cliente puede levantar), así
@@ -63,6 +71,24 @@ vi.mock('../../infrastructure/supabase/PendienteSyncHermesPagoRepository', () =>
 }))
 
 afterEach(cleanup)
+
+describe('OrdersPage — cobro visible y separado del estado de entrega', () => {
+  it('muestra y filtra el cobro de cada pedido sin marcar como pagado una propuesta', async () => {
+    window.history.pushState({}, '', '/')
+    render(<CashSessionProvider><OrdersPage notify={() => {}} /></CashSessionProvider>)
+    const first = (await screen.findByText('PED-2026-00501')).closest('article')!
+    const second = (await screen.findByText('PED-2026-00503')).closest('article')!
+    await waitFor(() => expect(within(first).getByText('Pagado')).toBeTruthy())
+    expect(within(second).getByText('Por verificar')).toBeTruthy()
+    expect(within(second).queryByText('Pagado')).toBeNull()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por cobro' }), { target: { value: 'pagado' } })
+    expect(screen.queryByText('PED-2026-00503')).toBeNull()
+    expect(screen.getByText('PED-2026-00501')).toBeTruthy()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por cobro' }), { target: { value: 'por_verificar' } })
+    expect(screen.queryByText('PED-2026-00501')).toBeNull()
+    expect(screen.getByText('PED-2026-00503')).toBeTruthy()
+  })
+})
 
 describe('OrdersPage — abrir por URL trae el pedido fresco', () => {
   it('/pedidos/501 muestra las líneas de getById, no las (vacías) de list()', async () => {

@@ -12,6 +12,8 @@ import { hoyLocal, sumarDiasIso } from '../../domain/common/fechas'
 import { Modal } from '../../components/Modal'
 import { coincideBusqueda } from '../../domain/customers/textSearch'
 import { buildCsv, downloadCsv } from '../../domain/common/csv'
+import { HistorialComision } from './HistorialComision'
+import { RevisarBaseComision } from './RevisarBaseComision'
 
 type Tab = 'mias' | 'equipo' | 'liquidar' | 'reglas' | 'vendedores'
 type SortKey = 'fecha' | 'monto' | 'estado'
@@ -30,11 +32,15 @@ const diasDesdeHoy = (isoFecha: string) => Math.round((new Date(`${isoFecha}T00:
 // comision_seguimiento (que trae saldo/vencimiento de hermes). Vive acá y no en el
 // backend porque es puro formato de presentación en español, no una regla de negocio.
 function labelSeguimiento(row: ComisionDevengoRow, seg: ComisionSeguimiento | undefined): string {
+  if (row.revisionMotivo) return row.revisionMotivo
   if (row.estado === 'LIQUIDADA') return row.liquidacionFecha ? `Liquidada el ${fecha(row.liquidacionFecha)}` : 'Liquidada'
   if (row.estado === 'DEVENGADA') return 'Devengada'
   if (row.estado === 'ANULADA') return 'Anulada'
   // POTENCIAL
   if (row.origen === 'VTD') return 'Pendiente'
+  if (row.cobroEstado === 'revisar') return 'Revisar cobro y vínculo de las partidas'
+  if (row.cobroEstado === 'por_verificar') return 'Pago registrado · falta verificación'
+  if (row.cobroEstado === 'sin_partida') return 'Sin partida en cartera'
   if (!seg || seg.partidas === 0) return 'Sin partida en cartera'
   if (seg.pendienteCents <= 0) return 'Cobrado 100% · procesando'
   if (seg.pendienteCents < seg.partidaTotalCents) {
@@ -79,8 +85,8 @@ function LineasDevengo({ devengoId }: { devengoId: string }) {
   </div>
 }
 
-function DevengoTable({ rows, showVendedor, nombrePorEmail, seguimiento }: {
-  rows: ComisionDevengoRow[]; showVendedor: boolean; nombrePorEmail: Record<string, string>; seguimiento: Record<string, ComisionSeguimiento>
+function DevengoTable({ rows, showVendedor, nombrePorEmail, seguimiento, puedeRevisar, onRevisada }: {
+  rows: ComisionDevengoRow[]; showVendedor: boolean; nombrePorEmail: Record<string, string>; seguimiento: Record<string, ComisionSeguimiento>; puedeRevisar: boolean; onRevisada: () => void
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('fecha')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -132,9 +138,14 @@ function DevengoTable({ rows, showVendedor, nombrePorEmail, seguimiento }: {
           <span>{row.documentoId}{row.tienePersonalizadoComisionable && <span title="Tiene líneas personalizadas que comisionan — conviene revisar antes de liquidar"><PenLine size={12} className="comision-icono-personalizado" /></span>}</span>
           <span>{row.clienteNombre ?? '—'}</span><span>{fecha(row.fecha)}</span><span>{bs(row.baseComisionableCents)}</span>
           <span>{pct(row.porcentajeBp)}</span><span>{bs(row.montoCents)}</span>
-          <span className="commission-status-cell"><b className={`commission-status state-${row.estado.toLowerCase()}`}>{({ POTENCIAL: 'Potencial', DEVENGADA: 'Devengada', LIQUIDADA: 'Liquidada', ANULADA: 'Anulada' })[row.estado]}</b><small>{labelSeguimiento(row, seguimiento[row.id])}</small></span>
+          <span className="commission-status-cell"><b className={`commission-status state-${row.estado.toLowerCase()}`}>{({ POTENCIAL: 'Potencial', DEVENGADA: 'Devengada', LIQUIDADA: 'Liquidada', ANULADA: 'Anulada' })[row.estado]}</b><small>{labelSeguimiento(row, seguimiento[row.id])}</small>{row.origen === 'PEDIDO' && row.partidasVigentes != null && row.partidasSaldadas != null && <small>{row.partidasSaldadas} de {row.partidasVigentes} partidas saldadas</small>}</span>
         </article>
-        {expandido === row.id && <LineasDevengo devengoId={row.id} />}
+        {expandido === row.id && <>
+          {row.origen === 'PEDIDO' && <p><a href={`/pedidos/${row.documentoId}`}>Ver partidas, cobros y responsables del pedido</a></p>}
+          <LineasDevengo devengoId={row.id} />
+          {puedeRevisar && row.revisionMotivo && ['POTENCIAL','DEVENGADA'].includes(row.estado) && <RevisarBaseComision row={row} onGuardado={onRevisada} />}
+          <HistorialComision key={`${row.id}-${row.estado}-${row.revisionMotivo}-${row.totalDocumentoCents}`} id={row.id} />
+        </>}
       </div>)}
     </div>
     <div className="pagination-bar"><span>Página {page} de {totalPages} · {sorted.length} registros</span>
@@ -290,6 +301,8 @@ function LiquidarTab({ notify, vendedores }: { notify: (message: string) => void
   const [form, setForm] = useState({ medioPago: '', referencia: '', comprobanteUrl: '', nota: '' })
   const [historial, setHistorial] = useState<ComisionLiquidacion[]>([])
   const [historialStatus, setHistorialStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [anulacion, setAnulacion] = useState<{ id: string; motivo: string } | null>(null)
+  const [errorAnulacion, setErrorAnulacion] = useState('')
 
   const cargarCola = (email: string) => {
     const request = ++queueRequest.current
@@ -321,12 +334,14 @@ function LiquidarTab({ notify, vendedores }: { notify: (message: string) => void
       notify('Liquidación registrada')
       setForm({ medioPago: '', referencia: '', comprobanteUrl: '', nota: '' })
       cargarCola(vendedorEmail); cargarHistorial()
-    } catch { notify('No se pudo registrar la liquidación') } finally { submitting.current = false; setSaving(false) }
+    } catch (error) { notify(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'No se pudo registrar la liquidación'); cargarCola(vendedorEmail) } finally { submitting.current = false; setSaving(false) }
   }
-  const anular = async (id: string) => {
-    if (!confirm('¿Anular esta liquidación? Sus devengos vuelven a la cola.')) return
-    try { await comisionesService.anularLiquidacion(id, 'Anulada desde Comisiones'); notify('Liquidación anulada'); cargarHistorial(); if (vendedorEmail) cargarCola(vendedorEmail) }
-    catch { notify('No se pudo anular') }
+  const anular = async () => {
+    if (!anulacion?.motivo.trim() || submitting.current) return
+    submitting.current = true; setSaving(true); setErrorAnulacion('')
+    try { await comisionesService.anularLiquidacion(anulacion.id, anulacion.motivo.trim()); setAnulacion(null); notify('Liquidación anulada. Se revisó el cobro actual de cada pedido.'); cargarHistorial(); if (vendedorEmail) cargarCola(vendedorEmail) }
+    catch (error) { setErrorAnulacion(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'No se pudo anular') }
+    finally { submitting.current = false; setSaving(false) }
   }
 
   return <>
@@ -361,10 +376,16 @@ function LiquidarTab({ notify, vendedores }: { notify: (message: string) => void
         <div className="table-head"><span>Vendedor</span><span>Fecha</span><span>Monto</span><span>Medio</span><span>Estado</span><span></span></div>
         {historial.map((l) => <article key={l.id}><span>{l.vendedorEmail}</span><span>{fecha(l.creadoEn.slice(0, 10))}</span><span>{bs(l.montoTotalCents)}</span><span>{l.medioPago ?? '—'}</span>
           <span className={`status-chip ${l.anuladoEn ? 'problem' : 'ok'}`}>{l.anuladoEn ? 'Anulada' : 'Vigente'}</span>
-          <span>{!l.anuladoEn && <button className="secondary-button" onClick={() => void anular(l.id)}>Anular</button>}</span>
+          <span>{!l.anuladoEn && <button className="secondary-button" disabled={saving} onClick={() => { setErrorAnulacion(''); setAnulacion({ id: l.id, motivo: '' }) }}>Anular</button>}{l.motivoAnulacion && <small>{l.motivoAnulacion} · {l.anuladoPor}</small>}</span>
         </article>)}
       </div>}
     </section>
+    {anulacion && <Modal title="Anular liquidación" onClose={() => { if (!saving) setAnulacion(null) }}>
+      <p>Se conserva el historial. Cada comisión se reevaluará según el cobro actual de sus partidas.</p>
+      <label>Motivo de anulación<textarea maxLength={2000} disabled={saving} value={anulacion.motivo} onChange={e => setAnulacion({ ...anulacion, motivo: e.target.value })} /></label>
+      {errorAnulacion && <p role="alert">{errorAnulacion}</p>}
+      <div className="modal-actions"><button disabled={saving} onClick={() => setAnulacion(null)}>Volver</button><button className="primary-button" disabled={saving || !anulacion.motivo.trim()} onClick={() => void anular()}>{saving ? 'Registrando…' : 'Confirmar anulación'}</button></div>
+    </Modal>}
   </>
 }
 
@@ -452,9 +473,9 @@ export function ComisionesPage({ notify, vendedorEmail, esGerente }: { notify: (
         <label className="reports-date-label"><input aria-label="Buscar cliente, documento o vendedor" placeholder="Cliente, documento o vendedor…" value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)} /></label>
         <button className="secondary-button" disabled={status === 'loading'} onClick={refresh}><RefreshCw size={14} /> Refrescar</button>
       </div>
-      {status === 'loading' ? <FeatureState type="skeleton" text="Cargando comisiones" /> : status === 'error' ? <FeatureState type="error" text={from && to && from <= to ? "No se pudieron cargar las comisiones" : "Revisa las fechas: Desde debe ser anterior o igual a Hasta"} /> : !rowsFiltradas.length ? <FeatureState type="empty" text="Sin comisiones para los filtros seleccionados" /> : tab === 'mias' ? <DevengoTable rows={rowsFiltradas} showVendedor={false} nombrePorEmail={nombrePorEmail} seguimiento={seguimiento} /> : <>
+      {status === 'loading' ? <FeatureState type="skeleton" text="Cargando comisiones" /> : status === 'error' ? <FeatureState type="error" text={from && to && from <= to ? "No se pudieron cargar las comisiones" : "Revisa las fechas: Desde debe ser anterior o igual a Hasta"} /> : !rowsFiltradas.length ? <FeatureState type="empty" text="Sin comisiones para los filtros seleccionados" /> : tab === 'mias' ? <DevengoTable rows={rowsFiltradas} showVendedor={false} nombrePorEmail={nombrePorEmail} seguimiento={seguimiento} puedeRevisar={esGerente} onRevisada={refresh} /> : <>
         <EquipoTotales rows={rowsFiltradas} nombrePorEmail={nombrePorEmail} />
-        <DevengoTable rows={rowsFiltradas} showVendedor nombrePorEmail={nombrePorEmail} seguimiento={seguimiento} />
+        <DevengoTable rows={rowsFiltradas} showVendedor nombrePorEmail={nombrePorEmail} seguimiento={seguimiento} puedeRevisar={esGerente} onRevisada={refresh} />
       </>}
     </>}
     {tab === 'liquidar' && esGerente && <LiquidarTab notify={notify} vendedores={vendedores} />}
