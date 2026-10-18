@@ -14,13 +14,14 @@ import { coincideBusqueda } from '../../domain/customers/textSearch'
 import { buildCsv, downloadCsv } from '../../domain/common/csv'
 import { HistorialComision } from './HistorialComision'
 import { RevisarBaseComision } from './RevisarBaseComision'
+import { fechaCobro } from '../../domain/orders/detalleCobro'
 
 type Tab = 'mias' | 'equipo' | 'liquidar' | 'reglas' | 'vendedores'
 type SortKey = 'fecha' | 'monto' | 'estado'
 const PAGE_SIZE = 25
 
 const bs = (cents: number) => formatMoney(money(cents))
-const fecha = (value: string) => new Date(`${value}T00:00:00`).toLocaleDateString('es-BO')
+const fecha = (value: string) => fechaCobro(value, true)
 // Fase 2, 3.4: el cociente monto÷base se corre por el redondeo a centavos por documento
 // (0,99%–1,05% en vez de 1%) — redondear la vista a 1 decimal alcanza mientras todas las
 // reglas estén al 1%; no vale la pena mostrar el porcentaje "de la regla" por separado
@@ -374,7 +375,7 @@ function LiquidarTab({ notify, vendedores }: { notify: (message: string) => void
       <header><h2>Historial de liquidaciones</h2></header>
       {historialStatus === 'loading' ? <FeatureState type="skeleton" text="Cargando historial" /> : historialStatus === 'error' ? <FeatureState type="error" text="No se pudo cargar" /> : !historial.length ? <FeatureState type="empty" text="Todavía no se registraron liquidaciones" /> : <div className="feature-table reports-table commission-history-table">
         <div className="table-head"><span>Vendedor</span><span>Fecha</span><span>Monto</span><span>Medio</span><span>Estado</span><span></span></div>
-        {historial.map((l) => <article key={l.id}><span>{l.vendedorEmail}</span><span>{fecha(l.creadoEn.slice(0, 10))}</span><span>{bs(l.montoTotalCents)}</span><span>{l.medioPago ?? '—'}</span>
+        {historial.map((l) => <article key={l.id}><span>{l.vendedorEmail}</span><span>{fecha(l.creadoEn)}</span><span>{bs(l.montoTotalCents)}</span><span>{l.medioPago ?? '—'}</span>
           <span className={`status-chip ${l.anuladoEn ? 'problem' : 'ok'}`}>{l.anuladoEn ? 'Anulada' : 'Vigente'}</span>
           <span>{!l.anuladoEn && <button className="secondary-button" disabled={saving} onClick={() => { setErrorAnulacion(''); setAnulacion({ id: l.id, motivo: '' }) }}>Anular</button>}{l.motivoAnulacion && <small>{l.motivoAnulacion} · {l.anuladoPor}</small>}</span>
         </article>)}

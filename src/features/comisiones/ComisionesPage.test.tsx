@@ -40,4 +40,22 @@ describe('Comisiones y cobro compartido',()=>{
   await screen.findByRole('button',{name:'Anular'})
   expect(mocks.anular).toHaveBeenCalledWith('7','Pago revertido')
  })
+ it('permite revisar una base modificada con el total actual y motivo',async()=>{
+  mocks.rows.mockResolvedValue([{...row,revisionMotivo:'El importe del pedido cambió.'}])
+  mocks.rpc.mockImplementation((name:string)=>Promise.resolve(name==='consultar_detalle_cobro_pedido'?{data:{pedido:{id:701,numero:'701',estado:'ABIERTO',total:100},resumen:{vigentes:0,saldadas:0,anuladas:0},partidas:[],pagos:[],saldos:[],historial:[],historial_total:0,siguiente:null,captura_desde:null},error:null}:{data:[],error:null}))
+  render(<ComisionesPage notify={vi.fn()} vendedorEmail={row.vendedorEmail} esGerente />)
+  fireEvent.click(await screen.findByRole('button',{name:'Ver productos de 701'}))
+  fireEvent.click(await screen.findByRole('button',{name:'Revisar base de comisión'}))
+  fireEvent.change(await screen.findByLabelText('Motivo de la revisión'),{target:{value:'Revisadas las líneas vigentes'}})
+  const boton=screen.getByRole('button',{name:'Guardar revisión'}) as HTMLButtonElement
+  await vi.waitFor(()=>expect(boton.disabled).toBe(false))
+  fireEvent.click(boton)
+  await vi.waitFor(()=>expect(mocks.rpc).toHaveBeenCalledWith('comision_revisar_base',expect.objectContaining({p_devengo_id:1,p_total_revisado:100,p_motivo:'Revisadas las líneas vigentes'})))
+ })
+ it('muestra correctamente la fecha de una liquidación con timestamp',async()=>{
+  mocks.rows.mockResolvedValue([{...row,estado:'LIQUIDADA',liquidacionFecha:'2026-10-18T01:00:00Z'}])
+  render(<ComisionesPage notify={vi.fn()} vendedorEmail={row.vendedorEmail} esGerente />)
+  expect(await screen.findByText(/Liquidada el/)).toBeTruthy()
+  expect(screen.queryByText(/Invalid Date/)).toBeNull()
+ })
 })
