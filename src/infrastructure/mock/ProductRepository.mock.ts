@@ -1,5 +1,5 @@
 import type { ProductRepository, Page, PageRequest } from '../../application/ports/repositories'
-import type { Product } from '../../types'
+import type { Product, SalesChannel } from '../../types'
 import { products } from '../../data/products'
 import { cleanProductQuery, isExactProductCode, matchesProductQuery } from '../../domain/catalog/productSearch'
 
@@ -76,9 +76,10 @@ export const getStockBySucursalBatch = async (
 
 // Mock seeds have no presentacion concept — degrade gracefully to a single synthetic
 // base presentation so the UI's presentation selector always has at least one option.
-export const listPresentations = async (productId: number): Promise<Array<{ id: number; nombre: string; factorUnidadBase: number; esBase: boolean }>> => {
+export const listPresentations = async (productId: number): Promise<Array<{ id: number; nombre: string; factorUnidadBase: number; esBase: boolean; precios: Record<SalesChannel, number | null>; tienePrecioPropio: boolean }>> => {
   void productId
-  return [{ id: 0, nombre: 'Unidad', factorUnidadBase: 1, esBase: true }]
+  // Sin precios resueltos (null): los consumidores caen al cálculo precio base × factor.
+  return [{ id: 0, nombre: 'Unidad', factorUnidadBase: 1, esBase: true, precios: { retail: null, mayoreo: null, institucional: null, corporativo: null }, tienePrecioPropio: false }]
 }
 
 // TAREA 2 (Tanda 3) — el mock no tiene un reporte de ventas real (no hay v_reporte_
