@@ -47,6 +47,7 @@ import '@fontsource-variable/manrope'
 import './styles/cash-workspace.css'
 import './styles/pos-piso.css'
 import './styles/pos-caja-pedido-vendedor.css'
+import './styles/pos-carrito-ligero.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

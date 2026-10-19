@@ -1,4 +1,4 @@
-import { ChevronDown, CircleUserRound, FileText, HandCoins, Info, Pause, ReceiptText, RotateCcw, Save, ShoppingCart, Sparkles, Truck, Warehouse } from 'lucide-react'
+import { ChevronDown, FileText, HandCoins, Info, MoreHorizontal, Pause, ReceiptText, RotateCcw, Save, ShoppingCart, Sparkles, Truck, Warehouse } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { usePos, type CartCustomer } from '../context/PosContext'
 import { useCajaAlmacen } from '../context/CajaAlmacenContext'
@@ -69,13 +69,9 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   const [editing, setEditing] = useState<CartItemType | null>(null)
   const editViaKeyboard = useRef(false)
   const [customItemOpen, setCustomItemOpen] = useState(false)
-  // TAREA C (Tanda 5): colapso del cromo — cliente, encabezado de la lista y el
-  // desglose Subtotal/Descuento. Reemplaza el toggle más chico de "plegar
-  // resumen" de la Tanda 3 (mismo botón, alcance más amplio). localStorage (no
-  // sessionStorage): "que no haya que apretarlo cada venta" — sobrevive a un F5
-  // y a cerrar la pestaña, a diferencia del resto de las preferencias de UI de
-  // este panel.
-  const [chromeCollapsed, setChromeCollapsed] = useState(() => localStorage.getItem('roari-cart-chrome-collapsed') === '1')
+  // La lista ligera abre con el desglose plegado. Se respeta la preferencia
+  // guardada; cliente y vendedor siguen visibles y accesibles en ambos estados.
+  const [chromeCollapsed, setChromeCollapsed] = useState(() => localStorage.getItem('roari-cart-chrome-collapsed') !== '0')
   useEffect(() => { localStorage.setItem('roari-cart-chrome-collapsed', chromeCollapsed ? '1' : '0') }, [chromeCollapsed])
   const [sourceInfo, setSourceInfo] = useState<'pedido' | 'vtd' | null>(null)
   const sourceDetailsId = useId()
@@ -463,37 +459,50 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   }
   const quitarVtdCobro = (ventaId: string) => { if (warehouseLocked) { notify('Resuelve el rechazo desde la operación con Almacén.'); return }; setVtdCobroSeleccionadas(prev => prev.filter(v => v.ventaId !== ventaId)) }
   const modeLabel = mode === 'traslado' ? 'Traslado' : mode === 'ventaDirecta' ? 'Venta directa' : 'Venta'
-  return <aside className={`cart-panel ${creditorCustomer ? 'cart-acreedor' : ''}`}><CajaAlmacenPanel />{borradorPendiente && !warehouseLocked && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}<div className="cart-header"><div><span>OPERACIÓN ACTUAL</span><h2>{modeLabel} <b>#{operationNumber}</b></h2></div><div className="modo-group" role="group" aria-label="Modo de operación"><button type="button" data-pos-action="mode-venta" className={mode === 'venta' ? 'active' : ''} onClick={() => setMode('venta')} title="Venta"><ShoppingCart /></button><button type="button" data-pos-action="mode-traslado" className={mode === 'traslado' ? 'active' : ''} disabled={hasDocuments} onClick={() => setMode('traslado')} title="Traslado"><Truck /></button>{featureFlags.ventaDirectaAlmacen && <button type="button" data-pos-action="mode-venta-directa" className={mode === 'ventaDirecta' ? 'active' : ''} disabled={hasDocuments} onClick={() => setMode('ventaDirecta')} title="Venta directa de almacén"><Warehouse /></button>}</div>{puedeGuardarBorrador && <button type="button" className="guardar-borrador-button" title="Guardar borrador — no interrumpe la operación en curso" onClick={() => setGuardarBorradorOpen(true)}><Save /></button>}{mode === 'venta' && <span className="channel-badge">{channelNames[channel]}</span>}</div><div className="operation-meta"><span>{new Date().toLocaleDateString('es-BO', { day: '2-digit', month: 'short' })}</span><i /> <span>{new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</span></div>
+  return <aside className={`cart-panel ${mode !== 'traslado' ? 'cart-panel-light' : ''} ${creditorCustomer ? 'cart-acreedor' : ''}`}>
+    <CajaAlmacenPanel />
+    {borradorPendiente && !warehouseLocked && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}
+    <div className="cart-header">
+      <div><span>OPERACIÓN ACTUAL</span><h2>{modeLabel} <b>#{operationNumber}</b></h2></div>
+      {mode === 'venta' && <span className="channel-badge">{channelNames[channel]}</span>}
+      <details className="cart-operation-menu">
+        <summary aria-label="Cambiar modo de operación" title="Cambiar modo de operación"><MoreHorizontal /></summary>
+        <div className="modo-group" role="group" aria-label="Modo de operación" onClick={event => { if ((event.target as HTMLElement).closest('button:not(:disabled)')) event.currentTarget.closest('details')?.removeAttribute('open') }}>
+          <button type="button" data-pos-action="mode-venta" className={mode === 'venta' ? 'active' : ''} onClick={() => setMode('venta')} title="Venta"><ShoppingCart /><span>Venta</span></button>
+          <button type="button" data-pos-action="mode-traslado" className={mode === 'traslado' ? 'active' : ''} disabled={hasDocuments} onClick={() => setMode('traslado')} title="Traslado"><Truck /><span>Traslado</span></button>
+          {featureFlags.ventaDirectaAlmacen && <button type="button" data-pos-action="mode-venta-directa" className={mode === 'ventaDirecta' ? 'active' : ''} disabled={hasDocuments} onClick={() => setMode('ventaDirecta')} aria-label="Venta directa de almacén" title="Venta directa de almacén"><Warehouse /><span>Venta directa</span></button>}
+        </div>
+      </details>
+    </div>
     {creditorCustomer && <div className="credit-cart-notice" role="status"><HandCoins /><div><strong>Cliente con saldo a favor</strong><span>Confirmado: Bs {money(Math.abs(customerBalance!.saldoConfirmado))}</span><small>Disponible para esta venta: Bs {money(customerBalance!.disponible)}</small></div></div>}
     {mode === 'traslado'
       ? <TrasladoTargetPicker origenId={trasladoOrigenId} destinoId={trasladoDestinoId} isAdmin={isAdmin} onInvertir={() => setTrasladoDireccion(trasladoDestinoId, trasladoOrigenId)} />
       : mode === 'ventaDirecta'
         ? <><VtdUbicacionPicker value={vtdUbicacionId} onChange={setVtdUbicacionId} />{almacen.managed ? <p className="cash-closed-notice">Solicita el material y continúa con la VTA en esta misma operación. Cobrarás todo junto.</p> : <div className="vtd-modo-cobro" role="group" aria-label="Modo de cobro"><button type="button" className={vtdPrecobrado ? 'active' : ''} onClick={() => setVtdPrecobrado(true)}>Cobrar ahora</button><button type="button" className={!vtdPrecobrado ? 'active' : ''} onClick={() => setVtdPrecobrado(false)}>Cobrar después en caja</button></div>}</>
-        : chromeCollapsed
-          // TAREA C, regla 1: el cliente se COLAPSA, nunca se oculta — define el precio
-          // del canal y ahora también el origen por defecto (Tanda 4). Perderlo de vista
-          // factura al canal/precio equivocado sin que nadie lo note hasta auditar.
-          ? <div className="customer-select-collapsed"><CircleUserRound size={13} /><span>Cliente: <strong>{customerLabel}</strong></span></div>
-          : <>{<CustomerPicker channel={channel} notify={notify} />}{customer && <SaldoBadge clienteId={customer.id} />}</>}
+        : <><CustomerPicker channel={channel} notify={notify} />{customer && <SaldoBadge clienteId={customer.id} />}</>}
     {mode === 'venta' && <>
+      <details className="cart-seller-details">
+        <summary>Vendedor: <strong>{pedidoEnCarrito?.pedido.vendedor ?? vendedores.find(v => v.id === vendedorId)?.nombre ?? (vendedorId ? 'Asignado' : 'Sin asignar')}</strong><ChevronDown aria-hidden="true" /></summary>
+        <div className="cart-seller-field"><label>Venta realizada por{pedidoEnCarrito ? <strong>{pedidoEnCarrito.pedido.vendedor}</strong> : <select aria-label="Venta realizada por" disabled={warehousePaid} value={vendedorId ?? ''} onChange={e => setVendedorId(e.target.value || undefined)}><option value="">Sin vendedor asignado</option>{vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}</select>}</label></div>
+      </details>
+      {sellerError && <small className="cart-seller-error" role="alert">{sellerError} <button type="button" onClick={() => setSellerRetry(n => n+1)}>Reintentar</button></small>}
       <section className="cart-source-controls" aria-label="Pedidos y VTD" onKeyDown={event => { if (event.key === 'Escape') setSourceInfo(null) }}>
         <div className="cart-source-actions">
+          <span className="cart-product-count">{cart.length} {cart.length === 1 ? 'producto' : 'productos'}</span>
           {showPedidoAction && <div className="cart-source-entry">
-            <button className="cart-source-action" type="button" data-pos-action="pedido-vendedor" disabled={!sessionId} onClick={() => { setSourceInfo(null); onOpenPedidosVendedor?.() }} aria-label={`${pedidoEnCarrito ? 'Revisar pedido' : '+ Pedido de vendedor'}${pedidosVendedorEnEspera > 0 ? `, ${pedidosVendedorEnEspera} en espera` : ''}`} title={pedidoEnCarrito ? `Revisar ${pedidoEnCarrito.pedido.codigo}` : 'Pedido de vendedor'}><ReceiptText aria-hidden="true" />{pedidosVendedorEnEspera > 0 && <span className="cart-source-count" aria-label={`${pedidosVendedorEnEspera} en espera`}>{pedidosVendedorEnEspera}</span>}</button>
+            <button className="cart-source-action" type="button" data-pos-action="pedido-vendedor" disabled={!sessionId} onClick={() => { setSourceInfo(null); onOpenPedidosVendedor?.() }} aria-label={`${pedidoEnCarrito ? 'Revisar pedido' : '+ Pedido de vendedor'}${pedidosVendedorEnEspera > 0 ? `, ${pedidosVendedorEnEspera} en espera` : ''}`} title={pedidoEnCarrito ? `Revisar ${pedidoEnCarrito.pedido.codigo}` : 'Pedido de vendedor'}><span>{pedidoEnCarrito ? 'Pedido' : '+ Pedido'}</span>{pedidosVendedorEnEspera > 0 && <span className="cart-source-count" aria-label={`${pedidosVendedorEnEspera} en espera`}>{pedidosVendedorEnEspera}</span>}</button>
             <button className="cart-source-info" type="button" aria-label="Información sobre pedido de vendedor" title="Información sobre pedido de vendedor" aria-expanded={sourceInfo === 'pedido'} aria-controls={`${sourceDetailsId}-pedido`} onClick={() => setSourceInfo(current => current === 'pedido' ? null : 'pedido')}><Info aria-hidden="true" /></button>
           </div>}
           <div className="cart-source-entry">
-            <button className="cart-source-action" type="button" data-pos-action="agregar-vtd" disabled={!sessionId} onClick={() => { setSourceInfo(null); setVtdCobroPickerOpen(true) }} aria-label="+ Agregar VTD" title="Agregar VTD"><Warehouse aria-hidden="true" /></button>
+            <button className="cart-source-action" type="button" data-pos-action="agregar-vtd" disabled={!sessionId} onClick={() => { setSourceInfo(null); setVtdCobroPickerOpen(true) }} aria-label="+ Agregar VTD" title="Agregar VTD"><span>+ VTD</span></button>
             <button className="cart-source-info" type="button" aria-label="Información sobre agregar VTD" title="Información sobre agregar VTD" aria-expanded={sourceInfo === 'vtd'} aria-controls={`${sourceDetailsId}-vtd`} onClick={() => setSourceInfo(current => current === 'vtd' ? null : 'vtd')}><Info aria-hidden="true" /></button>
           </div>
         </div>
         {showPedidoAction && <div className="cart-source-details" id={`${sourceDetailsId}-pedido`} hidden={sourceInfo !== 'pedido'}><p><strong>Pedido de vendedor</strong>{pedidoEnCarrito ? `Revisa los productos de ${pedidoEnCarrito.pedido.codigo}.` : 'Abre un pedido de vendedor, verifica sus productos y añádelos al carrito para cobrarlos.'}</p></div>}
         <div className="cart-source-details" id={`${sourceDetailsId}-vtd`} hidden={sourceInfo !== 'vtd'}><p><strong>Agregar VTD</strong>Selecciona una venta directa pendiente de pago y cóbrala junto a los productos de esta venta.</p></div>
       </section>
-      <div className="cart-seller-field"><label>Venta realizada por{pedidoEnCarrito ? <strong>{pedidoEnCarrito.pedido.vendedor}</strong> : <select aria-label="Venta realizada por" disabled={warehousePaid} value={vendedorId ?? ''} onChange={e => setVendedorId(e.target.value || undefined)}><option value="">Sin vendedor asignado</option>{vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}</select>}</label>{sellerError && <small role="alert">{sellerError} <button type="button" onClick={() => setSellerRetry(n => n+1)}>Reintentar</button></small>}</div>
-      <button type="button" data-pos-action="custom-item" className="custom-item-add-link" disabled={warehousePaid} onClick={() => setCustomItemOpen(true)}>+ Ítem personalizado</button>
     </>}
-    {!chromeCollapsed && <div className="cart-list-heading"><span>{mode === 'traslado' ? 'Detalle del traslado' : mode === 'ventaDirecta' ? 'Detalle de la venta directa' : 'Detalle de venta'}</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b></div>}<div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={(viaKeyboard) => { editViaKeyboard.current = viaKeyboard; setEditing(item) }} originStock={mode === 'venta' ? originStock[item.id] : undefined} onSetOrigin={mode === 'venta' ? (loc) => updateItem(item.id, { ubicacion: loc, origenManual: true }) : undefined} onRequestTransfer={mode === 'venta' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} trasladoDisponible={mode === 'traslado' ? trasladoDisponibleFor(item.id) : undefined} />) : !hasDocuments ? <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar {mode === 'traslado' ? 'un traslado' : mode === 'ventaDirecta' ? 'una venta directa' : 'una venta'}.</p></div> : null}
+    {mode !== 'venta' && <div className="cart-list-heading"><span>{mode === 'traslado' ? 'Detalle del traslado' : 'Detalle de la venta directa'}</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b></div>}<div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={(viaKeyboard) => { editViaKeyboard.current = viaKeyboard; setEditing(item) }} originStock={mode === 'venta' ? originStock[item.id] : undefined} onSetOrigin={mode === 'venta' ? (loc) => updateItem(item.id, { ubicacion: loc, origenManual: true }) : undefined} onRequestTransfer={mode === 'venta' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} trasladoDisponible={mode === 'traslado' ? trasladoDisponibleFor(item.id) : undefined} />) : !hasDocuments ? <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar {mode === 'traslado' ? 'un traslado' : mode === 'ventaDirecta' ? 'una venta directa' : 'una venta'}.</p></div> : null}
       {mode === 'venta' && pedidoEnCarrito && <section className="cart-pedido-group"><header><strong>{pedidoEnCarrito.pedido.codigo}</strong><button type="button" onClick={onOpenPedidosVendedor}>Revisar</button></header>{verified.map(l => <div className="checkout-pedido-line" key={l.key}><span><strong>{l.nombre}</strong><small>✓ Verificado · {l.cantidad} {l.presentacionNombre ?? l.unidadMedida ?? 'unidades'}</small></span><b>Bs {money(totalLineaCents(l)/100)}</b></div>)}{pedidoBloqueo && <p role="status">{pedidoBloqueo}</p>}</section>}
       {mode === 'venta' && vtdCobroSeleccionadas.map((v) => (
         <div className="cart-line vtd-cobro-line" key={v.ventaId}>
@@ -502,6 +511,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
           <button type="button" aria-label={`Quitar ${v.numero}`} disabled={warehouseLocked} onClick={() => quitarVtdCobro(v.ventaId)}>×</button>
         </div>
       ))}
+      {mode === 'venta' && <button type="button" data-pos-action="custom-item" className="custom-item-add-link" disabled={warehousePaid} onClick={() => setCustomItemOpen(true)}>+ Ítem personalizado</button>}
     </div>
     {customItemOpen && <CustomItemModal onClose={() => setCustomItemOpen(false)} onAdd={(input) => { addCustomItem(input); setCustomItemOpen(false) }} />}
     {mode === 'traslado' ? (
@@ -511,7 +521,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       </div>
     ) : (
       <div className="cart-summary">
-        <div className={`cart-summary-breakdown ${breakdownCollapsed ? 'collapsed' : ''}`}>
+        <div className="cart-summary-breakdown" hidden={breakdownCollapsed}>
           <div className="cart-summary-breakdown-inner">
             <div><span>Subtotal de mostrador</span><strong>Bs {money(subtotal)}</strong></div>{mode === 'venta' && hasDocuments && <div><span>Pedido / VTD</span><strong>Bs {money(checkoutTotal-total)}</strong></div>}
             <div className="discount-line"><label>Descuento</label><span>Bs <NumberField ariaLabel="Descuento general" min={0} max={subtotal} placeholder="0.00" value={discount} onCommit={setDiscount} /></span></div>
@@ -523,7 +533,8 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
           <button
             type="button"
             className="cart-chrome-toggle"
-            aria-label={chromeCollapsed ? 'Expandir cliente y resumen' : 'Colapsar cliente y resumen'}
+            aria-label={chromeCollapsed ? 'Ver desglose y descuento' : 'Ocultar desglose'}
+            title={chromeCollapsed ? 'Ver desglose y descuento' : 'Ocultar desglose'}
             aria-pressed={chromeCollapsed}
             onClick={() => setChromeCollapsed((v) => !v)}
           >
@@ -542,14 +553,33 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       {vtdRetailError && <p className="cash-closed-notice">{vtdRetailError} <button type="button" className="vtd-retail-error-link" onClick={openDraft}>Crear cotización</button></p>}
       {vtdError && <p className="cash-closed-notice">{vtdError}</p>}
       <button data-pos-action="abrir-venta-directa" className="pay-button" disabled={!cart.length || vtdCashClosed || vtdUbicacionId == null || vtdSubmitting || almacen.busy} onClick={() => almacen.managed ? void solicitarAlmacen() : vtdPrecobrado ? setVtdPaymentOpen(true) : void abrirVentaDirecta()}><Warehouse /> {almacen.managed ? (almacen.busy ? 'Solicitando…' : 'Solicitar a Almacén y continuar VTA') : vtdSubmitting ? 'Abriendo…' : vtdPrecobrado ? 'Cobrar y abrir' : 'Abrir venta directa'} <span>Bs {money(total)}</span></button>
-    </>) : (channel === 'retail' || hasDocuments) ? <><div className="secondary-actions secondary-actions-3"><button data-pos-action="suspend" onClick={suspend} disabled={warehouseLocked || !cart.length || hasDocuments}><Pause /> <span className="secondary-action-label">Suspender</span></button><button onClick={() => setTicketOpen(true)} disabled={warehouseLocked || !cart.length || hasDocuments}><ReceiptText /> <span className="secondary-action-label">Ticket</span></button><button onClick={() => setReviewOpen(true)} disabled={warehouseLocked || !cart.length || hasDocuments}><Sparkles /> <span className="secondary-action-label">Revisar</span></button></div>{cashClosed && <button className="cash-closed-notice" onClick={onGoToCash}>Caja cerrada — abrí la caja para poder cobrar</button>}{customerMismatch && <p className="cash-closed-notice">Selecciona el mismo cliente de la VTD para cobrar todo junto.</p>}{pedidoBloqueo && <p className="cash-closed-notice">{pedidoBloqueo}</p>}{insufficientOrigin && <p className="cash-closed-notice">{insufficientOriginBannerText}</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={warehousePaid || almacen.busy || !hasCheckout || cashClosed || insufficientOrigin || unpricedLine || !!pedidoBloqueo || customerMismatch} onClick={() => setPaymentOpen(true)}><HandCoins /> {hasDocuments ? "Cobrar todo" : "Cobrar"} <span>Bs {money(checkoutTotal)}</span></button></> : <>
+    </>) : (channel === 'retail' || hasDocuments) ? <>
+      {cashClosed && <button className="cash-closed-notice" onClick={onGoToCash}>Caja cerrada — abrí la caja para poder cobrar</button>}
+      {customerMismatch && <p className="cash-closed-notice">Selecciona el mismo cliente de la VTD para cobrar todo junto.</p>}
+      {pedidoBloqueo && <p className="cash-closed-notice">{pedidoBloqueo}</p>}
+      {insufficientOrigin && <p className="cash-closed-notice">{insufficientOriginBannerText}</p>}
+      {unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}
+      <button data-pos-action="pay" className="pay-button" disabled={warehousePaid || almacen.busy || !hasCheckout || cashClosed || insufficientOrigin || unpricedLine || !!pedidoBloqueo || customerMismatch} onClick={() => setPaymentOpen(true)}><HandCoins /> {hasDocuments ? 'Cobrar todo' : 'Cobrar'} <kbd>F9</kbd></button>
+    </> : <>
       {/* TAREA 3 (Tanda 3): "Cotización" y "Crear pedido" llamaban las dos a openDraft()
           sin ningún argumento que las diferenciara — hacían exactamente lo mismo. Ambas
           terminan abriendo el mismo editor de cotización (onOpenDraftOrder siempre navega
           a Cotizaciones), así que "Crear pedido" prometía algo que no hacía. Se decidió
           dejar un solo botón acá; convertir una cotización en pedido ya es un paso propio
           del editor de Cotizaciones (convertir_cotizacion_a_pedido). */}
-      <button className="draft-button" disabled={!cart.length} onClick={openDraft}><FileText /> Guardar borrador</button><div className="secondary-actions"><button disabled={!cart.length} onClick={openDraft}>Cotización</button></div>{channel === 'mayoreo' && insufficientOrigin && <p className="cash-closed-notice">Hay líneas sin stock suficiente en la ubicación elegida — corrígelas para poder cobrar.</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || (channel === 'mayoreo' && (unpricedLine || insufficientOrigin))} onClick={() => channel === 'mayoreo' ? setPaymentOpen(true) : setAnticipoOpen(true)}><HandCoins /> {channel === 'mayoreo' ? 'Cobrar' : 'Registrar anticipo'} <span>Bs {money(total)}</span></button></>}</div>
+      <button className="draft-button" disabled={!cart.length} onClick={openDraft}><FileText /> Guardar borrador</button><div className="secondary-actions"><button disabled={!cart.length} onClick={openDraft}>Cotización</button></div>{channel === 'mayoreo' && insufficientOrigin && <p className="cash-closed-notice">Hay líneas sin stock suficiente en la ubicación elegida — corrígelas para poder cobrar.</p>}{unpricedLine && <p className="cash-closed-notice">{unpricedBannerText}</p>}<button data-pos-action="pay" className="pay-button" disabled={!cart.length || (channel === 'mayoreo' && (unpricedLine || insufficientOrigin))} onClick={() => channel === 'mayoreo' ? setPaymentOpen(true) : setAnticipoOpen(true)}><HandCoins /> {channel === 'mayoreo' ? 'Cobrar' : 'Registrar anticipo'} <kbd>F9</kbd></button></>}
+      {(puedeGuardarBorrador || (mode === 'venta' && (channel === 'retail' || hasDocuments))) && <details className="cart-more-actions">
+        <summary>Más acciones<MoreHorizontal aria-hidden="true" /></summary>
+        <div className="cart-more-actions-content" onClick={event => { if ((event.target as HTMLElement).closest('button:not(:disabled)')) event.currentTarget.closest('details')?.removeAttribute('open') }}>
+          {mode === 'venta' && (channel === 'retail' || hasDocuments) && <>
+            <button data-pos-action="suspend" onClick={suspend} disabled={warehouseLocked || !cart.length || hasDocuments}><Pause />Suspender <kbd>F8</kbd></button>
+            <button onClick={() => setTicketOpen(true)} disabled={warehouseLocked || !cart.length || hasDocuments}><ReceiptText />Ticket previo</button>
+            <button onClick={() => setReviewOpen(true)} disabled={warehouseLocked || !cart.length || hasDocuments}><Sparkles />Revisar venta</button>
+          </>}
+          {puedeGuardarBorrador && <button type="button" disabled={warehousePaid} title="No interrumpe la operación en curso" onClick={() => setGuardarBorradorOpen(true)}><Save />Guardar borrador</button>}
+        </div>
+      </details>}
+    </div>
     {editing && <EditCartItemModal item={editing} onClose={() => { setEditing(null); if (editViaKeyboard.current) { editViaKeyboard.current = false; requestAnimationFrame(focusPosSearch) } }} />}{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} onCheckoutSuccess={() => invalidateOriginStock()} />}{ticketOpen && <TicketPreviewModal onClose={() => setTicketOpen(false)} />}
     {vtdPaymentOpen && <VtdPaymentModal total={total} submitting={vtdSubmitting} error={vtdError} onClose={() => setVtdPaymentOpen(false)} onConfirm={(payments) => void abrirVentaDirecta(payments)} />}
     {vtdResult && <VtdTicketPreviewModal venta={vtdResult} onClose={() => setVtdResult(null)} />}

@@ -4,7 +4,9 @@ const seller='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
 test('mostrador y VTD: un pago, selector de vendedor y un documento',async({page})=>{
   const writes=await fixture(page);await page.goto('/')
   await normalItem(page);await addVtd(page)
+  await page.locator('.cart-seller-details > summary').click()
   await page.getByLabel('Venta realizada por',{exact:true}).selectOption(seller)
+  await page.locator('.cart-seller-details > summary').click()
   const help=page.getByRole('button',{name:'Información sobre pedido de vendedor'})
   const helpVtd=page.getByRole('button',{name:'Información sobre agregar VTD'})
   await expect(help).toHaveAttribute('aria-expanded','false')
