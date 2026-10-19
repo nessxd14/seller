@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient'
 import type { ProductRepository, Page, PageRequest } from '../../application/ports/repositories'
-import type { Product } from '../../types'
+import type { Product, SalesChannel } from '../../types'
 import { hoyLocal, sumarDiasIso } from '../../domain/common/fechas'
 
 interface ProductoRow {
@@ -120,8 +120,11 @@ const PRODUCT_COLUMNS = 'id,nombre,sku_interno,marca,unidad_base,precio_base,pre
 
 interface ResolverRow { producto_id: number; presentacion_id?: number | null; factor_unidad_base?: number | string | null; presentacion_nombre?: string | null }
 
+/** Presentación que resuelve un código de barras: sin precios (el carrito los carga al elegir presentación). */
+export type ScannedPresentation = Omit<Presentation, 'precios' | 'tienePrecioPropio'>
+
 /** La presentación de un código solo se informa cuando TODAS las filas del producto apuntan a la misma. */
-const singlePresentation = (rows: ResolverRow[]): Presentation | undefined => {
+const singlePresentation = (rows: ResolverRow[]): ScannedPresentation | undefined => {
   const ids = new Set(rows.map((row) => row.presentacion_id ?? null))
   if (ids.size !== 1) return undefined
   const [first] = rows
@@ -229,7 +232,7 @@ export class SupabaseProductRepository implements ProductRepository {
    * elegir uno al azar: el llamador decide qué hacer con la ambigüedad.
    */
   async resolveScannedCode(codigo: string): Promise<
-    | { kind: 'found'; product: Product; presentation?: Presentation }
+    | { kind: 'found'; product: Product; presentation?: ScannedPresentation }
     | { kind: 'ambiguous'; productIds: number[] }
     | { kind: 'not_found' }
   > {
@@ -400,18 +403,48 @@ export const getDisponibilidadPedido = async (productIds: number[]): Promise<Rec
   return result
 }
 
-export interface Presentation { id: number; nombre: string; factorUnidadBase: number; esBase: boolean }
+export interface Presentation {
+  id: number
+  nombre: string
+  factorUnidadBase: number
+  esBase: boolean
+  /** Precio ya resuelto por canal (propio, o precio del canal × factor); null = el producto no tiene precio. */
+  precios: Record<SalesChannel, number | null>
+  tienePrecioPropio: boolean
+}
 
-/** Presentations for a product (e.g. "Caja" with factor 12, "Unidad" base with factor 1). */
+const numOrNull = (value: number | string | null | undefined): number | null => (value == null ? null : num(value))
+
+/**
+ * Presentations for a product (e.g. "Caja" with factor 12, "Unidad" base with factor 1), con el precio
+ * resuelto por canal que calcula la base (v_presentacion_precio). Siempre por producto: cargarlas en
+ * bloque choca con el corte de 1.000 filas de PostgREST.
+ */
 export const listPresentations = async (productId: number): Promise<Presentation[]> => {
   const { data, error } = await supabase
-    .from('presentacion')
-    .select('id,nombre,factor_unidad_base,es_base,activo')
+    .from('v_presentacion_precio')
+    .select('presentacion_id,nombre,factor_unidad_base,es_base,activo,precio_retail,precio_mayoreo,precio_institucion,precio_corporativo,tiene_precio_propio')
     .eq('producto_id', productId)
     .order('es_base', { ascending: false })
   if (error) throw error
-  const rows = (data ?? []) as Array<{ id: number; nombre: string; factor_unidad_base: number | string; es_base: boolean; activo: boolean | null }>
-  return rows.filter((row) => row.activo !== false).map((row) => ({ id: row.id, nombre: row.nombre, factorUnidadBase: num(row.factor_unidad_base), esBase: row.es_base }))
+  const rows = (data ?? []) as Array<{
+    presentacion_id: number; nombre: string; factor_unidad_base: number | string; es_base: boolean; activo: boolean | null
+    precio_retail: number | string | null; precio_mayoreo: number | string | null; precio_institucion: number | string | null; precio_corporativo: number | string | null
+    tiene_precio_propio: boolean | null
+  }>
+  return rows.filter((row) => row.activo !== false).map((row) => ({
+    id: row.presentacion_id,
+    nombre: row.nombre,
+    factorUnidadBase: num(row.factor_unidad_base),
+    esBase: row.es_base,
+    precios: {
+      retail: numOrNull(row.precio_retail),
+      mayoreo: numOrNull(row.precio_mayoreo),
+      institucional: numOrNull(row.precio_institucion),
+      corporativo: numOrNull(row.precio_corporativo),
+    },
+    tienePrecioPropio: row.tiene_precio_propio === true,
+  }))
 }
 
 /**

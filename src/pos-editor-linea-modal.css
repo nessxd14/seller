@@ -56,3 +56,7 @@
 .por-comprar-summary li { display: flex; justify-content: space-between; gap: 8px }
 .por-comprar-tag { font-weight: 600; padding: 1px 7px; border-radius: 99px; background: #ffe1b3; color: #a35b00 }
 .por-comprar-summary footer { margin-top: 8px; font-weight: 600; color: #a35b00 }
+
+/* Aviso no bloqueante: precio unitario por debajo del 50 % del sugerido de la presentación. */
+.line-price-warning { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 12px; font-weight: 600; color: #a76a19 }
+.line-price-warning svg { width: 13px; height: 13px; flex: none }

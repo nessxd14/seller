@@ -15,7 +15,9 @@ import { cantidadBaseFor } from '../../domain/sales/stockCheck'
 import type { Product } from '../../types'
 import { useBorrador, borradorKey } from '../../hooks/useBorrador'
 import { BorradorBanner } from '../../components/BorradorBanner'
-import { EditQuoteLineModal } from './EditQuoteLineModal'
+import { EditQuoteLineModal, type LinePresentation } from './EditQuoteLineModal'
+import { PrecioBajoAviso } from '../../components/PrecioBajoAviso'
+import { nombreUnidadBase, precioSugerido as precioSugeridoPresentacion, textoEquivalencia } from '../../domain/pricing/precioPresentacion'
 import { coincideBusqueda } from '../../domain/customers/textSearch'
 import { formatQtyWithUnit, normalizeUnit } from '../../domain/sales/unitOfMeasure'
 import { UnitOfMeasureField } from '../../components/UnitOfMeasureField'
@@ -47,7 +49,6 @@ const defaultSourceForChannel = (): 'Tienda' | 'Almacén' => 'Almacén' // MAYOR
 
 const lineTotalCents = (line: WorkflowLine) => Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000)
 
-type LinePresentation = { id: number; nombre: string; factorUnidadBase: number; esBase: boolean }
 type LineStock = { tienda: number; almacen: number }
 
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
@@ -517,7 +518,8 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const onPresentationChange = (line: WorkflowLine, presentation: LinePresentation) => {
     const basePriceCents = basePriceCentsByLine[line.id] ?? line.unitPriceCents
     const isBase = presentation.esBase || presentation.factorUnidadBase === 1
-    const suggestedPriceCents = Math.round(basePriceCents * presentation.factorUnidadBase)
+    // Precio resuelto de la presentación para el canal; solo si no hay, precio base × factor.
+    const suggestedPriceCents = Math.round((precioSugeridoPresentacion(presentation, value.channel, basePriceCents / 100) ?? 0) * 100)
     updateLine(line.id, {
       presentacionId: isBase ? undefined : presentation.id,
       presentacionNombre: isBase ? undefined : presentation.nombre,
@@ -639,13 +641,17 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             const faltante = faltanteInfo?.faltante ?? 0
             const decidida = faltante > 0 && line.comprarFaltante === true
             const sinDecidir = faltante > 0 && !decidida
+            const baseNombre = nombreUnidadBase(presentations)
             // "Bajar a X": presentaciones enteras que alcanzan con lo disponible (≥ 1).
             const enPresentacion = factor > 1 && !!line.presentacionNombre
             const bajarQty = faltanteInfo ? (factor > 1 ? Math.floor(faltanteInfo.disponibleParaLinea / factor) : faltanteInfo.disponibleParaLinea) : 0
             const puedeBajar = !readOnly && faltanteInfo != null && faltanteInfo.disponibleParaLinea > 0 && Number.isInteger(bajarQty) && bajarQty >= 1
             const bajarLabel = enPresentacion ? `${fmtQty(bajarQty)} ${line.presentacionNombre}` : fmtQty(bajarQty)
-            const faltanteLabel = enPresentacion ? `${fmtQty(faltanteInfo?.faltantePresentacion ?? 0)} ${line.presentacionNombre} (${fmtQty(faltante)} u.)` : fmtQty(faltante)
+            const faltanteLabel = enPresentacion ? `${fmtQty(faltanteInfo?.faltantePresentacion ?? 0)} ${line.presentacionNombre} (${fmtQty(faltante)} ${baseNombre})` : fmtQty(faltante)
             const showEquivalence = factor !== 1
+            // Aviso de precio bajo: contra el precio resuelto de la presentación de la línea (la base si no hay otra).
+            const presentacionLinea = presentations.find((p) => p.id === line.presentacionId) ?? presentations.find((p) => p.esBase)
+            const precioResuelto = presentacionLinea?.precios[value.channel] ?? null
             const identifiers = identifiersByProduct[line.productId]
             // TAREA 5 — Almacén-default-with-conditional-Tienda-unlock: Tienda is only
             // selectable here when Almacén's stock does NOT cover this line's requested
@@ -704,7 +710,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                       <span className="price-cell">
                         Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u{line.discountBasisPoints > 0 && ` −${(line.discountBasisPoints / 100).toFixed(1)}%`}{line.priceOverridden && <small className="overridden-badge">editado</small>}
                       </span>
-                      {showEquivalence && <> · <span className="dl-equiv">{fmtQty(line.quantity * factor)} u</span></>}
+                      {showEquivalence && <> · <span className="dl-equiv">{textoEquivalencia(line.quantity, line.presentacionNombre, factor, baseNombre)}</span></>}
                       {' · '}<span className="dl-origen-label">{origin}</span>
                     </span>
                     <strong className="dl-total">{formatMoney(money(lineTotalCents(line)))}</strong>
@@ -714,6 +720,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                     {!readOnly && <button type="button" aria-label={`Quitar ${line.name}`} onClick={(e) => { e.stopPropagation(); removeLine(line.id) }}><X /></button>}
                   </div>
                 </div>
+                {!readOnly && <PrecioBajoAviso precio={line.unitPriceCents / 100} sugerido={precioResuelto} presentacionNombre={presentacionLinea?.nombre} factor={presentacionLinea?.factorUnidadBase ?? 1} baseNombre={baseNombre} />}
                 {!readOnly && <PrecioSugeridoHint sugerido={precioSugeridoByLine[line.id]} unitPriceCents={line.unitPriceCents} onApply={(bs) => applySuggestedPrice(line.id, bs)} />}
                 {faltante > 0 && (
                   <div className={`line-shortage ${decidida ? 'decided' : ''}`} onClick={(e) => e.stopPropagation()}>
@@ -740,6 +747,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                     <EditQuoteLineModal
                       line={line}
                       presentations={presentations}
+                      channel={value.channel}
                       stock={stock}
                       identifiers={identifiers}
                       basePriceCents={basePriceCentsByLine[line.id] ?? line.unitPriceCents}

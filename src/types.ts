@@ -43,6 +43,8 @@ export interface CartItem extends Product {
   presentacionId?: number
   presentacionNombre?: string
   factorUnidadBase?: number
+  // Precio resuelto por canal de la presentación activa (v_presentacion_precio); null = sin precio. Solo con presentacionId.
+  preciosPresentacion?: Record<SalesChannel, number | null>
   // TAREA 1 (Tanda 4): true once the seller has manually picked an origin via OriginPin —
   // freezes `ubicacion` against the automatic channel/cliente-acreedor recompute in
   // PosContext (setChannel/selectCustomer) until the line is removed. Without this,

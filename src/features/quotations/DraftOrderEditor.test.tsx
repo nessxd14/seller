@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { QuoteDraft } from '../../application/shared/models'
-import { getDisponibilidadPedido } from '../../infrastructure/services'
+import { getDisponibilidadPedido, listPresentations, productRepository } from '../../infrastructure/services'
 import { DraftOrderEditor } from './DraftOrderEditor'
 
 // Evita llamadas reales a Supabase/Hermes durante el test — solo importa que
@@ -166,5 +166,59 @@ describe('DraftOrderEditor — faltantes ("Por comprar")', () => {
     expect(screen.queryByRole('button', { name: 'Bajar Producto 7 a 6' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Comprar el faltante Producto 7' }))
     expect(convertButton().disabled).toBe(false)
+  })
+})
+
+describe('DraftOrderEditor — precio por presentación', () => {
+  const precios = { retail: 36, mayoreo: 36, institucional: 36, corporativo: 36 }
+  const sinPrecios = { retail: null, mayoreo: null, institucional: null, corporativo: null }
+  type Pres = { id: number; nombre: string; factorUnidadBase: number; esBase: boolean; precios: Record<'retail' | 'mayoreo' | 'institucional' | 'corporativo', number | null>; tienePrecioPropio: boolean }
+  const presentaciones: Pres[] = [
+    { id: 1, nombre: 'Hoja', factorUnidadBase: 1, esBase: true, precios: { retail: 0.2, mayoreo: 0.2, institucional: 0.2, corporativo: 0.2 }, tienePrecioPropio: false },
+    { id: 7, nombre: 'PAQUETE', factorUnidadBase: 500, esBase: false, precios, tienePrecioPropio: true },
+  ]
+  const lineaPaquete = (unitPriceCents: number): QuoteDraft => ({ ...baseQuote, lines: [{ ...baseQuote.lines[0], quantity: 15, unitPriceCents, presentacionId: 7, presentacionNombre: 'PAQUETE', factorUnidadBase: 500 }] })
+  const cargar = (list: Pres[]) => {
+    vi.mocked(productRepository.getById).mockResolvedValue({ id: 'p1', stockTienda: 0, stockAlmacen: 0 } as never)
+    vi.mocked(listPresentations).mockResolvedValue(list as never)
+  }
+
+  it('al elegir PAQUETE sugiere su precio resuelto, no precio base × factor', async () => {
+    cargar(presentaciones)
+    render(<DraftOrderEditor quote={{ ...baseQuote, lines: [{ ...baseQuote.lines[0], unitPriceCents: 20 }] }} onClose={() => {}} onSave={vi.fn()} />)
+    const select = await screen.findByRole('combobox', { name: 'Presentación Producto 1' })
+    await waitFor(() => expect(select.querySelectorAll('option')).toHaveLength(2))
+    fireEvent.change(select, { target: { value: '7' } })
+    expect(await screen.findByText(/Bs 36,00 c\/u/)).toBeTruthy()
+    expect(screen.getByText('1 PAQUETE = 500 Hoja')).toBeTruthy()
+  })
+
+  it('sin precio resuelto cae a precio base × factor', async () => {
+    cargar(presentaciones.map((p) => (p.esBase ? p : { ...p, precios: sinPrecios })))
+    render(<DraftOrderEditor quote={{ ...baseQuote, lines: [{ ...baseQuote.lines[0], unitPriceCents: 20 }] }} onClose={() => {}} onSave={vi.fn()} />)
+    const select = await screen.findByRole('combobox', { name: 'Presentación Producto 1' })
+    await waitFor(() => expect(select.querySelectorAll('option')).toHaveLength(2))
+    fireEvent.change(select, { target: { value: '7' } })
+    expect(await screen.findByText(/Bs 100,00 c\/u/)).toBeTruthy()
+  })
+
+  it('avisa (sin bloquear) cuando el precio es menos del 50 % del sugerido y el aviso no sale con precio normal', async () => {
+    cargar(presentaciones)
+    const onSave = vi.fn()
+    const { unmount } = render(<DraftOrderEditor quote={lineaPaquete(500)} onClose={() => {}} onSave={onSave} />)
+    expect(await screen.findByText('Precio muy bajo para 1 PAQUETE (500 Hoja): sugerido Bs 36,00')).toBeTruthy()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Guardar como cotización' })) })
+    expect(onSave).toHaveBeenCalledTimes(1)
+    unmount()
+    render(<DraftOrderEditor quote={lineaPaquete(3600)} onClose={() => {}} onSave={vi.fn()} />)
+    await screen.findByRole('combobox', { name: 'Presentación Producto 1' })
+    expect(screen.queryByText(/Precio muy bajo/)).toBeNull()
+  })
+
+  it('sin precio resuelto no avisa', async () => {
+    cargar(presentaciones.map((p) => ({ ...p, precios: sinPrecios })))
+    render(<DraftOrderEditor quote={lineaPaquete(500)} onClose={() => {}} onSave={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Presentación Producto 1' }).querySelectorAll('option')).toHaveLength(2))
+    expect(screen.queryByText(/Precio muy bajo/)).toBeNull()
   })
 })

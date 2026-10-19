@@ -1,6 +1,7 @@
 // Piso — lógica pura del pedido que el vendedor arma en su teléfono. Sin React ni red:
 // todo lo que decide precios, totales y qué se manda al servidor vive acá y se prueba aparte.
 import type { PedidoVendedorEstado, PedidoVendedorLineaInput, PedidoVendedorRecord } from '../../application/shared/models'
+import type { PreciosPresentacion } from '../pricing/precioPresentacion'
 
 export const round2 = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100
 
@@ -56,7 +57,7 @@ export interface PedidoLocal {
 }
 
 export interface ProductoPiso { id: number; nombre: string; sku: string; precioRetail: number }
-export interface PresentacionPiso { id: number; nombre: string; factorUnidadBase: number; esBase: boolean }
+export interface PresentacionPiso { id: number; nombre: string; factorUnidadBase: number; esBase: boolean; precios?: PreciosPresentacion }
 
 /** Piso de precio (lista − 10 %) solo para unidad base con precio de catálogo; el servidor lo confirma al guardar. */
 export const precioMinimoLocal = (precioRetail: number | null | undefined, esBase: boolean): number | null =>
@@ -65,6 +66,12 @@ export const precioMinimoLocal = (precioRetail: number | null | undefined, esBas
 /** Mismo cálculo que CartItem al cambiar de presentación: precio base × factor. */
 export const precioSugerido = (precioRetail: number | null | undefined, factor: number): number | null =>
   precioRetail != null && precioRetail > 0 ? round2(precioRetail * factor) : null
+
+/** Precio de lista que el servidor resuelve: el de la presentación (propio o canal × factor); si es null, base × factor. */
+export const precioListaPresentacion = (presentation: PresentacionPiso | undefined, precioRetail: number | null | undefined, factor: number): number | null => {
+  const resuelto = presentation?.precios?.retail
+  return resuelto != null ? round2(resuelto) : precioSugerido(precioRetail, factor)
+}
 
 /** ¿Este precio viola el mínimo conocido? (solo informa; el servidor decide). */
 export const bajoElMinimo = (precio: number, minimo: number | null): boolean => minimo != null && round2(precio) < minimo
@@ -75,7 +82,7 @@ const claveLinea = (l: Pick<LineaPiso, 'productoId' | 'presentacionId' | 'esPers
 export const nuevaLinea = (product: ProductoPiso, presentation: PresentacionPiso | undefined, localId: string): LineaPiso => {
   const base = esBasePresentacion(presentation)
   const factor = base ? 1 : presentation!.factorUnidadBase
-  const precio = precioSugerido(product.precioRetail, factor)
+  const precio = precioListaPresentacion(presentation, product.precioRetail, factor)
   return {
     localId, productoId: product.id, nombre: product.nombre, sku: product.sku || null,
     presentacionId: base ? null : presentation!.id, presentacionNombre: base ? null : presentation!.nombre, esBase: base, factor,
@@ -103,11 +110,11 @@ export const agregarPersonalizado = (lineas: LineaPiso[], input: { descripcion: 
   },
 ]
 
-/** Cambia de presentación: el precio vuelve a ser el sugerido (precio base × factor) y el mínimo solo existe en unidad base. */
+/** Cambia de presentación: el precio vuelve a ser el de lista de la presentación (resuelto, o precio base × factor) y el mínimo solo existe en unidad base. */
 export const cambiarPresentacion = (linea: LineaPiso, presentation: PresentacionPiso): LineaPiso => {
   const base = esBasePresentacion(presentation)
   const factor = base ? 1 : presentation.factorUnidadBase
-  const precio = precioSugerido(linea.precioRetail, factor)
+  const precio = precioListaPresentacion(presentation, linea.precioRetail, factor)
   return {
     ...linea, presentacionId: base ? null : presentation.id, presentacionNombre: base ? null : presentation.nombre, esBase: base, factor,
     precioLista: precio, precioMinimo: precioMinimoLocal(linea.precioRetail, base), precioUnitario: precio, error: undefined,
