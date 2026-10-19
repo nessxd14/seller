@@ -3,10 +3,11 @@ import { fixture, normalItem } from './checkout.fixture'
 
 test('cantidad, precio manual y presentación conservan sus reglas en la lista ligera', async ({ page }) => {
   const writes = await fixture(page, { products: true })
-  await page.route('**/rest/v1/presentacion?**', route => route.fulfill({
+  await page.route('**/rest/v1/v_presentacion_precio?**', route => route.fulfill({
     contentType: 'application/json', body: JSON.stringify([
-      { id: 44, producto_id: 44, nombre: 'Unidad', es_base: true, activo: true, factor_unidad_base: 1 },
-      { id: 45, producto_id: 44, nombre: 'Paquete', es_base: false, activo: true, factor_unidad_base: 500 },
+      { presentacion_id: 44, producto_id: 44, nombre: 'Unidad', es_base: true, activo: true, factor_unidad_base: 1, precio_retail: 150, precio_mayoreo: 150, precio_institucion: 150, precio_corporativo: 150 },
+      { presentacion_id: 45, producto_id: 44, nombre: 'Paquete', es_base: false, activo: true, factor_unidad_base: 500, precio_retail: 70000, precio_mayoreo: 65000, precio_institucion: 65000, precio_corporativo: 65000, tiene_precio_propio: true },
+      { presentacion_id: 46, producto_id: 44, nombre: 'Caja solo Almacén', es_base: false, activo: true, factor_unidad_base: 1000, vende_tienda: false, vende_almacen: true },
     ]),
   }))
   await page.goto('/')
@@ -20,14 +21,17 @@ test('cantidad, precio manual y presentación conservan sus reglas en la lista l
   await row.getByLabel('Precio unitario Material de Almacén QA', { exact: true }).fill('20')
   await row.getByLabel('Precio unitario Material de Almacén QA', { exact: true }).press('Enter')
   await expect(row.locator('.cart-manual-price')).toBeVisible()
+  await expect(row.locator('.line-price-warning')).toContainText('Precio muy bajo')
+  await expect(row.getByRole('option', { name: 'Caja solo Almacén', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: /Mayoreo Precio mayorista/ }).click()
   await expect(row.locator('.line-total')).toContainText('60,00')
   await row.getByLabel('Presentación Material de Almacén QA').selectOption('45')
-  await expect(row.locator('.line-equivalence')).toContainText('3 Paquete = 1.500 u')
-  await expect(row.locator('.line-total')).toContainText('225.000,00')
+  await expect(row.locator('.line-equivalence')).toContainText('3 Paquete = 1.500 Unidad')
+  await expect(row.locator('.line-total')).toContainText('195.000,00')
   await expect(row.locator('.cart-manual-price')).toHaveCount(0)
+  await expect(row.locator('.line-price-warning')).toHaveCount(0)
   await row.getByRole('button', { name: 'Editar Material de Almacén QA', exact: true }).click()
-  await expect(page.getByLabel('Precio configurado', { exact: true })).toHaveValue('Bs 75000.00')
+  await expect(page.getByLabel('Precio configurado', { exact: true })).toHaveValue('Bs 65000.00')
   expect(writes).toHaveLength(0)
   expect(writes.runtimeErrors).toEqual([])
 })

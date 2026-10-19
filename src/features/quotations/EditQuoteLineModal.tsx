@@ -1,3 +1,4 @@
+import { opcionesDelLado } from '../../domain/pricing/presentacionesPorLado'
 import { useState } from 'react'
 import type { WorkflowLine } from '../../application/shared/models'
 import { Modal } from '../../components/Modal'
@@ -7,8 +8,11 @@ import type { OriginPinOption, OriginLocation } from '../../components/OriginPin
 import type { LineIdentifiers } from '../../components/LineIdentifiersRow'
 import type { PrecioSugerido } from '../../infrastructure/supabase/PreciosRepository.supabase'
 import { PrecioSugeridoHint } from './PrecioSugeridoHint'
+import { PrecioBajoAviso } from '../../components/PrecioBajoAviso'
+import { nombreUnidadBase, precioSugerido as precioSugeridoPresentacion, type PreciosPresentacion } from '../../domain/pricing/precioPresentacion'
+import type { SalesChannel } from '../../types'
 
-export type LinePresentation = { id: number; nombre: string; factorUnidadBase: number; esBase: boolean }
+export type LinePresentation = { id: number; nombre: string; factorUnidadBase: number; esBase: boolean; precios: PreciosPresentacion; tienePrecioPropio: boolean; vendeTienda?: boolean; vendeAlmacen?: boolean }
 export type LineStock = { tienda: number; almacen: number }
 
 interface FormState {
@@ -41,9 +45,10 @@ const toFormState = (line: WorkflowLine): FormState => ({
  * con toda la edición de la línea junta y un bloque de solo lectura con los datos reales de
  * catálogo debajo.
  */
-export function EditQuoteLineModal({ line, presentations, stock, identifiers, basePriceCents, originOptions, actorId, precioSugerido, onClose, onSave }: {
+export function EditQuoteLineModal({ line, presentations, channel, stock, identifiers, basePriceCents, originOptions, actorId, precioSugerido, onClose, onSave }: {
   line: WorkflowLine
   presentations: LinePresentation[]
+  channel: SalesChannel
   stock?: LineStock
   identifiers?: LineIdentifiers
   basePriceCents: number
@@ -61,7 +66,8 @@ export function EditQuoteLineModal({ line, presentations, stock, identifiers, ba
     const presentation = presentations.find((p) => p.id === presentationId)
     if (!presentation) return
     const isBase = presentation.esBase || presentation.factorUnidadBase === 1
-    const suggestedPriceCents = Math.round(basePriceCents * presentation.factorUnidadBase)
+    const suggestedPrice = precioSugeridoPresentacion(presentation, channel, basePriceCents / 100) ?? 0
+    const suggestedPriceCents = Math.round(suggestedPrice * 100)
     setForm((f) => ({
       ...f,
       presentacionId: isBase ? undefined : presentation.id,
@@ -70,6 +76,11 @@ export function EditQuoteLineModal({ line, presentations, stock, identifiers, ba
       precioUnitario: suggestedPriceCents / 100,
     }))
   }
+
+  // Aviso de precio bajo: contra el precio resuelto de la presentación elegida (la base si no hay otra).
+  const presentacionActiva = presentations.find((p) => p.id === form.presentacionId) ?? presentations.find((p) => p.esBase)
+  const precioResuelto = presentacionActiva?.precios[channel] ?? null
+  const baseNombre = nombreUnidadBase(presentations)
 
   const totalCents = Math.round(form.precioUnitario * 100 * form.cantidad * (10_000 - Math.round(form.descuento * 100)) / 10_000)
 
@@ -101,12 +112,13 @@ export function EditQuoteLineModal({ line, presentations, stock, identifiers, ba
         {presentations.length > 0 && (
           <label>Presentación
             <select value={form.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id} onChange={(e) => applyPresentation(Number(e.target.value))}>
-              {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              {opcionesDelLado(presentations, form.presentacionId ?? presentations.find((p) => p.esBase)?.id, 'almacen').map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
           </label>
         )}
         <label>Precio unitario (Bs)<NumberField value={form.precioUnitario} min={0} step={0.5} onCommit={(precioUnitario) => setForm((f) => ({ ...f, precioUnitario }))} /></label>
         <div className="full"><PrecioSugeridoHint sugerido={precioSugerido} unitPriceCents={Math.round(form.precioUnitario * 100)} onApply={(precioBs) => setForm((f) => ({ ...f, precioUnitario: precioBs }))} /></div>
+        <div className="full"><PrecioBajoAviso precio={form.precioUnitario} sugerido={precioResuelto} presentacionNombre={presentacionActiva?.nombre} factor={presentacionActiva?.factorUnidadBase ?? 1} baseNombre={baseNombre} /></div>
         <label>Descuento (%)<NumberField value={form.descuento} min={0} max={100} onCommit={(descuento) => setForm((f) => ({ ...f, descuento }))} /></label>
         {precioSugerido && <div className="full"><PrecioSugeridoHint sugerido={precioSugerido} unitPriceCents={Math.round(form.precioUnitario * 100)} onApply={(precioBs) => setForm((f) => ({ ...f, precioUnitario: precioBs }))} /></div>}
         </div></section>

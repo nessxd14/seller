@@ -1,3 +1,4 @@
+import { presentacionAlAgregar } from '../lib/presentacionAlAgregar'
 import { ChevronDown, LoaderCircle, PackageOpen, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { getPrice, products } from '../data/products'
@@ -31,6 +32,14 @@ const MIN_FRECUENTES = 8
 
 export function ProductCatalog({ search, category, setCategory }: { search: string; category: string; setCategory: (value: string) => void }) {
   const { channel, cart, addProduct, updateQuantity, removeItem } = usePos()
+  // Solo se agrega si el producto tiene alguna presentación habilitada para vender en tienda.
+  const [avisoAgregar, setAvisoAgregar] = useState('')
+  const agregar = async (product: Product) => {
+    const permiso = await presentacionAlAgregar(product.id, 'tienda')
+    if (!permiso.ok) { setAvisoAgregar(permiso.mensaje); return }
+    setAvisoAgregar('')
+    addProduct(product)
+  }
   const query = search.trim().toLowerCase()
   const [brand, setBrand] = useState('')
   const [brandOptions, setBrandOptions] = useState<{ marcas: string[]; sinMarca: number }>({ marcas: [], sinMarca: 0 })
@@ -122,6 +131,7 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   useEffect(() => { setMostrarSinFamilia(false) }, [query])
 
   return <>
+    {avisoAgregar && <p className="scan-feedback error" role="alert">{avisoAgregar}</p>}
     {// Brief S2 — item 4: chips de lo ya agregado, con acceso a quitar — "sensación de
     // carrito vivo sin abandonar la búsqueda".
     <div className="catalog-chips" aria-label="Productos agregados">{cart.length ? cart.map((item) => <span className="quick-add-chip" key={item.id}><span className="catalog-chip-name" title={item.nombre}>{item.nombre}</span><b>×{item.cantidad}</b><button type="button" onClick={() => quitarDelCarrito(item)} aria-label={`Quitar ${item.nombre}`}><X size={11} /></button></span>) : <span className="catalog-chips-hint">Selecciona productos para iniciar la venta</span>}</div>}
@@ -159,7 +169,7 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
             isLineUnpriced({ precioAplicado: getPrice(product, channel) })
               ? <small className="price-heredado-badge price-overridden-badge" title="Este producto no tiene precio configurado en ningún canal.">sin precio</small>
               : channel !== 'retail' && product.preciosHeredados?.[channel] && <small className="price-heredado-badge" title="Sin precio propio para este canal: se usa el precio de mostrador.">heredado</small>
-          }</strong></div><button aria-label={`Agregar ${product.nombre}`} onClick={() => addProduct(product)}><Plus /> Agregar</button></div>
+          }</strong></div><button aria-label={`Agregar ${product.nombre}`} onClick={() => void agregar(product)}><Plus /> Agregar</button></div>
           {// Brief S2 — item 1: "la fila agregada se marca como ya incluida, con su cantidad".
           <div className={`catalog-en-carrito ${enCarrito ? '' : 'is-empty'}`} aria-hidden={!enCarrito}>{enCarrito ? `En carrito × ${enCarrito.cantidad}` : '\u00a0'}</div>}
           </div>

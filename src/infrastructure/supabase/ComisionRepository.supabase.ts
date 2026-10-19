@@ -32,6 +32,10 @@ const toDevengoRow = (row: Record<string, unknown>): ComisionDevengoRow => {
     liquidacionId: row.liquidacion_id === null || row.liquidacion_id === undefined ? null : String(row.liquidacion_id),
     liquidacionFecha: liquidacion?.creado_en ?? null,
     tienePersonalizadoComisionable: Boolean(row.tiene_personalizado_comisionable),
+    cobroEstado: typeof row.cobro_estado === 'string' ? row.cobro_estado : null,
+    partidasVigentes: typeof row.partidas_vigentes === 'number' ? row.partidas_vigentes : null,
+    partidasSaldadas: typeof row.partidas_saldadas === 'number' ? row.partidas_saldadas : null,
+    revisionMotivo: typeof row.revision_motivo === 'string' ? row.revision_motivo : null,
   }
 }
 

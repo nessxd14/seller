@@ -1,0 +1,34 @@
+.cobro-traza { margin: 18px 0; padding: 18px; border: 1px solid #e0d9ce; border-radius: 14px; background: #fff; color: #39342e; }
+.cobro-traza-acordeon { margin: 12px 0 18px; border: 1px solid #ded6ca; border-radius: 10px; padding: 12px; background: #faf8f4; }
+.cobro-traza-acordeon > summary { cursor: pointer; font-size: 12px; font-weight: 700; color: #67523b; }
+.cobro-traza > header, .cobro-traza-pago > header, .cobro-traza-partida > header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.cobro-traza h2 { font-size: 16px; margin: 0; }
+.cobro-traza h3 { font-size: 13px; margin: 22px 0 12px; }
+.cobro-traza p, .cobro-traza li { font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.cobro-traza button { border: 1px solid #d7cdbf; border-radius: 8px; background: #fff; color: #68513a; padding: 7px 10px; font-size: 11px; }
+.modal.commercial-modal .cobro-traza > header > button { width: auto; min-width: 110px; height: auto; min-height: 30px; flex: 0 0 auto; white-space: nowrap; }
+.cobro-traza-resumen { display: flex; flex-direction: column; gap: 5px; padding: 13px; background: #f5f2ed; border-radius: 10px; margin-top: 16px; }
+.cobro-traza-resumen.saldado { color: #21613d; background: #eaf5ee; }
+.cobro-traza-resumen strong { font-size: 15px; }
+.cobro-traza-resumen span, .cobro-traza-nota { font-size: 11px; line-height: 1.6; color: #6c6256; }
+.cobro-traza-partidas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cobro-traza-partida, .cobro-traza-pago { border: 1px solid #e6dfd5; border-radius: 11px; padding: 14px; margin-bottom: 10px; min-width: 0; }
+.cobro-traza-partida.enfocada { border-color: #c17b40; box-shadow: 0 0 0 1px #c17b4020; }
+.cobro-traza-partida header strong, .cobro-traza-pago header strong { font-size: 12px; overflow-wrap: anywhere; }
+.cobro-traza-partida > small { display: block; font-size: 11px; color: #807365; margin: 6px 0; }
+.cobro-traza-estado, .cobro-traza-pago header > span { font-size: 10px; padding: 4px 7px; border-radius: 6px; background: #f2efe8; color: #685e51; }
+.cobro-traza .cobro-traza-partida .cobro-traza-estado.saldada { color: #226640; background: #e9f5ee; }
+.cobro-traza-estado.pendiente { color: #8a5b15; background: #fff2d9; }
+.cobro-traza-importes, .cobro-traza-personas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0 0; }
+.cobro-traza dt { font-size: 10px; color: #7b6b5b; }
+.cobro-traza dd { font-size: 12px; margin: 3px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.cobro-traza dd small { display: block; font-size: 10px; font-weight: 400; color: #7c6d60; line-height: 1.5; margin-top: 3px; }
+.cobro-traza-fecha { border-top: 1px solid #eee8df; padding-top: 10px; color: #366748; }
+.cobro-traza ul { padding-left: 18px; margin: 8px 0; }
+.cobro-traza-historial { padding: 0 0 0 18px; border-left: 2px solid #e9e1d4; margin-left: 4px; list-style: none; }
+.cobro-traza-historial li { padding: 0 0 16px; }
+.cobro-traza-historial li > strong, .cobro-traza-historial li > span, .cobro-traza-historial li > small { display: block; }
+.cobro-traza-historial li > span, .cobro-traza-historial li > small { font-size: 10px; color: #7c6c5c; }
+.cobro-traza-historial p { margin: 3px 0; }
+.cobro-traza-paginacion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; font-size: 11px; color: #7c6c5c; }
+@media (max-width: 650px) { .cobro-traza { padding: 13px; } .cobro-traza-partidas { grid-template-columns: 1fr; } .cobro-traza-personas { grid-template-columns: 1fr; } }

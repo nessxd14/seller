@@ -15,7 +15,10 @@ import { cantidadBaseFor } from '../../domain/sales/stockCheck'
 import type { Product } from '../../types'
 import { useBorrador, borradorKey } from '../../hooks/useBorrador'
 import { BorradorBanner } from '../../components/BorradorBanner'
-import { EditQuoteLineModal } from './EditQuoteLineModal'
+import { EditQuoteLineModal, type LinePresentation } from './EditQuoteLineModal'
+import { PrecioBajoAviso } from '../../components/PrecioBajoAviso'
+import { mensajePresentacionNoDisponible, mensajeSinPresentacion, opcionesDelLado, presentacionInicial, presentacionVendeEnLado } from '../../domain/pricing/presentacionesPorLado'
+import { nombreUnidadBase, precioSugerido as precioSugeridoPresentacion, textoEquivalencia } from '../../domain/pricing/precioPresentacion'
 import { coincideBusqueda } from '../../domain/customers/textSearch'
 import { formatQtyWithUnit, normalizeUnit } from '../../domain/sales/unitOfMeasure'
 import { UnitOfMeasureField } from '../../components/UnitOfMeasureField'
@@ -47,7 +50,6 @@ const defaultSourceForChannel = (): 'Tienda' | 'Almacén' => 'Almacén' // MAYOR
 
 const lineTotalCents = (line: WorkflowLine) => Math.round(line.unitPriceCents * line.quantity * (10_000 - line.discountBasisPoints) / 10_000)
 
-type LinePresentation = { id: number; nombre: string; factorUnidadBase: number; esBase: boolean }
 type LineStock = { tienda: number; almacen: number }
 
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
@@ -258,13 +260,25 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // que el cajero interpretaba como que el click no había funcionado). Tampoco se limpia
   // productQuery/productResults acá: es justo el reinicio que el brief pide sacar — el
   // buscador se limpia únicamente con Escape (ver ProductQuickAdd).
-  const addCatalogProduct = (product: Product) => {
+  const addCatalogProduct = async (product: Product, scanned?: { id: number; nombre: string }) => {
     const existing = value.lines.find((line) => line.productId === String(product.id) && !line.isCustomItem)
     if (existing) {
       updateLine(existing.id, { quantity: existing.quantity + 1 })
       return
     }
-    const unitPriceCents = Math.round(priceForChannel(product, value.channel) * 100)
+    // Almacén: solo se ofrecen las presentaciones habilitadas para cotizar / pedir al por mayor.
+    const list = await listPresentations(product.id).catch(() => [] as LinePresentation[])
+    if (list.length) {
+      if (!presentacionInicial(list, 'almacen')) { setScanError(mensajeSinPresentacion('almacen')); return }
+      const escaneada = scanned ? list.find((p) => p.id === scanned.id) : undefined
+      if (escaneada && !presentacionVendeEnLado(escaneada, 'almacen')) { setScanError(mensajePresentacionNoDisponible(escaneada.nombre, 'almacen')); return }
+    }
+    setScanError('')
+    const inicial = presentacionInicial(list, 'almacen')
+    const inicialNoBase = inicial && !(inicial.esBase || inicial.factorUnidadBase === 1) ? inicial : undefined
+    const basePriceCents = Math.round(priceForChannel(product, value.channel) * 100)
+    // Con la base deshabilitada la línea arranca en la presentación habilitada, con su precio resuelto.
+    const unitPriceCents = inicialNoBase ? Math.round((precioSugeridoPresentacion(inicialNoBase, value.channel, basePriceCents / 100) ?? 0) * 100) : basePriceCents
     const lineId = crypto.randomUUID()
     const newLine: WorkflowLine = {
       id: lineId,
@@ -276,9 +290,11 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       discountBasisPoints: 0,
       listPriceCents: unitPriceCents,
       sourceLocation: defaultSourceForChannel(),
+      ...(inicialNoBase ? { presentacionId: inicialNoBase.id, presentacionNombre: inicialNoBase.nombre, factorUnidadBase: inicialNoBase.factorUnidadBase } : {}),
     }
     setValue((v) => ({ ...v, lines: [...v.lines, newLine] }))
-    setBasePriceCentsByLine((prev) => ({ ...prev, [lineId]: unitPriceCents }))
+    setBasePriceCentsByLine((prev) => ({ ...prev, [lineId]: basePriceCents }))
+    setPresentationsByProduct((prev) => ({ ...prev, [String(product.id)]: list }))
     ensureProductData(product)
   }
 
@@ -288,7 +304,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     scanPendingRef.current = true; setScanning(true); setScanError('')
     try {
       const result = await productRepository.resolveScannedCode(code)
-      if (result.kind === 'found') { addCatalogProduct(result.product); setScanSku('') }
+      if (result.kind === 'found') { await addCatalogProduct(result.product, result.presentation); setScanSku('') }
       else if (result.kind === 'ambiguous') setAmbiguousIds(result.productIds)
       else setScanError(`No encontramos el código ${code}. Revisa el SKU o código de barras.`)
     } catch { setScanError('No se pudo consultar el código. Intenta nuevamente.') }
@@ -439,8 +455,13 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     setValue((v) => ({ ...v, lines: v.lines.map((line) => (ids.has(line.id) ? { ...line, comprarFaltante: true } : line)) }))
   }
 
+  const comprarTexto = (item: Extract<(typeof resumen)[number], { esPersonalizado?: false }>) =>
+    item.factorUnidadBase > 1 && item.presentacionNombre
+      ? `${fmtQty(item.faltantePresentacion)} ${item.presentacionNombre} de ${fmtQty(item.cantidad)}`
+      : `${fmtQty(item.faltante)} de ${fmtQty(item.baseQty)}`
+
   const confirmacionCompras = (items: typeof resumen) =>
-    `Se van a mandar a Compras: ${items.map((item) => item.esPersonalizado ? `${item.name} (${fmtQty(item.cantidad)}, a pedido)` : `${item.name} (${fmtQty(item.faltante)} de ${fmtQty(item.baseQty)})`).join('; ')}. ¿Continuar?`
+    `Se van a mandar a Compras: ${items.map((item) => item.esPersonalizado ? `${item.name} (${fmtQty(item.cantidad)}, a pedido)` : `${item.name} (${comprarTexto(item)})`).join('; ')}. ¿Continuar?`
   // TAREA 3 (Ronda 9): cliente obligatorio para guardar/convertir una cotización.
   // "Cliente de mostrador" (customerId vacío) no cuenta — es UI-only, no toca la base
   // (8 cotizaciones viejas sin cliente siguen abriéndose porque esto solo bloquea el
@@ -512,7 +533,8 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   const onPresentationChange = (line: WorkflowLine, presentation: LinePresentation) => {
     const basePriceCents = basePriceCentsByLine[line.id] ?? line.unitPriceCents
     const isBase = presentation.esBase || presentation.factorUnidadBase === 1
-    const suggestedPriceCents = Math.round(basePriceCents * presentation.factorUnidadBase)
+    // Precio resuelto de la presentación para el canal; solo si no hay, precio base × factor.
+    const suggestedPriceCents = Math.round((precioSugeridoPresentacion(presentation, value.channel, basePriceCents / 100) ?? 0) * 100)
     updateLine(line.id, {
       presentacionId: isBase ? undefined : presentation.id,
       presentacionNombre: isBase ? undefined : presentation.nombre,
@@ -604,7 +626,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
               loading={productLoading}
               chips={value.lines.filter((l) => !l.isCustomItem && l.productId).map((l) => ({ productId: Number(l.productId), nombre: l.name, cantidad: l.quantity }))}
               priceFor={(p) => formatMoney(money(Math.round(priceForChannel(p, value.channel) * 100)))}
-              onAdd={addCatalogProduct}
+              onAdd={(product) => { void addCatalogProduct(product) }}
               onRemoveChip={(productId) => { const line = value.lines.find((l) => l.productId === String(productId) && !l.isCustomItem); if (line) removeLine(line.id) }}
             />
             <label className="document-scan-field"><Barcode /><input
@@ -634,10 +656,17 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
             const faltante = faltanteInfo?.faltante ?? 0
             const decidida = faltante > 0 && line.comprarFaltante === true
             const sinDecidir = faltante > 0 && !decidida
-            // "Bajar a X" solo si X es una cantidad entera de la presentación de la línea.
-            const bajarQty = faltanteInfo ? faltanteInfo.disponibleParaLinea / factor : 0
+            const baseNombre = nombreUnidadBase(presentations)
+            // "Bajar a X": presentaciones enteras que alcanzan con lo disponible (≥ 1).
+            const enPresentacion = factor > 1 && !!line.presentacionNombre
+            const bajarQty = faltanteInfo ? (factor > 1 ? Math.floor(faltanteInfo.disponibleParaLinea / factor) : faltanteInfo.disponibleParaLinea) : 0
             const puedeBajar = !readOnly && faltanteInfo != null && faltanteInfo.disponibleParaLinea > 0 && Number.isInteger(bajarQty) && bajarQty >= 1
+            const bajarLabel = enPresentacion ? `${fmtQty(bajarQty)} ${line.presentacionNombre}` : fmtQty(bajarQty)
+            const faltanteLabel = enPresentacion ? `${fmtQty(faltanteInfo?.faltantePresentacion ?? 0)} ${line.presentacionNombre} (${fmtQty(faltante)} ${baseNombre})` : fmtQty(faltante)
             const showEquivalence = factor !== 1
+            // Aviso de precio bajo: contra el precio resuelto de la presentación de la línea (la base si no hay otra).
+            const presentacionLinea = presentations.find((p) => p.id === line.presentacionId) ?? presentations.find((p) => p.esBase)
+            const precioResuelto = presentacionLinea?.precios[value.channel] ?? null
             const identifiers = identifiersByProduct[line.productId]
             // TAREA 5 — Almacén-default-with-conditional-Tienda-unlock: Tienda is only
             // selectable here when Almacén's stock does NOT cover this line's requested
@@ -684,7 +713,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                           if (chosen) onPresentationChange(line, chosen)
                         }}
                       >
-                        {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                        {opcionesDelLado(presentations, line.presentacionId ?? presentations.find((p) => p.esBase)?.id, 'almacen').map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                       </select>
                     )}
                   </div>
@@ -696,7 +725,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                       <span className="price-cell">
                         Bs {(line.unitPriceCents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} c/u{line.discountBasisPoints > 0 && ` −${(line.discountBasisPoints / 100).toFixed(1)}%`}{line.priceOverridden && <small className="overridden-badge">editado</small>}
                       </span>
-                      {showEquivalence && <> · <span className="dl-equiv">{fmtQty(line.quantity * factor)} u</span></>}
+                      {showEquivalence && <> · <span className="dl-equiv">{textoEquivalencia(line.quantity, line.presentacionNombre, factor, baseNombre)}</span></>}
                       {' · '}<span className="dl-origen-label">{origin}</span>
                     </span>
                     <strong className="dl-total">{formatMoney(money(lineTotalCents(line)))}</strong>
@@ -706,19 +735,20 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                     {!readOnly && <button type="button" aria-label={`Quitar ${line.name}`} onClick={(e) => { e.stopPropagation(); removeLine(line.id) }}><X /></button>}
                   </div>
                 </div>
+                {!readOnly && <PrecioBajoAviso precio={line.unitPriceCents / 100} sugerido={precioResuelto} presentacionNombre={presentacionLinea?.nombre} factor={presentacionLinea?.factorUnidadBase ?? 1} baseNombre={baseNombre} />}
                 {!readOnly && <PrecioSugeridoHint sugerido={precioSugeridoByLine[line.id]} unitPriceCents={line.unitPriceCents} onApply={(bs) => applySuggestedPrice(line.id, bs)} />}
                 {faltante > 0 && (
                   <div className={`line-shortage ${decidida ? 'decided' : ''}`} onClick={(e) => e.stopPropagation()}>
                     {decidida ? (
                       <>
-                        <span className="line-shortage-text">Se compran {fmtQty(faltante)}</span>
+                        <span className="line-shortage-text">Se compran {faltanteLabel}</span>
                         <button type="button" className="line-shortage-undo" aria-label={`Deshacer compra del faltante ${line.name}`} onClick={() => updateLine(line.id, { comprarFaltante: false })}>Deshacer</button>
                       </>
                     ) : (
                       <>
-                        <span className="line-shortage-text">Disponible {fmtQty(faltanteInfo.disponibleParaLinea)} · faltan {fmtQty(faltante)}</span>
+                        <span className="line-shortage-text">Disponible {fmtQty(faltanteInfo.disponibleParaLinea)} · faltan {faltanteLabel}</span>
                         <button type="button" className="line-shortage-buy" aria-label={`Comprar el faltante ${line.name}`} onClick={() => updateLine(line.id, { comprarFaltante: true })}>Comprar el faltante</button>
-                        {puedeBajar && <button type="button" className="line-shortage-lower" aria-label={`Bajar ${line.name} a ${fmtQty(faltanteInfo.disponibleParaLinea)}`} onClick={() => updateLine(line.id, { quantity: bajarQty })}>Bajar a {fmtQty(faltanteInfo.disponibleParaLinea)}</button>}
+                        {puedeBajar && <button type="button" className="line-shortage-lower" aria-label={`Bajar ${line.name} a ${bajarLabel}`} onClick={() => updateLine(line.id, { quantity: bajarQty })}>Bajar a {bajarLabel}</button>}
                       </>
                     )}
                   </div>
@@ -732,6 +762,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                     <EditQuoteLineModal
                       line={line}
                       presentations={presentations}
+                      channel={value.channel}
                       stock={stock}
                       identifiers={identifiers}
                       basePriceCents={basePriceCentsByLine[line.id] ?? line.unitPriceCents}
@@ -830,7 +861,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                 <li key={item.lineId}>
                   {item.esPersonalizado
                     ? <><span>{item.name} · {fmtQty(item.cantidad)}</span><small className="por-comprar-tag">a pedido</small></>
-                    : <span>{item.name} · {fmtQty(item.faltante)} de {fmtQty(item.baseQty)}</span>}
+                    : <span>{item.name} · {comprarTexto(item)}</span>}
                 </li>
               ))}
             </ul>
@@ -867,7 +898,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         )}
         {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || faltantesSinDecidir.length > 0 || disponibilidadCargando || missingCustomer || missingSolicitante || missingConditionPago} title={faltantesSinDecidir.length > 0 ? 'Decidí qué hacer con las líneas sin stock' : missingCustomer ? 'Elegí un cliente para convertir' : missingSolicitante ? 'Elegí un solicitante para convertir' : missingConditionPago ? 'Elegí una condición de pago para convertir' : undefined} onClick={() => void runOrderAction(onConvert)}>Convertir a pedido</button>}
       </footer>
-      {ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onClose={() => setAmbiguousIds(null)} onPick={(product) => { addCatalogProduct(product); setAmbiguousIds(null); setScanSku('') }} />}
+      {ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onClose={() => setAmbiguousIds(null)} onPick={(product) => { void addCatalogProduct(product); setAmbiguousIds(null); setScanSku('') }} />}
       {customModalOpen && (
         <CustomItemModal
           form={customModalForm}

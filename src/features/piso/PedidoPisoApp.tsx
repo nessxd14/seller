@@ -8,6 +8,8 @@ import { Modal } from '../../components/Modal'
 import { UnitOfMeasureField } from '../../components/UnitOfMeasureField'
 import { featureFlags } from '../../config/featureFlags'
 import { bajoElMinimo, round2, totalPedido, type LineaPiso, type PedidoLocal, type PresentacionPiso, type ProductoPiso } from '../../domain/sales/pedidoPiso'
+import { presentacionAlAgregar } from '../../lib/presentacionAlAgregar'
+import { opcionesDelLado } from '../../domain/pricing/presentacionesPorLado'
 import { listPresentations, productRepository } from '../../infrastructure/services'
 import { supabaseAuthSessionProvider } from '../../infrastructure/supabase/SupabaseAuthSessionProvider'
 import type { Product } from '../../types'
@@ -51,14 +53,21 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
   useEffect(() => () => window.clearTimeout(avisoTimer.current), [])
 
   const { agregar } = piso
+  // Celular del piso = tienda: solo productos y presentaciones habilitados para vender en tienda.
+  const agregarSiSeVende = useCallback(async (producto: Product, escaneada?: PresentacionPiso) => {
+    const permiso = await presentacionAlAgregar(producto.id, 'tienda', escaneada)
+    if (!permiso.ok) { avisar(permiso.mensaje); return }
+    agregar(aProducto(producto), escaneada ?? (permiso.inicial && !permiso.inicial.esBase && permiso.inicial.factorUnidadBase !== 1 ? permiso.inicial : undefined))
+    avisar(`Agregado: ${producto.nombre}`)
+  }, [agregar, avisar])
   const alEscanear = useCallback(async (codigo: string) => {
     try {
       const r = await productRepository.resolveScannedCode(codigo)
-      if (r.kind === 'found') { agregar(aProducto(r.product), r.presentation); avisar(`Agregado: ${r.product.nombre}`) }
+      if (r.kind === 'found') await agregarSiSeVende(r.product, r.presentation)
       else if (r.kind === 'ambiguous') setAmbiguos(r.productIds)
       else { vibrarDesconocido(); avisar('Código no reconocido') }
     } catch (e) { avisar(e instanceof Error ? e.message : 'No se pudo leer el código') }
-  }, [agregar, avisar])
+  }, [agregarSiSeVende, avisar])
 
   const editable = activo.estado === 'ARMANDO'
   const lineaDe = (localId: string) => activo.lineas.find((l) => l.localId === localId)
@@ -82,7 +91,7 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
         <section className="piso-captura" aria-label="Agregar productos">
           <button type="button" className="piso-plegar" aria-expanded={!plegado} onClick={() => setPlegado((v) => !v)}><ScanLine /> {plegado ? 'Abrir cámara' : 'Ocultar cámara'}</button>
           <EscanerContinuo onCodigo={(c) => void alEscanear(c)} plegado={plegado} linterna={linterna} onSoporteLinterna={setLinternaSoportada} />
-          <Buscador onElegir={(p) => { agregar(aProducto(p)); avisar(`Agregado: ${p.nombre}`) }} />
+          <Buscador onElegir={(p) => { void agregarSiSeVende(p) }} />
         </section>
         <section className="piso-lineas" aria-label="Productos del pedido">
           {!activo.lineas.length && <p className="piso-vacio">Escanea un código o busca un producto para empezar.</p>}
@@ -101,7 +110,7 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
     {hoja?.tipo === 'precio' && lineaDe(hoja.localId) && <HojaPrecio linea={lineaDe(hoja.localId)!} conPiso={conPiso} onClose={() => setHoja(null)} onPrecio={(p) => piso.cambiarPrecio(hoja.localId, p)} />}
     {hoja?.tipo === 'personalizado' && <HojaPersonalizado onClose={() => setHoja(null)} onAgregar={(i) => { piso.agregarPersonalizado(i); setHoja(null) }} />}
     {hoja?.tipo === 'pedidos' && <HojaPedidos pedidos={piso.pedidos} activa={activo.clave} cargando={piso.cargando} onClose={() => setHoja(null)} onElegir={(c) => { piso.activar(c); setHoja(null) }} onNuevo={() => { piso.nuevo(); setHoja(null) }} />}
-    {ambiguos && <AmbiguousScanPicker productIds={ambiguos} onPick={(p) => { agregar(aProducto(p)); setAmbiguos(null); avisar(`Agregado: ${p.nombre}`) }} onClose={() => setAmbiguos(null)} />}
+    {ambiguos && <AmbiguousScanPicker productIds={ambiguos} onPick={(p) => { setAmbiguos(null); void agregarSiSeVende(p) }} onClose={() => setAmbiguos(null)} />}
   </div>
 }
 
@@ -169,7 +178,7 @@ function HojaCantidad({ linea, onClose, onCantidad, onPresentacion }: { linea: L
     <p className="piso-hoja-sub">{linea.nombre}</p>
     <input autoFocus className="piso-input" type="text" inputMode="decimal" aria-label="Cantidad" value={texto} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setTexto(e.target.value)} />
     {presentaciones && presentaciones.length > 1 && <div className="piso-chips" role="group" aria-label="Presentación">
-      {presentaciones.map((p) => {
+      {opcionesDelLado(presentaciones, activaId ?? presentaciones.find((x) => x.esBase)?.id, 'tienda').map((p) => {
         const esActiva = p.esBase || p.factorUnidadBase === 1 ? activaId == null : activaId === p.id
         return <button key={p.id} type="button" aria-pressed={esActiva} className={esActiva ? 'activo' : ''} onClick={() => { onPresentacion(p) }}>{p.nombre}{!p.esBase && p.factorUnidadBase !== 1 ? ` (${p.factorUnidadBase})` : ''}</button>
       })}

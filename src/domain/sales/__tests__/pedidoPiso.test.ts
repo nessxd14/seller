@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PedidoVendedorRecord } from '../../../application/shared/models'
 import {
   aLineasPayload, aceptarLectura, agregarPersonalizado, agregarProducto, bajoElMinimo, cambiarPresentacion, esErrorDeRed, fusionarRespuesta,
-  pedidoDesdeServidor, precioMinimoLocal, precioSugerido, puedeEnviar, totalPedido, type LineaPiso, type PedidoLocal, type PresentacionPiso,
+  pedidoDesdeServidor, precioListaPresentacion, precioMinimoLocal, precioSugerido, puedeEnviar, totalPedido, type LineaPiso, type PedidoLocal, type PresentacionPiso,
 } from '../pedidoPiso'
 
 const prod = { id: 49, nombre: 'Resma carta', sku: 'RC-1', precioRetail: 25 }
@@ -33,6 +33,24 @@ describe('precioSugerido', () => {
     expect(precioSugerido(3.333, 3)).toBe(10)
     expect(precioSugerido(0, 10)).toBeNull()
     expect(precioSugerido(null, 1)).toBeNull()
+  })
+})
+
+describe('precio de lista resuelto de la presentación', () => {
+  const precios = { retail: 36, mayoreo: 30, institucional: 36, corporativo: 36 }
+  const paquete: PresentacionPiso = { id: 9, nombre: 'PAQUETE', factorUnidadBase: 500, esBase: false, precios }
+  it('usa el precio resuelto; si es null cae a base × factor', () => {
+    expect(precioListaPresentacion(paquete, 0.072, 500)).toBe(36)
+    expect(precioListaPresentacion({ ...paquete, precios: { ...precios, retail: null } }, 0.072, 500)).toBe(36)
+    expect(precioListaPresentacion({ ...paquete, precios: { ...precios, retail: null } }, 0, 500)).toBeNull()
+    expect(precioListaPresentacion(caja, 25, 10)).toBe(250)
+  })
+  it('agregar y cambiar de presentación muestran el mismo número que resuelve el servidor', () => {
+    const hoja = { id: 1, nombre: 'Tuki', sku: 'T', precioRetail: 0.2 }
+    const [l] = agregarProducto([], hoja, paquete, id())
+    expect(l).toMatchObject({ presentacionId: 9, precioUnitario: 36, precioLista: 36 })
+    const [b] = agregarProducto([], hoja, undefined, id())
+    expect(cambiarPresentacion(b, paquete)).toMatchObject({ precioUnitario: 36, precioLista: 36, factor: 500 })
   })
 })
 

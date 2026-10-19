@@ -1,15 +1,27 @@
 import {PGlite} from '@electric-sql/pglite'
 import fs from 'node:fs/promises'
 import assert from 'node:assert/strict'
+import pg from 'pg'
 import { testOrigenMayorista } from './origen-mayorista.test.mjs'
 import { testSincronizacionAutomatica } from './sincronizacion-automatica.test.mjs'
 import { testSaldoFavor } from './saldo-favor.test.mjs'
 import { testCheckoutCaja } from './checkout-caja.test.mjs'
 import { testBajasTrazabilidad } from './bajas-trazabilidad.test.mjs'
 import { testCajaAlmacen } from './caja-almacen.test.mjs'
+import { prepararIncidenciasHistoricas, testIncidenciasResolucion } from './incidencias-resolucion.test.mjs'
+import { testCobroPedidos } from './cobro-pedidos.test.mjs'
+import { testTrazabilidadCobros } from './trazabilidad-cobros.test.mjs'
+import { testComisionesCobro } from './comisiones-cobro.test.mjs'
 const backup=JSON.parse(await fs.readFile(new URL('./schema.fixture.json',import.meta.url),'utf8'))
 const meta=backup.metadata[0].metadata
-const db=new PGlite()
+let db
+if (process.env.CATION_TEST_PG_URL) {
+ const url=new URL(process.env.CATION_TEST_PG_URL)
+ if (!['127.0.0.1','localhost'].includes(url.hostname) || !url.pathname.startsWith('/cation_pruebas')) throw new Error('Las pruebas sólo admiten PostgreSQL local y una base cation_pruebas')
+ pg.types.setTypeParser(20,Number)
+ const cliente=new pg.Client({connectionString:url.toString()}); await cliente.connect()
+ db={ query:(sql,params)=>cliente.query(sql,params?.map(p=>Array.isArray(p)&&p.some(v=>v&&typeof v==='object')?JSON.stringify(p):p)), exec:sql=>cliente.query(sql), close:()=>cliente.end() }
+} else db=new PGlite()
 await db.exec(`create role anon;create role authenticated;create role service_role;create role hermes_app;
 create schema auth;create schema hermes;create schema storage;
 create table storage.objects(bucket_id text,name text);
@@ -135,6 +147,11 @@ await testOrigenMayorista(db, claims)
 await testSincronizacionAutomatica(db, claims)
 await testSaldoFavor(db, claims)
 await testCheckoutCaja(db, claims)
+await prepararIncidenciasHistoricas(db, claims)
 await testBajasTrazabilidad(db, claims)
 await testCajaAlmacen(db, claims)
+await testIncidenciasResolucion(db, claims)
+await testCobroPedidos(db, claims)
+await testTrazabilidadCobros(db, claims)
+await testComisionesCobro(db, claims)
 await db.close()

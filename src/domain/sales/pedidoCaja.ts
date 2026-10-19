@@ -3,7 +3,7 @@
 // buildVentaLineas produce para registrar_venta.
 import type { PedidoCobroLineaPayload, PedidoCobroQuitadaPayload, PedidoVendedorRecord } from '../../application/shared/models'
 import { SUCURSAL_TIENDA_ID } from '../../infrastructure/supabase/mappers'
-import { precioMinimoLocal, precioSugerido, type PresentacionPiso, type ProductoPiso } from './pedidoPiso'
+import { precioListaPresentacion, precioMinimoLocal, type PresentacionPiso, type ProductoPiso } from './pedidoPiso'
 
 export interface LineaCaja {
   /** Clave local estable (React key). Para líneas del pedido deriva del linea_id, estable desde que la caja toma el pedido. */
@@ -116,7 +116,7 @@ export const cambiarPresentacionCaja = (l: LineaCaja, p: PresentacionPiso): Line
   const base = p.esBase || p.factorUnidadBase === 1
   const factor = base ? 1 : p.factorUnidadBase
   const retail = l.precioRetailCents != null ? l.precioRetailCents / 100 : null
-  const sugerido = precioSugerido(retail, factor)
+  const sugerido = precioListaPresentacion(p, retail, factor)
   return {
     ...l, presentacionId: base ? null : p.id, presentacionNombre: base ? null : p.nombre, esBase: base, factor,
     precioCents: aCents(sugerido) ?? 0, precioListaCents: aCents(sugerido), precioMinimoCents: aCents(precioMinimoLocal(retail, base)),

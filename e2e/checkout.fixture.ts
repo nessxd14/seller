@@ -20,6 +20,7 @@ export async function fixture(page:Page, options: { openVtd?: boolean; products?
     let data:unknown=[]
     if(options.products && name==='producto')data=[{id:44,nombre:'Material de Almacén QA',sku_interno:'QA-44',unidad_base:'UNIDAD',precio_base:150,activo:true}]
     if(options.products && name==='presentacion')data=[{id:44,producto_id:44,nombre:'Unidad',es_base:true,activo:true,factor_unidad_base:1}]
+    if(options.products && name==='v_presentacion_precio')data=[{presentacion_id:44,producto_id:44,nombre:'Unidad',es_base:true,activo:true,factor_unidad_base:1,precio_retail:150,precio_mayoreo:150,precio_institucion:150,precio_corporativo:150,tiene_precio_propio:false,vende_tienda:true,vende_almacen:true}]
     if(options.products && name==='ubicacion')data=[{id:31,sucursal_id:1,codigo_zona:'VENTAS DIRECTAS'}]
     if(name==='perfil')data=[{id:actor,nombre:'Caja de prueba',email:'caja@test.invalid',rol:'cajero',activo:true}]
     if(name==='sesion_caja')data=[{id:900,caja_id:1,caja:{nombre:'Caja Tienda'},estado:'ABIERTA',cajero_id:actor,monto_apertura:0,abierta_en:new Date().toISOString()}]

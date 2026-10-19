@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { getPrice } from '../data/products'
+import { precioSugerido } from '../domain/pricing/precioPresentacion'
 import type { CartItem, Product, SalesChannel } from '../types'
 import { ventaLineTotalCents } from '../domain/sales/ventaPricing'
 import { moneyFromDecimal } from '../domain/common/money'
@@ -294,11 +295,13 @@ export function PosProvider({ children }: { children: ReactNode }) {
     // TAREA B: lines the seller already manually re-priced (precioModificado) are frozen —
     // "se respeta" applies to both the applied price and its discount, so neither is touched
     // by an automatic channel switch. Untouched lines keep the exact recompute above,
-    // including the presentation-factor multiplication.
+    // including the presentation-factor multiplication. Con presentación activa manda su precio
+    // resuelto para el canal nuevo (precio propio o canal × factor); getPrice × factor solo
+    // si ese precio es null.
     setCart((items) => items.map((item) => {
       const priced = item.precioModificado
         ? item
-        : { ...item, precioAplicado: roundMoney(getPrice(item, next) * (item.factorUnidadBase ?? 1)), descuento: 0 }
+        : { ...item, precioAplicado: roundMoney(precioSugerido({ factorUnidadBase: item.factorUnidadBase ?? 1, precios: item.presentacionId ? item.preciosPresentacion : undefined }, next, getPrice(item, next)) ?? 0), descuento: 0 }
       // TAREA 1 (Tanda 4): recalcula el default de origen al cambiar de canal, pero
       // solo en las líneas que el cajero no ajustó a mano (origenManual).
       return priced.origenManual ? priced : { ...priced, ubicacion: defaultOrigenFor(next, esAcreedor) }

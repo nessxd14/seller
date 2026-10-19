@@ -11,11 +11,14 @@ import { isLineUnpriced } from '../domain/sales/priceCheck'
 import { OriginPin, buildOriginOptions } from './OriginPin'
 import { NumberField } from './NumberField'
 import { focusPosSearch } from '../lib/focusPosSearch'
+import { nombreUnidadBase, precioSugerido, textoEquivalencia } from '../domain/pricing/precioPresentacion'
+import { PrecioBajoAviso } from './PrecioBajoAviso'
+import { opcionesDelLado, presentacionInicial, presentacionVendeEnLado } from '../domain/pricing/presentacionesPorLado'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
 
-interface Presentation { id: number; nombre: string; factorUnidadBase: number; esBase: boolean }
+interface Presentation { id: number; nombre: string; factorUnidadBase: number; esBase: boolean; precios: Record<SalesChannel, number | null>; tienePrecioPropio: boolean; vendeTienda?: boolean; vendeAlmacen?: boolean }
 
 // TAREA 2: preciosHeredados only carries keys for the non-retail channels — retail is always
 // the fallback source, never a fallback target, so it can never be "inherited".
@@ -88,7 +91,11 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
   // Suggested price for the currently active channel + presentation combo — recomputed live,
   // never stored separately, since CartItem (unlike DraftOrderEditor's WorkflowLine) always
   // carries the full Product with it, so the per-base-unit list price is always one call away.
-  const channelListPrice = getPrice(item, channel) * factor
+  const channelListPrice = precioSugerido({ factorUnidadBase: factor, precios: item.presentacionId ? item.preciosPresentacion : undefined }, channel, getPrice(item, channel)) ?? 0
+  const baseNombre = nombreUnidadBase(presentations)
+  // Aviso de precio bajo: contra el precio resuelto de la presentación de la línea (la base si no hay otra).
+  const presentacionLinea = presentations.find((p) => p.id === item.presentacionId) ?? presentations.find((p) => p.esBase)
+  const precioResuelto = presentacionLinea?.precios[channel] ?? null
   const heredadoKey = heredadoKeyForChannel(channel)
   const isHeredado = heredadoKey ? Boolean(item.preciosHeredados?.[heredadoKey]) : false
   // A price can be BOTH inherited AND user-overridden if the seller edits it manually — once
@@ -139,11 +146,12 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
   const onPresentationChange = (chosen: Presentation) => {
     const isBase = chosen.esBase || chosen.factorUnidadBase === 1
     const nextFactor = isBase ? 1 : chosen.factorUnidadBase
-    const nextPrice = Math.round(getPrice(item, channel) * nextFactor * 100) / 100
+    const nextPrice = precioSugerido({ factorUnidadBase: nextFactor, precios: isBase ? undefined : chosen.precios }, channel, getPrice(item, channel)) ?? 0
     updateItem(item.id, {
       presentacionId: isBase ? undefined : chosen.id,
       presentacionNombre: isBase ? undefined : chosen.nombre,
       factorUnidadBase: isBase ? undefined : nextFactor,
+      preciosPresentacion: isBase ? undefined : chosen.precios,
       precioAplicado: nextPrice,
       // TAREA B: a presentation change is itself a fresh, deliberate recompute the seller
       // just triggered — it supersedes any earlier manual price edit, so it clears the
@@ -151,6 +159,20 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
       precioModificado: false,
     })
   }
+
+  // Venta en tienda: si la presentación base no se vende en tienda, la línea nueva arranca en la
+  // primera habilitada (la de menor factor). Solo toca líneas sin presentación elegida; una línea con
+  // presentación explícita (aunque luego se haya deshabilitado) se queda como está.
+  const aplicadoInicial = useRef(false)
+  useEffect(() => {
+    if (mode === 'traslado' || item.isCustomItem || aplicadoInicial.current || !presentations.length) return
+    aplicadoInicial.current = true
+    const base = presentations.find((p) => p.esBase)
+    if (item.presentacionId != null || !base || presentacionVendeEnLado(base, 'tienda')) return
+    const inicial = presentacionInicial(presentations, 'tienda')
+    if (inicial) onPresentationChange(inicial)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presentations, mode])
 
   // Brief J — modo traslado: mismo motor (mismo item, misma cantidad, misma
   // presentación), pero sin precios y con el disponible de la sucursal origen del
@@ -170,7 +192,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
               {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
           : <span className="cart-unidad-plain">{presentations[0]?.nombre ?? 'Unidad'}</span>}
-        {factor !== 1 && <small className="line-equivalence">{fmtQty(item.cantidad)} {item.presentacionNombre} = {fmtQty(cantidadBase)} u</small>}
+        {factor !== 1 && <small className="line-equivalence">{textoEquivalencia(item.cantidad, item.presentacionNombre, factor, baseNombre)}</small>}
       </div>
       <small className={`cart-disponible ${noAlcanza ? 'cart-disponible-warn' : ''}`}>{fmtQty(cantidadBase)} base · disponible {fmtQty(disponible)}</small>
     </div></article>
@@ -223,16 +245,16 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
       {!item.isCustomItem && <select
         aria-label={`Presentación ${item.nombre}`}
         className="cart-presentacion-select"
-        disabled={presentations.length <= 1}
+        disabled={opcionesDelLado(presentations, item.presentacionId, 'tienda').length <= 1}
         value={item.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id ?? ''}
         onChange={(e) => { const chosen = presentations.find((p) => p.id === Number(e.target.value)); if (chosen) onPresentationChange(chosen) }}
       >
-        {presentations.length ? presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>) : <option value="">Unidad</option>}
+        {presentations.length ? opcionesDelLado(presentations, item.presentacionId ?? presentations.find((p) => p.esBase)?.id, 'tienda').map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>) : <option value="">Unidad</option>}
       </select>}
       <QtyControl quantity={item.cantidad} onChange={onQuantityChange} />
       <button type="button" className="cart-remove-item" onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button>
     </div>
-    {!item.isCustomItem && factor !== 1 && <small className="line-equivalence">{fmtQty(item.cantidad)} {item.presentacionNombre} = {fmtQty(cantidadBase)} u</small>}
+    {!item.isCustomItem && factor !== 1 && <small className="line-equivalence">{textoEquivalencia(item.cantidad, item.presentacionNombre, factor, baseNombre)}</small>}
     {/* TAREA B.4: ícono + texto corto, sin envolver — el enlace sigue siendo una acción.
         Brief S10: si el bloqueo es por reserva, decirlo y nombrar el pedido — "sin stock"
         a secas con la mercadería en la mano frente al cliente parece un sistema roto.
@@ -243,6 +265,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
         bloquea, así que no puede llevar el mismo rojo que un error real o el aviso
         pierde significado y se ignora. */}
     {!item.isCustomItem && understocked && !insufficient && <small className="line-stock-info line-stock-error-compact"><Info aria-hidden />Sin inventariar en {item.ubicacion}.</small>}
+    {!item.isCustomItem && !isUnpriced && <PrecioBajoAviso precio={item.precioAplicado} sugerido={precioResuelto} presentacionNombre={presentacionLinea?.nombre} factor={presentacionLinea?.factorUnidadBase ?? 1} baseNombre={baseNombre} />}
     {isUnpriced && <small className="line-stock-error">{item.nombre} no tiene precio. Escribilo en la línea para poder cobrar.</small>}
     </div></article>
 }
