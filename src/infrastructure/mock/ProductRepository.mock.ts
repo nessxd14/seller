@@ -76,7 +76,7 @@ export const getStockBySucursalBatch = async (
 
 // Mock seeds have no presentacion concept — degrade gracefully to a single synthetic
 // base presentation so the UI's presentation selector always has at least one option.
-export const listPresentations = async (productId: number): Promise<Array<{ id: number; nombre: string; factorUnidadBase: number; esBase: boolean; precios: Record<SalesChannel, number | null>; tienePrecioPropio: boolean }>> => {
+export const listPresentations = async (productId: number): Promise<Array<{ id: number; nombre: string; factorUnidadBase: number; esBase: boolean; precios: Record<SalesChannel, number | null>; tienePrecioPropio: boolean; vendeTienda?: boolean; vendeAlmacen?: boolean }>> => {
   void productId
   // Sin precios resueltos (null): los consumidores caen al cálculo precio base × factor.
   return [{ id: 0, nombre: 'Unidad', factorUnidadBase: 1, esBase: true, precios: { retail: null, mayoreo: null, institucional: null, corporativo: null }, tienePrecioPropio: false }]
