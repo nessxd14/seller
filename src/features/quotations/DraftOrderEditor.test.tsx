@@ -215,6 +215,22 @@ describe('DraftOrderEditor — precio por presentación', () => {
     expect(screen.queryByText(/Precio muy bajo/)).toBeNull()
   })
 
+  it('oculta una presentación solo de tienda al elegir, pero conserva visible la que ya tiene la línea', async () => {
+    cargar([
+      ...presentaciones,
+      { id: 8, nombre: 'CAJA MASTER', factorUnidadBase: 1000, esBase: false, precios, tienePrecioPropio: true, vendeAlmacen: false } as Pres,
+    ])
+    const { unmount } = render(<DraftOrderEditor quote={{ ...baseQuote, lines: [{ ...baseQuote.lines[0], unitPriceCents: 20 }] }} onClose={() => {}} onSave={vi.fn()} />)
+    const select = await screen.findByRole('combobox', { name: 'Presentación Producto 1' })
+    await waitFor(() => expect([...select.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['Hoja', 'PAQUETE']))
+    unmount()
+    // Una línea vieja ya guardada con la presentación deshabilitada la sigue mostrando.
+    render(<DraftOrderEditor quote={{ ...baseQuote, lines: [{ ...baseQuote.lines[0], presentacionId: 8, presentacionNombre: 'CAJA MASTER', factorUnidadBase: 1000 }] }} onClose={() => {}} onSave={vi.fn()} />)
+    const select2 = await screen.findByRole('combobox', { name: 'Presentación Producto 1' }) as HTMLSelectElement
+    await waitFor(() => expect([...select2.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['Hoja', 'PAQUETE', 'CAJA MASTER']))
+    expect(select2.value).toBe('8')
+  })
+
   it('sin precio resuelto no avisa', async () => {
     cargar(presentaciones.map((p) => ({ ...p, precios: sinPrecios })))
     render(<DraftOrderEditor quote={lineaPaquete(500)} onClose={() => {}} onSave={vi.fn()} />)

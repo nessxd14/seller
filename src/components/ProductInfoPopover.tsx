@@ -1,3 +1,4 @@
+import { etiquetaDondeSeVende } from '../domain/pricing/presentacionesPorLado'
 import { useEffect, useState } from 'react'
 import { Boxes, Info, Package, TrendingUp } from 'lucide-react'
 import { Modal } from './Modal'
@@ -73,7 +74,7 @@ export function ProductInfoPopover({ product }: { product: Product }) {
             <section className="commercial-section">
               <div className="commercial-section-heading"><span className="section-icon"><Package /></span><div><h3>Presentaciones</h3><p>Equivalencias por unidad de venta.</p></div></div>
               {presentations === null ? <p className="product-info-empty">Cargando presentaciones…</p> : presentations.length
-                ? <ul className="product-info-list">{presentations.map((p) => <li key={p.id}><span>{p.nombre}</span><strong>{p.esBase ? 'Unidad base' : `${p.factorUnidadBase} uds.`}</strong></li>)}</ul>
+                ? <ul className="product-info-list">{presentations.map((p) => <li key={p.id}><span>{p.nombre}{etiquetaDondeSeVende(p) && <small className="presentacion-lado-badge"> {etiquetaDondeSeVende(p)}</small>}</span><strong>{p.esBase ? 'Unidad base' : `${p.factorUnidadBase} uds.`}</strong></li>)}</ul>
                 : <p className="product-info-empty">Sin presentaciones registradas.</p>}
             </section>
             </div>

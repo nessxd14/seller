@@ -13,6 +13,8 @@ import {
   quitarLinea, restaurarLinea, totalCents, totalLineaCents, totalVendedorCents, verificarLinea, verificarPorEscaneo, type LineaCaja,
 } from '../../domain/sales/pedidoCaja'
 import type { PresentacionPiso, ProductoPiso } from '../../domain/sales/pedidoPiso'
+import { presentacionAlAgregar } from '../../lib/presentacionAlAgregar'
+import { opcionesDelLado } from '../../domain/pricing/presentacionesPorLado'
 import { useQrHold } from '../../hooks/useQrHold'
 import { auditEnd, auditStart } from '../../lib/auditoriaDvr'
 import { authSessionProvider, listPresentations, pedidoVendedorService, productRepository } from '../../infrastructure/services'
@@ -202,7 +204,16 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
             else if (r.resultado === 'ya_verificada') notify('Ya verificado')
             return r.resultado
           }}
-          onAgregar={(producto) => { setLineas((prev) => [...prev, lineaAgregada(aProducto(producto), createUuid())]); notify(`Agregado en caja: ${producto.nombre}`) }}
+          onAgregar={(producto) => {
+            // Caja cobra en tienda: solo se agregan productos con alguna presentación habilitada para tienda.
+            void presentacionAlAgregar(producto.id, 'tienda').then((permiso) => {
+              if (!permiso.ok) { notify(permiso.mensaje); return }
+              const nueva = lineaAgregada(aProducto(producto), createUuid())
+              const inicial = permiso.inicial && !permiso.inicial.esBase && permiso.inicial.factorUnidadBase !== 1 ? permiso.inicial : undefined
+              setLineas((prev) => [...prev, inicial ? cambiarPresentacionCaja(nueva, inicial) : nueva])
+              notify(`Agregado en caja: ${producto.nombre}`)
+            })
+          }}
           notify={notify}
         />
         <div className="pv-lineas">
@@ -375,7 +386,7 @@ function FilaCaja({ linea, onVerificar, onCantidad, onPrecio, onPresentacion, on
     </div>
     {mostrarPres && <div className="pv-chips" role="group" aria-label="Presentación">
       {presentaciones === null && <small>Cargando…</small>}
-      {presentaciones?.map((p) => {
+      {presentaciones && opcionesDelLado(presentaciones, linea.presentacionId ?? presentaciones.find((x) => x.esBase)?.id, 'tienda').map((p) => {
         const activa = p.esBase || p.factorUnidadBase === 1 ? linea.presentacionId == null : linea.presentacionId === p.id
         return <button key={p.id} type="button" className={activa ? 'activo' : ''} aria-pressed={activa} onClick={() => { onPresentacion(p); setMostrarPres(false) }}>{p.nombre}{!p.esBase && p.factorUnidadBase !== 1 ? ` (${p.factorUnidadBase})` : ''}</button>
       })}

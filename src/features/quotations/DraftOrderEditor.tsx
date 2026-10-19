@@ -17,6 +17,7 @@ import { useBorrador, borradorKey } from '../../hooks/useBorrador'
 import { BorradorBanner } from '../../components/BorradorBanner'
 import { EditQuoteLineModal, type LinePresentation } from './EditQuoteLineModal'
 import { PrecioBajoAviso } from '../../components/PrecioBajoAviso'
+import { mensajePresentacionNoDisponible, mensajeSinPresentacion, opcionesDelLado, presentacionInicial, presentacionVendeEnLado } from '../../domain/pricing/presentacionesPorLado'
 import { nombreUnidadBase, precioSugerido as precioSugeridoPresentacion, textoEquivalencia } from '../../domain/pricing/precioPresentacion'
 import { coincideBusqueda } from '../../domain/customers/textSearch'
 import { formatQtyWithUnit, normalizeUnit } from '../../domain/sales/unitOfMeasure'
@@ -259,13 +260,25 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // que el cajero interpretaba como que el click no había funcionado). Tampoco se limpia
   // productQuery/productResults acá: es justo el reinicio que el brief pide sacar — el
   // buscador se limpia únicamente con Escape (ver ProductQuickAdd).
-  const addCatalogProduct = (product: Product) => {
+  const addCatalogProduct = async (product: Product, scanned?: { id: number; nombre: string }) => {
     const existing = value.lines.find((line) => line.productId === String(product.id) && !line.isCustomItem)
     if (existing) {
       updateLine(existing.id, { quantity: existing.quantity + 1 })
       return
     }
-    const unitPriceCents = Math.round(priceForChannel(product, value.channel) * 100)
+    // Almacén: solo se ofrecen las presentaciones habilitadas para cotizar / pedir al por mayor.
+    const list = await listPresentations(product.id).catch(() => [] as LinePresentation[])
+    if (list.length) {
+      if (!presentacionInicial(list, 'almacen')) { setScanError(mensajeSinPresentacion('almacen')); return }
+      const escaneada = scanned ? list.find((p) => p.id === scanned.id) : undefined
+      if (escaneada && !presentacionVendeEnLado(escaneada, 'almacen')) { setScanError(mensajePresentacionNoDisponible(escaneada.nombre, 'almacen')); return }
+    }
+    setScanError('')
+    const inicial = presentacionInicial(list, 'almacen')
+    const inicialNoBase = inicial && !(inicial.esBase || inicial.factorUnidadBase === 1) ? inicial : undefined
+    const basePriceCents = Math.round(priceForChannel(product, value.channel) * 100)
+    // Con la base deshabilitada la línea arranca en la presentación habilitada, con su precio resuelto.
+    const unitPriceCents = inicialNoBase ? Math.round((precioSugeridoPresentacion(inicialNoBase, value.channel, basePriceCents / 100) ?? 0) * 100) : basePriceCents
     const lineId = crypto.randomUUID()
     const newLine: WorkflowLine = {
       id: lineId,
@@ -277,9 +290,11 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       discountBasisPoints: 0,
       listPriceCents: unitPriceCents,
       sourceLocation: defaultSourceForChannel(),
+      ...(inicialNoBase ? { presentacionId: inicialNoBase.id, presentacionNombre: inicialNoBase.nombre, factorUnidadBase: inicialNoBase.factorUnidadBase } : {}),
     }
     setValue((v) => ({ ...v, lines: [...v.lines, newLine] }))
-    setBasePriceCentsByLine((prev) => ({ ...prev, [lineId]: unitPriceCents }))
+    setBasePriceCentsByLine((prev) => ({ ...prev, [lineId]: basePriceCents }))
+    setPresentationsByProduct((prev) => ({ ...prev, [String(product.id)]: list }))
     ensureProductData(product)
   }
 
@@ -289,7 +304,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     scanPendingRef.current = true; setScanning(true); setScanError('')
     try {
       const result = await productRepository.resolveScannedCode(code)
-      if (result.kind === 'found') { addCatalogProduct(result.product); setScanSku('') }
+      if (result.kind === 'found') { await addCatalogProduct(result.product, result.presentation); setScanSku('') }
       else if (result.kind === 'ambiguous') setAmbiguousIds(result.productIds)
       else setScanError(`No encontramos el código ${code}. Revisa el SKU o código de barras.`)
     } catch { setScanError('No se pudo consultar el código. Intenta nuevamente.') }
@@ -611,7 +626,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
               loading={productLoading}
               chips={value.lines.filter((l) => !l.isCustomItem && l.productId).map((l) => ({ productId: Number(l.productId), nombre: l.name, cantidad: l.quantity }))}
               priceFor={(p) => formatMoney(money(Math.round(priceForChannel(p, value.channel) * 100)))}
-              onAdd={addCatalogProduct}
+              onAdd={(product) => { void addCatalogProduct(product) }}
               onRemoveChip={(productId) => { const line = value.lines.find((l) => l.productId === String(productId) && !l.isCustomItem); if (line) removeLine(line.id) }}
             />
             <label className="document-scan-field"><Barcode /><input
@@ -698,7 +713,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
                           if (chosen) onPresentationChange(line, chosen)
                         }}
                       >
-                        {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                        {opcionesDelLado(presentations, line.presentacionId ?? presentations.find((p) => p.esBase)?.id, 'almacen').map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                       </select>
                     )}
                   </div>
@@ -883,7 +898,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
         )}
         {isExistingQuote && onConvert && (value.status === 'draft' || value.status === 'approved') && <button className="primary-button" disabled={saving || faltantesSinDecidir.length > 0 || disponibilidadCargando || missingCustomer || missingSolicitante || missingConditionPago} title={faltantesSinDecidir.length > 0 ? 'Decidí qué hacer con las líneas sin stock' : missingCustomer ? 'Elegí un cliente para convertir' : missingSolicitante ? 'Elegí un solicitante para convertir' : missingConditionPago ? 'Elegí una condición de pago para convertir' : undefined} onClick={() => void runOrderAction(onConvert)}>Convertir a pedido</button>}
       </footer>
-      {ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onClose={() => setAmbiguousIds(null)} onPick={(product) => { addCatalogProduct(product); setAmbiguousIds(null); setScanSku('') }} />}
+      {ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onClose={() => setAmbiguousIds(null)} onPick={(product) => { void addCatalogProduct(product); setAmbiguousIds(null); setScanSku('') }} />}
       {customModalOpen && (
         <CustomItemModal
           form={customModalForm}

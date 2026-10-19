@@ -121,7 +121,7 @@ const PRODUCT_COLUMNS = 'id,nombre,sku_interno,marca,unidad_base,precio_base,pre
 interface ResolverRow { producto_id: number; presentacion_id?: number | null; factor_unidad_base?: number | string | null; presentacion_nombre?: string | null }
 
 /** Presentación que resuelve un código de barras: sin precios (el carrito los carga al elegir presentación). */
-export type ScannedPresentation = Omit<Presentation, 'precios' | 'tienePrecioPropio'>
+export type ScannedPresentation = Omit<Presentation, 'precios' | 'tienePrecioPropio' | 'vendeTienda' | 'vendeAlmacen'>
 
 /** La presentación de un código solo se informa cuando TODAS las filas del producto apuntan a la misma. */
 const singlePresentation = (rows: ResolverRow[]): ScannedPresentation | undefined => {
@@ -411,6 +411,9 @@ export interface Presentation {
   /** Precio ya resuelto por canal (propio, o precio del canal × factor); null = el producto no tiene precio. */
   precios: Record<SalesChannel, number | null>
   tienePrecioPropio: boolean
+  /** Dónde se vende: tienda (mostrador, VTD, celular del piso) y/o almacén (cotizaciones, pedidos mayoristas). Ausente = true. */
+  vendeTienda: boolean
+  vendeAlmacen: boolean
 }
 
 const numOrNull = (value: number | string | null | undefined): number | null => (value == null ? null : num(value))
@@ -423,14 +426,14 @@ const numOrNull = (value: number | string | null | undefined): number | null => 
 export const listPresentations = async (productId: number): Promise<Presentation[]> => {
   const { data, error } = await supabase
     .from('v_presentacion_precio')
-    .select('presentacion_id,nombre,factor_unidad_base,es_base,activo,precio_retail,precio_mayoreo,precio_institucion,precio_corporativo,tiene_precio_propio')
+    .select('presentacion_id,nombre,factor_unidad_base,es_base,activo,precio_retail,precio_mayoreo,precio_institucion,precio_corporativo,tiene_precio_propio,vende_tienda,vende_almacen')
     .eq('producto_id', productId)
     .order('es_base', { ascending: false })
   if (error) throw error
   const rows = (data ?? []) as Array<{
     presentacion_id: number; nombre: string; factor_unidad_base: number | string; es_base: boolean; activo: boolean | null
     precio_retail: number | string | null; precio_mayoreo: number | string | null; precio_institucion: number | string | null; precio_corporativo: number | string | null
-    tiene_precio_propio: boolean | null
+    tiene_precio_propio: boolean | null; vende_tienda?: boolean | null; vende_almacen?: boolean | null
   }>
   return rows.filter((row) => row.activo !== false).map((row) => ({
     id: row.presentacion_id,
@@ -444,6 +447,8 @@ export const listPresentations = async (productId: number): Promise<Presentation
       corporativo: numOrNull(row.precio_corporativo),
     },
     tienePrecioPropio: row.tiene_precio_propio === true,
+    vendeTienda: row.vende_tienda !== false,
+    vendeAlmacen: row.vende_almacen !== false,
   }))
 }
 

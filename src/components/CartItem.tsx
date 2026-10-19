@@ -13,11 +13,12 @@ import { NumberField } from './NumberField'
 import { focusPosSearch } from '../lib/focusPosSearch'
 import { nombreUnidadBase, precioSugerido, textoEquivalencia } from '../domain/pricing/precioPresentacion'
 import { PrecioBajoAviso } from './PrecioBajoAviso'
+import { opcionesDelLado, presentacionInicial, presentacionVendeEnLado } from '../domain/pricing/presentacionesPorLado'
 
 const money = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtQty = (n: number) => n.toLocaleString('es-BO')
 
-interface Presentation { id: number; nombre: string; factorUnidadBase: number; esBase: boolean; precios: Record<SalesChannel, number | null>; tienePrecioPropio: boolean }
+interface Presentation { id: number; nombre: string; factorUnidadBase: number; esBase: boolean; precios: Record<SalesChannel, number | null>; tienePrecioPropio: boolean; vendeTienda?: boolean; vendeAlmacen?: boolean }
 
 // TAREA 2: preciosHeredados only carries keys for the non-retail channels — retail is always
 // the fallback source, never a fallback target, so it can never be "inherited".
@@ -159,6 +160,20 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
     })
   }
 
+  // Venta en tienda: si la presentación base no se vende en tienda, la línea nueva arranca en la
+  // primera habilitada (la de menor factor). Solo toca líneas sin presentación elegida; una línea con
+  // presentación explícita (aunque luego se haya deshabilitado) se queda como está.
+  const aplicadoInicial = useRef(false)
+  useEffect(() => {
+    if (mode === 'traslado' || item.isCustomItem || aplicadoInicial.current || !presentations.length) return
+    aplicadoInicial.current = true
+    const base = presentations.find((p) => p.esBase)
+    if (item.presentacionId != null || !base || presentacionVendeEnLado(base, 'tienda')) return
+    const inicial = presentacionInicial(presentations, 'tienda')
+    if (inicial) onPresentationChange(inicial)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presentations, mode])
+
   // Brief J — modo traslado: mismo motor (mismo item, misma cantidad, misma
   // presentación), pero sin precios y con el disponible de la sucursal origen del
   // traslado en vez del split Tienda/Almacén de venta. Rama separada del return de
@@ -229,11 +244,11 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
       {!item.isCustomItem && <select
         aria-label={`Presentación ${item.nombre}`}
         className="cart-presentacion-select"
-        disabled={presentations.length <= 1}
+        disabled={opcionesDelLado(presentations, item.presentacionId, 'tienda').length <= 1}
         value={item.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id ?? ''}
         onChange={(e) => { const chosen = presentations.find((p) => p.id === Number(e.target.value)); if (chosen) onPresentationChange(chosen) }}
       >
-        {presentations.length ? presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>) : <option value="">Unidad</option>}
+        {presentations.length ? opcionesDelLado(presentations, item.presentacionId ?? presentations.find((p) => p.esBase)?.id, 'tienda').map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>) : <option value="">Unidad</option>}
       </select>}
       <QtyControl quantity={item.cantidad} onChange={onQuantityChange} />
       {!item.isCustomItem && factor !== 1 && <small className="line-equivalence">{textoEquivalencia(item.cantidad, item.presentacionNombre, factor, baseNombre)}</small>}

@@ -1,3 +1,4 @@
+import { opcionesDelLado } from '../../domain/pricing/presentacionesPorLado'
 import { useState } from 'react'
 import type { WorkflowLine } from '../../application/shared/models'
 import { Modal } from '../../components/Modal'
@@ -11,7 +12,7 @@ import { PrecioBajoAviso } from '../../components/PrecioBajoAviso'
 import { nombreUnidadBase, precioSugerido as precioSugeridoPresentacion, type PreciosPresentacion } from '../../domain/pricing/precioPresentacion'
 import type { SalesChannel } from '../../types'
 
-export type LinePresentation = { id: number; nombre: string; factorUnidadBase: number; esBase: boolean; precios: PreciosPresentacion; tienePrecioPropio: boolean }
+export type LinePresentation = { id: number; nombre: string; factorUnidadBase: number; esBase: boolean; precios: PreciosPresentacion; tienePrecioPropio: boolean; vendeTienda?: boolean; vendeAlmacen?: boolean }
 export type LineStock = { tienda: number; almacen: number }
 
 interface FormState {
@@ -111,7 +112,7 @@ export function EditQuoteLineModal({ line, presentations, channel, stock, identi
         {presentations.length > 0 && (
           <label>Presentación
             <select value={form.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id} onChange={(e) => applyPresentation(Number(e.target.value))}>
-              {presentations.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              {opcionesDelLado(presentations, form.presentacionId ?? presentations.find((p) => p.esBase)?.id, 'almacen').map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
           </label>
         )}

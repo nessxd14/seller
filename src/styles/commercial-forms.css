@@ -235,3 +235,5 @@
   .commercial-modal .form-grid { grid-template-columns: 1fr; }
   .commercial-modal .draft-order-tabs button { flex-direction: column; font-size: 10px; }
 }
+
+.presentacion-lado-badge { margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 11px; background: rgba(120, 120, 120, .15); }
