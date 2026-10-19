@@ -93,7 +93,7 @@ describe('CartPanel — cobro de VTD desde el carrito (Brief Caja VTD)', () => {
 
     await waitFor(() => expect((screen.getByRole('button', {name:/Cobrar todo/}) as HTMLButtonElement).disabled).toBe(false))
     expect(screen.queryByText(/Por ahora la VTD/)).toBeNull()
-    expect(screen.getByRole('button', {name:/Cobrar todo/}).textContent).toMatch(/160/)
+    expect(document.querySelector('.grand-total')?.textContent).toMatch(/160/)
 
   })
 })

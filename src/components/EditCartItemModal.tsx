@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { getPrice } from '../data/products'
+import { precioSugerido } from '../domain/pricing/precioPresentacion'
 import { usePos } from '../context/PosContext'
 import type { CartItem } from '../types'
 import { Modal } from './Modal'
@@ -8,7 +9,7 @@ import { NumberField } from './NumberField'
 export function EditCartItemModal({ item, onClose }: { item: CartItem; onClose: () => void }) {
   const { channel, updateItem } = usePos()
   const [form, setForm] = useState<{ cantidad: number; precioAplicado: number; descuento: number; ubicacion: 'Tienda' | 'Almacén'; observacion: string; motivoPrecio: string }>({ cantidad: item.cantidad, precioAplicado: item.precioAplicado, descuento: item.descuento, ubicacion: item.ubicacion, observacion: item.observacion, motivoPrecio: item.motivoPrecio })
-  const configured = getPrice(item, channel)
+  const configured = precioSugerido({ factorUnidadBase: item.factorUnidadBase ?? 1, precios: item.presentacionId ? item.preciosPresentacion : undefined }, channel, getPrice(item, channel)) ?? 0
   // TAREA B: this modal also lets the seller edit precioAplicado directly (a second path
   // besides CartItem's inline editor) — it must set the same precioModificado flag or the
   // channel-switch freeze has a silent gap for lines priced through here.

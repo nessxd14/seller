@@ -49,6 +49,7 @@ import './styles/pos-piso.css'
 import './styles/pos-caja-pedido-vendedor.css'
 import './styles/pos-pedidos-cobros.css'
 import './styles/pos-cobro-trazabilidad.css'
+import './styles/pos-carrito-ligero.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -198,13 +198,14 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
     </div></article>
   }
 
-  return <article ref={articleRef} className={`cart-item ${isSelected ? 'cart-item-selected' : ''}`} onClick={select}><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} /><div className="cart-item-main"><div className="cart-title"><div>
-      <h4 title={item.nombre}>{item.nombre}</h4>
+  return <article ref={articleRef} className={`cart-item cart-item-light ${isSelected ? 'cart-item-selected' : ''}`} onClick={select}>{mode !== 'venta' && <ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} />}<div className="cart-item-main"><div className="cart-title"><div>
+      <h4><button type="button" className="cart-product-name" data-line-action="edit" onClick={(e) => onEdit(e.detail === 0)} aria-label={`Editar ${item.nombre}`} title={item.nombre}>{item.nombre}<Pencil aria-hidden="true" /></button></h4>
       {item.isCustomItem && <span className="custom-item-badge">Personalizado</span>}
       <div className="cart-price-row">
         {editing
           ? <input
               className="price-inline-input"
+              aria-label={`Precio unitario ${item.nombre}`}
               type="number"
               step="0.01"
               min="0"
@@ -230,11 +231,11 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
             el cobro y tiene que gritar, no achicarse. */}
         {showInheritedBadge && <span className="price-heredado-icon" title="Este canal no tiene precio propio configurado: se usa el precio de mostrador. No es un precio negociado."><Info aria-label="Precio heredado, no negociado" /></span>}
         {isUnpriced && <small className="price-heredado-badge price-overridden-badge" title="Esta línea no tiene precio configurado en ningún canal. Escribí un precio para poder cobrarla.">sin precio</small>}
+        {!item.isCustomItem && !isUnpriced && (item.precioModificado || isOverridden) && <small className="cart-manual-price">Precio manual</small>}
       </div>
-    </div><button className="edit-link" data-line-action="edit" onClick={(e) => onEdit(e.detail === 0)} aria-label={`Editar ${item.nombre}`} title="Editar"><Pencil /></button><button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button></div>
-    {/* Ubicación, presentación, cantidad e importe comparten la fila de controles.
-        Editar y eliminar están junto al nombre. Las equivalencias y advertencias
-        conservan su propia línea para no desplazar los controles. */}
+    </div><strong className="line-total">Bs {money(lineTotal)}</strong></div>
+    {/* El nombre abre el editor; origen, presentación y cantidad siguen a mano.
+        Equivalencias y avisos ocupan una línea propia, sin recortarlos. */}
     <div className="cart-line-controls">
       {/* Brief S11 Bloque C: sin origen ni presentación — un ítem personalizado no está
           en el catálogo, no tiene sentido elegir sucursal ni unidad de venta para algo
@@ -251,9 +252,9 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
         {presentations.length ? opcionesDelLado(presentations, item.presentacionId ?? presentations.find((p) => p.esBase)?.id, 'tienda').map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>) : <option value="">Unidad</option>}
       </select>}
       <QtyControl quantity={item.cantidad} onChange={onQuantityChange} />
-      {!item.isCustomItem && factor !== 1 && <small className="line-equivalence">{textoEquivalencia(item.cantidad, item.presentacionNombre, factor, baseNombre)}</small>}
-      <strong className="line-total">Bs {money(lineTotal)}</strong>
+      <button type="button" className="cart-remove-item" onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button>
     </div>
+    {!item.isCustomItem && factor !== 1 && <small className="line-equivalence">{textoEquivalencia(item.cantidad, item.presentacionNombre, factor, baseNombre)}</small>}
     {/* TAREA B.4: ícono + texto corto, sin envolver — el enlace sigue siendo una acción.
         Brief S10: si el bloqueo es por reserva, decirlo y nombrar el pedido — "sin stock"
         a secas con la mercadería en la mano frente al cliente parece un sistema roto.
