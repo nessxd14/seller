@@ -60,11 +60,17 @@ describe('isLineBlocking — "falta stock" y "esto bloquea la venta" son pregunt
   })
 })
 
-describe('isLineBlocking — S10: la reserva gana sobre el control libre de W3', () => {
-  it('100 físicas, 80 reservadas → vendible 20; pedir más de 20 bloquea', () => {
+describe('isLineBlocking — reservas (S10, ajustado 2026-10-19: Tienda LIBRE no se bloquea)', () => {
+  it('sucursal ESTRICTO: 100 físicas, 80 reservadas → vendible 20; pedir más de 20 bloquea', () => {
+    const line = { cantidad: 30, ubicacion: 'Tienda' as const }
+    const s = stock({ tienda: 100, tiendaVendible: 20, tiendaReservado: 80, tiendaMotivo: 'Cotización #22', tiendaLibre: false })
+    expect(isLineBlocking(line, s)).toBe(true)
+  })
+
+  it('Tienda LIBRE: 100 físicas, 80 reservadas → pedir 30 no bloquea', () => {
     const line = { cantidad: 30, ubicacion: 'Tienda' as const }
     const s = stock({ tienda: 100, tiendaVendible: 20, tiendaReservado: 80, tiendaMotivo: 'Cotización #22', tiendaLibre: true })
-    expect(isLineBlocking(line, s)).toBe(true)
+    expect(isLineBlocking(line, s)).toBe(false)
   })
 
   it('pedir hasta lo vendible (20) no bloquea', () => {
@@ -73,9 +79,15 @@ describe('isLineBlocking — S10: la reserva gana sobre el control libre de W3',
     expect(isLineBlocking(line, s)).toBe(false)
   })
 
-  it('en Tienda LIBRE, un producto CON reserva no se puede vender por encima de lo vendible, aunque el control libre lo permitiría', () => {
+  it('2026-10-19: en Tienda LIBRE la reserva ya no bloquea la venta', () => {
     const line = { cantidad: 5, ubicacion: 'Tienda' as const }
     const s = stock({ tienda: 3, tiendaVendible: 0, tiendaReservado: 3, tiendaMotivo: 'Pedido #10', tiendaLibre: true })
+    expect(isLineBlocking(line, s)).toBe(false)
+  })
+
+  it('en una sucursal ESTRICTO la reserva sigue bloqueando lo que excede lo vendible', () => {
+    const line = { cantidad: 5, ubicacion: 'Almacén' as const }
+    const s = stock({ almacen: 3, almacenVendible: 0, almacenReservado: 3, almacenMotivo: 'Pedido #10', almacenLibre: false })
     expect(isLineBlocking(line, s)).toBe(true)
   })
 
