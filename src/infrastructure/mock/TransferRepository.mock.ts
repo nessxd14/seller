@@ -1,4 +1,5 @@
-import type { TransferEstado, TransferLine, TransferRecord } from '../../application/shared/models'
+import type { TransferDispatchLine, TransferEstado, TransferLine, TransferRecord } from '../../application/shared/models'
+import { pendienteTraslado, recibibleTraslado } from '../../domain/sales/transfers'
 import { LocalStorageRepository } from './localStore'
 import { createUuid } from '../../application/shared/createUuid'
 import { products } from '../../data/products'
@@ -151,19 +152,42 @@ export const transferService = {
   // Kardex to reconcile against, so this only mirrors the state-machine + reversible_hasta
   // window the UI depends on (so the countdown / "Registrar devolución" fallback are both
   // exercisable in mock mode too).
-  async dispatch(id: string, actor: string): Promise<TransferRecord> {
+  async dispatch(id: string, actor: string, lines?: TransferDispatchLine[]): Promise<TransferRecord> {
     const existing = await store.get(id)
     if (!existing) throw new Error('Solicitud de traslado no encontrada')
     if (existing.estado !== 'SOLICITADO') throw new Error(`La solicitud está en estado ${existing.estado} y no se puede despachar`)
+    const updatedLines = existing.lines.map((line) => {
+      if (!pendienteTraslado(line)) return line
+      const choice = lines?.find((l) => l.lineaId === line.id)
+      const accion = lines ? choice?.accion ?? 'FALTANTE' : 'DESPACHAR'
+      const quantity = choice?.cantidadBase ?? line.cantidadBase
+      if (accion === 'DESPACHAR' && (!Number.isFinite(quantity) || quantity <= 0 || quantity > line.cantidadBase)) throw new Error('La cantidad debe estar entre 0 y lo solicitado')
+      return { ...line, estado: accion === 'DESPACHAR' ? 'DESPACHADA' as const : accion === 'RECHAZAR' ? 'RECHAZADO' as const : 'CAMBIADA' as const, cantidadDespachada: accion === 'DESPACHAR' ? quantity : 0 }
+    })
+    const faltantes = updatedLines.filter((l) => l.estado === 'CAMBIADA' || (l.estado === 'DESPACHADA' && l.cantidadDespachada! < l.cantidadBase))
+    const tanda = faltantes.length ? await this.create({ motivo: existing.motivo, sucursalOrigenId: existing.sucursalOrigenId, sucursalDestinoId: existing.sucursalDestinoId, lines: faltantes.map((l) => ({ productId: l.productId, cantidadBase: l.cantidadBase - (l.cantidadDespachada ?? 0) })) }, actor) : null
+    if (tanda) await store.save({ ...tanda, tandaDeId: existing.id, numeroTanda: (existing.numeroTanda ?? 1) + 1 })
+    const total = updatedLines.reduce((sum, l) => sum + (l.cantidadDespachada ?? 0), 0)
     const updated: TransferRecord = {
       ...existing,
-      estado: 'EN_TRANSITO',
+      estado: total > 0 ? 'EN_TRANSITO' : 'CANCELADO',
       despachadoPor: actor,
       despachadoEn: now(),
       reversibleHasta: new Date(Date.now() + 30 * 60_000).toISOString(),
-      lines: existing.lines.map((line) => ({ ...line, cantidadDespachada: line.cantidadBase })),
+      lines: updatedLines,
+      resultadoDespacho: { estado: total > 0 ? 'EN_TRANSITO' : 'CANCELADO', cantidad_despachada: total, tanda_faltante_id: tanda?.id, parciales: updatedLines.filter((l) => l.estado === 'DESPACHADA' && l.cantidadDespachada! < l.cantidadBase).map((l) => ({ linea_id: l.id, pedido: l.cantidadBase, despachado: l.cantidadDespachada!, saldo: l.cantidadBase - l.cantidadDespachada! })) },
     }
     return store.save(updated)
+  },
+  async recover(id: string, actor: string): Promise<{ tandaFaltanteId?: string; recuperadas: number }> {
+    const existing = await store.get(id)
+    if (!existing || !['EN_TRANSITO', 'RECIBIDO'].includes(existing.estado)) throw new Error('El traslado debe estar despachado')
+    const pending = existing.lines.filter(pendienteTraslado)
+    if (!pending.length) return { recuperadas: 0 }
+    const tanda = await this.create({ motivo: existing.motivo, sucursalOrigenId: existing.sucursalOrigenId, sucursalDestinoId: existing.sucursalDestinoId, lines: pending.map((l) => ({ productId: l.productId, cantidadBase: l.cantidadBase })) }, actor)
+    await store.save({ ...tanda, tandaDeId: id, numeroTanda: (existing.numeroTanda ?? 1) + 1 })
+    await store.save({ ...existing, lines: existing.lines.map((l) => pendienteTraslado(l) ? { ...l, estado: 'CAMBIADA' } : l) })
+    return { tandaFaltanteId: tanda.id, recuperadas: pending.length }
   },
   async revert(id: string, actor: string, nota?: string): Promise<TransferRecord> {
     void actor
@@ -189,7 +213,10 @@ export const transferService = {
   async receive(id: string, lines: null | Array<{ lineaId: string; cantidadBase: number }>, actor: string): Promise<TransferRecord> {
     const existing = await store.get(id)
     if (!existing) throw new Error('Solicitud de traslado no encontrada')
+    if (existing.estado !== 'EN_TRANSITO') throw new Error('El traslado no está en tránsito')
+    if (existing.lines.some(pendienteTraslado)) throw new Error('Recupera primero las líneas sin salida')
     const updatedLines = existing.lines.map((line) => {
+      if (!recibibleTraslado(line)) return line
       const override = lines?.find((l) => l.lineaId === line.id)
       const recibida = override ? override.cantidadBase : (line.cantidadDespachada ?? line.cantidadBase)
       return { ...line, cantidadRecibida: recibida }

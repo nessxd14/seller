@@ -15,6 +15,7 @@ import { supabaseAuthSessionProvider } from '../../infrastructure/supabase/Supab
 import type { Product } from '../../types'
 import { EscanerContinuo, useWakeLock, vibrarDesconocido } from './EscanerContinuo'
 import { usePedidosPiso } from './usePedidosPiso'
+import { TransfersPage } from '../transfers/TransfersPage'
 
 const bs = (v: number) => v.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const aProducto = (p: Product): ProductoPiso => ({ id: p.id, nombre: p.nombre, sku: p.sku, precioRetail: p.precioRetail })
@@ -43,6 +44,7 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
   const [aviso, setAviso] = useState('')
   const [ambiguos, setAmbiguos] = useState<number[] | null>(null)
   const [enviando, setEnviando] = useState(false)
+  const [traslados, setTraslados] = useState(false)
   const avisoTimer = useRef<number | undefined>(undefined)
 
   const avisar = useCallback((mensaje: string) => {
@@ -76,11 +78,13 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
 
   const enviar = async () => { setEnviando(true); try { await piso.enviar() } finally { setEnviando(false) } }
 
+  if (traslados) return <div className="piso-traslados"><button type="button" className="secondary-button" onClick={() => setTraslados(false)}>Volver a mi pedido</button><TransfersPage session={session} notify={avisar} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}</div>
   return <div className="piso-app">
     <header className="piso-header">
       <div><h1>{titulo}</h1><small>{activo.lineas.length} {activo.lineas.length === 1 ? 'línea' : 'líneas'} · {ETIQUETA_ESTADO[activo.estado]}</small></div>
       {linternaSoportada && editable && !plegado && <button type="button" className="piso-icono" aria-pressed={linterna} aria-label={linterna ? 'Apagar linterna' : 'Encender linterna'} onClick={() => setLinterna((v) => !v)}>{linterna ? <FlashlightOff /> : <Flashlight />}</button>}
       <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'pedidos' })}><ListOrdered /> <span>Mis pedidos</span>{piso.abiertos > 1 && <b>{piso.abiertos}</b>}</button>
+      <button type="button" className="piso-icono con-texto" onClick={() => setTraslados(true)}>Traslados</button>
     </header>
 
     {piso.sinConexion && <p className="piso-banner" role="status">Sin conexión. Guardado en este teléfono</p>}

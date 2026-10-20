@@ -74,3 +74,21 @@
 .traslado-badge-en-transito { background: #fff2de; color: #a76a19 }
 .traslado-badge-recibido { background: #e7f6eb; color: #3d8750 }
 .traslado-badge-cerrado { background: #ece9e3; color: #6e6a63 }
+
+.traslado-toolbar { display: flex; gap: 8px; flex-wrap: wrap }
+.traslado-result { padding: 12px; border: 1px solid #dfc080; background: #fff9eb; border-radius: 10px; margin-bottom: 12px }
+.traslado-result p { margin: 6px 0; font-size: 13px }
+.transfer-lines-table select { max-width: 100%; margin: 6px 0; padding: 8px }
+.piso-header { flex-wrap: wrap }
+.piso-traslados { min-height: 100dvh; padding: 12px; background: #f5f4f0 }
+.piso-traslados .feature-page { padding: 16px 0; min-width: 0 }
+.transfer-detail .traslado-mobile-label { display: none }
+.transfer-lines-table article > span:first-child small { display: block; margin-top: 4px }
+@media (max-width: 640px) {
+  .traslados-grupo-cards { grid-template-columns: minmax(0, 1fr) }
+  .piso-traslados .feature-header { align-items: flex-start; flex-direction: column; gap: 12px }
+  .transfer-detail .transfer-lines-table .table-head { display: none }
+  .transfer-detail .transfer-lines-table article { display: grid; grid-template-columns: minmax(0, 1fr) minmax(90px, 1fr); gap: 10px; padding: 12px 0 }
+  .transfer-detail .transfer-lines-table article > span:first-child { grid-column: 1 / -1 }
+  .transfer-detail .traslado-mobile-label { display: block; font-size: 11px; color: #6e6a63; margin-bottom: 5px }
+}

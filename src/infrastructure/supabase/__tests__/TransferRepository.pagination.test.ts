@@ -90,4 +90,16 @@ describe('traslados: lectura completa pese al límite del servidor', () => {
     expect(await transferRepository.list()).toEqual([])
     expect(await transferRepository.getById('99')).toBeNull()
   })
+
+  it('conserva el resultado del despacho, el estado de línea y los enlaces entre tandas', async () => {
+    state.headers = [{ ...header(1), tanda_de_id: 8, numero_tanda: 3 }]
+    state.lines = [{ ...line(11, 1), estado: 'CAMBIADA', reemplazada_por_id: 15 }]
+    const result = { estado: 'CANCELADO', cantidad_despachada: 0, bloqueadas_por_stock: [{ linea_id: 11, pedido: 5, disponible: 0 }], tanda_faltante_id: 2 }
+    rpc.mockResolvedValue({ data: result, error: null })
+    const dispatched = await transferRepository.dispatch('1', 'QA', [{ lineaId: '11', accion: 'DESPACHAR', cantidadBase: 5 }])
+    expect(dispatched.resultadoDespacho).toEqual(result)
+    expect(dispatched.tandaDeId).toBe('8')
+    expect(dispatched.lines[0]).toMatchObject({ estado: 'CAMBIADA', reemplazadaPorId: '15' })
+    expect(rpc).toHaveBeenCalledWith('despachar_traslado', { p_solicitud_id: 1, p_usuario: 'QA', p_lineas: [{ linea_id: 11, accion: 'DESPACHAR', cantidad_base: 5 }] })
+  })
 })

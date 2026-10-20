@@ -9,7 +9,7 @@ import { cashRepository, getAdvancesForOrder, getOpenSession } from './CashRepos
 import { saleRepository, getTicket } from './SaleRepository.supabase'
 import { supabaseAuthSessionProvider } from './SupabaseAuthSessionProvider'
 import { transferRepository, type CreateTransferInput } from './TransferRepository.supabase'
-import type { TransferEstado, TransferRecord } from '../../application/shared/models'
+import type { TransferDispatchLine, TransferEstado, TransferRecord } from '../../application/shared/models'
 import { configRepository } from './ConfigRepository.supabase'
 import { reportsRepository } from './ReportsRepository.supabase'
 import { comisionesRepository } from './ComisionRepository.supabase'
@@ -345,9 +345,12 @@ export const transferService = {
     const actorId = await currentActorId()
     return transferRepository.create(input, actorId)
   },
-  async dispatch(id: string): Promise<TransferRecord> {
+  async dispatch(id: string, lines?: TransferDispatchLine[]): Promise<TransferRecord> {
     const actorId = await currentActorId()
-    return transferRepository.dispatch(id, actorId)
+    return transferRepository.dispatch(id, actorId, lines)
+  },
+  async recover(id: string) {
+    return transferRepository.recover(id, await currentActorId())
   },
   async revert(id: string, nota?: string): Promise<TransferRecord> {
     const actorId = await currentActorId()

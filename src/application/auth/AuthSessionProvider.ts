@@ -1,6 +1,6 @@
 export type MockRole='admin'|'gerente'|'supervisor'|'cajero'|'vendedor'|'vendedor_mayoreo'|'almacen'|'almacenero'|'auditor'|'operario'
 export type Permission='retail_sale'|'wholesale_sale'|'quotes_write'|'orders_view'|'orders_dispatch'|'cash_own'|'cash_supervise'|'price_override'|'cancel'|'return'|'customers_retail'|'admin'|'commissions_manage'|'floor_order'
-export interface AuthUser { id:string;name:string;role:MockRole;active:boolean;hasProfile?:boolean;email?:string }
+export interface AuthUser { id:string;name:string;role:MockRole;active:boolean;hasProfile?:boolean;email?:string;sucursalId?:number }
 export interface AuthSession { user:AuthUser;expiresAt:string }
 export interface AuthSessionProvider { getSession():Promise<AuthSession|null>;setMockUser(userId:string|null):Promise<void>;subscribe(listener:(session:AuthSession|null)=>void):()=>void }
 
