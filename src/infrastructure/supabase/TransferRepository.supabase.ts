@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient'
-import type { TransferEstado, TransferLine, TransferMotivo, TransferRecord } from '../../application/shared/models'
+import type { TransferDispatchLine, TransferDispatchResult, TransferEstado, TransferLine, TransferMotivo, TransferRecord } from '../../application/shared/models'
 import { NotFoundError } from '../../application/errors/AppError'
 import { SUCURSAL_ALMACEN_ID, SUCURSAL_TIENDA_ID } from './mappers'
 
@@ -20,6 +20,8 @@ interface SolicitudTrasladoRow {
   recibido_en: string | null
   creado_en: string
   reversible_hasta: string | null
+  tanda_de_id: number | null
+  numero_tanda: number | null
 }
 
 interface SolicitudTrasladoLineaRow {
@@ -32,6 +34,8 @@ interface SolicitudTrasladoLineaRow {
   cantidad_despachada: number | string | null
   cantidad_recibida: number | string | null
   nota: string | null
+  estado?: TransferLine['estado']
+  reemplazada_por_id?: number | null
   producto?: { nombre: string; sku_interno: string | null } | null
   presentacion?: { nombre: string } | null
 }
@@ -50,6 +54,8 @@ const lineaRowToTransferLine = (row: SolicitudTrasladoLineaRow): TransferLine =>
   cantidadDespachada: row.cantidad_despachada != null ? num(row.cantidad_despachada) : undefined,
   cantidadRecibida: row.cantidad_recibida != null ? num(row.cantidad_recibida) : undefined,
   nota: row.nota ?? undefined,
+  estado: row.estado,
+  reemplazadaPorId: row.reemplazada_por_id != null ? String(row.reemplazada_por_id) : undefined,
 })
 
 const rowToTransferRecord = (header: SolicitudTrasladoRow, lines: SolicitudTrasladoLineaRow[]): TransferRecord => ({
@@ -71,6 +77,8 @@ const rowToTransferRecord = (header: SolicitudTrasladoRow, lines: SolicitudTrasl
   recibidoEn: header.recibido_en ?? undefined,
   creadoEn: header.creado_en,
   reversibleHasta: header.reversible_hasta ?? undefined,
+  tandaDeId: header.tanda_de_id != null ? String(header.tanda_de_id) : undefined,
+  numeroTanda: header.numero_tanda ?? undefined,
   lines: lines.map(lineaRowToTransferLine),
 })
 
@@ -179,13 +187,20 @@ export class SupabaseTransferRepository {
 
   // Brief K: "no reimplementar despachar_traslado/recibir_traslado en el frontend" — se
   // llama por RPC, tal cual receive() ya hacía con recibir_traslado.
-  async dispatch(id: string, actor: string): Promise<TransferRecord> {
+  async dispatch(id: string, actor: string, lines?: TransferDispatchLine[]): Promise<TransferRecord> {
     const numericId = Number(id)
-    const { error } = await supabase.rpc('despachar_traslado', { p_solicitud_id: numericId, p_usuario: actor })
+    const { data, error } = await supabase.rpc('despachar_traslado', { p_solicitud_id: numericId, p_usuario: actor,
+      p_lineas: lines?.map((l) => ({ linea_id: Number(l.lineaId), accion: l.accion, ...(l.cantidadBase != null ? { cantidad_base: l.cantidadBase } : {}) })) ?? null })
     if (error) throw error
     const updated = await fetchTransferById(numericId)
     if (!updated) throw new NotFoundError('No se pudo releer la solicitud de traslado despachada')
-    return updated
+    return { ...updated, resultadoDespacho: data as TransferDispatchResult }
+  }
+
+  async recover(id: string, actor: string): Promise<{ tandaFaltanteId?: string; recuperadas: number }> {
+    const { data, error } = await supabase.rpc('recuperar_faltantes_traslado', { p_solicitud_id: Number(id), p_usuario: actor })
+    if (error) throw error
+    return { tandaFaltanteId: data.tanda_faltante_id != null ? String(data.tanda_faltante_id) : undefined, recuperadas: Number(data.recuperadas) }
   }
 
   // revertir_traslado ya decide todo el comportamiento (SOLICITADO cancela sin tocar

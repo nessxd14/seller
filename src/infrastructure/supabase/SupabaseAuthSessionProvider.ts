@@ -8,16 +8,17 @@ interface PerfilRow {
   rol: MockRole
   email: string | null
   activo: boolean
+  sucursal_id: number | null
 }
 
 const SESSION_TTL_MS = 8 * 3600000
 
 const resolveSession = async (userId: string): Promise<AuthSession> => {
-  const { data, error } = await supabase.from('perfil').select('id,nombre,rol,email,activo').eq('id', userId).maybeSingle()
+  const { data, error } = await supabase.from('perfil').select('id,nombre,rol,email,activo,sucursal_id').eq('id', userId).maybeSingle()
   if (error) throw error
   const perfil = data as PerfilRow | null
   const user: AuthUser = perfil
-    ? { id: perfil.id, name: perfil.nombre, role: perfil.rol, active: perfil.activo, email: perfil.email ?? undefined }
+    ? { id: perfil.id, name: perfil.nombre, role: perfil.rol, active: perfil.activo, email: perfil.email ?? undefined, sucursalId: perfil.sucursal_id ?? undefined }
     // No perfil row for this auth user: keep existing PosPage handling (hasProfile===false -> 'unauthorized' block screen).
     : { id: userId, name: '', role: 'operario', active: true, hasProfile: false }
   return { user, expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString() }

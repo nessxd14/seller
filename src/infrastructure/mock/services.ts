@@ -12,7 +12,7 @@ import { ventaDirectaMockRepository } from './VentaDirectaRepository.mock'
 import type { BorradorOperacionTipo, VentaDirectaRecord } from '../../application/shared/models'
 import { borradorOperacionMockRepository } from './BorradorOperacionRepository.mock'
 import { mockAuthSessionProvider } from './MockAuthSessionProvider'
-import type { TransferEstado, TransferRecord } from '../../application/shared/models'
+import type { TransferDispatchLine, TransferEstado, TransferRecord } from '../../application/shared/models'
 import { configRepository } from './ConfigRepository.mock'
 import { reportsRepository } from './ReportsRepository.mock'
 import { comisionesRepository } from './ComisionRepository.mock'
@@ -156,9 +156,12 @@ export const transferService = {
     const actor = await currentMockActor()
     return rawTransferService.create(input, actor)
   },
-  async dispatch(id: string): Promise<TransferRecord> {
+  async dispatch(id: string, lines?: TransferDispatchLine[]): Promise<TransferRecord> {
     const actor = await currentMockActor()
-    return rawTransferService.dispatch(id, actor)
+    return rawTransferService.dispatch(id, actor, lines)
+  },
+  async recover(id: string) {
+    return rawTransferService.recover(id, await currentMockActor())
   },
   async revert(id: string, nota?: string): Promise<TransferRecord> {
     const actor = await currentMockActor()

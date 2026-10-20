@@ -31,11 +31,11 @@ const CATEGORIAS = ['Todos', 'Frecuentes']
 const MIN_FRECUENTES = 8
 
 export function ProductCatalog({ search, category, setCategory }: { search: string; category: string; setCategory: (value: string) => void }) {
-  const { channel, cart, addProduct, updateQuantity, removeItem } = usePos()
+  const { channel, cart, addProduct, updateQuantity, removeItem, mode } = usePos()
   // Solo se agrega si el producto tiene alguna presentación habilitada para vender en tienda.
   const [avisoAgregar, setAvisoAgregar] = useState('')
   const agregar = async (product: Product) => {
-    const permiso = await presentacionAlAgregar(product.id, 'tienda')
+    const permiso = mode === 'traslado' ? { ok: true as const } : await presentacionAlAgregar(product.id, 'tienda')
     if (!permiso.ok) { setAvisoAgregar(permiso.mensaje); return }
     setAvisoAgregar('')
     addProduct(product)

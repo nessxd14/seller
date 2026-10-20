@@ -200,6 +200,8 @@ export interface TransferLine {
   cantidadDespachada?: number
   cantidadRecibida?: number
   nota?: string
+    estado?: 'POR_DESPACHAR' | 'DESPACHADA' | 'RECHAZADO' | 'CAMBIADA' | 'RETIRADA'
+    reemplazadaPorId?: string
 }
 
 export interface TransferRecord {
@@ -225,8 +227,26 @@ export interface TransferRecord {
   // de 30 min (fijada por despachar_traslado, ver 2026-07-30_traslado_reversion.sql) sigue
   // abierta. Nunca hardcodear los 30 min en el frontend — se calcula contra esto.
   reversibleHasta?: string
+    tandaDeId?: string
+    numeroTanda?: number
+    resultadoDespacho?: TransferDispatchResult
   lines: TransferLine[]
 }
+
+  export interface TransferDispatchLine {
+    lineaId: string
+    accion: 'DESPACHAR' | 'RECHAZAR' | 'FALTANTE'
+    cantidadBase?: number
+  }
+  export interface TransferDispatchResult {
+    estado: TransferEstado
+    cantidad_despachada: number
+    bloqueadas_por_stock?: Array<{ linea_id: number | string; pedido: number; disponible: number }>
+    parciales?: Array<{ linea_id: number | string; pedido: number; despachado: number; saldo: number }>
+    omitidas?: Array<{ linea_id: number | string }>
+    rechazadas?: Array<{ linea_id: number | string }>
+    tanda_faltante_id?: number | string | null
+  }
 
 // Venta Directa de Almacén (VTD) — Brief VTD. Una `venta` (no un `pedido`, ver B2 del
 // brief): abrir_venta la crea ABIERTA sin tocar el Kardex; completar_venta la cierra
