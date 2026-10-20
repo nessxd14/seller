@@ -42,20 +42,15 @@ export interface StockControlInfo {
 /** ¿Esta línea IMPIDE cobrar? Compara contra lo VENDIBLE (físico menos reservado por
  *  otros pedidos), no contra el físico crudo — eso es lo que S10 corrige.
  *
- *  Decisión de negocio confirmada por Ness: "la reserva gana sobre el control libre de
- *  W3". El control libre es una concesión temporal a que la sucursal no se inventarió;
- *  la reserva es una obligación con un cliente concreto. Por eso la reserva se evalúa
- *  PRIMERO: si falta lo que falta porque hay algo reservado de este producto (reservado
- *  > 0), bloquea sin importar tiendaLibre/almacenLibre. Solo cuando no hay ninguna
- *  reserva de por medio (el faltante es puramente "todavía no se inventarió") entra a
- *  jugar el control libre de W3. Ver permite_sobregiro_sucursal() en Cation (W3) y
- *  saldo_vendible()/v_pedido_linea_reserva (W8/S10) — no reimplementar ese cálculo acá. */
+ *  Decisión de Ness (2026-10-19, reemplaza la regla S10 "la reserva gana sobre el control
+ *  libre"): en una sucursal en control LIBRE (Tienda) la venta pasa siempre, haya o no
+ *  reservas de pedidos sobre el producto. En una sucursal ESTRICTO (Almacén) la reserva
+ *  sigue protegiendo: si falta lo vendible, bloquea. Mismo criterio que
+ *  _registrar_venta_nucleo (compuerta 2.5) en Cation desde 2026-10-19_tienda_libre_ignora_reservas.sql. */
 export const isLineBlocking = (line: StockCheckLine, stock?: StockControlInfo): boolean => {
   if (!stock) return false
   const needed = cantidadBaseFor(line)
   const vendible = line.ubicacion === 'Tienda' ? stock.tiendaVendible : stock.almacenVendible
   if (needed <= vendible) return false
-  const reservado = line.ubicacion === 'Tienda' ? stock.tiendaReservado : stock.almacenReservado
-  if (reservado > 0) return true
   return line.ubicacion === 'Tienda' ? !stock.tiendaLibre : !stock.almacenLibre
 }
