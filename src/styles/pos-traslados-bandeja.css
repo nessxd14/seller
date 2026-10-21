@@ -92,3 +92,6 @@
   .transfer-detail .transfer-lines-table article > span:first-child { grid-column: 1 / -1 }
   .transfer-detail .traslado-mobile-label { display: block; font-size: 11px; color: #6e6a63; margin-bottom: 5px }
 }
+.traslado-qr { display: grid; justify-items: center; gap: 12px; padding: 16px; border: 1px solid #e5e7eb; border-radius: 16px; text-align: center; background: #fff; }
+.traslado-qr p { max-width: 36ch; margin: 0; color: #64748b; }
+.traslado-qr img { max-width: 100%; height: auto; }

@@ -8,6 +8,14 @@ import { pedidoPath } from '../../router/appRoute'
 // se define un esquema distinto (ej. un endpoint propio para el bot de Telegram).
 const appOrigin = (): string => (typeof window !== 'undefined' ? window.location.origin : '')
 
+/** Solicitud TRA del carrito: el mismo documento se alista y recibe en Almacén. */
+export const qrContentForTraslado = (id: string, almacenOrigin = import.meta.env.VITE_ALMACEN_URL || 'https://almacen-cation.vercel.app'): string => {
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))) throw new Error('El traslado no tiene un identificador válido.')
+  const origin = new URL(almacenOrigin)
+  if (!['https:', 'http:'].includes(origin.protocol) || origin.username || origin.password) throw new Error('La dirección de Almacén no es válida.')
+  return new URL(`/operaciones/traslados/${id}?escanear=1`, origin.origin).href
+}
+
 /** La VTD inicia en Caja y su QR abre la preparación en Almacén. */
 export const qrContentForVtd = (ventaId: string, almacenOrigin = import.meta.env.VITE_ALMACEN_URL || 'https://almacen-cation.vercel.app'): string => {
   if (!/^[1-9]\d*$/.test(ventaId)) throw new Error('La VTD no tiene un identificador válido.')

@@ -10,6 +10,7 @@ import { Modal } from '../../components/Modal'
 import { usePos } from '../../context/PosContext'
 import { NumberField } from '../../components/NumberField'
 import { TrasladoExportable } from '../../components/TrasladoExportable'
+import { TrasladoQr } from '../../components/TrasladoQr'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
 
 // Exportados (Brief S8): TrasladoExportable los reusa tal cual — no duplicarlos ahí.
@@ -316,6 +317,7 @@ function TransferDetailPanel({ transfer, session, busy, error, relatedId, childr
       {transfer.recibidoPor && <p><b>Recibido por:</b> {transfer.recibidoPor} · {fechaFmt(transfer.recibidoEn)}</p>}
       {transfer.nota && <p><b>Nota:</b> {transfer.nota}</p>}
       <h3>Líneas</h3>
+      <TrasladoQr id={transfer.id} numero={transfer.numero} />
       <div className="feature-table transfer-lines-table">
         <div className="table-head"><span>Producto</span><span>Solicitado</span><span>Despachado</span><span>{canReceive ? 'Recibido (editable)' : 'Recibido'}</span></div>
         {transfer.lines.map((line) => {

@@ -4,6 +4,9 @@ import { cleanup, render, screen } from '@testing-library/react'
 import type { TransferRecord } from '../../application/shared/models'
 import { TrasladoExportable } from '../TrasladoExportable'
 
+const crearQr = vi.hoisted(() => vi.fn().mockResolvedValue('data:image/png;base64,qr'))
+vi.mock('qrcode', () => ({ default: { toDataURL: crearQr } }))
+
 vi.mock('../../infrastructure/services', () => ({
   listLineIdentifiers: vi.fn().mockResolvedValue({}),
 }))
@@ -31,6 +34,11 @@ const baseTransfer: TransferRecord = {
 }
 
 describe('TrasladoExportable', () => {
+  it.each(['SOLICITADO', 'EN_TRANSITO', 'RECIBIDO'] as const)('%s conserva el QR del mismo traslado en el documento imprimible', async estado => {
+    render(<TrasladoExportable transfer={{ ...baseTransfer, estado }} onClose={() => {}} />)
+    expect(await screen.findByAltText('Código QR del documento')).toBeTruthy()
+    expect(crearQr).toHaveBeenCalledWith('https://almacen-cation.vercel.app/operaciones/traslados/7?escanear=1', expect.objectContaining({ margin: 4 }))
+  })
   it.each(['CANCELADO', 'RECHAZADO'] as const)('%s: identifica el cierre y no inventa cantidades', async (estado) => {
     render(<TrasladoExportable transfer={{ ...baseTransfer, estado }} onClose={() => {}} />)
     expect(await screen.findByText(`TRASLADO ${estado}`)).toBeTruthy()

@@ -27,8 +27,9 @@ import { CustomerPicker } from './CustomerPicker'
 import { SaldoBadge } from './SaldoBadge'
 import { useSaldoCliente } from '../hooks/useSaldoCliente'
 import { TrasladoTargetPicker } from './TrasladoTargetPicker'
+import { TrasladoQr } from './TrasladoQr'
 import { CartReview } from './CartReview'
-import type { QuoteDraft, TransferMotivo, VentaDirectaRecord, VtdPorCobrar, WorkflowLine } from '../application/shared/models'
+import type { QuoteDraft, TransferMotivo, TransferRecord, VentaDirectaRecord, VtdPorCobrar, WorkflowLine } from '../application/shared/models'
 import type { SaleCheckoutPayment } from '../application/ports/repositories'
 import type { PendingTransferRequest } from '../features/transfers/TransfersPage'
 import { featureFlags } from '../config/featureFlags'
@@ -300,11 +301,14 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // ya tuvimos en registrar_venta). Sin presentación activa, item.cantidad ya está
   // en unidad base, así que cantidadBase es lo correcto en ese caso.
   const [solicitando, setSolicitando] = useState(false)
+  const solicitandoTraslado = useRef(false)
+  const [trasladoCreado, setTrasladoCreado] = useState<TransferRecord | null>(null)
   const solicitarTraslado = async () => {
-    if (!cart.length || solicitando) return
+    if (!cart.length || solicitandoTraslado.current) return
+    solicitandoTraslado.current = true
     setSolicitando(true)
     try {
-      await transferService.create({
+      const creado = await transferService.create({
         motivo: trasladoMotivo,
         sucursalOrigenId: trasladoOrigenId,
         sucursalDestinoId: trasladoDestinoId,
@@ -318,9 +322,11 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       clearOperation()
       limpiarBorrador()
       notify('Solicitud de traslado creada')
+      setTrasladoCreado(creado)
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo crear la solicitud de traslado')
     } finally {
+      solicitandoTraslado.current = false
       setSolicitando(false)
     }
   }
@@ -572,6 +578,10 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     {editing && <EditCartItemModal item={editing} onClose={() => { setEditing(null); if (editViaKeyboard.current) { editViaKeyboard.current = false; requestAnimationFrame(focusPosSearch) } }} />}{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} onCheckoutSuccess={() => invalidateOriginStock()} />}{ticketOpen && <TicketPreviewModal onClose={() => setTicketOpen(false)} />}
     {vtdPaymentOpen && <VtdPaymentModal total={total} submitting={vtdSubmitting} error={vtdError} onClose={() => setVtdPaymentOpen(false)} onConfirm={(payments) => void abrirVentaDirecta(payments)} />}
     {vtdResult && <VtdTicketPreviewModal venta={vtdResult} onClose={() => setVtdResult(null)} />}
+    {trasladoCreado && <Modal title="Solicitud de traslado creada" subtitle={trasladoCreado.numero} onClose={() => setTrasladoCreado(null)}>
+      <div className="modal-body"><TrasladoQr id={trasladoCreado.id} numero={trasladoCreado.numero} /></div>
+      <footer className="modal-actions"><button className="primary-button" onClick={() => setTrasladoCreado(null)}>Listo</button></footer>
+    </Modal>}
     {vtdCobroPickerOpen && <CobrarVtdPickerModal yaSeleccionadas={vtdCobroSeleccionadas.map((v) => v.ventaId)} onClose={() => setVtdCobroPickerOpen(false)} onAdd={agregarVtdCobro} />}
     {guardarBorradorOpen && <GuardarBorradorModal submitting={guardandoBorrador} error={guardarBorradorError} onClose={() => setGuardarBorradorOpen(false)} onConfirm={(titulo) => void guardarBorrador(titulo)} />}
     {anticipoOpen && <AnticipoModal onClose={() => setAnticipoOpen(false)} notify={notify} />}

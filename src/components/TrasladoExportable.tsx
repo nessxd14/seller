@@ -9,6 +9,8 @@ import { motivoLabel, sucursalLabel } from '../features/transfers/TransfersPage'
 import { formatDocumentDate as fechaFmt, formatDocumentQuantity as fmtQty } from '../domain/documents/documentProgress'
 import { nombreArchivoDocumento } from '../domain/documents/nombreArchivoDocumento'
 import { DocumentPrintPages, DocumentTableColumns } from './DocumentPrintPages'
+import { DocQr } from './DocQr'
+import { qrContentForTraslado } from '../domain/documents/qrContent'
 
 // Brief S8: un componente nuevo, no un cuarto modo de DocumentoExportable — un traslado
 // no tiene cliente, canal ni precios, tiene origen→destino y tres cantidades por línea.
@@ -85,7 +87,7 @@ export function TrasladoExportable({ transfer, onClose }: { transfer: TransferRe
               {empresa.nit && <span>NIT: {empresa.nit}</span>}
             </div>
           </div>
-          <div className="doc-id-block"><strong>{title}</strong><span className="doc-number-mono">{numero}</span></div>
+          <div className="doc-id-block"><strong>{title}</strong><span className="doc-number-mono">{numero}</span><DocQr content={qrContentForTraslado(transfer.id)} margin={4} /></div>
         </header>
         <section className="doc-meta">
           <p><b>Origen:</b> {sucursalLabel[transfer.sucursalOrigenId] ?? `Sucursal ${transfer.sucursalOrigenId}`} <b>→ Destino:</b> {sucursalLabel[transfer.sucursalDestinoId] ?? `Sucursal ${transfer.sucursalDestinoId}`}</p>
