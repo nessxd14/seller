@@ -6,6 +6,9 @@ import { CartPanel } from '../CartPanel'
 import { PosProvider, usePos } from '../../context/PosContext'
 import { CashSessionProvider } from '../../context/CashSessionContext'
 import type { Product } from '../../types'
+import { transferService } from '../../infrastructure/services'
+
+vi.mock('qrcode',()=>({default:{toDataURL:vi.fn().mockResolvedValue('data:image/png;base64,qr')}}))
 
 const { stock } = vi.hoisted(() => ({ stock: (tienda: number) => ({ tienda, almacen: 100, tiendaLibre: false, almacenLibre: false, tiendaVendible: tienda, almacenVendible: 100, tiendaReservado: 0, almacenReservado: 0, tiendaMotivo: null, almacenMotivo: null }) }))
 
@@ -41,6 +44,19 @@ function Probe() { const value = usePos(); useEffect(() => { holder.current = va
 
 const renderPanel = () => render(<PosProvider><CashSessionProvider><Probe /><CartPanel notify={() => {}} onOpenDraftOrder={() => {}} onGoToCash={() => {}} /></CashSessionProvider></PosProvider>)
 const names = () => [...document.querySelectorAll('.cart-line-name')].map((el) => el.textContent)
+
+it('el traslado creado desde el carrito muestra su QR después de limpiar la operación',async()=>{
+ vi.mocked(transferService.create).mockResolvedValue({id:'112',numero:'TRA-2026-00083',motivo:'REPOSICION',estado:'SOLICITADO',sucursalOrigenId:1,sucursalDestinoId:2,solicitadoPor:'Caja',solicitadoEn:'2026-10-21',creadoEn:'2026-10-21',lines:[]})
+ renderPanel()
+ await waitFor(()=>expect(holder.current).toBeTruthy())
+ act(()=>{pos().setMode('traslado');pos().addProduct(product(998,'Cuaderno de traslado'))})
+ fireEvent.click(await screen.findByRole('button',{name:'Solicitar traslado'}))
+ const dialog=await screen.findByRole('dialog',{name:'Solicitud de traslado creada'})
+ expect(within(dialog).getByRole('link',{name:'Abrir alistado y recepción'}).getAttribute('href')).toBe('https://almacen-cation.vercel.app/operaciones/traslados/112?escanear=1')
+ expect(await within(dialog).findByAltText('Código QR del documento')).toBeTruthy()
+ expect(pos().cart).toHaveLength(0)
+ expect(pos().mode).toBe('venta')
+})
 
 describe('CartPanel compacto — línea', () => {
   it('sin seleccionar muestra nombre, detalle, cantidad y total, pero no presentación ni papelera; al seleccionar aparecen', async () => {
