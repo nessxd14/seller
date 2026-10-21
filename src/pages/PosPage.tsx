@@ -68,7 +68,7 @@ const PERMISOS_MODULO: Record<string, (s: AuthSession | null) => boolean> = {
 
 function PosContent() {
   const { warehouseLocked } = usePos()
-  const { pedidoEnCarrito, setPedidoEnCarrito, operationId, vtdsEnCarrito, newOperation, cart, loadSuspendedSale, addProduct, mode, updateQuantity, removeItem, selectedLineId, setSelectedLineId, undoLastAdd } = usePos()
+  const { pedidoEnCarrito, setPedidoEnCarrito, operationId, vtdsEnCarrito, newOperation, cart, loadSuspendedSale, addProduct, mode, updateQuantity, removeItem, selectedLineId, setSelectedLineId, undoLastAdd, lastRemoved, undoLastRemove, lastAddAt } = usePos()
   // Brief S3 Parte A: /pedidos/:id, /cotizaciones/:id, /ventas/:id deben sobrevivir un
   // refresco — si el load arranca directo en una de esas URLs, hay que montar el módulo
   // que sabe abrir ese detalle (OrdersPage/QuotationsPage/ReportsPage), no el catálogo
@@ -177,6 +177,11 @@ function PosContent() {
         event.preventDefault()
         click('[data-pos-action="custom-item"]')
       }
+      // Alt+K agrega una VTD por cobrar (solo modo Venta). No Alt+D: Chrome lo usa para la barra de direcciones.
+      if (event.altKey && event.key.toLowerCase() === 'k' && !modalOpen && mode === 'venta') {
+        event.preventDefault()
+        click('[data-pos-action="agregar-vtd"]')
+      }
 
       // --- Modos ---------------------------------------------------------------
       if (event.altKey && event.key.toLowerCase() === 'v' && !modalOpen) { event.preventDefault(); click('[data-pos-action="mode-venta"]') }
@@ -240,7 +245,8 @@ function PosContent() {
       }
       if (cartShortcutsActive && event.ctrlKey && event.key.toLowerCase() === 'z') {
         event.preventDefault()
-        const nombre = undoLastAdd()
+        // Deshace lo último que pasó: quitar una línea o agregar un producto.
+        const nombre = lastRemoved && (lastAddAt == null || lastRemoved.at >= lastAddAt) ? undoLastRemove() : undoLastAdd()
         if (nombre) notify(`Deshecho: ${nombre}`)
       }
 

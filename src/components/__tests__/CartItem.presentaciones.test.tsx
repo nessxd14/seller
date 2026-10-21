@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { useEffect } from 'react'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { CartPanel } from '../CartPanel'
 import { PosProvider, usePos } from '../../context/PosContext'
 import { CashSessionProvider } from '../../context/CashSessionContext'
@@ -56,10 +56,11 @@ describe('CartItem — presentaciones habilitadas en tienda', () => {
       { id: 8, nombre: 'CAJA MASTER', factorUnidadBase: 240, esBase: false, precios: precios(50), tienePrecioPropio: true, vendeTienda: false, vendeAlmacen: true },
     ])
     renderPos()
-    const select = await screen.findByRole('combobox', { name: 'Presentación Tuki' }) as HTMLSelectElement
-    await waitFor(() => expect(select.value).toBe('7'))
-    expect([...select.options].map((o) => o.textContent)).toEqual(['PAQUETE'])
-    expect(screen.getByText(/Bs 2,50 c\/u/)).toBeTruthy()
+    // Con una sola presentación vendible en tienda no hay nada que elegir: el selector no se muestra
+    // y la presentación activa se lee en la línea de detalle.
+    await waitFor(() => expect(screen.getAllByText('PAQUETE').length).toBeGreaterThan(0))
+    expect(screen.queryByRole('combobox', { name: 'Presentación Tuki' })).toBeNull()
+    expect(screen.getAllByText(/Bs 2,50 c\/u/).length).toBeGreaterThan(0)
   })
 
   it('con la base habilitada se queda en la base y oculta solo las deshabilitadas', async () => {
@@ -69,6 +70,8 @@ describe('CartItem — presentaciones habilitadas en tienda', () => {
       { id: 8, nombre: 'CAJA MASTER', factorUnidadBase: 240, esBase: false, precios: precios(50), tienePrecioPropio: true, vendeTienda: false },
     ])
     renderPos()
+    // Presentación y demás controles aparecen solo en la línea seleccionada.
+    fireEvent.click(await screen.findByText('Tuki'))
     const select = await screen.findByRole('combobox', { name: 'Presentación Tuki' }) as HTMLSelectElement
     await waitFor(() => expect([...select.options].map((o) => o.textContent)).toEqual(['Hoja', 'PAQUETE']))
     expect(select.value).toBe('1')
