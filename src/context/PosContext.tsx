@@ -71,6 +71,8 @@ export interface CartCustomer {
   documento?: string
 }
 
+export interface RemovedLine { item: CartItem; index: number; at: number }
+
 interface PosState {
   warehouseLocked: boolean
   warehousePaid: boolean
@@ -101,6 +103,11 @@ interface PosState {
   // agregada la última vez (quitando la línea si llega a 0) y devuelve el nombre del
   // producto para el toast, o null si no hay nada que deshacer.
   undoLastAdd: () => string | null
+  // Última línea quitada del carrito (papelera o Supr) para poder deshacerla. `at` también
+  // decide, en Ctrl+Z, qué pasó último: la quita o el último agregado (`lastAddAt`).
+  lastRemoved: RemovedLine | null
+  undoLastRemove: () => string | null
+  lastAddAt: number | null
   discount: number
   setDiscount: (value: number) => void
   subtotal: number
@@ -270,6 +277,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setVtdPrecobrado(draft.vtdPrecobrado)
     setSelectedLineId(null)
     setUndoStack([])
+    setLastRemoved(null)
   }
   const loadTrasladoDraft = (draft: { cart: CartItem[]; trasladoMotivo: TransferMotivo; trasladoOrigenId: number; trasladoDestinoId: number }) => {
     if (warehouseLocked) return
@@ -280,6 +288,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setTrasladoDestinoId(draft.trasladoDestinoId)
     setSelectedLineId(null)
     setUndoStack([])
+    setLastRemoved(null)
   }
 
   const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
@@ -313,7 +322,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
   // recién tocada pasa a ser la seleccionada, lista para +/-/Supr) y en undoStack (últimos
   // ~20 agregados, para Ctrl+Z). quantity default 1 mantiene el comportamiento de siempre
   // para todo el código existente que llama addProduct(product) sin segundo argumento.
-  const [undoStack, setUndoStack] = useState<{ id: number; quantity: number }[]>([])
+  const [undoStack, setUndoStack] = useState<{ id: number; quantity: number; at: number }[]>([])
+  const [lastRemoved, setLastRemoved] = useState<RemovedLine | null>(null)
   const addProduct = (product: Product, quantity = 1) => {
     const qty = Math.max(1, Math.floor(quantity))
     setCart((items) => {
@@ -322,7 +332,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         ? items.map((item) => item.id === product.id ? { ...item, cantidad: item.cantidad + qty } : item)
         : [...items, { ...product, cantidad: qty, precioAplicado: getPrice(product, channel), descuento: 0, ubicacion: defaultOrigenFor(channel, esAcreedor), origenManual: false, observacion: '', motivoPrecio: '' }]
     })
-    setUndoStack((stack) => [...stack.slice(-19), { id: product.id, quantity: qty }])
+    setUndoStack((stack) => [...stack.slice(-19), { id: product.id, quantity: qty, at: Date.now() }])
     setSelectedLineId(product.id)
   }
   const undoLastAdd = (): string | null => {
@@ -368,7 +378,24 @@ export function PosProvider({ children }: { children: ReactNode }) {
   // descuadre de centavos) — no tocar sin correr los tests de ventaPricing.
   const updateQuantity = (id: number, quantity: number) => setCart((items) => items.map((item) => item.id === id ? { ...item, cantidad: Math.max(1, Math.floor(quantity)) } : item))
   const updateItem = (id: number, values: Partial<CartItem>) => setCart((items) => items.map((item) => item.id === id ? { ...item, ...values, cantidad: Math.max(1, Math.floor(values.cantidad ?? item.cantidad)), precioAplicado: Math.max(0, roundMoney(values.precioAplicado ?? item.precioAplicado)), descuento: Math.min(100, Math.max(0, values.descuento ?? item.descuento)) } : item))
-  const removeItem = (id: number) => setCart((items) => items.filter((item) => item.id !== id))
+  const removeItem = (id: number) => {
+    const index = cart.findIndex((item) => item.id === id)
+    if (index < 0) return
+    setLastRemoved({ item: cart[index], index, at: Date.now() })
+    setCart((items) => items.filter((item) => item.id !== id))
+  }
+  // Devuelve la última línea quitada a su posición y la selecciona. Si el mismo producto
+  // volvió a agregarse mientras tanto, se suman las cantidades en vez de duplicar el id.
+  const undoLastRemove = (): string | null => {
+    if (!lastRemoved) return null
+    const { item, index } = lastRemoved
+    setLastRemoved(null)
+    setCart((items) => items.some((line) => line.id === item.id)
+      ? items.map((line) => line.id === item.id ? { ...line, cantidad: line.cantidad + item.cantidad } : line)
+      : [...items.slice(0, index), item, ...items.slice(index)])
+    setSelectedLineId(item.id)
+    return item.nombre
+  }
   const clearCart = () => { setCart([]); setDiscount(0) }
   // TAREA 5 (Tanda 3): newOperation reseteaba carrito/descuento/cliente pero no `mode`
   // ni los campos de traslado — después de solicitar un traslado seguías en modo
@@ -402,6 +429,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setVtdPrecobrado(true)
     setSelectedLineId(null)
     setUndoStack([])
+    setLastRemoved(null)
   }
   const newOperation = () => {
     if (warehouseLocked) return
@@ -445,6 +473,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setEsAcreedor(false)
     setSelectedLineId(null)
     setUndoStack([])
+    setLastRemoved(null)
   }
 
   const recoverWarehouseOperation = (id: string, draft: Partial<CajaAlmacenDraft>, vtds: VtdPorCobrar[]) => {
@@ -467,7 +496,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setOperationNumber(n => n + 1)
     setOperationId(nuevoOperacionId())
   }
-  return <PosContext.Provider value={{ warehouseLocked, warehousePaid, setWarehouseLock, finishWarehouseOperation, recoverWarehouseOperation, pedidoEnCarrito, setPedidoEnCarrito: setPedidoSeguro, vtdsEnCarrito, setVtdsEnCarrito, vendedorId, setVendedorId, channel, setChannel: (c) => { if (!warehousePaid) setChannel(c) }, cart, addProduct: (p,q) => { if (!warehousePaid) addProduct(p,q) }, addCustomItem: (i) => { if (!warehousePaid) addCustomItem(i) }, updateQuantity: (id,q) => { if (!warehousePaid) updateQuantity(id,q) }, updateItem: (id,v) => { if (!warehousePaid) updateItem(id,v) }, removeItem: (id) => { if (!warehousePaid) removeItem(id) }, clearCart: () => { if (!warehouseLocked) clearCart() }, discount, setDiscount: (v) => { if (!warehousePaid) safeSetDiscount(v) }, subtotal, total, operationNumber, operationId, newOperation, clearOperation: () => { if (!warehouseLocked) resetOperationState() }, loadSuspendedSale, customer, selectCustomer: (c) => { if (!warehousePaid) selectCustomer(c) }, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, selectedLineId, setSelectedLineId, undoLastAdd: () => warehousePaid ? null : undoLastAdd(), notifyVentaCompletada, notifyVentaSuspendida }}>{children}</PosContext.Provider>
+  return <PosContext.Provider value={{ warehouseLocked, warehousePaid, setWarehouseLock, finishWarehouseOperation, recoverWarehouseOperation, pedidoEnCarrito, setPedidoEnCarrito: setPedidoSeguro, vtdsEnCarrito, setVtdsEnCarrito, vendedorId, setVendedorId, channel, setChannel: (c) => { if (!warehousePaid) setChannel(c) }, cart, addProduct: (p,q) => { if (!warehousePaid) addProduct(p,q) }, addCustomItem: (i) => { if (!warehousePaid) addCustomItem(i) }, updateQuantity: (id,q) => { if (!warehousePaid) updateQuantity(id,q) }, updateItem: (id,v) => { if (!warehousePaid) updateItem(id,v) }, removeItem: (id) => { if (!warehousePaid) removeItem(id) }, clearCart: () => { if (!warehouseLocked) clearCart() }, discount, setDiscount: (v) => { if (!warehousePaid) safeSetDiscount(v) }, subtotal, total, operationNumber, operationId, newOperation, clearOperation: () => { if (!warehouseLocked) resetOperationState() }, loadSuspendedSale, customer, selectCustomer: (c) => { if (!warehousePaid) selectCustomer(c) }, mode, setMode, trasladoMotivo, setTrasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, selectedLineId, setSelectedLineId, undoLastAdd: () => warehousePaid ? null : undoLastAdd(), lastRemoved, undoLastRemove: () => warehousePaid ? null : undoLastRemove(), lastAddAt: undoStack.length ? undoStack[undoStack.length - 1].at : null, notifyVentaCompletada, notifyVentaSuspendida }}>{children}</PosContext.Provider>
 }
 
 export const usePos = () => {

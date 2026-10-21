@@ -1,5 +1,5 @@
-import { AlertTriangle, Info, Minus, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { Info, Minus, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { usePos } from '../context/PosContext'
 import type { CartItem as CartItemType, SalesChannel } from '../types'
 import { ProductVisual } from './ProductVisual'
@@ -66,7 +66,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
   // selecciona; ↑/↓/+/-/Supr (en PosPage.tsx) operan sobre lo que esté seleccionado acá.
   const articleRef = useRef<HTMLElement>(null)
   const isSelected = selectedLineId === item.id
-  useEffect(() => { if (isSelected) articleRef.current?.scrollIntoView({ block: 'nearest' }) }, [isSelected])
+  useEffect(() => { if (isSelected) articleRef.current?.scrollIntoView?.({ block: 'nearest' }) }, [isSelected])
   const select = () => setSelectedLineId(item.id)
 
   // TAREA 3.2: presentations are loaded per product, on demand, when the line first mounts —
@@ -198,74 +198,86 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
     </div></article>
   }
 
-  return <article ref={articleRef} className={`cart-item cart-item-light ${isSelected ? 'cart-item-selected' : ''}`} onClick={select}>{mode !== 'venta' && <ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} />}<div className="cart-item-main"><div className="cart-title"><div>
-      <h4><button type="button" className="cart-product-name" data-line-action="edit" onClick={(e) => onEdit(e.detail === 0)} aria-label={`Editar ${item.nombre}`} title={item.nombre}>{item.nombre}<Pencil aria-hidden="true" /></button></h4>
-      {item.isCustomItem && <span className="custom-item-badge">Personalizado</span>}
-      <div className="cart-price-row">
-        {editing
-          ? <input
-              className="price-inline-input"
-              aria-label={`Precio unitario ${item.nombre}`}
-              type="number"
-              step="0.01"
-              min="0"
-              autoFocus
-              value={draftValue}
-              onChange={(e) => setDraftValue(e.target.value)}
-              onFocus={(e) => e.currentTarget.select()}
-              onBlur={() => { if (skipBlurCommit.current) { skipBlurCommit.current = false; return } commit() }}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); exitWithKeyboard(commit) } else if (e.key === 'Escape') { e.preventDefault(); exitWithKeyboard(cancelEdit) } }}
-            />
-          : <button
-              type="button"
-              data-line-action="price"
-              className={`price-inline-display ${isOverridden ? 'price-overridden' : ''}`}
-              onClick={startEdit}
-              title={isOverridden ? `Precio de lista: Bs ${money(channelListPrice)}` : undefined}
-            >
-              Bs {money(item.precioAplicado)} c/u {item.descuento > 0 && <em>−{item.descuento}%</em>}
-            </button>}
-        {/* TAREA B.1 (Tanda 5): el badge de texto completo ocupaba una fila entera él
-            solo y aparece en casi todas las líneas de mayoreo — pasa a ícono con el
-            mismo tooltip. "sin precio" se queda visible y en rojo a propósito: bloquea
-            el cobro y tiene que gritar, no achicarse. */}
-        {showInheritedBadge && <span className="price-heredado-icon" title="Este canal no tiene precio propio configurado: se usa el precio de mostrador. No es un precio negociado."><Info aria-label="Precio heredado, no negociado" /></span>}
-        {isUnpriced && <small className="price-heredado-badge price-overridden-badge" title="Esta línea no tiene precio configurado en ningún canal. Escribí un precio para poder cobrarla.">sin precio</small>}
-        {!item.isCustomItem && !isUnpriced && (item.precioModificado || isOverridden) && <small className="cart-manual-price">Precio manual</small>}
+  // Línea compacta: nombre, meta, cantidad y total siempre visibles. Presentación, precio,
+  // origen, editar y quitar solo aparecen en la línea seleccionada (ver pos-carrito-compacto.css).
+  const isCustom = Boolean(item.isCustomItem)
+  const isManual = !isCustom && !isUnpriced && (item.precioModificado || isOverridden)
+  const hasStockInfoDot = !isCustom && understocked && !insufficient
+  const hasErrorState = isUnpriced || (!isCustom && insufficient)
+  const unitLabel = isCustom ? (item.unidadMedida ?? 'UNIDAD') : (item.presentacionNombre ?? presentacionLinea?.nombre ?? 'Unidad')
+  const presentationOptions = isCustom ? [] : opcionesDelLado(presentations, item.presentacionId ?? presentations.find((p) => p.esBase)?.id, 'tienda')
+  const showPresentationSelect = presentationOptions.length > 1
+  const freeSaleLabel = `Sin inventariar en ${item.ubicacion} (venta libre)`
+  // Un clic en la línea la selecciona, salvo sobre sus controles (cantidad, botones, campos).
+  const selectFromRow = (event: MouseEvent<HTMLElement>) => { if (!(event.target as HTMLElement).closest('.qty-control, button, input, select, a')) select() }
+  // Línea sin precio: el campo se muestra directo, sin tener que seleccionarla. Solo confirma un precio > 0.
+  const commitDirect = () => { if (Number(draftValue) > 0) commit(); else setDraftValue('') }
+  const priceInput = (direct: boolean) => <input
+    className="price-inline-input"
+    aria-label={`Precio unitario ${item.nombre}`}
+    type="number"
+    step="0.01"
+    min="0"
+    placeholder={direct ? '0,00' : undefined}
+    autoFocus={!direct}
+    data-line-action={direct ? 'price' : undefined}
+    value={draftValue}
+    onClick={direct ? (e) => e.currentTarget.focus() : undefined}
+    onChange={(e) => setDraftValue(e.target.value)}
+    onFocus={(e) => e.currentTarget.select()}
+    onBlur={() => { if (skipBlurCommit.current) { skipBlurCommit.current = false; return } if (direct) commitDirect(); else commit() }}
+    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); exitWithKeyboard(direct ? commitDirect : commit) } else if (e.key === 'Escape') { e.preventDefault(); exitWithKeyboard(direct ? () => setDraftValue('') : cancelEdit) } }}
+  />
+
+  return <article ref={articleRef} className={`cart-item cart-item-light ${isSelected ? 'cart-item-selected' : ''} ${hasErrorState ? 'cart-item-error' : ''}`} onClick={selectFromRow}>
+    <div className="cart-line-row">
+      <div className="cart-line-text">
+        <h4 className="cart-line-name" title={item.nombre}>{isCustom && <span className="custom-item-square" aria-hidden="true" />}{item.nombre}</h4>
+        {isUnpriced
+          ? <div className="cart-line-meta cart-line-meta-unpriced"><label><span>Precio c/u Bs</span>{priceInput(true)}</label></div>
+          : <div className="cart-line-meta">
+              {isManual && <s className="cart-list-price">Bs {money(channelListPrice)}</s>}
+              <span>Bs {money(item.precioAplicado)} c/u</span>
+              {item.descuento > 0 && <em>−{item.descuento} %</em>}
+              <span aria-hidden="true">·</span><span>{unitLabel}</span>
+              {!isCustom && factor !== 1 && <span className="line-equivalence">{textoEquivalencia(item.cantidad, item.presentacionNombre, factor, baseNombre)}</span>}
+              {isManual && <small className="cart-manual-price">Manual</small>}
+              {/* TAREA B.1 (Tanda 5): ícono con el mismo tooltip; no es un precio negociado. */}
+              {showInheritedBadge && <span className="price-heredado-icon" title="Este canal no tiene precio propio configurado: se usa el precio de mostrador. No es un precio negociado."><Info aria-label="Precio heredado, no negociado" /></span>}
+              {hasStockInfoDot && <span className="line-stock-dot" role="img" title={freeSaleLabel} aria-label={freeSaleLabel} />}
+              {isCustom && <><span aria-hidden="true">·</span><span>no mueve inventario</span></>}
+            </div>}
       </div>
-    </div><strong className="line-total">Bs {money(lineTotal)}</strong></div>
-    {/* El nombre abre el editor; origen, presentación y cantidad siguen a mano.
-        Equivalencias y avisos ocupan una línea propia, sin recortarlos. */}
-    <div className="cart-line-controls">
-      {/* Brief S11 Bloque C: sin origen ni presentación — un ítem personalizado no está
-          en el catálogo, no tiene sentido elegir sucursal ni unidad de venta para algo
-          que no existe ahí. */}
-      {!item.isCustomItem && onSetOrigin && <OriginPin value={item.ubicacion} options={buildOriginOptions(originStock)} onChange={onSetOrigin} ariaLabel={`Origen ${item.nombre}`} />}
-      {item.isCustomItem && <span className="cart-unidad-plain">{item.unidadMedida ?? 'UNIDAD'}</span>}
-      {!item.isCustomItem && <select
+      <QtyControl quantity={item.cantidad} onChange={onQuantityChange} />
+      <strong className="line-total">{isUnpriced ? '—' : `Bs ${money(lineTotal)}`}</strong>
+    </div>
+    {isSelected && <div className="cart-line-tools">
+      {showPresentationSelect && <select
         aria-label={`Presentación ${item.nombre}`}
         className="cart-presentacion-select"
-        disabled={opcionesDelLado(presentations, item.presentacionId, 'tienda').length <= 1}
         value={item.presentacionId ?? presentations.find((p) => p.esBase)?.id ?? presentations[0]?.id ?? ''}
         onChange={(e) => { const chosen = presentations.find((p) => p.id === Number(e.target.value)); if (chosen) onPresentationChange(chosen) }}
       >
-        {presentations.length ? opcionesDelLado(presentations, item.presentacionId ?? presentations.find((p) => p.esBase)?.id, 'tienda').map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>) : <option value="">Unidad</option>}
+        {presentationOptions.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
       </select>}
-      <QtyControl quantity={item.cantidad} onChange={onQuantityChange} />
+      {!isUnpriced && (editing
+        ? priceInput(false)
+        : <button
+            type="button"
+            data-line-action="price"
+            className={`price-inline-display ${isOverridden ? 'price-overridden' : ''}`}
+            onClick={startEdit}
+            title={isOverridden ? `Precio de lista: Bs ${money(channelListPrice)}` : undefined}
+          >Bs {money(item.precioAplicado)} c/u<kbd>F4</kbd></button>)}
+      {!isCustom && onSetOrigin && <OriginPin value={item.ubicacion} options={buildOriginOptions(originStock)} onChange={onSetOrigin} ariaLabel={`Origen ${item.nombre}`} />}
+      <button type="button" className="cart-line-edit" data-line-action="edit" onClick={(e) => onEdit(e.detail === 0)} aria-label={`Editar ${item.nombre}`}>Editar</button>
       <button type="button" className="cart-remove-item" onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button>
-    </div>
-    {!item.isCustomItem && factor !== 1 && <small className="line-equivalence">{textoEquivalencia(item.cantidad, item.presentacionNombre, factor, baseNombre)}</small>}
-    {/* TAREA B.4: ícono + texto corto, sin envolver — el enlace sigue siendo una acción.
-        Brief S10: si el bloqueo es por reserva, decirlo y nombrar el pedido — "sin stock"
-        a secas con la mercadería en la mano frente al cliente parece un sistema roto.
-        Brief S11: nada de esto aplica a un ítem personalizado — no tiene stock que validar. */}
-    {!item.isCustomItem && insufficient && reservado > 0 && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />Quedan {fmtQty(reservadoVendible)} disponibles. Otras {fmtQty(reservado)} reservadas{reservadoMotivo ? ` para "${reservadoMotivo}"` : ''}.</small>}
-    {!item.isCustomItem && insufficient && reservado === 0 && <small className="line-stock-error line-stock-error-compact"><AlertTriangle aria-hidden />Stock insuficiente en {item.ubicacion}.{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
-    {/* Brief S9: mismo caso (falta stock) pero la sucursal está en control libre — no
-        bloquea, así que no puede llevar el mismo rojo que un error real o el aviso
-        pierde significado y se ignora. */}
-    {!item.isCustomItem && understocked && !insufficient && <small className="line-stock-info line-stock-error-compact"><Info aria-hidden />Sin inventariar en {item.ubicacion}.</small>}
-    {!item.isCustomItem && !isUnpriced && <PrecioBajoAviso precio={item.precioAplicado} sugerido={precioResuelto} presentacionNombre={presentacionLinea?.nombre} factor={presentacionLinea?.factorUnidadBase ?? 1} baseNombre={baseNombre} />}
-    {isUnpriced && <small className="line-stock-error">{item.nombre} no tiene precio. Escribilo en la línea para poder cobrar.</small>}
-    </div></article>
+    </div>}
+    {/* Brief S10: si el bloqueo es por reserva, decirlo y nombrar el pedido — "sin stock" a
+        secas con la mercadería en la mano frente al cliente parece un sistema roto. Brief S11:
+        un ítem personalizado no tiene stock que validar. */}
+    {!isCustom && insufficient && reservado > 0 && <small className="line-stock-error line-stock-error-compact"><span>Quedan {fmtQty(reservadoVendible)} disponibles. Otras {fmtQty(reservado)} reservadas{reservadoMotivo ? ` para "${reservadoMotivo}"` : ''}.</span></small>}
+    {!isCustom && insufficient && reservado === 0 && <small className="line-stock-error line-stock-error-compact"><span>Stock insuficiente en {item.ubicacion}.</span>{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
+    {!isCustom && !isUnpriced && <PrecioBajoAviso precio={item.precioAplicado} sugerido={precioResuelto} presentacionNombre={presentacionLinea?.nombre} factor={presentacionLinea?.factorUnidadBase ?? 1} baseNombre={baseNombre} />}
+  </article>
 }

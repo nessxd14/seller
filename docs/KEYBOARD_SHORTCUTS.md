@@ -22,9 +22,10 @@ encabezado, y está definida una sola vez en `src/config/shortcuts.ts`.
 | `*` (o `Alt + Q`) | Fijar la cantidad exacta de la línea activa (todos los modos) |
 | `F3` (o `Alt + L`) | Abrir el editor completo de la línea activa: descuento %, origen y nota (modos Venta y Venta directa) |
 | `Supr` (Delete) | Eliminar la línea seleccionada |
-| `Ctrl + Z` | Deshacer el último producto agregado |
+| `Ctrl + Z` | Deshacer la última línea quitada o el último producto agregado, lo que haya pasado último |
 | `F7` (o `Alt + U`) | Enfocar el descuento general |
 | `F10` (o `Alt + I`) | Agregar ítem personalizado (solo modo Venta) |
+| `Alt + K` | Agregar una VTD por cobrar (solo modo Venta) |
 
 La «línea activa» es la seleccionada o, si no hay selección, la última del carrito (se
 resalta antes de actuar). `Supr` nunca cae a la última línea: solo borra una línea

@@ -72,7 +72,7 @@ describe('CartPanel — cobro de VTD desde el carrito (Brief Caja VTD)', () => {
     listPorCobrar.mockResolvedValue([vtdSeleccionable])
     render(<Wrapper withCatalogItem={false} />)
 
-    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar VTD' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Agregar VTD por cobrar' }))
     await waitFor(() => expect(screen.getByText('VTD-2026-00001')).toBeTruthy())
     fireEvent.click(screen.getByText('VTD-2026-00001').closest('label')!.querySelector('input[type="checkbox"]')!)
     fireEvent.click(screen.getByRole('button', { name: /Agregar \(1\)/ }))
@@ -86,7 +86,7 @@ describe('CartPanel — cobro de VTD desde el carrito (Brief Caja VTD)', () => {
     listPorCobrar.mockResolvedValue([vtdSeleccionable])
     render(<Wrapper withCatalogItem />)
 
-    fireEvent.click(await screen.findByRole('button', { name: '+ Agregar VTD' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Agregar VTD por cobrar' }))
     await waitFor(() => expect(screen.getByText('VTD-2026-00001')).toBeTruthy())
     fireEvent.click(screen.getByText('VTD-2026-00001').closest('label')!.querySelector('input[type="checkbox"]')!)
     fireEvent.click(screen.getByRole('button', { name: /Agregar \(1\)/ }))
@@ -115,7 +115,7 @@ describe('CartPanel — ítems personalizados se pueden cobrar', () => {
   })
 })
 
-describe('CartPanel — "+ Pedido de vendedor" (Brief Caja pedido de vendedor)', () => {
+describe('CartPanel — menú "+ Agregar" › Pedido de vendedor (Brief Caja pedido de vendedor)', () => {
   const renderPanel = (props: { pedidosVendedorEnEspera?: number; onOpenPedidosVendedor?: () => void }) => render(
     <PosProvider><CashSessionProvider><CartPanel notify={() => {}} onOpenDraftOrder={() => {}} onGoToCash={() => {}} {...props} /></CashSessionProvider></PosProvider>,
   )
@@ -123,7 +123,7 @@ describe('CartPanel — "+ Pedido de vendedor" (Brief Caja pedido de vendedor)',
   it('muestra el enlace con el contador de pedidos en espera y lo abre', async () => {
     const abrir = vi.fn()
     renderPanel({ pedidosVendedorEnEspera: 3, onOpenPedidosVendedor: abrir })
-    const link = await screen.findByRole('button', { name: /\+ Pedido de vendedor/ }) as HTMLButtonElement
+    const link = await screen.findByRole('button', { name: /Pedido de vendedor/ }) as HTMLButtonElement
     expect(link.dataset.posAction).toBe('pedido-vendedor')
     expect(screen.getByLabelText('3 en espera')).toBeTruthy()
     await waitFor(() => expect(link.disabled).toBe(false))
@@ -133,11 +133,11 @@ describe('CartPanel — "+ Pedido de vendedor" (Brief Caja pedido de vendedor)',
 
   it('sin contador no hay badge; sin callback (rol sin caja) no hay enlace', async () => {
     renderPanel({ onOpenPedidosVendedor: () => {} })
-    await screen.findByRole('button', { name: /\+ Pedido de vendedor/ })
+    await screen.findByRole('button', { name: /Pedido de vendedor/ })
     expect(screen.queryByLabelText(/en espera/)).toBeNull()
     cleanup()
     renderPanel({})
-    await screen.findByRole('button', { name: '+ Agregar VTD' })
+    await screen.findByRole('button', { name: 'Agregar VTD por cobrar' })
     expect(screen.queryByText(/Pedido de vendedor/)).toBeNull()
   })
 })

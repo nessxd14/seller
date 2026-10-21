@@ -2,7 +2,8 @@ import { type Page } from '@playwright/test'
 import type { CajaAlmacenRecord } from '../src/application/shared/cajaAlmacen'
 const actor='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
 const seller='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
-export async function fixture(page:Page, options: { openVtd?: boolean; products?: boolean } = {}) {
+export async function fixture(page:Page, options: { openVtd?: boolean; products?: boolean | number } = {}) {
+  const productIds = Array.from({ length: options.products === true ? 1 : options.products || 0 }, (_, i) => 44 + i)
   const writes:{name:string;body:Record<string,unknown>}[]=[]
   const runtimeErrors: string[]=[]
   page.on('pageerror',e=>runtimeErrors.push(e.message))
@@ -18,10 +19,12 @@ export async function fixture(page:Page, options: { openVtd?: boolean; products?
     const request=route.request();const name=new URL(request.url()).pathname.split('/').pop()!
     const body=request.method()==='POST'?request.postDataJSON():{}
     let data:unknown=[]
-    if(options.products && name==='producto')data=[{id:44,nombre:'Material de Almacén QA',sku_interno:'QA-44',unidad_base:'UNIDAD',precio_base:150,activo:true}]
-    if(options.products && name==='presentacion')data=[{id:44,producto_id:44,nombre:'Unidad',es_base:true,activo:true,factor_unidad_base:1}]
-    if(options.products && name==='v_presentacion_precio')data=[{presentacion_id:44,producto_id:44,nombre:'Unidad',es_base:true,activo:true,factor_unidad_base:1,precio_retail:150,precio_mayoreo:150,precio_institucion:150,precio_corporativo:150,tiene_precio_propio:false,vende_tienda:true,vende_almacen:true}]
-    if(options.products && name==='ubicacion')data=[{id:31,sucursal_id:1,codigo_zona:'VENTAS DIRECTAS'}]
+    if(productIds.length && name==='producto')data=productIds.map(id=>({id,nombre:id===44?'Material de Almacén QA':`Producto QA ${id}`,sku_interno:`QA-${id}`,unidad_base:'UNIDAD',precio_base:150,activo:true}))
+    if(productIds.length && name==='presentacion')data=productIds.map(id=>({id,producto_id:id,nombre:'Unidad',es_base:true,activo:true,factor_unidad_base:1}))
+    if(productIds.length && name==='v_presentacion_precio')data=productIds.map(id=>({presentacion_id:id,producto_id:id,nombre:'Unidad',es_base:true,activo:true,factor_unidad_base:1,precio_retail:150,precio_mayoreo:150,precio_institucion:150,precio_corporativo:150,tiene_precio_propio:false,vende_tienda:true,vende_almacen:true}))
+    if(productIds.length && name==='stock_actual')data=productIds.map(id=>({producto_id:id,cantidad_base:100000,ubicacion:{sucursal_id:2,excluye_disponible:false}}))
+    if(productIds.length && name==='saldo_vendible')data=productIds.map(id=>({producto_id:id,vendible:100000,reservado:0,motivo:null}))
+    if(productIds.length && name==='ubicacion')data=[{id:31,sucursal_id:1,codigo_zona:'VENTAS DIRECTAS'}]
     if(name==='perfil')data=[{id:actor,nombre:'Caja de prueba',email:'caja@test.invalid',rol:'cajero',activo:true}]
     if(name==='sesion_caja')data=[{id:900,caja_id:1,caja:{nombre:'Caja Tienda'},estado:'ABIERTA',cajero_id:actor,monto_apertura:0,abierta_en:new Date().toISOString()}]
     if(name==='vendedores_caja')data=[{id:seller,nombre:'Ana de prueba'}]
@@ -57,15 +60,20 @@ export async function fixture(page:Page, options: { openVtd?: boolean; products?
   })
   return Object.assign(writes, { runtimeErrors, deliver: () => { warehouse.vtds.forEach(v => { v.estado = 'EN_CAJA' }) } })
 }
-export async function normalItem(page:Page){
-  await page.getByRole('button',{name:'+ Ítem personalizado',exact:true}).click()
-  await page.getByLabel('Descripción',{exact:true}).fill('Servicio de mostrador')
-  await page.getByLabel('Precio unitario (Bs)',{exact:true}).fill('20')
+export async function openAddMenu(page:Page){
+  await page.locator('.cart-add-menu > summary').click()
+}
+export async function normalItem(page:Page,descripcion='Servicio de mostrador',precio='20'){
+  await openAddMenu(page)
+  await page.getByRole('button',{name:/Ítem personalizado/}).click()
+  await page.getByLabel('Descripción',{exact:true}).fill(descripcion)
+  await page.getByLabel('Precio unitario (Bs)',{exact:true}).fill(precio)
   await page.getByLabel('Precio unitario (Bs)',{exact:true}).press('Tab')
   await page.getByRole('button',{name:'Agregar al carrito',exact:true}).click()
 }
 export async function addVtd(page:Page){
-  await page.getByRole('button',{name:/\+ Agregar VTD/}).click()
+  await openAddMenu(page)
+  await page.getByRole('button',{name:'Agregar VTD por cobrar',exact:true}).click()
   await page.getByRole('checkbox').check()
   await page.getByRole('button',{name:'Agregar (1)',exact:true}).click()
 }

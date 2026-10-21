@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { fixture, normalItem, addVtd } from './checkout.fixture'
+import { fixture, normalItem, addVtd, openAddMenu } from './checkout.fixture'
 const seller='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
 test('mostrador y VTD: un pago, selector de vendedor y un documento',async({page})=>{
   const writes=await fixture(page);await page.goto('/')
@@ -7,25 +7,13 @@ test('mostrador y VTD: un pago, selector de vendedor y un documento',async({page
   await page.locator('.cart-seller-details > summary').click()
   await page.getByLabel('Venta realizada por',{exact:true}).selectOption(seller)
   await page.locator('.cart-seller-details > summary').click()
-  const help=page.getByRole('button',{name:'Información sobre pedido de vendedor'})
-  const helpVtd=page.getByRole('button',{name:'Información sobre agregar VTD'})
-  await expect(help).toHaveAttribute('aria-expanded','false')
-  await expect(helpVtd).toHaveAttribute('aria-expanded','false')
   await page.locator('.cart-panel').screenshot({path:'.ui-review.local/cart-acciones-compactas.png'})
-  await page.locator('.cart-source-controls').screenshot({path:'.ui-review.local/cart-iconos.png'})
-  await help.focus();await page.keyboard.press('Enter')
-  await expect(help).toHaveAttribute('aria-expanded','true')
-  await expect(page.getByText('Abre un pedido de vendedor, verifica sus productos y añádelos al carrito para cobrarlos.')).toBeVisible()
+  await openAddMenu(page)
+  await expect(page.getByRole('button',{name:/Pedido de vendedor/})).toContainText('1 en espera')
+  await expect(page.getByRole('button',{name:'Agregar VTD por cobrar',exact:true})).toHaveAttribute('title',/Selecciona una venta directa pendiente de pago/)
   await page.locator('.cart-panel').screenshot({path:'.ui-review.local/cart-acciones-desplegadas.png'})
-  await page.locator('.cart-source-controls').screenshot({path:'.ui-review.local/cart-iconos-info-pedido.png'})
-  await helpVtd.click()
-  await expect(help).toHaveAttribute('aria-expanded','false')
-  await expect(helpVtd).toHaveAttribute('aria-expanded','true')
-  await expect(page.getByText('Selecciona una venta directa pendiente de pago y cóbrala junto a los productos de esta venta.')).toBeVisible()
-  await page.locator('.cart-source-controls').screenshot({path:'.ui-review.local/cart-iconos-info-vtd.png'})
-  await page.keyboard.press('Escape')
-  await expect(helpVtd).toHaveAttribute('aria-expanded','false')
-  await expect(page.getByText('Selecciona una venta directa pendiente de pago y cóbrala junto a los productos de esta venta.')).toBeHidden()
+  await page.locator('.cart-add-menu > summary').click()
+  await expect(page.locator('.cart-add-items')).toBeHidden()
   await page.screenshot({path:'.ui-review.local/checkout-carrito-desktop.png',fullPage:true})
   await page.getByRole('button',{name:/Cobrar todo/}).click()
   await expect(page.locator('.payment-total')).toContainText('170,00')
@@ -41,7 +29,8 @@ test('mostrador y VTD: un pago, selector de vendedor y un documento',async({page
 })
 test('verificar pedido lo agrega al carrito y se cobra con mostrador y VTD',async({page})=>{
   const writes=await fixture(page);await page.goto('/');await normalItem(page)
-  await page.getByRole('button',{name:/\+ Pedido de vendedor/}).click()
+  await openAddMenu(page)
+  await page.getByRole('button',{name:/Pedido de vendedor/}).click()
   await page.getByRole('button',{name:/Ana de prueba/}).click()
   await page.screenshot({path:'.ui-review.local/checkout-verificacion.png',fullPage:true})
   await expect(page.getByRole('button',{name:'Continuar en carrito'})).toBeDisabled()
