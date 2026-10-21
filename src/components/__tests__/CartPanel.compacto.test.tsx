@@ -149,6 +149,28 @@ describe('CartPanel compacto — cobro bloqueado', () => {
   })
 })
 
+describe('CartPanel compacto — canales no retail', () => {
+  it('institucional: sin stock no cuenta para el botón de corrección; sin precio sí', async () => {
+    renderPanel()
+    act(() => { pos().setChannel('institucional') })
+    act(() => { pos().addProduct(product(999, 'Sin stock'), 5) })
+    act(() => { pos().updateItem(999, { ubicacion: 'Tienda', origenManual: true }) })
+    await screen.findByText('Sin stock')
+    await waitFor(() => expect(document.querySelector('.cart-item-error')).not.toBeNull())
+    expect(document.querySelector('.cart-fix-lines')).toBeNull()
+    act(() => { pos().addCustomItem({ descripcion: 'Sello sin precio', cantidad: 1, precio: 0, unidadMedida: 'UNIDAD' }) })
+    await waitFor(() => expect(document.querySelector('.cart-fix-lines')?.textContent).toContain('1 línea para corregir'))
+  })
+
+  it('mayoreo: sin stock sí cuenta', async () => {
+    renderPanel()
+    act(() => { pos().setChannel('mayoreo') })
+    act(() => { pos().addProduct(product(999, 'Sin stock'), 5) })
+    act(() => { pos().updateItem(999, { ubicacion: 'Tienda', origenManual: true }) })
+    await waitFor(() => expect(document.querySelector('.cart-fix-lines')?.textContent).toContain('1 línea para corregir'))
+  })
+})
+
 describe('CartPanel compacto — menú + Agregar', () => {
   it('ofrece ítem personalizado, VTD y pedido con sus atajos y cierra al elegir', async () => {
     renderPanel()

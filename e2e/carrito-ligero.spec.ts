@@ -178,6 +178,16 @@ test('con 8 líneas la lista ligera es compacta: líneas ≤ 60 px y al menos 6 
   // La última línea agregada queda seleccionada (muestra sus controles); el resto es la línea compacta.
   for (const line of lines.filter(l => !l.selected)) expect(line.height).toBeLessThanOrEqual(60)
   expect(lines.filter(l => l.inside).length).toBeGreaterThanOrEqual(6)
+  // Controles de la línea seleccionada en una sola fila, y sin hueco extra entre la meta y el total.
+  const geometry = await page.evaluate(() => {
+    const tops = [...document.querySelectorAll('.cart-item-selected .cart-line-tools > *')].map(el => Math.round(el.getBoundingClientRect().top))
+    const meta = document.querySelector('.cart-summary-meta')!.getBoundingClientRect()
+    const total = document.querySelector('.grand-total')!.getBoundingClientRect()
+    return { rows: new Set(tops).size, gap: total.top - meta.bottom, panelOverflow: document.querySelector('.cart-panel-light')!.scrollWidth - document.querySelector('.cart-panel-light')!.clientWidth }
+  })
+  expect(geometry.rows).toBe(1)
+  expect(geometry.gap).toBeLessThanOrEqual(9)
+  expect(geometry.panelOverflow).toBeLessThanOrEqual(1)
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.locator('.cart-panel-light').screenshot({ path: '.ui-review.local/carrito-compacto-1920.png' })
   expect(writes.runtimeErrors).toEqual([])

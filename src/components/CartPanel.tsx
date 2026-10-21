@@ -197,16 +197,6 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // fine, this only blocks at checkout time, mirroring insufficientOrigin's exact shape.
   const unpricedItems = cart.filter((item) => isLineUnpriced(item))
   const unpricedLine = unpricedItems.length > 0
-  // Un solo aviso para los motivos por línea (sin stock / sin precio), con salto a la primera.
-  // `venta` retail y documentos bloquean por ambos motivos; mayoreo solo si hay sin stock + sin precio.
-  const fixLineItems = cart.filter((item) => unpricedItems.includes(item) || (insufficientOrigin && blockingItems.includes(item)))
-  const goToFirstFixLine = () => {
-    const first = fixLineItems[0]
-    if (!first) return
-    setSelectedLineId(first.id)
-    requestAnimationFrame(() => document.querySelector('.cart-item-selected')?.scrollIntoView?.({ block: 'nearest' }))
-  }
-  const fixLinesButton = fixLineItems.length > 0 && <button type="button" className="cart-fix-lines" onClick={goToFirstFixLine}><span>{fixLineItems.length} {fixLineItems.length === 1 ? 'línea' : 'líneas'} para corregir</span><span>Ir a la primera →</span></button>
   // Brief S11 Bloque C: un ítem personalizado no tiene producto_id ni presentación base —
   // registrar_venta no lo puede vender. Solo bloquea "Cobrar" (venta directa); Guardar
   // borrador/Cotización siguen habilitados, es exactamente el camino que sí lo soporta.
@@ -452,6 +442,18 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     setVtdCobroPickerOpen(false)
   }
   const quitarVtdCobro = (ventaId: string) => { if (warehouseLocked) { notify('Resuelve el rechazo desde la operación con Almacén.'); return }; setVtdCobroSeleccionadas(prev => prev.filter(v => v.ventaId !== ventaId)) }
+  // Un solo aviso para los motivos por línea (sin stock / sin precio), con salto a la primera.
+  // Sin precio cuenta en todos los canales; sin stock solo donde bloquea el cobro (retail, documentos y mayoreo).
+  const blockingCounts = channel === 'retail' || hasDocuments || channel === 'mayoreo'
+  const fixLineItems = cart.filter((item) => unpricedItems.includes(item) || (blockingCounts && blockingItems.includes(item)))
+  const goToFirstFixLine = () => {
+    const first = fixLineItems[0]
+    if (!first) return
+    setSelectedLineId(first.id)
+    requestAnimationFrame(() => document.querySelector('.cart-item-selected')?.scrollIntoView?.({ block: 'nearest' }))
+  }
+  const fixLinesButton = fixLineItems.length > 0 && <button type="button" className="cart-fix-lines" onClick={goToFirstFixLine}><span>{fixLineItems.length} {fixLineItems.length === 1 ? 'línea' : 'líneas'} para corregir</span><span>Ir a la primera →</span></button>
+  const sellerLabel = pedidoEnCarrito?.pedido.vendedor ?? vendedores.find(v => v.id === vendedorId)?.nombre ?? (vendedorId ? 'Asignado' : 'Sin asignar')
   const modeLabel = mode === 'traslado' ? 'Traslado' : mode === 'ventaDirecta' ? 'Venta directa' : 'Venta'
   return <aside className={`cart-panel ${mode !== 'traslado' ? 'cart-panel-light' : ''} ${creditorCustomer ? 'cart-acreedor' : ''}`}>
     <CajaAlmacenPanel />
@@ -459,6 +461,12 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     <div className="cart-header">
       <h2>{modeLabel} <b>#{operationNumber}</b></h2>
       {mode === 'venta' && <span className="channel-badge">{channelNames[channel]}</span>}
+      {mode === 'venta' && (
+        <details className="cart-seller-details">
+          <summary title={sellerLabel}>Vend.: <strong>{sellerLabel}</strong></summary>
+          <div className="cart-seller-field"><label>Venta realizada por{pedidoEnCarrito ? <strong>{pedidoEnCarrito.pedido.vendedor}</strong> : <select aria-label="Venta realizada por" disabled={warehousePaid} value={vendedorId ?? ''} onChange={e => setVendedorId(e.target.value || undefined)}><option value="">Sin vendedor asignado</option>{vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}</select>}</label></div>
+        </details>
+      )}
       <details className="cart-operation-menu">
         <summary aria-label="Cambiar modo de operación" title="Cambiar modo de operación"><MoreHorizontal /></summary>
         <div className="modo-group" role="group" aria-label="Modo de operación" onClick={event => { if ((event.target as HTMLElement).closest('button:not(:disabled)')) event.currentTarget.closest('details')?.removeAttribute('open') }}>
@@ -474,10 +482,6 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
         ? <><VtdUbicacionPicker value={vtdUbicacionId} onChange={setVtdUbicacionId} />{almacen.managed ? <p className="cash-closed-notice">Solicita el material y continúa con la VTA en esta misma operación. Cobrarás todo junto.</p> : <div className="vtd-modo-cobro" role="group" aria-label="Modo de cobro"><button type="button" className={vtdPrecobrado ? 'active' : ''} onClick={() => setVtdPrecobrado(true)}>Cobrar ahora</button><button type="button" className={!vtdPrecobrado ? 'active' : ''} onClick={() => setVtdPrecobrado(false)}>Cobrar después en caja</button></div>}</>
         : <div className="cart-toolbar">
             <CustomerPicker channel={channel} notify={notify} />
-            <details className="cart-seller-details">
-              <summary>Vend.: <strong>{pedidoEnCarrito?.pedido.vendedor ?? vendedores.find(v => v.id === vendedorId)?.nombre ?? (vendedorId ? 'Asignado' : 'Sin asignar')}</strong></summary>
-              <div className="cart-seller-field"><label>Venta realizada por{pedidoEnCarrito ? <strong>{pedidoEnCarrito.pedido.vendedor}</strong> : <select aria-label="Venta realizada por" disabled={warehousePaid} value={vendedorId ?? ''} onChange={e => setVendedorId(e.target.value || undefined)}><option value="">Sin vendedor asignado</option>{vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}</select>}</label></div>
-            </details>
             <details className="cart-add-menu">
               <summary>+ Agregar{pedidosVendedorEnEspera > 0 && showPedidoAction && <span className="cart-add-badge" aria-hidden="true">{pedidosVendedorEnEspera}</span>}</summary>
               <div className="cart-add-items" role="group" aria-label="Agregar a la venta" onClick={event => { if ((event.target as HTMLElement).closest('button:not(:disabled)')) event.currentTarget.closest('details')?.removeAttribute('open') }}>
