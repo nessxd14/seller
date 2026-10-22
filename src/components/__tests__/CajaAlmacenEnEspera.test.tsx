@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CajaAlmacenEnEsperaOperacion, CajaAlmacenVtd } from '../../application/shared/cajaAlmacen'
 
 const mocks = vi.hoisted(() => ({ listar: vi.fn(), operar: vi.fn() }))
+vi.mock('../../infrastructure/services', () => ({ ventaDirectaService: { getById: vi.fn().mockResolvedValue({ id: '2861', lines: [{ id: '11', precioUnitarioCents: 4000 }], discountCents: 0 }) } }))
 vi.mock('../../infrastructure/supabase/CajaAlmacen.supabase', () => ({ listarCajaAlmacenEnEspera: mocks.listar, operarCajaAlmacen: mocks.operar }))
 import { CajaAlmacenEnEspera } from '../CajaAlmacenEnEspera'
 
@@ -71,5 +72,28 @@ describe('CajaAlmacenEnEspera', () => {
     await screen.findByRole('button', { name: 'Completar entrega y operación' })
     expect(mocks.operar).toHaveBeenCalledTimes(1)
     expect(mocks.operar).not.toHaveBeenCalledWith('completar', expect.anything(), expect.anything(), expect.anything())
+  })
+
+  it('muestra el faltante reportado y ajusta con el payload exacto', async () => {
+    const conFaltante = op([{ ...vtd('SOLICITADO'), lineas: [{ linea_id: 11, nombre: 'Cemento', presentacion: 'Bolsa', cantidad_presentacion: 6 }], faltante: [{ linea_id: 11, cantidad_presentacion_disponible: 5 }] }])
+    mocks.listar.mockResolvedValue({ operaciones: [conFaltante] })
+    mocks.operar.mockResolvedValue({})
+    render(<CajaAlmacenEnEspera />)
+    expect((await screen.findByRole('status')).textContent).toContain('Almacén tiene 5 de 6')
+    click(screen.getByRole('button', { name: 'Ajustar' }))
+    await waitFor(() => expect(screen.queryByText(/Calculando/)).toBeNull())
+    type(screen.getByLabelText('Motivo'), 'Faltan bolsas')
+    click(screen.getByLabelText(/Confirmo que devolví/))
+    click(screen.getByRole('button', { name: 'Confirmar ajuste' }))
+    await waitFor(() => expect(mocks.operar).toHaveBeenCalledWith('ajustar', 'op-1', '57', {
+      venta_id: 2861, version: 1, motivo: 'Faltan bolsas', lineas: [{ linea_id: 11, cantidad_presentacion: 5 }], devolucion: { destino: 'EFECTIVO', realizada: true },
+    }))
+  })
+
+  it('no ofrece ajustar una VTD que ya salió de Almacén', async () => {
+    mocks.listar.mockResolvedValue({ operaciones: [op([vtd('EN_CAJA')])] })
+    render(<CajaAlmacenEnEspera />)
+    await screen.findByRole('button', { name: 'Rechazar' })
+    expect(screen.queryByRole('button', { name: 'Ajustar' })).toBeNull()
   })
 })

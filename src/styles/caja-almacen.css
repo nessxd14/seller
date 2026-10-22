@@ -11,3 +11,5 @@
 .caja-almacen-panel .secondary-button { min-height: 30px; padding: 6px 10px; font-size: .73rem; }
 .pos-root > .cart-panel:has(.caja-almacen-panel) { height: 100%; min-height: 0; overflow-y: auto; }
 .pos-root > .cart-panel:has(.caja-almacen-panel) .cart-actions { position: sticky; bottom: 0; flex-shrink: 0; z-index: 2; background: #fcfbf8; box-shadow: 0 -6px 14px #f4f1ec; }
+
+.caja-almacen-faltante { display: block; margin-top: 4px; padding: 4px 8px; border-radius: 6px; background: color-mix(in srgb, #f59e0b 18%, transparent); border: 1px solid color-mix(in srgb, #f59e0b 55%, transparent); }
