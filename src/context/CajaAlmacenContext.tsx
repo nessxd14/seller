@@ -16,7 +16,7 @@ interface WarehouseContext {
   createRequest: (solicitud: object) => Promise<boolean>
   refresh: (recover?: boolean) => Promise<void>
   flush: () => Promise<void>
-  resolve: (action: 'completar' | 'rechazar' | 'cerrar_rechazo', data?: object) => Promise<boolean>
+  resolve: (action: 'completar' | 'rechazar' | 'cerrar_rechazo' | 'ajustar', data?: object) => Promise<boolean>
 }
 const Context = createContext<WarehouseContext | null>(null)
 const inactive: WarehouseContext = { managed: false, record: null, error: '', busy: false, link: async () => true, createRequest: async () => false, refresh: async () => {}, flush: async () => {}, resolve: async () => false }
@@ -147,7 +147,7 @@ export function CajaAlmacenProvider({ children }: { children: ReactNode }) {
     } catch (e) { uncertain.current = attempted && !(e as {code?: string}).code; setError(e instanceof Error ? e.message : 'No se pudo vincular la VTD.'); return false }
     finally { pending.current = false; setBusy(false); posRef.current.setWarehouseLock(!!current.current?.operacion || uncertain.current, !!current.current?.operacion?.comprobante || uncertain.current) }
   }
-  const resolve = async (action: 'completar' | 'rechazar' | 'cerrar_rechazo', data: object = {}) => {
+  const resolve = async (action: 'completar' | 'rechazar' | 'cerrar_rechazo' | 'ajustar', data: object = {}) => {
     const op = current.current?.operacion
     if (!op || pending.current) return false
     pending.current = true; setBusy(true); setError('')

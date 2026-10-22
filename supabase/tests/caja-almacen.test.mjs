@@ -99,5 +99,76 @@ export async function testCajaAlmacen(db, claims) {
   assert.equal((await db.query("select has_function_privilege('anon','public.operar_caja_almacen(text,uuid,bigint,jsonb)','EXECUTE') allowed")).rows[0].allowed,false)
   assert.equal((await db.query("select has_table_privilege('authenticated','public.caja_operacion_vtd','UPDATE') allowed")).rows[0].allowed,false)
   await db.exec('set role authenticated');assert.equal((await rpc('actual')).operacion,null);await db.exec('reset role')
-  console.log('OK: Caja–Almacén, VTA vinculada habilitada, bloqueo persistente, un encargado, cobro único, rechazo y retorno real idempotentes')
+  // Disponibilidad parcial: Almacén reporta faltante y Caja ajusta la VTD y devuelve la diferencia.
+  // En producción `en_espera` llegó por una migración manual posterior a la del repo.
+  await db.exec('alter table public.caja_operacion_almacen add column if not exists en_espera boolean not null default false')
+  await db.exec(await fs.readFile(new URL('../migrations/20261022170000_caja_almacen_ajuste_faltante.sql',import.meta.url),'utf8'))
+  await db.exec(`insert into public.venta(id,numero,total,subtotal,estado,cobro_exigible,ubicacion_id,sesion_caja_id) values
+      (992001,'VTD-TEST-AJ1',240,240,'ABIERTA',true,990001,900001),(992002,'VTD-TEST-AJ2',240,240,'ABIERTA',true,990001,900001),
+      (992003,'VTD-TEST-AJ3',240,240,'ABIERTA',true,990001,900001),(992004,'VTD-TEST-AJ4',240,240,'ABIERTA',true,990001,900001),
+      (992005,'VTD-TEST-AJ5',240,240,'ABIERTA',true,990001,900001);
+    insert into public.venta_linea(venta_id,producto_id,presentacion_id,cantidad,cantidad_presentacion,precio_unitario)
+      select id,990001,990001,6,6,40 from public.venta where id between 992001 and 992005;`)
+  const linea=async id=>Number((await db.query('select id from public.venta_linea where venta_id=$1',[id])).rows[0].id)
+  const ajustar=(opId,vid,version,lineas,devolucion,motivo='Faltante en Almacén')=>rpc('ajustar',opId,{venta_id:vid,version,motivo,lineas,...(devolucion?{devolucion}:{})})
+  const faltante=async(vid,disp,motivo='Solo hay 5 en estante')=>{await claims(uid(40));const cur=(await rpc('escanear',null,{venta_id:vid})).vtds[0];const l=await linea(vid);return {cur,l,r:await rpc('reportar_faltante',null,{venta_id:vid,version:cur.version,disponibles:[{linea_id:l,cantidad_presentacion:disp}],motivo})}}
+  const mov=async vid=>(await db.query("select metodo::text m,monto::float8 monto from public.movimiento_caja where venta_id=$1 and tipo='ANULACION' order by id",[vid])).rows
+  const stockBefore=await stock()
+  const despachar=async vid=>{await claims(uid(40));const x=(await rpc('consultar_vtd',null,{venta_id:vid})).vtds[0];await rpc('enviar',null,{venta_id:vid,version:x.version,cantidades:cantidades(x)});await claims(uid(2))}
+  // A: cobrada, devolución en EFECTIVO.
+  const opA='10000000-0000-0000-0000-0000000000a1'
+  await claims(uid(2));await rpc('vincular',opA,{vtd_ids:[992001],borrador:{cart:[]}});const recA=await pay(opA,[992001],[],[{metodo:'EFECTIVO',monto:240}])
+  let f=await faltante(992001,5);assert.equal(f.r.vtds[0].faltante[0].cantidad_presentacion_disponible,5);assert.ok(f.r.vtds[0].faltante_en)
+  const rep=await rpc('reportar_faltante',null,{venta_id:992001,version:f.cur.version,disponibles:[{linea_id:f.l,cantidad_presentacion:5}],motivo:'Solo hay 5 en estante'})
+  assert.equal(rep.vtds[0].version,f.cur.version+1,'Reporte idempotente: no avanza la versión dos veces')
+  await assert.rejects(()=>rpc('enviar',null,{venta_id:992001,version:f.cur.version+1,cantidades:[]}),/reportó faltante/)
+  await assert.rejects(()=>rpc('reportar_faltante',null,{venta_id:992001,version:f.cur.version+1,disponibles:[{linea_id:f.l,cantidad_presentacion:4}],motivo:'x'}),/motivo/)
+  await claims(uid(2));const ver=f.cur.version+1
+  const dev={destino:'EFECTIVO',realizada:true}
+  await assert.rejects(()=>ajustar(opA,992001,ver,[{linea_id:f.l,cantidad_presentacion:7}],dev),/reducir/)
+  await assert.rejects(()=>ajustar(opA,992001,ver,[{linea_id:f.l,cantidad_presentacion:0}],dev),/usa Rechazar/)
+  await assert.rejects(()=>ajustar(opA,992001,ver-1,[{linea_id:f.l,cantidad_presentacion:5}],dev),/cambió/)
+  await assert.rejects(()=>ajustar(opA,992001,ver,[{linea_id:f.l,cantidad_presentacion:5}]),/Confirma la devolución/)
+  await assert.rejects(()=>ajustar(opA,992001,ver,[{linea_id:f.l,cantidad_presentacion:5}],{destino:'YA_REGISTRADA',realizada:true,movimiento_id:1}),/gerente/)
+  assert.equal((await mov(992001)).length,0,'Los intentos fallidos no dejan movimientos')
+  r=await ajustar(opA,992001,ver,[{linea_id:f.l,cantidad_presentacion:5}],dev)
+  assert.equal(Number(r.vtds[0].total),200);assert.equal(r.vtds[0].faltante,null);assert.equal(r.vtds[0].lineas[0].cantidad_presentacion,5)
+  assert.deepEqual(await mov(992001),[{m:'EFECTIVO',monto:40}])
+  assert.equal((await db.query("select count(*)::int n from public.venta_evento where venta_id=992001 and accion='LINEA_CAMBIADA' and cantidad_anterior=6 and cantidad_nueva=5")).rows[0].n,1)
+  assert.equal(r.operacion.comprobante.total,recA.total,'El comprobante histórico no cambia')
+  await claims(uid(40));d=(await rpc('consultar_vtd',null,{venta_id:992001})).vtds[0]
+  r=await rpc('enviar',null,{venta_id:992001,version:d.version,cantidades:cantidades(d)});assert.equal(r.vtds[0].estado,'ENTREGADO','enviar autocompleta tras el ajuste');assert.equal(r.operacion.estado,'COMPLETADA')
+  assert.equal(await stock(),stockBefore-5,'Almacén despacha 5 y la integridad de stock se conserva')
+  // B: devolución por QR (distinto al pago original) exige referencia.
+  const opB='10000000-0000-0000-0000-0000000000a2'
+  await claims(uid(2));await rpc('vincular',opB,{vtd_ids:[992002],borrador:{cart:[]}});await pay(opB,[992002],[],[{metodo:'EFECTIVO',monto:240}])
+  f=await faltante(992002,5);await claims(uid(2))
+  await assert.rejects(()=>ajustar(opB,992002,f.cur.version+1,[{linea_id:f.l,cantidad_presentacion:5}],{destino:'QR',realizada:true}),/referencia/)
+  await ajustar(opB,992002,f.cur.version+1,[{linea_id:f.l,cantidad_presentacion:5}],{destino:'QR',realizada:true,referencia:'QR-778'});await despachar(992002)
+  assert.deepEqual(await mov(992002),[{m:'QR',monto:40}],'La devolución no tiene que coincidir con el medio original')
+  // C: saldo a favor para un cliente con cuenta Hermes; el dinero queda en el cajón.
+  const opC='10000000-0000-0000-0000-0000000000a3'
+  await claims(uid(41))
+  await db.exec(`insert into public.cliente(id,nombre,activo,tipo_precio) values(993001,'Cliente Hermes QA',true,'mayorista') on conflict do nothing;
+    insert into hermes.cliente(id,nombre,categoria,activo,pos_cliente_id) values(993001,'Cliente Hermes QA','MAYORISTA',true,993001) on conflict do nothing;
+    update public.venta set cliente_id=993001 where id=992003`)
+  await claims(uid(2));await rpc('vincular',opC,{vtd_ids:[992003],borrador:{cart:[]}});await db.query("select public.checkout_caja(p_lineas=>'[]',p_pagos=>$1,p_sesion_id=>900001,p_idempotencia=>'checkout:10000000-0000-0000-0000-0000000000a3',p_vtd_ids=>$2,p_cliente_id=>993001)",[JSON.stringify([{metodo:'EFECTIVO',monto:240}]),[992003]])
+  f=await faltante(992003,5);await claims(uid(2))
+  await ajustar(opC,992003,f.cur.version+1,[{linea_id:f.l,cantidad_presentacion:5}],{destino:'SALDO_FAVOR',realizada:true})
+  assert.deepEqual(await mov(992003),[],'Saldo a favor no mueve el cajón');await despachar(992003)
+  assert.equal(Number((await db.query("select monto from hermes.movimiento_cuenta where cliente_id=993001 and tipo='NOTA_CREDITO'")).rows[0].monto),-40)
+  const opE='10000000-0000-0000-0000-0000000000a4'
+  await claims(uid(2));await rpc('vincular',opE,{vtd_ids:[992004],borrador:{cart:[]}});await pay(opE,[992004],[],[{metodo:'EFECTIVO',monto:240}])
+  f=await faltante(992004,5);await claims(uid(2))
+  await assert.rejects(()=>ajustar(opE,992004,f.cur.version+1,[{linea_id:f.l,cantidad_presentacion:5}],{destino:'SALDO_FAVOR',realizada:true}),/cliente registrado/)
+  await ajustar(opE,992004,f.cur.version+1,[{linea_id:f.l,cantidad_presentacion:5}],{destino:'EFECTIVO',realizada:true});await despachar(992004)
+  // D: operación sin cobrar: solo baja el total, sin dinero.
+  const opD='10000000-0000-0000-0000-0000000000a5'
+  await rpc('vincular',opD,{vtd_ids:[992005],borrador:{cart:[]}})
+  const l5=await linea(992005);d=(await rpc('actual',opD)).vtds.find(x=>x.venta_id===992005)
+  await assert.rejects(()=>ajustar(opD,992005,d.version,[{linea_id:l5,cantidad_presentacion:5}],{destino:'EFECTIVO',realizada:true}),/no tiene importe/)
+  r=await ajustar(opD,992005,d.version,[{linea_id:l5,cantidad_presentacion:5}]);assert.equal(Number(r.vtds.find(x=>x.venta_id===992005).total),200);assert.deepEqual(await mov(992005),[])
+  await rpc('rechazar',opD,{venta_id:992005,motivo:'Cierre de la prueba'});await rpc('cerrar_rechazo',opD)
+  assert.equal((await db.query("select has_function_privilege('anon','caja_almacen.operar(text,uuid,bigint,jsonb)','EXECUTE') allowed")).rows[0].allowed,false)
+  console.log('OK: Caja–Almacén, VTA vinculada habilitada, bloqueo persistente, un encargado, cobro único, rechazo y retorno real idempotentes; faltante y ajuste de VTD con devolución')
 }
