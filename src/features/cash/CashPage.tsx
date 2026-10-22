@@ -12,6 +12,7 @@ import { NumberField } from '../../components/NumberField'
 import { DENOMINACIONES, DenominationCount, denominacionesLimpias, denominacionesRestantes, denominacionesTotal } from '../../components/DenominationCount'
 import { VentaTicket } from '../../components/VentaTicket'
 import { CajaComprobantes } from './CajaComprobantes'
+import { CajaAlmacenEnEspera } from '../../components/CajaAlmacenEnEspera'
 import { InfoHint } from '../../components/InfoHint'
 import { useEsEncargado } from '../../components/useCobroDestino'
 import { featureFlags } from '../../config/featureFlags'
@@ -265,6 +266,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
       onAlternarArqueo={(m) => void alternarFueraDeArqueo(m)}
     />
     {featureFlags.supabase && <CajaComprobantes sessionId={sesion.id} />}
+    {featureFlags.supabase && !readOnly && <CajaAlmacenEnEspera />}
     {movimientoOpen && <MovimientoTurnoModal tipo={movimientoOpen} sesionId={sesion.id} onClose={() => setMovimientoOpen(null)} onConfirm={registrarMovimiento} />}
     {closing && <CerrarTurnoModal onClose={() => setClosing(false)} onConfirm={confirmarCierre} entrega={{ sesionId: sesion.id, registrar: registrarEntregaCierre }} />}
     {closeResult && <Modal className="cash-dialog" title={closeResult.estado === 'CERRADA' ? 'Turno cerrado' : 'Turno enviado a revisión'} onClose={() => { setCloseResult(null); onClosed() }}>
@@ -612,6 +614,7 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
         <div><button type="button" onClick={() => void resolverFaltante(f.id, 'REPUESTO')}>Repuesto</button><button type="button" onClick={() => void resolverFaltante(f.id, 'CONDONADO')}>Condonado</button></div>
       </div>) : <FeatureState type="empty" text="Sin faltantes pendientes" />}
     </section>
+    {featureFlags.supabase && <CajaAlmacenEnEspera />}
     <section className="cash-movements pagos-verificar">
       <header>
         <h3>Pagos por verificar</h3>
