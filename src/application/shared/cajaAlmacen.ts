@@ -32,6 +32,9 @@ export interface CajaAlmacenRecord {
   }
   vtds: CajaAlmacenVtd[]
 }
+export type CajaAlmacenEnEsperaOperacion = CajaAlmacenRecord & { operacion: NonNullable<CajaAlmacenRecord['operacion']>; turno_cerrado: boolean }
+export interface CajaAlmacenEnEsperaList { operaciones: CajaAlmacenEnEsperaOperacion[] }
+export const vtdEstadoLabels: Record<string, string> = { SOLICITADO: 'Pendiente de verificación de Almacén', EN_CAJA: 'Material enviado a Caja', ENTREGADO: 'Entrega confirmada', RETORNO_PENDIENTE: 'Material en retorno a Almacén', RETORNADO: 'Retorno recibido en Almacén', CANCELADO: 'Solicitud cancelada antes de salir' }
 export const vtdVigente = (v: CajaAlmacenVtd) => ['SOLICITADO', 'EN_CAJA', 'ENTREGADO'].includes(v.estado)
 
 // PostgreSQL jsonb ordena las claves; comparar el texto sin normalizar produciría
