@@ -475,36 +475,35 @@ declare
   cajero uuid; alm uuid; ses bigint; prod bigint; pres bigint; ubi bigint; cliente bigint; suc bigint;
   opid uuid; vid bigint; v jsonb; lid bigint; ver int; res text := ''; stock0 numeric; stock1 numeric; envios int := 0; n int;
 begin
-  select id, sucursal_id into cajero, suc from public.perfil where rol = 'cajero' and activo
-    and not exists (select 1 from public.caja_operacion_almacen o where o.cajero_id = perfil.id and o.cerrado_en is null) order by id limit 1;
-  if cajero is null then raise exception 'ENSAYO: no hay un cajero activo sin operación Caja–Almacén pendiente.'; end if;
-  select id into alm from public.perfil where rol = 'admin' and activo order by id limit 1;
-  select id into ses from public.sesion_caja where cajero_id = cajero and estado::text = 'ABIERTA' order by id desc limit 1;
-  if ses is null then
-    insert into public.sesion_caja(caja_id, estado, monto_apertura, cajero_id, abierta_por) values ((select id from public.caja order by id limit 1), 'ABIERTA', 1000, cajero, 'ENSAYO') returning id into ses;
-  end if;
+  -- La evidencia fotográfica de `enviar` necesita archivos reales en Storage: se apaga sólo dentro de esta transacción.
+  update evidencia_vtd.configuracion set activo = false where id;
+  -- Producción puede tener una sola caja abierta (de un cajero con operación pendiente): Caja actúa un admin sobre ese turno.
+  select id, sucursal_id into cajero, suc from public.perfil p where rol = 'admin' and activo and sucursal_id is not null
+    and not exists (select 1 from public.caja_operacion_almacen o where o.cajero_id = p.id and o.cerrado_en is null) order by id limit 1;
+  select id into ses from public.sesion_caja where estado::text = 'ABIERTA' order by id desc limit 1;
+  if cajero is null or ses is null then raise exception 'ENSAYO: hace falta un admin con sucursal y un turno abierto.'; end if;
+  select id into alm from public.perfil where rol in ('admin','gerente') and activo and id <> cajero order by id limit 1;
   select pr.id, pr.producto_id, s.ubicacion_id into pres, prod, ubi from public.presentacion pr
     join public.stock_actual s on s.producto_id = pr.producto_id
     where pr.factor_unidad_base = 1 and coalesce(pr.activo, true) and s.cantidad_base >= 40
       and exists (select 1 from public.ubicacion u where u.id = s.ubicacion_id and u.sucursal_id = suc) limit 1;
   if pres is null then raise exception 'ENSAYO: no hay una presentación unitaria con stock >= 40 en la sucursal del cajero.'; end if;
-  select pos_cliente_id into cliente from hermes.cliente c where activo and pos_cliente_id is not null
-    and exists (select 1 from public.cliente pc where pc.id = c.pos_cliente_id and pc.activo) limit 1;
+  select pc.id into cliente from public.cliente pc where pc.activo and pc.tipo_precio::text = 'retail'
+    and exists (select 1 from hermes.cliente c where c.pos_cliente_id = pc.id and c.activo) order by pc.id limit 1;
   select coalesce(sum(cantidad_base), 0) into stock0 from public.stock_actual where producto_id = prod;
 
   -- 1) Cobrada, devolución en EFECTIVO.
   opid := gen_random_uuid(); vid := pg_temp.nueva_vtd(opid, cajero, ses, prod, pres, ubi, null, true);
   v := pg_temp.reportar(alm, vid, 5); ver := (v->>'version')::int; lid := (v->'lineas'->0->>'linea_id')::bigint;
-  if v->'faltante' is null then raise exception 'ENSAYO FALLÓ [1]: el reporte no quedó en faltante'; end if;
+  if jsonb_typeof(v->'faltante') <> 'array' then raise exception 'ENSAYO FALLÓ [1]: el reporte no quedó en faltante'; end if;
   if (pg_temp.reportar(alm, vid, 5)->>'version')::int is distinct from ver then raise exception 'ENSAYO FALLÓ [1]: reporte no idempotente'; end if;
   perform pg_temp.falla('enviar con faltante', alm, 'enviar', null, null, jsonb_build_object('venta_id', vid, 'version', ver, 'cantidades', '[]'::jsonb), 'reportó faltante');
   perform pg_temp.falla('subir cantidad', cajero, 'ajustar', opid, ses, jsonb_build_object('venta_id', vid, 'version', ver, 'motivo', 'Ensayo faltante', 'lineas', jsonb_build_array(jsonb_build_object('linea_id', lid, 'cantidad_presentacion', 7)), 'devolucion', jsonb_build_object('destino', 'EFECTIVO', 'realizada', true)), 'reducir');
   perform pg_temp.falla('cero unidades', cajero, 'ajustar', opid, ses, jsonb_build_object('venta_id', vid, 'version', ver, 'motivo', 'Ensayo faltante', 'lineas', jsonb_build_array(jsonb_build_object('linea_id', lid, 'cantidad_presentacion', 0)), 'devolucion', jsonb_build_object('destino', 'EFECTIVO', 'realizada', true)), 'usa Rechazar');
   perform pg_temp.falla('versión vieja', cajero, 'ajustar', opid, ses, jsonb_build_object('venta_id', vid, 'version', ver - 1, 'motivo', 'Ensayo faltante', 'lineas', jsonb_build_array(jsonb_build_object('linea_id', lid, 'cantidad_presentacion', 5)), 'devolucion', jsonb_build_object('destino', 'EFECTIVO', 'realizada', true)), 'cambió');
   perform pg_temp.falla('sin devolución', cajero, 'ajustar', opid, ses, jsonb_build_object('venta_id', vid, 'version', ver, 'motivo', 'Ensayo faltante', 'lineas', jsonb_build_array(jsonb_build_object('linea_id', lid, 'cantidad_presentacion', 5))), 'Confirma la devolución');
-  perform pg_temp.falla('cajero YA_REGISTRADA', cajero, 'ajustar', opid, ses, jsonb_build_object('venta_id', vid, 'version', ver, 'motivo', 'Ensayo faltante', 'lineas', jsonb_build_array(jsonb_build_object('linea_id', lid, 'cantidad_presentacion', 5)), 'devolucion', jsonb_build_object('destino', 'YA_REGISTRADA', 'realizada', true, 'movimiento_id', 1)), 'gerente');
   v := pg_temp.rpc(cajero, 'ajustar', opid, ses, jsonb_build_object('venta_id', vid, 'version', ver, 'motivo', 'Ensayo faltante', 'lineas', jsonb_build_array(jsonb_build_object('linea_id', lid, 'cantidad_presentacion', 5)), 'devolucion', jsonb_build_object('destino', 'EFECTIVO', 'realizada', true)))->'vtds'->0;
-  if (v->>'total')::numeric <> 200 or v->'faltante' is not null or (v->'lineas'->0->>'cantidad_presentacion')::numeric <> 5 then raise exception 'ENSAYO FALLÓ [1]: VTD tras ajustar: %', v; end if;
+  if (v->>'total')::numeric <> 200 or jsonb_typeof(v->'faltante') <> 'null' or (v->'lineas'->0->>'cantidad_presentacion')::numeric <> 5 then raise exception 'ENSAYO FALLÓ [1]: VTD tras ajustar: %', v; end if;
   select count(*) into n from public.movimiento_caja where venta_id = vid and tipo::text = 'ANULACION' and metodo::text = 'EFECTIVO' and monto = 40;
   if n <> 1 then raise exception 'ENSAYO FALLÓ [1]: movimientos ANULACION EFECTIVO 40 = %', n; end if;
   select count(*) into n from public.venta_evento where venta_id = vid and accion = 'LINEA_CAMBIADA' and cantidad_anterior = 6 and cantidad_nueva = 5;
@@ -517,6 +516,7 @@ begin
   opid := gen_random_uuid(); vid := pg_temp.nueva_vtd(opid, cajero, ses, prod, pres, ubi, null, true);
   v := pg_temp.reportar(alm, vid, 5); ver := (v->>'version')::int; lid := (v->'lineas'->0->>'linea_id')::bigint;
   perform pg_temp.falla('QR sin referencia', cajero, 'ajustar', opid, ses, jsonb_build_object('venta_id', vid, 'version', ver, 'motivo', 'Ensayo faltante', 'lineas', jsonb_build_array(jsonb_build_object('linea_id', lid, 'cantidad_presentacion', 5)), 'devolucion', jsonb_build_object('destino', 'QR', 'realizada', true)), 'referencia');
+  perform pg_temp.falla('YA_REGISTRADA con egreso inexistente', cajero, 'ajustar', opid, ses, jsonb_build_object('venta_id', vid, 'version', ver, 'motivo', 'Ensayo faltante', 'lineas', jsonb_build_array(jsonb_build_object('linea_id', lid, 'cantidad_presentacion', 5)), 'devolucion', jsonb_build_object('destino', 'YA_REGISTRADA', 'realizada', true, 'movimiento_id', 0)), 'egreso indicado');
   perform pg_temp.rpc(cajero, 'ajustar', opid, ses, jsonb_build_object('venta_id', vid, 'version', ver, 'motivo', 'Ensayo faltante', 'lineas', jsonb_build_array(jsonb_build_object('linea_id', lid, 'cantidad_presentacion', 5)), 'devolucion', jsonb_build_object('destino', 'QR', 'realizada', true, 'referencia', 'ENSAYO-QR')));
   select count(*) into n from public.movimiento_caja where venta_id = vid and tipo::text = 'ANULACION' and metodo::text = 'QR' and monto = 40;
   if n <> 1 then raise exception 'ENSAYO FALLÓ [2]: movimientos ANULACION QR 40 = %', n; end if;
@@ -536,7 +536,7 @@ begin
     perform pg_temp.despachar(alm, vid); envios := envios + 1;
     res := res || E'\n3 SALDO_FAVOR: ok (NOTA_CREDITO -40, sin movimiento de caja)';
   else
-    res := res || E'\n3 SALDO_FAVOR: OMITIDO (no hay cliente activo con cuenta Hermes)';
+    res := res || E'\n3 SALDO_FAVOR: OMITIDO (no hay cliente retail con cuenta Hermes)';
   end if;
 
   -- 4) Sin cobrar: sólo baja el total, sin dinero.
