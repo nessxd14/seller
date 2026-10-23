@@ -17,6 +17,10 @@ import { configRepository } from './ConfigRepository.mock'
 import { reportsRepository } from './ReportsRepository.mock'
 import { comisionesRepository } from './ComisionRepository.mock'
 import { channelToCategoria, type CategoriaPedido } from '../supabase/mappers'
+import { ordenEscenario, PEDIDO_ESCENARIO_ID } from './PedidoEdicion.escenario'
+import { pedidoEdicionMock } from './PedidoEdicion.mock'
+
+export const pedidoEdicionService = pedidoEdicionMock
 
 export const configService = configRepository
 export const reportsService = reportsRepository
@@ -34,10 +38,12 @@ export const orderService = {
   // volumen real para que esto importe en la práctica, pero mantiene los dos backends
   // intercambiables sin condicionales en el llamador.
   list: (input?: { categorias?: CategoriaPedido[] }) =>
-    rawOrderService.list().then((items) =>
-      input?.categorias?.length ? items.filter((o) => input.categorias!.includes(channelToCategoria(o.channel))) : items
-    ),
-  getById: (id: string) => rawOrderService.getById(id),
+    rawOrderService.list().then((stored) => {
+      // PED-2026-00706 (escenario de edición de pedidos) siempre está, aunque el localStorage venga de antes.
+      const items = stored.some((o) => o.id === String(PEDIDO_ESCENARIO_ID)) ? stored : [ordenEscenario(), ...stored]
+      return input?.categorias?.length ? items.filter((o) => input.categorias!.includes(channelToCategoria(o.channel))) : items
+    }),
+  getById: (id: string) => rawOrderService.getById(id).then((order) => order ?? (id === String(PEDIDO_ESCENARIO_ID) ? ordenEscenario() : null)),
   save: (order: OrderView) => rawOrderService.save(order),
   partialDispatch: (id: string) => rawOrderService.partialDispatch(id),
   cancel: async (id: string, motivo: string) => rawOrderService.cancel(id, motivo, await currentMockActorId()),

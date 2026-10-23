@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, HandCoins, PackageCheck, PackagePlus, Pencil, Trash2, Truck, XCircle, RotateCcw, ArrowUpDown, FileDown } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { OrderView, OrderWorkflowStatus, WorkflowLine } from '../../application/shared/models'
-import { authSessionProvider, cashService, orderService, productRepository, sensitiveOperations } from '../../infrastructure/services'
+import { authSessionProvider, cashService, orderService, pedidoEdicionService, productRepository, sensitiveOperations } from '../../infrastructure/services'
 import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState, FeatureToolbar, condicionPagoLabel, statusChipClass, statusLabel } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
@@ -32,6 +32,11 @@ import { useCobrosPedidos } from '../../hooks/useCobrosPedidos'
 import { CobroPedidoBadge, ResumenCobroPedido } from '../../components/CobroPedidoBadge'
 import { DetalleCobroPedido } from '../../components/DetalleCobroPedido'
 import { etiquetasCobro, type EstadoCobroPedido } from '../../domain/orders/cobroPedido'
+import type { PedidoDetalle, ResumenPedido } from '../../domain/orders/pedidoEdicion.types'
+import { DetallePedidoModal } from './detalle/DetallePedidoModal'
+import { Chip, type ChipTone } from './detalle/Chip'
+import { EditarPedidoView } from './edicion/EditarPedidoView'
+import { priceForOrderChannel } from './edicion/canal'
 
 type SortKey = 'number' | 'customerName' | 'channel' | 'status' | 'total' | 'createdAt'
 type SortDir = 'asc' | 'desc'
@@ -46,8 +51,6 @@ const orderTotal = (order: OrderView) =>
     0
   )
 const channelNames: Record<string, string> = { mayoreo: 'Mayoreo', institucional: 'Institucional', corporativo: 'Corporativo' }
-const priceForOrderChannel = (product: Product, channel: OrderView['channel']) =>
-  channel === 'mayoreo' ? product.precioMayoreo : channel === 'institucional' ? product.precioInstitucional : channel === 'corporativo' ? product.precioCorporativo : product.precioRetail
 const metodoPagoLabel: Record<string, string> = { EFECTIVO: 'Efectivo', QR: 'QR', TRANSFERENCIA: 'Transferencia', SIGEP: 'SIGEP', CHEQUE: 'Cheque', DEPOSITO: 'Depósito' }
 
 // Brief S-I Tarea 3: las acciones que producen estos tres estados (Rechazar/Cambiar/Restar)
@@ -122,6 +125,13 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   const [deleteCheck, setDeleteCheck] = useState<PuedeEliminarsePedido | null>(null)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const { sessionId } = useCashSession()
+  // Brief "Seller: edición de pedido": con el flag encendido el detalle sale de pedido_detalle
+  // (ítems + surtido + línea de tiempo) y la lista suma Surtido/Avisos desde resumen_pedidos.
+  const usarEdicion = featureFlags.edicionPedido
+  const [detalleNuevo, setDetalleNuevo] = useState<PedidoDetalle | null>(null)
+  const [detalleEstado, setDetalleEstado] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [resumenes, setResumenes] = useState<Map<number, ResumenPedido>>(new Map())
+  const [soloAvisos, setSoloAvisos] = useState(false)
   // Brief P1 Tarea 6: el contador por segmento sale de una lista completa (sin filtro de
   // categoria) ya cargada — nunca una consulta aparte solo para el contador. Eso pasa
   // naturalmente al ver "Todos"; si la sesión arranca en Retail/Wholesale (segmento
@@ -165,6 +175,34 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     return () => { cancelled = true }
   }, [comprasLineIdsKey])
   useEffect(() => { void (selected ? cashService.getAdvancesForOrder(selected.id) : Promise.resolve([])).then(setAdvances) }, [selected])
+  const cargarDetalleNuevo = async (id: number) => {
+    const detalle = await pedidoEdicionService.detalle(id)
+    setDetalleNuevo(detalle)
+    setDetalleEstado('ready')
+  }
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- al abrir otro pedido se descarta el detalle anterior antes de pedir el nuevo
+    if (!usarEdicion || !selected) { setDetalleNuevo(null); setDetalleEstado('idle'); return }
+    const id = Number(selected.id)
+    if (!Number.isFinite(id)) { setDetalleNuevo(null); setDetalleEstado('error'); return }
+    let cancelled = false
+    setDetalleNuevo((previo) => (previo && previo.pedido.id === id ? previo : null))
+    setDetalleEstado('loading')
+    void pedidoEdicionService.detalle(id)
+      .then((detalle) => { if (!cancelled) { setDetalleNuevo(detalle); setDetalleEstado('ready') } })
+      .catch(() => { if (!cancelled) { setDetalleNuevo(null); setDetalleEstado('error') } })
+    return () => { cancelled = true }
+  }, [selected, usarEdicion])
+  useEffect(() => {
+    if (!usarEdicion || !orders.length) return
+    const ids = orders.map((o) => Number(o.id)).filter(Number.isFinite)
+    if (!ids.length) return
+    let cancelled = false
+    void pedidoEdicionService.resumenPedidos(ids)
+      .then((rows) => { if (!cancelled) setResumenes(new Map(rows.map((row) => [row.pedido_id, row]))) })
+      .catch(() => { if (!cancelled) setResumenes(new Map()) })
+    return () => { cancelled = true }
+  }, [orders, usarEdicion])
   // Brief S3 Parte A: /pedidos/:id sobrevive al refresco y es compartible — la lista
   // (con sus filtros) nunca se desmonta, así que "Volver" (navigate('/')) los conserva
   // gratis; esto solo sincroniza qué pedido muestra el modal con la URL actual.
@@ -281,6 +319,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     const list = orders.filter((order) =>
       (filter === 'all' || order.status === filter) &&
       (channelFilter === 'all' || order.channel === channelFilter) &&
+      (!soloAvisos || (resumenes.get(Number(order.id))?.avisos.length ?? 0) > 0) &&
       (matchesNumero(order.number, query) || order.customerName.toLowerCase().includes(query.toLowerCase()))
     )
     const dir = sortDir === 'asc' ? 1 : -1
@@ -301,7 +340,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       }
     })
     return withStats
-  }, [orders, query, filter, channelFilter, sortKey, sortDir])
+  }, [orders, query, filter, channelFilter, sortKey, sortDir, soloAvisos, resumenes])
   const dispatch = async (order: OrderView) => { if (!canDispatch) { notify('Tu rol no permite despachar pedidos'); return } if (!confirm('¿Registrar un despacho parcial simulado? No modificará inventario.')) return; const result = await sensitiveOperations.execute('dispatch',order.id,()=>orderService.partialDispatch(order.id)); setSelected(result); await load(); notify('Despacho parcial simulado') }
   // TAREA 2 (Ronda 9): anular/restaurar, siempre con motivo obligatorio y confirmación.
   // Decisión confirmada con Ness: solo se anulan pedidos sin líneas despachadas.
@@ -319,6 +358,29 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo completar la acción')
     }
+  }
+  const pedidoFooter = selected ? <footer className="modal-actions order-footer"><button className="secondary-button" onClick={() => navigate('/')}>Cerrar</button>{selected.status === 'cancelled' ? <button className="primary-button" onClick={() => setReasonModal({ action: 'restore', order: selected })}><RotateCcw /> Restaurar</button> : <button className="danger-button" disabled={hasDispatchedLines(selected)} title={hasDispatchedLines(selected) ? 'No se puede anular: tiene líneas despachadas' : undefined} onClick={() => setReasonModal({ action: 'cancel', order: selected })}><XCircle /> Anular pedido</button>}{!featureFlags.supabase && <button className="primary-button" disabled={!['preparing','ready'].includes(selected.status)} onClick={() => dispatch(selected)}><Truck /> Despacho parcial</button>}{featureFlags.supabase && <button className="danger-button" onClick={() => void openDeleteCheck(selected)}><Trash2 /> Eliminar pedido</button>}</footer> : null
+  // Pestañas Pagos y Documentos del detalle nuevo: los mismos bloques de siempre, sin cambios.
+  const pagosNode = selected ? <>
+    <ResumenCobroPedido cobro={getCobro(selected.id)} />
+    <details className="cobro-traza-acordeon"><summary>Partidas saldadas y responsables de cobros</summary><DetalleCobroPedido pedidoId={selected.id} /></details>
+    <div className="panel-top-actions">{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && (orderBalance?.disponible ?? 0) > 0 && <button className="secondary-button credit-apply-button" disabled={!sessionId} onClick={() => setBalanceOpen(true)}><HandCoins /> Usar saldo a favor</button>}<button className="secondary-button" disabled={readOnly || selected.status === 'cancelled' || (featureFlags.supabase && !sessionId)} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button></div>
+    {(orderBalance?.aplicadoPedido ?? 0) > 0 && <div className="credit-payment-summary"><strong>Saldo a favor aplicado: Bs {orderBalance!.aplicadoPedido.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><span>Pendiente sin pagos en revisión: Bs {orderBalance!.pedidoPendiente.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>}
+    <h3>Anticipos</h3>{advances.length ? <div className="timeline">{advances.map((advance) => <div key={advance.id}><HandCoins /><span><strong>{formatMoney(money(advance.amountCents))} · {advance.method ? (metodoPagoLabel[advance.method] ?? advance.method) : '—'}</strong><small>{new Date(advance.at).toLocaleString('es-BO')}</small></span></div>)}</div> : <FeatureState type="empty" text="Sin anticipos registrados" />}{featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar un anticipo.</p>}
+  </> : null
+  const documentosNode = selected ? <div className="panel-top-actions"><button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" disabled={selected.status === 'cancelled' || !selected.lines.some((line) => !lineaInactiva(line.lineStatus))} title="Registro manual de cantidades y firmas de esta entrega" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button></div> : null
+  const cargandoDetalleNuevo = usarEdicion && !!selected && detalleEstado !== 'error' && !(detalleNuevo && detalleNuevo.pedido.id === Number(selected.id))
+  const recargarDetalleNuevo = async () => { if (selected) { await cargarDetalleNuevo(Number(selected.id)); void load(); refreshCobros() } }
+  const conAvisos = orders.filter((order) => (resumenes.get(Number(order.id))?.avisos.length ?? 0) > 0).length
+  // Edición: /pedidos/:id/editar es una pantalla completa dentro del módulo, no un modal.
+  if (usarEdicion && route.kind === 'pedidoEditar') {
+    const editarId = route.id
+    return <EditarPedidoView key={editarId} pedidoId={Number(editarId)} notify={notify} onGuardado={({ version }) => {
+      notify(`Pedido actualizado a la versión ${version}`)
+      void load()
+      refreshCobros()
+      navigate(`${pedidoPath(editarId)}?tab=linea-tiempo`)
+    }} />
   }
   return <FeatureShell className="orders-page" eyebrow="OPERACIONES" title="Pedidos" subtitle={featureFlags.supabase ? "Pedidos confirmados desde el POS — despacho y estado se gestionan en el WMS" : "Reserva, preparación y despacho simulado"}>
     {/* Brief P1: filtro de presentación por pedido.categoria — se compone con los filtros
@@ -340,9 +402,15 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}><option value="all">Todos los canales</option>{Object.entries(channelNames).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
       <select aria-label="Filtrar por cobro" value={paymentFilter} onChange={e => setPaymentFilter(e.target.value as typeof paymentFilter)}><option value="all">Todos los cobros</option>{(['pagado', 'parcial', 'por_verificar', 'pendiente', 'revisar', 'cancelado', 'sin_partida', 'sin_pendiente', 'no_aplica', 'no_disponible'] as EstadoCobroPedido[]).map(value => <option key={value} value={value}>{etiquetasCobro[value]}</option>)}</select>
     </FeatureToolbar>
+    {usarEdicion && <>
+      <div className="ped-filtros ped-filtros-lista" role="group" aria-label="Filtros de avisos">
+        <button type="button" className={soloAvisos ? 'activa' : ''} aria-pressed={soloAvisos} onClick={() => setSoloAvisos((actual) => !actual)}>Con avisos <span className="ped-pestana-cuenta">{conAvisos}</span></button>
+      </div>
+      {conAvisos > 0 && <p className="ped-banner" role="status"><AlertTriangle aria-hidden /><span>Hay {conAvisos} pedido{conAvisos === 1 ? '' : 's'} con avisos de almacén que afectan lo que se cobra. Almacén sustituyó o no pudo cubrir ítems y alguien tiene que decidir qué hacer con el precio.</span><button type="button" className="ped-enlace" onClick={() => setSoloAvisos(true)}>Revisar avisos</button></p>}
+    </>}
     <div className="order-payment-legend"><span><CheckCircle2 size={14} />Pagado = partidas saldadas con importes confirmados.</span><button type="button" onClick={refreshCobros}>Actualizar cobros</button>{cobrosActualizados && <small>Consultado {cobrosActualizados.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })}</small>}</div>
-    {status === 'loading' ? <FeatureState type="skeleton" text="Cargando pedidos" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.some(({ order }) => paymentFilter === 'all' || cobros?.get(order.id)?.estado === paymentFilter) ? <FeatureState type={orders.length ? 'no-results' : 'empty'} text={paymentFilter !== 'all' && !cobros ? 'Consultando cobros…' : 'No hay pedidos con estos filtros'} /> : <div className="feature-table orders-table sticky-head">
-      <div className="table-head"><SortTh label="Nº" sortkey="number" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Cliente" sortkey="customerName" activeKey={sortKey} onToggle={toggleSort} /><span>Asunto</span><SortTh label="Canal" sortkey="channel" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Estado" sortkey="status" activeKey={sortKey} onToggle={toggleSort} /><span>Cobro</span><SortTh label="Total" sortkey="total" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Fecha" sortkey="createdAt" activeKey={sortKey} onToggle={toggleSort} /></div>
+    {status === 'loading' ? <FeatureState type="skeleton" text="Cargando pedidos" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.some(({ order }) => paymentFilter === 'all' || cobros?.get(order.id)?.estado === paymentFilter) ? <FeatureState type={orders.length ? 'no-results' : 'empty'} text={paymentFilter !== 'all' && !cobros ? 'Consultando cobros…' : 'No hay pedidos con estos filtros'} /> : <div className={`feature-table orders-table sticky-head${usarEdicion ? " orders-table-edicion" : ""}`}>
+      <div className="table-head"><SortTh label="Nº" sortkey="number" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Cliente" sortkey="customerName" activeKey={sortKey} onToggle={toggleSort} /><span>Asunto</span><SortTh label="Canal" sortkey="channel" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Estado" sortkey="status" activeKey={sortKey} onToggle={toggleSort} /><span>Cobro</span>{usarEdicion && <><span>Surtido</span><span>Avisos de almacén</span></>}<SortTh label="Total" sortkey="total" activeKey={sortKey} onToggle={toggleSort} /><SortTh label="Fecha" sortkey="createdAt" activeKey={sortKey} onToggle={toggleSort} /></div>
       {filtered.filter(({ order }) => paymentFilter === 'all' || cobros?.get(order.id)?.estado === paymentFilter).map(({ order, total }) => {
         // Nota del usuario (no es parte del brief original): resaltar pedidos anulados
         // (opacos, con X) y editados — más de una versión guardada — (amarillo, con lápiz)
@@ -355,23 +423,35 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
           {deleted && <span className="order-row-flag order-row-flag-deleted" title="Anulado"><XCircle size={12} /></span>}
           {!deleted && needsAttention && <span className="order-row-flag order-row-flag-attention" title="Almacén rechazó o cambió un ítem — sin revisar"><AlertTriangle size={12} /></span>}
           {!deleted && !needsAttention && edited && <span className="order-row-flag order-row-flag-edited" title="Editado"><Pencil size={12} /></span>}
-          <strong className="doc-number-cell">{order.number}</strong>
+          {usarEdicion
+            ? <span className="ped-numero-celda"><strong className="doc-number-cell">{order.number}</strong>{(resumenes.get(Number(order.id))?.version ?? 1) > 1 && <small className="ped-editado">v{resumenes.get(Number(order.id))!.version} · editado{resumenes.get(Number(order.id))!.editado_en ? ` ${new Date(resumenes.get(Number(order.id))!.editado_en!).toLocaleDateString('es-BO')}` : ''}</small>}</span>
+            : <strong className="doc-number-cell">{order.number}</strong>}
           <span>{order.customerName}{order.solicitanteNombre && <small className="channel-chip">Solicitante: {order.solicitanteNombre}</small>}</span>
           <span>{order.asunto || (order.sourceQuoteNumber ? `origen ${order.sourceQuoteNumber}` : '—')}</span>
           <span className="channel-chip">{channelNames[order.channel] ?? order.channel}</span>
           <span><span className={`status-chip ${statusChipClass(order.status)}`}>{statusLabel[order.status]}</span>{order.conditionPago && <small className="channel-chip">{condicionPagoLabel[order.conditionPago]}</small>}</span>
           <CobroPedidoBadge cobro={getCobro(order.id)} />
+          {usarEdicion && (() => {
+            const resumen = resumenes.get(Number(order.id))
+            const surtido: { texto: string; tono: ChipTone } | null = resumen ? (resumen.estado_surtido === 'DESPACHADO' ? { texto: 'Despachada', tono: 'green' } : resumen.estado_surtido === 'PARCIAL' ? { texto: 'Parcial', tono: 'amber' } : { texto: 'Por despachar', tono: 'gray' }) : null
+            return <>
+              <span>{surtido ? <Chip tone={surtido.tono}>{surtido.texto}</Chip> : '—'}</span>
+              <span className="ped-avisos-celda">{resumen?.avisos.includes('SUSTITUCION') && <Chip tone="violet">Sustitución</Chip>}{resumen?.avisos.includes('SIN_CUBRIR') && <Chip tone="red">Sin cubrir</Chip>}{!resumen?.avisos.length && <small>—</small>}</span>
+            </>
+          })()}
           <strong>{formatMoney(money(total))}</strong>
           <span>{new Date(order.createdAt).toLocaleDateString('es-BO')}</span>
         </article>
       })}
     </div>}
     {selectedLoading && <Modal title="Cargando pedido" onClose={() => navigate('/')}><FeatureState type="skeleton" text="Cargando pedido" /></Modal>}
-    {selected && <Modal title={`Pedido ${selected.number}`} subtitle={selected.customerName} onClose={() => navigate('/')} wide className="commercial-modal product-detail-modal"><div className="modal-body order-detail">
+    {usarEdicion && selected && detalleNuevo && detalleNuevo.pedido.id === Number(selected.id) && <DetallePedidoModal order={selected} detalle={detalleNuevo} notify={notify} onRecargar={recargarDetalleNuevo} onClose={() => navigate('/')} onImprimir={() => setOrderDoc(selected)} pagos={pagosNode} documentos={documentosNode} pie={pedidoFooter} />}
+    {cargandoDetalleNuevo && <Modal title={`Pedido ${selected!.number}`} onClose={() => navigate('/')}><FeatureState type="skeleton" text="Cargando pedido" /></Modal>}
+    {selected && (!usarEdicion || detalleEstado === 'error') && <Modal title={`Pedido ${selected.number}`} subtitle={selected.customerName} onClose={() => navigate('/')} wide className="commercial-modal product-detail-modal"><div className="modal-body order-detail">
       <ResumenCobroPedido cobro={getCobro(selected.id)} />
       <details className="cobro-traza-acordeon"><summary>Partidas saldadas y responsables de cobros</summary><DetalleCobroPedido pedidoId={selected.id} /></details>
       <div className="order-overview"><div><span>Total del pedido vigente</span><strong>{formatMoney(money(orderTotal(selected)))}</strong></div><div><span>Ítems del pedido vigente</span><strong>{selected.lines.filter((line) => !lineaInactiva(line.lineStatus)).length}</strong></div><div><span>Anticipos registrados</span><strong>{formatMoney(money(advances.reduce((sum, advance) => sum + advance.amountCents, 0)))}</strong></div></div>
-      <div className="panel-top-actions">{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && (orderBalance?.disponible ?? 0) > 0 && <button className="secondary-button credit-apply-button" disabled={!sessionId} onClick={() => setBalanceOpen(true)}><HandCoins /> Usar saldo a favor</button>}<button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" disabled={selected.status === 'cancelled' || !selected.lines.some((line) => !lineaInactiva(line.lineStatus))} title="Registro manual de cantidades y firmas de esta entrega" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={readOnly || selected.status === 'cancelled' || (featureFlags.supabase && !sessionId)} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button>{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && <button className="secondary-button" onClick={()=>setAddItemsOpen(true)}><PackagePlus /> Agregar ítems</button>}</div>
+      <div className="panel-top-actions">{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && (orderBalance?.disponible ?? 0) > 0 && <button className="secondary-button credit-apply-button" disabled={!sessionId} onClick={() => setBalanceOpen(true)}><HandCoins /> Usar saldo a favor</button>}<button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" disabled={selected.status === 'cancelled' || !selected.lines.some((line) => !lineaInactiva(line.lineStatus))} title="Registro manual de cantidades y firmas de esta entrega" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={readOnly || selected.status === 'cancelled' || (featureFlags.supabase && !sessionId)} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button>{featureFlags.supabase && !usarEdicion && !readOnly && selected.status !== 'cancelled' && <button className="secondary-button" onClick={()=>setAddItemsOpen(true)}><PackagePlus /> Agregar ítems</button>}</div>
       {(orderBalance?.aplicadoPedido ?? 0) > 0 && <div className="credit-payment-summary"><strong>Saldo a favor aplicado: Bs {orderBalance!.aplicadoPedido.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><span>Pendiente sin pagos en revisión: Bs {orderBalance!.pedidoPendiente.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>}<div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong>{statusLabel[selected.status]}</strong></div></div>
       {selected.conditionPago && <div className="autoria-row"><span className="channel-chip">{condicionPagoLabel[selected.conditionPago]}</span>{selected.medioPago && <span className="channel-chip">{metodoPagoLabel[selected.medioPago] ?? selected.medioPago}</span>}</div>}
       {/* Brief S3 Parte B: autoría — quién creó el pedido, y si nació de una conversión,
@@ -446,7 +526,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       )}
       <h3>Historial</h3><div className="timeline">{selected.events.map((event,index) => <div key={`${event.at}-${index}`}><CheckCircle2 /><span><strong>{event.label}</strong><small>{event.at} · {event.detail}</small></span></div>)}</div>
       {<><h3>Anticipos</h3>{advances.length ? <div className="timeline">{advances.map((advance) => <div key={advance.id}><HandCoins /><span><strong>{formatMoney(money(advance.amountCents))} · {advance.method ? (metodoPagoLabel[advance.method] ?? advance.method) : '—'}</strong><small>{new Date(advance.at).toLocaleString('es-BO')}</small></span></div>)}</div> : <FeatureState type="empty" text="Sin anticipos registrados" />}{featureFlags.supabase && !sessionId && <p className="mock-note">Caja cerrada — abrí la caja para poder registrar un anticipo.</p>}</>}
-    </div><footer className="modal-actions order-footer"><button className="secondary-button" onClick={() => navigate('/')}>Cerrar</button>{selected.status === 'cancelled' ? <button className="primary-button" onClick={() => setReasonModal({ action: 'restore', order: selected })}><RotateCcw /> Restaurar</button> : <button className="danger-button" disabled={hasDispatchedLines(selected)} title={hasDispatchedLines(selected) ? 'No se puede anular: tiene líneas despachadas' : undefined} onClick={() => setReasonModal({ action: 'cancel', order: selected })}><XCircle /> Anular pedido</button>}{!featureFlags.supabase && <button className="primary-button" disabled={!['preparing','ready'].includes(selected.status)} onClick={() => dispatch(selected)}><Truck /> Despacho parcial</button>}{featureFlags.supabase && <button className="danger-button" onClick={() => void openDeleteCheck(selected)}><Trash2 /> Eliminar pedido</button>}</footer></Modal>}
+    </div>{pedidoFooter}</Modal>}
     {balanceOpen && selected && selected.customerId && sessionId && <SaldoPedidoModal key={selected.id} pedidoId={selected.id} clienteId={selected.customerId} numero={selected.number} sesionId={sessionId} onClose={() => setBalanceOpen(false)} onSuccess={() => { setBalanceOpen(false); notify('Saldo a favor aplicado al pedido'); void cashService.getAdvancesForOrder(selected.id).then(setAdvances) }} />}
     {advanceOpen && selected && <AdvanceModal onClose={()=>setAdvanceOpen(false)} onConfirm={registerAdvance}/>}
     {addItemsOpen && selected && <AddItemsModal orderNumber={selected.number} channel={selected.channel} onClose={()=>setAddItemsOpen(false)} onConfirm={submitAddItems}/>}

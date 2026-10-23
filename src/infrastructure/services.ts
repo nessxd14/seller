@@ -7,11 +7,15 @@ import * as mockServices from './mock/services'
 import * as supabaseServices from './supabase/services'
 import { mockAuthSessionProvider } from './mock/MockAuthSessionProvider'
 import { supabaseAuthSessionProvider } from './supabase/SupabaseAuthSessionProvider'
+import { pedidoEdicionSupabase } from './supabase/PedidoEdicion.supabase'
+export { simularCambioDeAlmacen } from './mock/PedidoEdicion.mock'
 
 export const authSessionProvider = featureFlags.supabase ? supabaseAuthSessionProvider : mockAuthSessionProvider
 
 export const quoteService = featureFlags.supabase ? supabaseServices.quoteService : mockServices.quoteService
 export const orderService = featureFlags.supabase ? supabaseServices.orderService : mockServices.orderService
+// Brief edición de pedidos: pedido_detalle / editar_pedido / línea de tiempo / avisos / resumen de lista.
+export const pedidoEdicionService = featureFlags.supabase ? pedidoEdicionSupabase : mockServices.pedidoEdicionService
 export const customerService = featureFlags.supabase ? supabaseServices.customerService : mockServices.customerService
 export const productRepository = featureFlags.supabase ? supabaseServices.productRepository : mockServices.productRepository
 export const getStockByProduct = featureFlags.supabase ? supabaseServices.getStockByProduct : mockServices.getStockByProduct

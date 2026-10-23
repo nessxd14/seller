@@ -75,7 +75,7 @@ function PosContent() {
   // de Venta por default.
   const [activeModule, setActiveModule] = useState(() => {
     const route = parseRoute(window.location.pathname)
-    return route.kind === 'pedido' ? 'Pedidos' : route.kind === 'cotizacion' ? 'Cotizaciones' : route.kind === 'venta' ? 'Reportes' : 'Venta'
+    return route.kind === 'pedido' || route.kind === 'pedidoEditar' ? 'Pedidos' : route.kind === 'cotizacion' ? 'Cotizaciones' : route.kind === 'venta' ? 'Reportes' : 'Venta'
   })
   const route = useRoute()
   const { sessionId } = useCashSession()

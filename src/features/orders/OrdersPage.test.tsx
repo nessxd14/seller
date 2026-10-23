@@ -50,6 +50,12 @@ vi.mock('../../infrastructure/services', () => ({
   productRepository: { search: vi.fn().mockResolvedValue({ items: [], total: 0 }), getById: vi.fn().mockResolvedValue(null) },
   sensitiveOperations: { execute: vi.fn() },
 }))
+// Estas pruebas cubren el detalle de siempre: con el flag de edición de pedidos apagado la
+// pantalla tiene que seguir exactamente igual (es el camino de vuelta atrás).
+vi.mock('../../config/featureFlags', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../config/featureFlags')>()
+  return { featureFlags: { ...original.featureFlags, edicionPedido: false } }
+})
 vi.mock('../../infrastructure/supabase/OrderAdmin.supabase', () => ({
   contarVersionesPedidos: vi.fn().mockResolvedValue(new Map()),
   listVersionesPedido: vi.fn().mockResolvedValue([]),
