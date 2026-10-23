@@ -150,6 +150,27 @@ export async function cerrarTurno(sesionId: string, denominaciones: Denominacion
   }
 }
 
+export interface VtdPendienteCierre { ventaId: string; numero: string | null; totalBs: number }
+export interface CierreGerenteResultado extends CierreTurnoResultado { pendientes: VtdPendienteCierre[]; forzado: true }
+
+// Cierre forzado del gerente (cerrar_turno_gerente): admite VTD vinculadas sin cobrar; las
+// operaciones abiertas del turno quedan "en espera" para que cualquier cajero/gerente las resuelva.
+// El motivo (≥ 10 caracteres) lo valida la RPC.
+export async function cerrarTurnoGerente(sesionId: string, denominaciones: Denominaciones, motivo: string, cajonVacio: boolean = false): Promise<CierreGerenteResultado> {
+  const { data, error } = await supabase.rpc('cerrar_turno_gerente', { p_sesion_id: Number(sesionId), p_denominaciones: denominaciones, p_motivo: motivo, p_cajon_vacio: cajonVacio })
+  if (error) throw toError(error)
+  const result = data as { sesion_id: number; estado: TurnoEstado; esperado?: number | string; contado?: number | string; diferencia?: number | string; pendientes?: { venta_id: number; numero: string | null; total: number | string }[] | null }
+  return {
+    sesionId: String(result.sesion_id),
+    estado: result.estado,
+    esperadoBs: result.esperado != null ? num(result.esperado) : undefined,
+    contadoBs: result.contado != null ? num(result.contado) : undefined,
+    diferenciaBs: result.diferencia != null ? num(result.diferencia) : undefined,
+    pendientes: (result.pendientes ?? []).map((p) => ({ ventaId: String(p.venta_id), numero: p.numero, totalBs: num(p.total) })),
+    forzado: true,
+  }
+}
+
 export async function revisarTurno(sesionId: string, nota: string): Promise<void> {
   const { error } = await supabase.rpc('revisar_turno', { p_sesion_id: Number(sesionId), p_nota: nota })
   if (error) throw toError(error)

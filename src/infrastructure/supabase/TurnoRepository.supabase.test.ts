@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { rpc, from } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }))
 vi.mock('./supabaseClient', () => ({ supabase: { rpc, from } }))
-import { cerrarTurno, getResumenTurno, listMovimientosTurno, marcarCobroFueraDeArqueo } from './TurnoRepository.supabase'
+import { cerrarTurno, cerrarTurnoGerente,getResumenTurno, listMovimientosTurno, marcarCobroFueraDeArqueo } from './TurnoRepository.supabase'
 
 const cierreOk = { data: { sesion_id: 4, estado: 'CERRADA' }, error: null }
 const den = { '100': 1 }
@@ -36,6 +36,28 @@ describe('cerrarTurno — p_cajon_vacio', () => {
     expect(error).toBeInstanceOf(Error)
     expect((error as Error).message).toBe(message)
     expect((error as { code?: string }).code).toBe('P0001')
+  })
+})
+
+describe('cerrarTurnoGerente', () => {
+  it('manda conteo, motivo y cajón vacío, y mapea el resultado con las VTD pendientes', async () => {
+    rpc.mockResolvedValue({ data: { sesion_id: 4, estado: 'EN_REVISION', esperado: '700.00', contado: 650, diferencia: '-50', pendientes: [{ venta_id: 784, numero: 'VTD-2026-00784', total: '240.50' }] }, error: null })
+    const result = await cerrarTurnoGerente('4', den, 'Almacén no despachó la VTD')
+    expect(rpc).toHaveBeenCalledWith('cerrar_turno_gerente', { p_sesion_id: 4, p_denominaciones: den, p_motivo: 'Almacén no despachó la VTD', p_cajon_vacio: false })
+    expect(result).toEqual({ sesionId: '4', estado: 'EN_REVISION', esperadoBs: 700, contadoBs: 650, diferenciaBs: -50, pendientes: [{ ventaId: '784', numero: 'VTD-2026-00784', totalBs: 240.5 }], forzado: true })
+  })
+
+  it('pasa p_cajon_vacio true y tolera pendientes ausentes', async () => {
+    rpc.mockResolvedValue({ data: { sesion_id: 4, estado: 'CERRADA' }, error: null })
+    const result = await cerrarTurnoGerente('4', {}, 'Cierre forzado del turno', true)
+    expect(rpc).toHaveBeenCalledWith('cerrar_turno_gerente', { p_sesion_id: 4, p_denominaciones: {}, p_motivo: 'Cierre forzado del turno', p_cajon_vacio: true })
+    expect(result.pendientes).toEqual([])
+    expect(result.forzado).toBe(true)
+  })
+
+  it('propaga el mensaje de la base', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'Solo gerente o admin', code: '42501' } })
+    await expect(cerrarTurnoGerente('4', den, 'Motivo bastante largo')).rejects.toMatchObject({ message: 'Solo gerente o admin' })
   })
 })
 

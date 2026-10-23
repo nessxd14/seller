@@ -2,6 +2,7 @@ import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Calculator, Check, ChevronDown,
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
 import { hasPermission } from '../../application/auth/AuthSessionProvider'
+import type { VtdPendienteCierre } from '../../infrastructure/supabase/TurnoRepository.supabase'
 import type { CajaFaltanteRecord, CajaGastoRecord, CashSessionRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoResumen, TurnoSesion, TurnoTicket, TurnoMovimiento } from '../../application/shared/models'
 import { sugerirPagosQr, type SugerenciaQr } from '../../domain/cash/qrSuggestions'
 import { authSessionProvider, cashService, sensitiveOperations, turnoService, ventaDirectaService } from '../../infrastructure/services'
@@ -24,6 +25,8 @@ import { ActividadTurno } from './ActividadTurno'
 
 const bs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const ENTREGA_CIERRE_PREFIJO = 'Entrega de cierre a '
+// Mensajes de cerrar_turno que habilitan el cierre forzado del gerente (cerrar_turno_gerente).
+const BLOQUEO_VTD = /pendientes de Almacén|sin cobrar|VTD en espera de Almacén/
 
 // Textos de ayuda "i" (Brief Caja). Ninguno muestra una cifra: solo explican el concepto.
 const HINTS = {
@@ -152,7 +155,9 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
   const [tickets, setTickets] = useState<TurnoTicket[]>([])
   const [movimientoOpen, setMovimientoOpen] = useState<'GASTO' | 'REMESA' | 'INYECCION' | null>(null)
   const [closing, setClosing] = useState(false)
-  const [closeResult, setCloseResult] = useState<{ estado: string } | null>(null)
+  const [closeResult, setCloseResult] = useState<{ estado: string; forzado?: boolean; pendientes?: VtdPendienteCierre[] } | null>(null)
+  // Cierre forzado (solo gerente/admin): conserva el conteo que la base rechazó por VTD pendientes.
+  const [cierreGerente, setCierreGerente] = useState<{ denominaciones: Denominaciones; cajonVacio: boolean; mensaje: string } | null>(null)
   const [reprintId, setReprintId] = useState<string | null>(null)
   const [detalleVentaId, setDetalleVentaId] = useState<string | null>(null)
   const [movimientos, setMovimientos] = useState<TurnoMovimiento[]>([])
@@ -179,16 +184,13 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
     }
   }
 
-  // Brief VTD 2.4, ahora para turno: mismo chequeo proactivo que la caja legacy.
+  // Solo un aviso: cerrar_turno es la fuente de verdad y devuelve qué hacer si algo bloquea.
   const abrirCierre = async () => {
-    const abiertas = await ventaDirectaService.listAbiertas(sesion.id)
-    // Misma regla que cerrar_turno: solo bloquean las VTD abiertas que aún deben dinero. Las ya
-    // cobradas esperan a Almacén y se completan al despacharse.
-    const porCobrar = abiertas.filter((v) => v.cobroExigible && !v.pagoPosterior && v.totalCents > 0 && v.paidCents < v.totalCents)
-    const porDespachar = abiertas.filter((v) => !porCobrar.includes(v))
-    if (porCobrar.length) { notify(`No se puede cerrar el turno: hay ${porCobrar.length} venta(s) directa(s) sin cobrar. Cóbralas, márcalas como pago posterior o anúlalas antes de cerrar.`); return }
+    try {
+      const abiertas = await ventaDirectaService.listAbiertas(sesion.id)
+      if (abiertas.length) notify(`Hay ${abiertas.length} venta(s) directa(s) pendientes. Resuélvelas en "Operaciones en espera de Almacén" antes de cerrar.`)
+    } catch { /* aviso informativo: no impide intentar el cierre */ }
     setClosing(true)
-    if (porDespachar.length) notify(`${porDespachar.length} venta(s) directa(s) cobrada(s) siguen pendientes de despacho en Almacén. El turno se puede cerrar; quedan en la cola de Almacén.`)
   }
   // Entrega de efectivo (remesa) antes del conteo de cierre. La clave de idempotencia la genera
   // el modal una sola vez por instancia: un reintento no crea una segunda remesa.
@@ -213,8 +215,21 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
       setCloseResult({ estado: result.estado })
       notify(result.estado === 'CERRADA' ? 'Turno cerrado' : 'Turno enviado a revisión del gerente')
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo cerrar el turno')
+      const mensaje = error instanceof Error ? error.message : 'No se pudo cerrar el turno'
+      if (esEncargado && BLOQUEO_VTD.test(mensaje)) {
+        setClosing(false)
+        setCierreGerente({ denominaciones, cajonVacio, mensaje })
+        return
+      }
+      notify(mensaje)
     }
+  }
+  const confirmarCierreGerente = async (motivo: string) => {
+    if (!cierreGerente) return
+    const result = await turnoService.cerrarGerente(sesion.id, cierreGerente.denominaciones, motivo, cierreGerente.cajonVacio)
+    setCierreGerente(null)
+    setCloseResult({ estado: result.estado, forzado: true, pendientes: result.pendientes })
+    notify('Turno cerrado por gerente')
   }
 
   return <div className="cash-layout turno-layout">
@@ -269,8 +284,13 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
     {featureFlags.supabase && !readOnly && <CajaAlmacenEnEspera />}
     {movimientoOpen && <MovimientoTurnoModal tipo={movimientoOpen} sesionId={sesion.id} onClose={() => setMovimientoOpen(null)} onConfirm={registrarMovimiento} />}
     {closing && <CerrarTurnoModal onClose={() => setClosing(false)} onConfirm={confirmarCierre} entrega={{ sesionId: sesion.id, registrar: registrarEntregaCierre }} />}
+    {cierreGerente && <CierreGerenteModal mensaje={cierreGerente.mensaje} contadoBs={denominacionesTotal(cierreGerente.denominaciones)} onClose={() => setCierreGerente(null)} onConfirm={confirmarCierreGerente} />}
     {closeResult && <Modal className="cash-dialog" title={closeResult.estado === 'CERRADA' ? 'Turno cerrado' : 'Turno enviado a revisión'} onClose={() => { setCloseResult(null); onClosed() }}>
       <div className="success-state"><span>✓</span><h3>{closeResult.estado === 'CERRADA' ? 'Turno cerrado' : 'Turno enviado a revisión del gerente'}</h3></div>
+      {closeResult.forzado && !!closeResult.pendientes?.length && <div className="modal-body">
+        <p>Estas ventas directas quedan en «Operaciones en espera de Almacén» para que un cajero o gerente las resuelva:</p>
+        <ul aria-label="VTD pendientes">{closeResult.pendientes.map((p) => <li key={p.ventaId}>{p.numero ?? `Venta ${p.ventaId}`} · Bs {bs(p.totalBs)}</li>)}</ul>
+      </div>}
       <footer className="modal-actions"><button className="primary-button full-button" onClick={() => { setCloseResult(null); onClosed() }}>Aceptar</button></footer>
     </Modal>}
     {reprintId && <VentaTicket id={reprintId} onClose={() => setReprintId(null)} />}
@@ -321,6 +341,32 @@ function MovimientoTurnoModal({ tipo, sesionId, onClose, onConfirm }: { tipo: 'G
     {tipo === 'GASTO' && <label className="full">Comprobante (foto, opcional)<input type="file" accept="image/*" disabled={submitting} onChange={(e) => { setFile(e.target.files?.[0] ?? null); uploadedPath.current = undefined }} /></label>}
     {error && <p role="alert" className="full cash-error">{error}</p>}
   </div><footer className="modal-actions"><button className="secondary-button" disabled={submitting} onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valid || submitting} onClick={() => void submit()}>{submitting ? 'Guardando…' : 'Confirmar'}</button></footer></Modal>
+}
+
+/**
+ * Cierre forzado del gerente/admin (cerrar_turno_gerente) cuando cerrar_turno lo rechazó por VTD
+ * pendientes. Reutiliza el conteo ya ingresado: solo pide el motivo (la RPC exige ≥ 10 caracteres).
+ */
+function CierreGerenteModal({ mensaje, contadoBs, onClose, onConfirm }: { mensaje: string; contadoBs: number; onClose: () => void; onConfirm: (motivo: string) => Promise<void> }) {
+  const [motivo, setMotivo] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const valido = motivo.trim().length >= 10
+  const confirmar = async () => {
+    if (!valido || busy) return
+    setBusy(true)
+    setError('')
+    try { await onConfirm(motivo.trim()) } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo cerrar el turno') } finally { setBusy(false) }
+  }
+  return <Modal className="cash-dialog" title="Cerrar como gerente" subtitle="El turno tiene ventas directas pendientes de Almacén." onClose={() => { if (!busy) onClose() }} escapeToClose={!busy}>
+    <div className="modal-body form-grid">
+      <p role="status" className="full">{mensaje}</p>
+      <p className="full">Se cierra con el conteo ya ingresado (Bs {bs(contadoBs)}). Las operaciones abiertas quedan en «Operaciones en espera de Almacén».</p>
+      <label className="full">Motivo del cierre<textarea rows={3} maxLength={1000} value={motivo} disabled={busy} onChange={(e) => setMotivo(e.target.value)} placeholder="Por qué se cierra con ventas pendientes (mínimo 10 caracteres)" /></label>
+      {error && <p role="alert" className="full cash-error">{error}</p>}
+    </div>
+    <footer className="modal-actions"><button className="secondary-button" disabled={busy} onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valido || busy} onClick={() => void confirmar()}>{busy ? 'Cerrando turno…' : 'Cerrar como gerente'}</button></footer>
+  </Modal>
 }
 
 function CajonEnCeroCheck({ checked, onChange, disabled }: { checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {

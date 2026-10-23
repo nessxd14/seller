@@ -106,7 +106,7 @@ function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify:
   }
 
   const anular = async (venta: VentaDirectaRecord) => {
-    if (!window.confirm(`¿Anular ${venta.numero}? Se devuelve todo lo entregado y, si hubo cobro, el dinero.`)) return
+    if (!window.confirm(`¿Anular ${venta.numero}? Si pasó por Caja–Almacén, el sistema te indicará cómo resolverla.`)) return
     setBusyId(venta.id)
     try {
       await ventaDirectaService.anular(venta.id, venta.sesionCajaId || sessionId || undefined)
