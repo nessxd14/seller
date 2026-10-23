@@ -85,7 +85,18 @@ export const pedidoEdicionMock: PedidoEdicionPort = {
       anterior = siguiente
     })
     const total = resultado.totalLocal
+    const errores: PrevisualizacionEdicion['errores'] = [
+      ...(versionEsperada !== detalle.pedido.version ? [{ codigo: 'VERSION_CAMBIADA', item_id: null, texto: mapErrorEdicion('VERSION_CAMBIADA') }] : []),
+      ...resultado.errores.map((error) => ({ codigo: codigoServidor(error.codigo), item_id: error.item_id, texto: error.texto })),
+      ...(total < detalle.cuenta.pagado - 1e-9 ? [{ codigo: 'REDUCCION_BAJO_PAGADO', item_id: null, texto: mapErrorEdicion('REDUCCION_BAJO_PAGADO') }] : []),
+    ]
+    // Igual que el servidor: con errores, cuenta y totales viajan en null y no hay nada que mostrar salvo los errores.
+    if (errores.length > 0) {
+      return { ok: false, version: detalle.pedido.version, total_anterior: null, total_nuevo: null, delta: null, cuenta: null, cambios: [], almacen: [], advertencias: [], errores }
+    }
     return {
+      ok: true,
+      version: detalle.pedido.version,
       total_anterior: detalle.pedido.total,
       total_nuevo: total,
       delta: redondear2(total - detalle.pedido.total),
@@ -100,13 +111,7 @@ export const pedidoEdicionMock: PedidoEdicionPort = {
       },
       almacen,
       advertencias,
-      errores: [
-        ...(versionEsperada !== detalle.pedido.version ? [{ codigo: 'VERSION_CAMBIADA', item_id: null, texto: mapErrorEdicion('VERSION_CAMBIADA') }] : []),
-        ...resultado.errores.map((error) => ({ codigo: codigoServidor(error.codigo), item_id: error.item_id, texto: error.texto })),
-        ...(total < detalle.cuenta.pagado - 1e-9 ? [{ codigo: 'REDUCCION_BAJO_PAGADO', item_id: null, texto: mapErrorEdicion('REDUCCION_BAJO_PAGADO') }] : []),
-      ],
-      ok: versionEsperada === detalle.pedido.version && resultado.errores.length === 0 && total >= detalle.cuenta.pagado - 1e-9,
-      version: detalle.pedido.version,
+      errores,
     }
   },
 

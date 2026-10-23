@@ -9,7 +9,8 @@ export type EstadoSurtido = 'SIN_DESPACHAR' | 'PARCIAL' | 'DESPACHADO'
 export type EstadoPagoPedido = 'PENDIENTE' | 'PARCIAL' | 'PAGADO'
 export type EstadoDevolucion = 'NINGUNA' | 'PARCIAL' | 'TOTAL'
 export type TipoSurtido = 'ORIGINAL' | 'PARTIDA' | 'SUSTITUTO' | 'COMPRA'
-export type EstadoLineaSurtido = 'DESPACHADA' | 'POR_DESPACHAR' | 'POR_COMPRAR' | 'SIN_CUBRIR' | (string & {})
+/** CAMBIADA / RETIRADA / RECHAZADO son líneas muertas: el servidor las incluye en `lineas` con su `cubre` original. */
+export type EstadoLineaSurtido = 'DESPACHADA' | 'POR_DESPACHAR' | 'POR_COMPRAR' | 'SIN_CUBRIR' | 'COMPRADO_DIRECTO' | 'CAMBIADA' | 'RETIRADA' | 'RECHAZADO' | (string & {})
 
 export interface PedidoCabecera {
   id: number
@@ -50,6 +51,7 @@ export interface PedidoLineaSurtido {
   /** Producto realmente surtido (el sustituto, si lo hay). Pre-llena "Ponerle precio propio". */
   producto_id?: number | null
   presentacion_id?: number | null
+  presentacion_nombre?: string | null
   descripcion: string
   cantidad_presentacion: number
   /** Unidades del ítem que esta línea cubre (distinto de su cantidad cuando es sustituto). */
@@ -166,13 +168,14 @@ export type CambioPedido =
   // Solo trae las llaves que cambiaron: el servidor toca únicamente las que recibe.
   | { op: 'datos'; descuento_general?: number; condicion_pago?: 'CONTADO' | 'CREDITO' | null; medio_pago?: string | null; referencia?: string | null }
 
+/** Con `ok: false` el servidor manda `cuenta`, `total_anterior`, `total_nuevo` y `delta` en null. */
 export interface PrevisualizacionEdicion {
   ok?: boolean
   version?: number
   cambios?: Array<{ indice: number; op: string; item_id: number | null; texto: string; delta: number }>
-  total_anterior: number
-  total_nuevo: number
-  delta: number
+  total_anterior: number | null
+  total_nuevo: number | null
+  delta: number | null
   cuenta: {
     tiene_cuenta?: boolean
     partida_antes: number
@@ -181,7 +184,7 @@ export interface PrevisualizacionEdicion {
     saldo_antes: number
     saldo_despues: number
     saldo_a_favor: number
-  }
+  } | null
   almacen: Array<{ accion: 'LINEA_NUEVA' | 'LINEA_CANCELADA' | 'LINEA_REDUCIDA'; texto: string; linea_id?: number }>
   advertencias: Array<{ codigo: string; texto: string; linea_id?: number }>
   errores: Array<{ codigo: string; item_id?: number | null; texto: string }>

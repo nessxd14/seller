@@ -183,6 +183,28 @@ describe('aplicarCambios', () => {
   })
 })
 
+describe('líneas muertas y mínimo de la parte 0', () => {
+  it('las líneas CAMBIADA / RETIRADA / RECHAZADO no entran al borrador', () => {
+    const detalle = crearDetalleEscenario()
+    detalle.items[0].lineas.push({ id: 9999, descripcion: 'Trijet viejo', cantidad_presentacion: 200, cubre: 200, estado: 'CAMBIADA', tipo_surtido: 'ORIGINAL', ubicacion: null, alistada: false, nota: null })
+    expect(aplicarCambios(detalle, []).items[0].lineas.map((l) => l.id)).toEqual([4746, 4765])
+  })
+
+  it('el mínimo de la parte 0 cuenta solo lo despachado por las líneas que se quedan en ella', () => {
+    const detalle = crearDetalleEscenario()
+    // 808: todo lo despachado es del sustituto, que pasa a otra parte → la parte 0 puede ser menor.
+    detalle.items[0].lineas = [
+      { id: 1, producto_id: 4410, descripcion: 'Trijet', cantidad_presentacion: 100, cubre: 100, estado: 'POR_DESPACHAR', tipo_surtido: 'ORIGINAL', ubicacion: null, alistada: false, nota: null },
+      { id: 2, producto_id: 850, descripcion: 'Wenao', cantidad_presentacion: 400, cubre: 400, despachado: 200, estado: 'DESPACHADA', tipo_surtido: 'SUSTITUTO', ubicacion: null, alistada: true, nota: null },
+    ]
+    const parte = (cantidad: number, ids: number[]) => ({ producto_id: 850, presentacion_id: null, cantidad_presentacion: cantidad, precio_unitario: 2, linea_ids: ids })
+    const ok = aplicarCambios(detalle, [{ op: 'partir', item_id: 901, partes: [{ producto_id: 4410, presentacion_id: 88, cantidad_presentacion: 100, precio_unitario: 0.85, linea_ids: [] }, parte(400, [2])] }])
+    expect(ok.errores).toEqual([])
+    const mal = aplicarCambios(detalle, [{ op: 'partir', item_id: 901, partes: [{ producto_id: 4410, presentacion_id: 88, cantidad_presentacion: 100, precio_unitario: 0.85, linea_ids: [] }, parte(400, [])] }])
+    expect(mal.errores[0].codigo).toBe('CANTIDAD_BAJO_DESPACHADO')
+  })
+})
+
 describe('resumenCambios', () => {
   it('describe cada cambio con su efecto en el total (+345, +30, +54)', () => {
     const resumen = resumenCambios([partirTrijet, fixocola20, agregarCorrector], base)

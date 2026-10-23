@@ -3,7 +3,7 @@ import { Ellipsis, Lock, PackagePlus, TriangleAlert, X } from 'lucide-react'
 import { NumberField } from '../../../components/NumberField'
 import { PrecioBajoAviso } from '../../../components/PrecioBajoAviso'
 import { ProductQuickAdd } from '../../../components/ProductQuickAdd'
-import type { ItemBorrador, MarcaItem } from '../../../domain/orders/edicionPedido'
+import { lineaViva, type ItemBorrador, type MarcaItem } from '../../../domain/orders/edicionPedido'
 import type { CambioPedido } from '../../../domain/orders/pedidoEdicion.types'
 import { precioSugerido } from '../../../domain/pricing/precioPresentacion'
 import { getDisponibilidadPedido, listPresentations, productRepository } from '../../../infrastructure/services'
@@ -106,8 +106,22 @@ export function EditarPedidoView({ pedidoId, notify, onGuardado }: {
     window.history.replaceState({}, '', window.location.pathname)
     const item = base.items.find((candidato) => candidato.id === intento.itemId)
     if (!item) { notify('El ítem del aviso ya no está en el pedido.'); return }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- el atajo del aviso abre su paso una única vez al cargar
-    if (intento.tipo === 'precio_propio') setPartir({ itemId: item.id, prefill: { lineaId: intento.lineaId } })
+    if (intento.tipo === 'precio_propio') {
+      // Si el sustituto cubre todo el ítem, la parte 0 quedaría en 0 y el servidor no deja partir: se cambia el precio del ítem.
+      const coberturaOriginal = item.lineas.filter(lineaViva).filter((linea) => linea.tipo_surtido !== 'SUSTITUTO').reduce((total, linea) => total + (linea.cubre ?? linea.cantidad_presentacion), 0)
+      if (coberturaOriginal <= 0) {
+        // No se registra nada: el cambio nace cuando el vendedor edita el precio. Solo se deja el campo enfocado.
+        notify('El sustituto cubre todo el ítem: se cambia el precio del ítem.')
+        const etiqueta = `Precio de ${item.descripcion}`
+        requestAnimationFrame(() => {
+          const campo = Array.from(document.querySelectorAll<HTMLInputElement>('.ped-fila input')).find((candidato) => candidato.getAttribute('aria-label') === etiqueta)
+          campo?.focus()
+          campo?.select()
+        })
+      }
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- el atajo del aviso abre su paso una única vez al cargar
+      else setPartir({ itemId: item.id, prefill: { lineaId: intento.lineaId } })
+    }
     else if (intento.tipo === 'reemplazar') setSaldo(item.id)
     else if (intento.tipo === 'cobrar_entregado') agregarCambio({ op: 'cerrar_saldo', item_id: item.id })
     else agregarCambio({ op: 'saldo_a_compra', item_id: item.id })

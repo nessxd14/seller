@@ -5,6 +5,15 @@
 // decide cuánto cuesta — el dinero vive en el ítem comercial, nunca en la línea de surtido.
 import type { CambioPedido, ParteItem, PedidoDetalle, PedidoItem, PedidoLineaSurtido } from './pedidoEdicion.types'
 
+const ESTADOS_MUERTOS: ReadonlySet<string> = new Set(['CAMBIADA', 'RETIRADA', 'RECHAZADO'])
+
+/** Una línea muerta (sustituida, retirada o rechazada) ya no surte nada: nunca suma cobertura ni despacho. */
+export const lineaViva = (linea: Pick<PedidoLineaSurtido, 'estado'>): boolean => !ESTADOS_MUERTOS.has(linea.estado)
+
+/** Unidades del ítem que esta línea ya despachó (si el servidor no lo manda, se deduce del estado). */
+export const despachadoDe = (linea: PedidoLineaSurtido): number =>
+  linea.despachado ?? (linea.estado === 'DESPACHADA' ? (linea.cubre ?? linea.cantidad_presentacion) : 0)
+
 export type MarcaItem = 'NUEVO' | 'MODIFICADO' | 'PARTIDO' | 'QUITADO'
 
 export interface ItemBorrador extends PedidoItem {
@@ -47,7 +56,7 @@ const subtotalDe = (item: Pick<PedidoItem, 'cantidad_presentacion' | 'precio_uni
 
 const enBorrador = (item: PedidoItem): ItemBorrador => ({
   ...item,
-  lineas: item.lineas.map((linea) => ({ ...linea })),
+  lineas: item.lineas.filter(lineaViva).map((linea) => ({ ...linea })),
   subtotalBase: item.subtotal,
   cantidadBase: item.cantidad_presentacion,
   precioBase: item.precio_unitario,
@@ -158,16 +167,18 @@ export const aplicarCambios = (base: PedidoDetalle, cambios: CambioPedido[]): Re
         if (!item) return
         const { partes } = cambio
         const suma = partes.reduce((total, parte) => total + parte.cantidad_presentacion, 0)
-        if (partes.length < 2 || Math.abs(suma - item.cantidad_presentacion) > 1e-9) { falla(indice, 'PARTIR_NO_CUADRA', item.id, 'Las partes no suman la cantidad del ítem.'); return }
-        if (partes[0].cantidad_presentacion < item.cantidad_despachada) { falla(indice, 'CANTIDAD_BAJO_DESPACHADO', item.id, `La primera parte conserva lo despachado (mínimo ${qty(item.cantidad_despachada)}).`); return }
+        if (partes.length < 2 || partes.some((parte) => !(parte.cantidad_presentacion > 0)) || Math.abs(suma - item.cantidad_presentacion) > 1e-9) { falla(indice, 'PARTIR_NO_CUADRA', item.id, 'Las partes no suman la cantidad del ítem.'); return }
         const reclamadas = new Set(partes.slice(1).flatMap((parte: ParteItem) => parte.linea_ids))
+        // Mínimo de la parte 0: lo despachado por las líneas vivas que se quedan en ella (las de otras partes no cuentan).
+        const minimoPrimera = item.lineas.filter((linea) => !reclamadas.has(linea.id)).reduce((total, linea) => total + despachadoDe(linea), 0)
+        if (partes[0].cantidad_presentacion < minimoPrimera) { falla(indice, 'CANTIDAD_BAJO_DESPACHADO', item.id, `La primera parte conserva lo despachado (mínimo ${qty(minimoPrimera)}).`); return }
         const lineasOriginales = item.lineas
         const sinCubrirOriginal = item.cantidad_sin_cubrir
         const despachadaOriginal = item.cantidad_despachada
         // La primera parte conserva el ítem (id, despachos) y las líneas que nadie más reclama.
         const nuevas: ItemBorrador[] = partes.slice(1).map((parte) => {
           const lineas = lineasOriginales.filter((linea) => parte.linea_ids.includes(linea.id))
-          const despachada = lineas.filter((linea) => linea.estado === 'DESPACHADA').reduce((total, linea) => total + linea.cantidad_presentacion, 0)
+          const despachada = lineas.reduce((total, linea) => total + despachadoDe(linea), 0)
           const creada = nuevoItem({
             producto_id: parte.producto_id,
             presentacion_id: parte.presentacion_id,
