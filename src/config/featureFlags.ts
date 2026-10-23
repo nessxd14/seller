@@ -23,5 +23,10 @@ export const featureFlags = {
   // Brief Comisiones Fase 1: comision_regla/comision_vendedor/comision_devengo +
   // features/comisiones/. Solo POTENCIAL — DEVENGADA depende de Hermes (Fase 2).
   comisiones: true,
+  // Brief "Seller: edición de pedido" (rama feat/editar-pedido): detalle con
+  // ítems/surtido/línea de tiempo y sesión de edición en /pedidos/:id/editar. Depende de la
+  // migración 2026-10-23_pedidos_edicion.sql. En false todo queda exactamente como antes
+  // (es el camino de vuelta atrás).
+  edicionPedido: true,
 } as const
 
