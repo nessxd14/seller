@@ -1,8 +1,8 @@
-import { aplicarCambios, redondear2, resumenCambios, type ItemBorrador } from '../../domain/orders/edicionPedido'
+import { aplicarCambios, redondear2, resumenCambios, type ErrorLocal, type ItemBorrador } from '../../domain/orders/edicionPedido'
 import type {
   AccionAviso, CambioPedido, EventoTiempo, LineaTiempo, PedidoDetalle, PedidoEdicionPort, PrevisualizacionEdicion, ResumenPedido,
 } from '../../domain/orders/pedidoEdicion.types'
-import { EdicionPedidoError, mapErrorEdicion } from '../supabase/PedidoEdicion.supabase'
+import { EdicionPedidoError, mapErrorEdicion, type CodigoErrorEdicion } from '../supabase/PedidoEdicion.supabase'
 import { mockAuthSessionProvider } from './MockAuthSessionProvider'
 import { crearDetalleEscenario, crearTiempoEscenario, PEDIDO_ESCENARIO_ID } from './PedidoEdicion.escenario'
 
@@ -24,6 +24,9 @@ const actorActual = async (): Promise<string> => {
   const sesion = await mockAuthSessionProvider.getSession()
   return sesion?.user.name ?? sesion?.user.email ?? 'Seller'
 }
+
+/** Código que el servidor pondría en `hint` para cada error que detecta el dominio localmente. */
+const codigoServidor = (codigo: ErrorLocal['codigo']): CodigoErrorEdicion => (codigo === 'ITEM_NO_ENCONTRADO' ? 'ITEM_INVALIDO' : codigo === 'PRECIO_BLOQUEADO' ? 'PRECIO_REQUIERE_AUTORIZACION' : codigo)
 
 const estadoPago = (pagado: number, total: number): PedidoDetalle['estados']['pago'] => (pagado >= total && total > 0 ? 'PAGADO' : pagado > 0 ? 'PARCIAL' : 'PENDIENTE')
 
@@ -55,7 +58,7 @@ export const pedidoEdicionMock: PedidoEdicionPort = {
       const itemAntes = (id: number): ItemBorrador | undefined => anterior.items.find((item) => item.id === id)
       if (siguiente.errores.some((error) => error.indice === indice)) { anterior = siguiente; return }
       switch (cambio.op) {
-        case 'agregar': almacen.push({ accion: 'LINEA_NUEVA', texto: `Línea nueva: ${cambio.descripcion ?? cambio.nombre ?? 'Producto'} × ${cambio.cantidad_presentacion}${cambio.faltante === 'COMPRAR' ? ' (faltante a compra)' : ''}` }); break
+        case 'agregar': almacen.push({ accion: 'LINEA_NUEVA', texto: `Línea nueva: ${cambio.descripcion ?? cambio.nombre ?? 'Producto'} × ${cambio.cantidad_presentacion}${(cambio.cantidad_compra ?? 0) > 0 ? ` (${cambio.cantidad_compra} a compra)` : ''}` }); break
         case 'cantidad': {
           const antes = itemAntes(cambio.item_id)
           if (!antes) break
@@ -67,14 +70,13 @@ export const pedidoEdicionMock: PedidoEdicionPort = {
           }
           break
         }
-        case 'precio': almacen.push({ accion: 'SIN_CAMBIO_FISICO', texto: `${itemAntes(cambio.item_id)?.descripcion ?? 'Ítem'}: cambia el precio, no lo que sale de almacén.` }); break
-        case 'partir': almacen.push({ accion: 'SIN_CAMBIO_FISICO', texto: `${itemAntes(cambio.item_id)?.descripcion ?? 'Ítem'}: el surtido de almacén no se mueve.` }); break
+        case 'precio': break
+        case 'partir': break
         case 'cambiar_producto_saldo': almacen.push({ accion: 'LINEA_NUEVA', texto: `Línea nueva para el saldo de ${itemAntes(cambio.item_id)?.descripcion ?? 'ítem'}: ${cambio.nombre ?? 'otro producto'}` }); break
-        case 'cerrar_saldo': almacen.push({ accion: 'LINEA_CANCELADA', texto: `${itemAntes(cambio.item_id)?.descripcion ?? 'Ítem'}: se cancela lo pendiente de surtir` }); break
+        case 'cerrar_saldo': almacen.push({ accion: 'LINEA_REDUCIDA', texto: `${itemAntes(cambio.item_id)?.descripcion ?? 'Ítem'}: se cancela lo pendiente de surtir` }); break
         case 'quitar': {
           const antes = itemAntes(cambio.item_id)
           almacen.push({ accion: 'LINEA_CANCELADA', texto: `${antes?.descripcion ?? 'Ítem'}: se cancelan sus líneas de surtido` })
-          if (antes?.lineas.some((linea) => linea.estado === 'POR_COMPRAR')) almacen.push({ accion: 'COMPRA_CANCELADA', texto: `${antes.descripcion}: se cancela la compra pendiente` })
           break
         }
         case 'saldo_a_compra': almacen.push({ accion: 'LINEA_NUEVA', texto: `${itemAntes(cambio.item_id)?.descripcion ?? 'Ítem'}: el saldo pasa a compra` }); break
@@ -82,26 +84,29 @@ export const pedidoEdicionMock: PedidoEdicionPort = {
       }
       anterior = siguiente
     })
-    for (const aviso of avisosQueSeCierran(detalle, resultado.items, cambios)) almacen.push({ accion: 'AVISO_CERRADO', texto: `Se cierra el aviso: ${aviso.texto}` })
     const total = resultado.totalLocal
     return {
       total_anterior: detalle.pedido.total,
       total_nuevo: total,
       delta: redondear2(total - detalle.pedido.total),
       cuenta: {
+        tiene_cuenta: detalle.cuenta.tiene_cuenta ?? true,
         partida_antes: detalle.cuenta.partida_total,
         partida_despues: total,
         pagado: detalle.cuenta.pagado,
         saldo_antes: detalle.cuenta.saldo,
         saldo_despues: Math.max(0, redondear2(total - detalle.cuenta.pagado)),
-        saldo_a_favor: Math.max(0, redondear2(detalle.cuenta.pagado - total)),
+        saldo_a_favor: 0,
       },
       almacen,
       advertencias,
       errores: [
         ...(versionEsperada !== detalle.pedido.version ? [{ codigo: 'VERSION_CAMBIADA', item_id: null, texto: mapErrorEdicion('VERSION_CAMBIADA') }] : []),
-        ...resultado.errores.map((error) => ({ codigo: error.codigo, item_id: error.item_id, texto: error.texto })),
+        ...resultado.errores.map((error) => ({ codigo: codigoServidor(error.codigo), item_id: error.item_id, texto: error.texto })),
+        ...(total < detalle.cuenta.pagado - 1e-9 ? [{ codigo: 'REDUCCION_BAJO_PAGADO', item_id: null, texto: mapErrorEdicion('REDUCCION_BAJO_PAGADO') }] : []),
       ],
+      ok: versionEsperada === detalle.pedido.version && resultado.errores.length === 0 && total >= detalle.cuenta.pagado - 1e-9,
+      version: detalle.pedido.version,
     }
   },
 
@@ -114,9 +119,9 @@ export const pedidoEdicionMock: PedidoEdicionPort = {
     const resultado = aplicarCambios(detalle, cambios)
     const primerError = resultado.errores[0]
     if (primerError) {
-      const codigo = primerError.codigo === 'CANTIDAD_BAJO_DESPACHADO' || primerError.codigo === 'ITEM_CON_DESPACHO' || primerError.codigo === 'PARTIR_NO_CUADRA' ? primerError.codigo : 'PEDIDO_NO_EDITABLE'
-      throw new EdicionPedidoError(codigo, primerError.texto)
+      throw new EdicionPedidoError(codigoServidor(primerError.codigo), primerError.texto)
     }
+    if (resultado.totalLocal < detalle.cuenta.pagado - 1e-9) throw new EdicionPedidoError('REDUCCION_BAJO_PAGADO', mapErrorEdicion('REDUCCION_BAJO_PAGADO'))
     const resumen = resumenCambios(cambios, detalle)
     const cerrados = new Set(avisosQueSeCierran(detalle, resultado.items, cambios).map((aviso) => aviso.id))
     const itemsFinales = resultado.items.map(({ subtotalBase, cantidadBase, precioBase, ...item }) => {
@@ -144,7 +149,7 @@ export const pedidoEdicionMock: PedidoEdicionPort = {
     detalle.estados.lineas_total = lineas.length
     detalle.estados.lineas_despachadas = lineas.filter((linea) => linea.estado === 'DESPACHADA').length
     detalle.estados.pago = estadoPago(detalle.cuenta.pagado, totalDespues)
-    detalle.cuenta = { ...detalle.cuenta, partida_total: totalDespues, saldo: Math.max(0, redondear2(totalDespues - detalle.cuenta.pagado)), sincronizada: true }
+    detalle.cuenta = { ...detalle.cuenta, tiene_cuenta: true, partida_total: totalDespues, saldo: Math.max(0, redondear2(totalDespues - detalle.cuenta.pagado)), sincronizada: true }
 
     const linea = tiempos.get(pedidoId) ?? { eventos: [], comentarios: [], versiones: [] }
     tiempos.set(pedidoId, linea)
@@ -158,26 +163,27 @@ export const pedidoEdicionMock: PedidoEdicionPort = {
     }
     linea.eventos.unshift(evento)
     linea.versiones.unshift({ version: versionAntes + 1, etiqueta: 'Edición del vendedor', total: totalDespues, creado_en: ahora })
-    return { ok: true, version: versionAntes + 1, total: totalDespues }
+    return { ok: true, version: versionAntes + 1, total_anterior: totalAntes, total_nuevo: totalDespues, delta: redondear2(totalDespues - totalAntes) }
   },
 
   async resolverAviso(avisoId: number, accion: AccionAviso) {
     const detalle = Array.from(detalles.values()).find((candidato) => candidato.avisos.some((aviso) => aviso.id === avisoId))
     const aviso = detalle?.avisos.find((candidato) => candidato.id === avisoId)
-    if (!detalle || !aviso) throw new Error('El aviso ya fue resuelto.')
+    if (!detalle || !aviso) throw new EdicionPedidoError('AVISO_RESUELTO', mapErrorEdicion('AVISO_RESUELTO'))
+    if (aviso.tipo !== 'SUSTITUCION') throw new EdicionPedidoError('ACCION_INVALIDA', mapErrorEdicion('ACCION_INVALIDA'))
     const linea = tiempos.get(detalle.pedido.id)
     const antes = detalle.pedido.version
     if (accion === 'RECHAZAR_SUSTITUTO') {
       const item = detalle.items.find((candidato) => candidato.id === aviso.item_id)
       const sustituto = item?.lineas.find((l) => l.id === aviso.linea_id)
-      if (!item || !sustituto || sustituto.estado === 'DESPACHADA') throw new Error('El sustituto ya salió: no se puede rechazar.')
+      if (!item || !sustituto || sustituto.estado === 'DESPACHADA') throw new EdicionPedidoError('SUSTITUTO_DESPACHADO', mapErrorEdicion('SUSTITUTO_DESPACHADO'))
       item.lineas = item.lineas.filter((l) => l.id !== sustituto.id)
       item.lineas.push({ ...sustituto, id: siguienteId++, estado: 'SIN_CUBRIR', tipo_surtido: 'ORIGINAL', descripcion: item.descripcion })
       item.cantidad_sin_cubrir += sustituto.cantidad_presentacion
     }
     detalle.avisos = detalle.avisos.filter((candidato) => candidato.id !== avisoId)
     detalle.pedido.version = antes + 1
-    const titulo = accion === 'MANTENER_PRECIO' ? 'mantuvo el precio del ítem con el sustituto' : accion === 'ACEPTAR' ? 'aceptó lo que quedó sin cubrir' : 'rechazó el sustituto'
+    const titulo = accion === 'MANTENER_PRECIO' ? 'mantuvo el precio del ítem con el sustituto' : 'rechazó el sustituto'
     linea?.eventos.unshift({ id: siguienteId++, sesion_id: null, actor: await actorActual(), actor_rol: 'SELLER', tipo: 'AVISO_RESUELTO', titulo, cambios: [{ texto: aviso.texto }], delta_total: 0, total_antes: detalle.pedido.total, total_despues: detalle.pedido.total, version_antes: antes, version_despues: antes + 1, motivo: null, creado_en: new Date().toISOString() })
     linea?.versiones.unshift({ version: antes + 1, etiqueta: 'Aviso resuelto', total: detalle.pedido.total, creado_en: new Date().toISOString() })
   },

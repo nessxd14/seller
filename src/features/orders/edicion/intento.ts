@@ -4,6 +4,7 @@
 export type IntentoEdicion =
   | { tipo: 'precio_propio'; itemId: number; lineaId: number | null }
   | { tipo: 'a_compra'; itemId: number }
+  | { tipo: 'cobrar_entregado'; itemId: number }
   | { tipo: 'reemplazar'; itemId: number }
 
 export const intentoAQuery = (intento: IntentoEdicion): string => {
@@ -21,6 +22,6 @@ export const queryAIntento = (search: string): IntentoEdicion | null => {
     const linea = params.get('linea')
     return { tipo, itemId, lineaId: linea != null && Number.isFinite(Number(linea)) ? Number(linea) : null }
   }
-  if (tipo === 'a_compra' || tipo === 'reemplazar') return { tipo, itemId }
+  if (tipo === 'a_compra' || tipo === 'reemplazar' || tipo === 'cobrar_entregado') return { tipo, itemId }
   return null
 }

@@ -21,7 +21,7 @@ export function ItemPersonalizadoModal({ onAplicar, onClose }: { onAplicar: (cam
     </div>
     <footer className="modal-actions ped-pie-modal">
       <button type="button" className="ped-btn ped-btn-suave" onClick={onClose}>Cancelar</button>
-      <button type="button" className="ped-btn ped-btn-primario" disabled={!valido} onClick={() => onAplicar({ op: 'agregar', producto_id: null, presentacion_id: null, cantidad_presentacion: cantidad, precio_unitario: precio, descuento_pct: 0, es_personalizado: true, descripcion: descripcion.trim(), unidad_medida: unidad, faltante: null })}>Agregar a la edición</button>
+      <button type="button" className="ped-btn ped-btn-primario" disabled={!valido} onClick={() => onAplicar({ op: 'agregar', producto_id: null, presentacion_id: null, cantidad_presentacion: cantidad, precio_unitario: precio, descuento_pct: 0, es_personalizado: true, descripcion: descripcion.trim(), unidad_medida: unidad, cantidad_compra: 0 })}>Agregar a la edición</button>
     </footer>
   </Modal>
 }

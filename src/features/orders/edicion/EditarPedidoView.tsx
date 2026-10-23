@@ -55,9 +55,9 @@ function MenuAcciones({ item, abierto, onAlternar, onCerrar, onPartir, onCambiar
   const sinCubrir = item.cantidad_sin_cubrir > 0
   const entradas: Array<{ id: string; titulo: string; detalle: string; bloqueo: string | null; peligro?: boolean; accion: () => void }> = [
     { id: 'partir', titulo: 'Partir ítem', detalle: 'Reparte la cantidad en partes, cada una con su producto y precio.', bloqueo: item.cantidad_presentacion <= 0 ? 'No hay cantidad que repartir.' : null, accion: onPartir },
-    { id: 'saldo', titulo: 'Cambiar producto del saldo', detalle: 'Lo que Almacén no cubrió pasa a otro producto.', bloqueo: sinCubrir ? null : 'No hay saldo sin cubrir.', accion: onCambiarSaldo },
-    { id: 'cerrar', titulo: 'Cerrar saldo', detalle: 'Deja el ítem en lo ya despachado y cancela lo pendiente.', bloqueo: item.cantidad_despachada > 0 ? null : 'No hay unidades despachadas: usa Quitar ítem.', accion: onCerrarSaldo },
-    ...(sinCubrir ? [{ id: 'compra', titulo: 'Mandar saldo a compra', detalle: 'Lo sin cubrir se vuelve a cobrar y se manda a comprar.', bloqueo: null, accion: onSaldoACompra }] : []),
+    { id: 'saldo', titulo: 'Cambiar producto del saldo', detalle: 'Todo lo que aún no salió pasa a otro producto, con su propio precio.', bloqueo: item.cantidad_presentacion - item.cantidad_despachada > 0 ? null : 'No hay saldo por entregar.', accion: onCambiarSaldo },
+    { id: 'cerrar', titulo: 'Cobrar solo lo entregado', detalle: item.cantidad_despachada > 0 ? 'Deja el ítem en lo ya despachado y cancela lo pendiente.' : 'No salió nada: el ítem se quita del pedido.', bloqueo: null, accion: onCerrarSaldo },
+    ...(sinCubrir ? [{ id: 'compra', titulo: 'Mandar saldo a compra', detalle: 'Lo sin cubrir se manda a Por comprar. No cambia el importe.', bloqueo: null, accion: onSaldoACompra }] : []),
     { id: 'quitar', titulo: 'Quitar ítem', detalle: 'Saca el ítem del pedido y cancela su surtido.', bloqueo: item.cantidad_despachada > 0 ? `No disponible: ${cant(item.cantidad_despachada)} ya salieron.` : null, peligro: true, accion: onQuitar },
   ]
   return <div className="ped-menu" ref={contenedor}>
@@ -109,6 +109,7 @@ export function EditarPedidoView({ pedidoId, notify, onGuardado }: {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- el atajo del aviso abre su paso una única vez al cargar
     if (intento.tipo === 'precio_propio') setPartir({ itemId: item.id, prefill: { lineaId: intento.lineaId } })
     else if (intento.tipo === 'reemplazar') setSaldo(item.id)
+    else if (intento.tipo === 'cobrar_entregado') agregarCambio({ op: 'cerrar_saldo', item_id: item.id })
     else agregarCambio({ op: 'saldo_a_compra', item_id: item.id })
   }, [base, resultado, agregarCambio, notify])
 
@@ -134,7 +135,7 @@ export function EditarPedidoView({ pedidoId, notify, onGuardado }: {
   const faltanteDe = (item: ItemBorrador): { faltante: number; disponible: number; factor: number } | null => {
     if (item.id >= 0 || item.producto_id == null || item.es_personalizado || item.origenCambio == null) return null
     const origen = cambios[item.origenCambio]
-    if (!origen || origen.op !== 'agregar' || origen.faltante === 'COMPRAR') return null
+    if (!origen || origen.op !== 'agregar' || (origen.cantidad_compra ?? 0) > 0) return null
     const disponible = disponibilidad[String(item.producto_id)]?.disponible
     if (disponible == null) return null
     const factor = info[item.producto_id]?.factor ?? 1
@@ -172,7 +173,7 @@ export function EditarPedidoView({ pedidoId, notify, onGuardado }: {
     setInfo((previa) => ({ ...previa, [producto.id]: { sugerido, presentacionNombre: presentacion && !presentacion.esBase ? presentacion.nombre : undefined, factor: presentacion?.factorUnidadBase ?? 1 } }))
     agregarCambio({
       op: 'agregar', producto_id: producto.id, presentacion_id: presentacion?.id || null, cantidad_presentacion: 1, precio_unitario: sugerido ?? precioCanal, descuento_pct: 0,
-      es_personalizado: false, descripcion: null, unidad_medida: null, faltante: null, nombre: producto.nombre, presentacion_nombre: presentacion && !presentacion.esBase ? presentacion.nombre : undefined,
+      es_personalizado: false, descripcion: null, unidad_medida: null, cantidad_compra: 0, nombre: producto.nombre, presentacion_nombre: presentacion && !presentacion.esBase ? presentacion.nombre : undefined,
     })
   }
 
@@ -220,12 +221,12 @@ export function EditarPedidoView({ pedidoId, notify, onGuardado }: {
         {item.cantidad_despachada > 0 && !quitado && <small className="ped-candado"><Lock aria-hidden />Mínimo {cant(item.cantidad_despachada)} u: ya despachadas</small>}
         {item.precio_bloqueado && !quitado && <small className="ped-candado"><Lock aria-hidden />Precio bloqueado: {item.precio_bloqueado_motivo ?? 'requiere autorización.'}</small>}
         {derivado && !quitado && <small className="ped-candado"><Lock aria-hidden />Cantidad y precio se editan desde Partir ítem.</small>}
-        {item.cantidad_sin_cubrir > 0 && !quitado && <small className="ped-rojo">{cant(item.cantidad_sin_cubrir)} sin cubrir: no se cobran.</small>}
+        {item.cantidad_sin_cubrir > 0 && !quitado && <small className="ped-rojo">{cant(item.cantidad_sin_cubrir)} sin cubrir · se sigue cobrando</small>}
         {item.id < 0 && item.producto_id != null && precioInfo && !quitado && <PrecioBajoAviso precio={item.precio_unitario} sugerido={precioInfo.sugerido} presentacionNombre={precioInfo.presentacionNombre} factor={precioInfo.factor} baseNombre="u" />}
         {falta && opAgregar?.op === 'agregar' && item.origenCambio != null && <div className="ped-faltante" role="group" aria-label={`Faltante de stock de ${item.descripcion}`}>
           <p><TriangleAlert aria-hidden />Faltan {cant(falta.faltante)} (hay {cant(falta.disponible)} disponibles). Decide qué hacer:</p>
           <div>
-            <button type="button" className="ped-btn ped-btn-suave" onClick={() => reemplazarCambio(item.origenCambio!, { ...opAgregar, faltante: 'COMPRAR' })}>Comprar faltante</button>
+            <button type="button" className="ped-btn ped-btn-suave" onClick={() => reemplazarCambio(item.origenCambio!, { ...opAgregar, cantidad_compra: Math.min(opAgregar.cantidad_presentacion, Math.ceil(falta.faltante / falta.factor)) })}>Comprar faltante</button>
             {Math.floor(falta.disponible / falta.factor) >= 1 && <button type="button" className="ped-btn ped-btn-suave" onClick={() => reemplazarCambio(item.origenCambio!, { ...opAgregar, cantidad_presentacion: Math.floor(falta.disponible / falta.factor) })}>Bajar a {cant(Math.floor(falta.disponible / falta.factor))}</button>}
             <button type="button" className="ped-btn ped-btn-suave" onClick={() => quitarCambio(item.origenCambio!)}>Cambiar producto</button>
           </div>

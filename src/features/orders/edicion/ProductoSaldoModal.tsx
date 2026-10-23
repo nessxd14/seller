@@ -14,6 +14,8 @@ import { priceForOrderChannel } from './canal'
 export function ProductoSaldoModal({ item, canal, onAplicar, onClose }: { item: ItemBorrador; canal: SalesChannel; onAplicar: (cambio: CambioPedido) => void; onClose: () => void }) {
   const [producto, setProducto] = useState<{ id: number; nombre: string; presentacionId: number | null } | null>(null)
   const [precio, setPrecio] = useState(0)
+  // El servidor mueve TODO lo que aún no salió (no solo lo sin cubrir) al producto nuevo.
+  const saldo = item.cantidad_presentacion - item.cantidad_despachada
 
   const elegir = async (elegido: Product) => {
     const presentaciones = await listPresentations(elegido.id)
@@ -24,13 +26,13 @@ export function ProductoSaldoModal({ item, canal, onAplicar, onClose }: { item: 
 
   return <Modal title="Cambiar producto del saldo" subtitle={item.descripcion} onClose={onClose} className="commercial-modal">
     <div className="modal-body">
-      <p className="ped-intro">Las {cant(item.cantidad_sin_cubrir)} u sin cubrir de <strong>{item.descripcion}</strong> pasan a otro producto, con su propio precio. Lo ya surtido de {item.descripcion} no cambia.</p>
-      {producto && <p className="ped-solo-lectura"><strong>{producto.nombre}</strong> × {cant(item.cantidad_sin_cubrir)}</p>}
+      <p className="ped-intro">Las {cant(saldo)} u que aún no salieron de <strong>{item.descripcion}</strong> pasan a otro producto, con su propio precio. Lo ya despachado ({cant(item.cantidad_despachada)} u) no cambia.</p>
+      {producto && <p className="ped-solo-lectura"><strong>{producto.nombre}</strong> × {cant(saldo)}</p>}
       <BuscadorProducto canal={canal} etiqueta={producto ? 'Elegir otro producto' : 'Buscar producto'} autoFocus onElegir={(p) => void elegir(p)} />
       {producto && <label className="ped-campo"><span className="ped-campo-etiqueta">Precio (Bs)</span>
         <NumberField ariaLabel="Precio del producto del saldo" min={0} step={0.01} value={precio} onCommit={setPrecio} />
       </label>}
-      {producto && <p className="ped-ficha"><span>Importe del saldo</span><strong>{bs(precio * item.cantidad_sin_cubrir)}</strong></p>}
+      {producto && <p className="ped-ficha"><span>Importe del saldo</span><strong>{bs(precio * saldo)}</strong></p>}
     </div>
     <footer className="modal-actions ped-pie-modal">
       <small>Se suma a tu edición. Se guarda recién al confirmar.</small>

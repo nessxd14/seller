@@ -30,7 +30,7 @@ export function AvisosPedido({ avisos, items, ocupado, puedeEditar, onResolver, 
         </div>
         {sustitucion
           ? <p>Almacén cubrió {cant(linea?.cantidad_presentacion ?? 0)} de <strong>{nombre}</strong> con <strong>{linea?.descripcion ?? 'otro producto'}</strong>. Se cobra al precio del ítem ({bs(item?.precio_unitario ?? 0)}) hasta que decidas.</p>
-          : <p>Almacén no tiene {cant(item?.cantidad_sin_cubrir ?? linea?.cantidad_presentacion ?? 0)} de <strong>{nombre}</strong>. Esas {cant(item?.cantidad_sin_cubrir ?? linea?.cantidad_presentacion ?? 0)} ya no se cobran (− {bs(aviso.monto)}).</p>}
+          : <p>{aviso.texto}</p>}
         {aviso.motivo && <small className="ped-aviso-motivo">Motivo: {aviso.motivo}</small>}
         <div className="ped-aviso-acciones">
           {sustitucion ? <>
@@ -38,7 +38,7 @@ export function AvisosPedido({ avisos, items, ocupado, puedeEditar, onResolver, 
             <button type="button" className="ped-btn ped-btn-suave" disabled={ocupado || !puedeEditar} onClick={() => onEditar({ tipo: 'precio_propio', itemId: aviso.item_id, lineaId: aviso.linea_id })}><Tag aria-hidden />Ponerle precio propio</button>
             <button type="button" className="ped-btn ped-btn-suave" disabled={ocupado || !puedeEditar} onClick={() => onResolver(aviso, 'RECHAZAR_SUSTITUTO')}><Ban aria-hidden />Rechazar sustituto</button>
           </> : <>
-            <button type="button" className="ped-btn ped-btn-suave" disabled={ocupado || !puedeEditar} onClick={() => onResolver(aviso, 'ACEPTAR')}><Check aria-hidden />Aceptar</button>
+            <button type="button" className="ped-btn ped-btn-suave" disabled={ocupado || !puedeEditar} onClick={() => onEditar({ tipo: 'cobrar_entregado', itemId: aviso.item_id })}><Check aria-hidden />Cobrar solo lo entregado</button>
             <button type="button" className="ped-btn ped-btn-suave" disabled={ocupado || !puedeEditar} onClick={() => onEditar({ tipo: 'a_compra', itemId: aviso.item_id })}><ShoppingCart aria-hidden />Mandar a compra</button>
             <button type="button" className="ped-btn ped-btn-suave" disabled={ocupado || !puedeEditar} onClick={() => onEditar({ tipo: 'reemplazar', itemId: aviso.item_id })}><ArrowLeftRight aria-hidden />Reemplazar con otro producto</button>
           </>}

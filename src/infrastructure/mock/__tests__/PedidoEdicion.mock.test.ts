@@ -10,18 +10,18 @@ const cambiosEscenario: CambioPedido[] = [
     { producto_id: 850, presentacion_id: 91, cantidad_presentacion: 300, precio_unitario: 2, linea_ids: [4765], nombre: 'Wenao Colle' },
   ] },
   { op: 'cantidad', item_id: 903, cantidad_presentacion: 20 },
-  { op: 'agregar', producto_id: null, presentacion_id: null, cantidad_presentacion: 12, precio_unitario: 4.5, descuento_pct: 0, es_personalizado: true, descripcion: 'Corrector líquido', unidad_medida: 'UNIDAD', faltante: null },
+  { op: 'agregar', producto_id: null, presentacion_id: null, cantidad_presentacion: 12, precio_unitario: 4.5, descuento_pct: 0, es_personalizado: true, descripcion: 'Corrector líquido', unidad_medida: 'UNIDAD', cantidad_compra: 0 },
 ]
 
 describe('pedidoEdicionMock (escenario PED-2026-00706)', () => {
-  it('previsualiza +429,00 y saldo 1.037,00 sin escribir nada', async () => {
+  it('previsualiza +429,00 y saldo 1.189,00 sin escribir nada', async () => {
     const antes = await pedidoEdicionMock.detalle(PEDIDO_ESCENARIO_ID)
     const previa = await pedidoEdicionMock.previsualizar(PEDIDO_ESCENARIO_ID, antes.pedido.version, cambiosEscenario)
-    expect(previa).toMatchObject({ total_anterior: 908, total_nuevo: 1337, delta: 429 })
-    expect(previa.cuenta).toMatchObject({ saldo_antes: 608, saldo_despues: 1037, saldo_a_favor: 0 })
-    expect(previa.almacen.map((a) => a.accion)).toEqual(expect.arrayContaining(['SIN_CAMBIO_FISICO', 'LINEA_NUEVA', 'AVISO_CERRADO']))
+    expect(previa).toMatchObject({ total_anterior: 1060, total_nuevo: 1489, delta: 429 })
+    expect(previa.cuenta).toMatchObject({ saldo_antes: 760, saldo_despues: 1189, saldo_a_favor: 0 })
+    expect(previa.almacen.map((a) => a.accion)).toEqual(expect.arrayContaining(['LINEA_NUEVA']))
     expect(previa.errores).toEqual([])
-    expect((await pedidoEdicionMock.detalle(PEDIDO_ESCENARIO_ID)).pedido.total).toBe(908)
+    expect((await pedidoEdicionMock.detalle(PEDIDO_ESCENARIO_ID)).pedido.total).toBe(1060)
   })
 
   it('rechaza una edición sin motivo y una con versión vieja; luego guarda y deja la sesión en la línea de tiempo', async () => {
@@ -35,29 +35,34 @@ describe('pedidoEdicionMock (escenario PED-2026-00706)', () => {
 
     const fresca = await pedidoEdicionMock.detalle(PEDIDO_ESCENARIO_ID)
     const resultado = await pedidoEdicionMock.editar(PEDIDO_ESCENARIO_ID, fresca.pedido.version, cambiosEscenario, 'Cliente aceptó el sustituto')
-    expect(resultado).toEqual({ ok: true, version: fresca.pedido.version + 1, total: 1337 })
+    expect(resultado).toEqual({ ok: true, version: fresca.pedido.version + 1, total_anterior: 1060, total_nuevo: 1489, delta: 429 })
 
     const despues = await pedidoEdicionMock.detalle(PEDIDO_ESCENARIO_ID)
-    expect(despues.cuenta).toMatchObject({ partida_total: 1337, saldo: 1037, sincronizada: true })
+    expect(despues.cuenta).toMatchObject({ partida_total: 1489, saldo: 1189, sincronizada: true })
     expect(despues.avisos.map((a) => a.tipo)).toEqual(['SIN_CUBRIR'])
     expect(despues.items.every((item) => item.id > 0)).toBe(true)
 
     const tiempo = await pedidoEdicionMock.lineaTiempo(PEDIDO_ESCENARIO_ID)
-    expect(tiempo.eventos[0]).toMatchObject({ actor_rol: 'SELLER', delta_total: 429, motivo: 'Cliente aceptó el sustituto', total_antes: 908, total_despues: 1337 })
-    expect(tiempo.versiones[0]).toMatchObject({ version: resultado.version, total: 1337 })
+    expect(tiempo.eventos[0]).toMatchObject({ actor_rol: 'SELLER', delta_total: 429, motivo: 'Cliente aceptó el sustituto', total_antes: 1060, total_despues: 1489 })
+    expect(tiempo.versiones[0]).toMatchObject({ version: resultado.version, total: 1489 })
 
     const [resumen] = await pedidoEdicionMock.resumenPedidos([PEDIDO_ESCENARIO_ID])
     expect(resumen).toMatchObject({ version: resultado.version, avisos: ['SIN_CUBRIR'] })
   })
 
-  it('mantener precio cierra el aviso de sustitución sin tocar el dinero', async () => {
+  it('los avisos de sin cubrir no se resuelven con resolver_aviso (solo sustituciones)', async () => {
     const detalle = await pedidoEdicionMock.detalle(PEDIDO_ESCENARIO_ID)
     const aviso = detalle.avisos.find((a) => a.tipo === 'SIN_CUBRIR')
     if (!aviso) return
-    await pedidoEdicionMock.resolverAviso(aviso.id, 'ACEPTAR')
-    const despues = await pedidoEdicionMock.detalle(PEDIDO_ESCENARIO_ID)
-    expect(despues.avisos).toEqual([])
-    expect(despues.pedido.total).toBe(detalle.pedido.total)
+    await expect(pedidoEdicionMock.resolverAviso(aviso.id, 'MANTENER_PRECIO')).rejects.toMatchObject({ codigo: 'ACCION_INVALIDA' })
+  })
+
+  it('bajar el pedido por debajo de lo pagado se bloquea con REDUCCION_BAJO_PAGADO', async () => {
+    const detalle = await pedidoEdicionMock.detalle(PEDIDO_ESCENARIO_ID)
+    const bajar: CambioPedido[] = [{ op: 'quitar', item_id: 902 }, { op: 'quitar', item_id: 903 }, { op: 'datos', descuento_general: 1500 }]
+    const previa = await pedidoEdicionMock.previsualizar(PEDIDO_ESCENARIO_ID, detalle.pedido.version, bajar)
+    expect(previa.errores.map((e) => e.codigo)).toContain('REDUCCION_BAJO_PAGADO')
+    await expect(pedidoEdicionMock.editar(PEDIDO_ESCENARIO_ID, detalle.pedido.version, bajar, 'x')).rejects.toMatchObject({ codigo: 'REDUCCION_BAJO_PAGADO' })
   })
 })
 
@@ -73,9 +78,10 @@ describe('errores de edición', () => {
     expect(mapErrorEdicion('MOTIVO_REQUERIDO')).toBe('Escribe el motivo del cambio.')
   })
 
-  it('encuentra el código en el mensaje, el hint o los detalles del error de Postgres', () => {
-    expect(extraerCodigoEdicion({ message: 'VERSION_CAMBIADA' })).toBe('VERSION_CAMBIADA')
-    expect(extraerCodigoEdicion({ message: 'error', hint: 'PARTIR_NO_CUADRA' })).toBe('PARTIR_NO_CUADRA')
-    expect(extraerCodigoEdicion({ message: 'otra cosa', details: 'x' })).toBeNull()
+  it('toma el código solo de error.hint', () => {
+    expect(extraerCodigoEdicion({ hint: 'PARTIR_NO_CUADRA' })).toBe('PARTIR_NO_CUADRA')
+    expect(extraerCodigoEdicion({ hint: 'PARTIDA_DESFASADA' })).toBe('PARTIDA_DESFASADA')
+    expect(extraerCodigoEdicion({ hint: null })).toBeNull()
+    expect(extraerCodigoEdicion({ hint: 'NO_EXISTE' })).toBeNull()
   })
 })

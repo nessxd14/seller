@@ -27,6 +27,10 @@ export interface PedidoCabecera {
   creado_en: string
   cotizacion_origen_id: number | null
   cotizacion_origen_numero: string | null
+  estado?: string
+  subtotal?: number
+  tanda_de_id?: number | null
+  numero_tanda?: number | null
 }
 
 export interface PedidoEstados {
@@ -37,6 +41,8 @@ export interface PedidoEstados {
   pago: EstadoPagoPedido
   pagado: number
   devolucion: EstadoDevolucion
+  /** Chequeo de consistencia del servidor: false → "Revisar totales". */
+  items_cuadran?: boolean
 }
 
 export interface PedidoLineaSurtido {
@@ -46,10 +52,13 @@ export interface PedidoLineaSurtido {
   presentacion_id?: number | null
   descripcion: string
   cantidad_presentacion: number
+  /** Unidades del ítem que esta línea cubre (distinto de su cantidad cuando es sustituto). */
+  cubre?: number
+  /** Unidades del ítem ya despachadas por esta línea. */
+  despachado?: number
   estado: EstadoLineaSurtido
   tipo_surtido: TipoSurtido
   ubicacion: string | null
-  tanda: number | null
   alistada: boolean
   nota: string | null
 }
@@ -59,11 +68,14 @@ export interface PedidoItem {
   producto_id: number | null
   presentacion_id: number | null
   presentacion_nombre: string | null
+  sku?: string | null
   descripcion: string
   es_personalizado: boolean
   unidad_medida: string | null
   cantidad_presentacion: number
   cantidad_despachada: number
+  cantidad_cubierta?: number
+  /** Sin cubrir SIGUE cobrándose hasta que el Seller decida (addendum §3). */
   cantidad_sin_cubrir: number
   precio_unitario: number
   descuento_pct: number
@@ -90,6 +102,8 @@ export interface PedidoAviso {
 }
 
 export interface PedidoCuenta {
+  /** false en pedidos TIENDA o clientes fuera de Hermes: no hay cuenta que mostrar. */
+  tiene_cuenta?: boolean
   partida_total: number
   pagado: number
   saldo: number
@@ -112,7 +126,10 @@ export interface PedidoDetalle {
   permisos: PedidoPermisos
 }
 
-/** Campos solo de interfaz (nombre visible) que el serializador quita antes de llamar al servidor. */
+/**
+ * Campos solo de interfaz (nombre visible) que el serializador quita antes de llamar al servidor.
+ * La parte 0 es SIEMPRE el producto original: el serializador no manda su producto ni sus líneas.
+ */
 export interface ParteItem {
   producto_id: number | null
   presentacion_id: number | null
@@ -130,27 +147,34 @@ export type CambioPedido =
       cantidad_presentacion: number
       precio_unitario: number
       descuento_pct: number
+      precio_lista?: number
       es_personalizado: boolean
       descripcion: string | null
       unidad_medida: string | null
-      faltante: 'COMPRAR' | null
+      /** Cuántas unidades van a Por comprar (opción A). 0 u omitido = ninguna. */
+      cantidad_compra?: number
       nombre?: string
       presentacion_nombre?: string
     }
-  | { op: 'cantidad'; item_id: number; cantidad_presentacion: number }
+  | { op: 'cantidad'; item_id: number; cantidad_presentacion: number; cantidad_compra?: number }
   | { op: 'precio'; item_id: number; precio_unitario: number; descuento_pct: number }
   | { op: 'partir'; item_id: number; partes: ParteItem[] }
-  | { op: 'cambiar_producto_saldo'; item_id: number; producto_id: number; presentacion_id: number | null; precio_unitario: number; nombre?: string }
+  | { op: 'cambiar_producto_saldo'; item_id: number; producto_id: number; presentacion_id: number | null; precio_unitario: number; cantidad_compra?: number; nombre?: string }
   | { op: 'cerrar_saldo'; item_id: number }
   | { op: 'quitar'; item_id: number }
   | { op: 'saldo_a_compra'; item_id: number }
-  | { op: 'datos'; descuento_general: number; condicion_pago: 'CONTADO' | 'CREDITO' | null; medio_pago: string | null; referencia: string | null }
+  // Solo trae las llaves que cambiaron: el servidor toca únicamente las que recibe.
+  | { op: 'datos'; descuento_general?: number; condicion_pago?: 'CONTADO' | 'CREDITO' | null; medio_pago?: string | null; referencia?: string | null }
 
 export interface PrevisualizacionEdicion {
+  ok?: boolean
+  version?: number
+  cambios?: Array<{ indice: number; op: string; item_id: number | null; texto: string; delta: number }>
   total_anterior: number
   total_nuevo: number
   delta: number
   cuenta: {
+    tiene_cuenta?: boolean
     partida_antes: number
     partida_despues: number
     pagado: number
@@ -158,14 +182,16 @@ export interface PrevisualizacionEdicion {
     saldo_despues: number
     saldo_a_favor: number
   }
-  almacen: Array<{ accion: 'LINEA_NUEVA' | 'LINEA_CANCELADA' | 'COMPRA_CANCELADA' | 'SIN_CAMBIO_FISICO' | 'AVISO_CERRADO'; texto: string }>
-  advertencias: Array<{ codigo: string; texto: string }>
+  almacen: Array<{ accion: 'LINEA_NUEVA' | 'LINEA_CANCELADA' | 'LINEA_REDUCIDA'; texto: string; linea_id?: number }>
+  advertencias: Array<{ codigo: string; texto: string; linea_id?: number }>
   errores: Array<{ codigo: string; item_id?: number | null; texto: string }>
 }
 
-export interface ResultadoEdicion { ok: true; version: number; total: number }
+/** `editar_pedido` devuelve la misma forma que la previsualización, ya aplicada. */
+export interface ResultadoEdicion { ok: true; version: number; total_anterior: number; total_nuevo: number; delta: number }
 
-export type AccionAviso = 'MANTENER_PRECIO' | 'ACEPTAR' | 'RECHAZAR_SUSTITUTO'
+/** Solo para avisos de SUSTITUCION; no existe ACEPTAR (addendum §3). */
+export type AccionAviso = 'MANTENER_PRECIO' | 'RECHAZAR_SUSTITUTO'
 
 export type RolActor = 'SELLER' | 'ALMACEN' | 'CAJA' | 'SISTEMA'
 
@@ -187,7 +213,11 @@ export interface EventoTiempo {
 }
 
 export interface ComentarioTiempo { id: number; autor: string; texto: string; creado_en: string }
-export interface VersionTiempo { version: number; etiqueta: string; total: number; creado_en: string }
+/**
+ * versiones[0] es la vigente (es_vigente). Las demás son fotos guardadas: cada una muestra el
+ * pedido como estaba ANTES del cambio que nombra su etiqueta.
+ */
+export interface VersionTiempo { version: number; etiqueta: string; total: number; creado_en: string; es_vigente?: boolean }
 
 export interface LineaTiempo {
   eventos: EventoTiempo[]

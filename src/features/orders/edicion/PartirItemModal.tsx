@@ -66,9 +66,8 @@ export function PartirItemModal({ item, canal, prefill, onAplicar, onClose }: {
   const minimoPrimera = item.cantidad_despachada
   const importeAntes = item.subtotal
   const importeDespues = useMemo(() => redondear2(partes.reduce((suma, parte, i) => {
-    const sinCubrir = i === 0 ? Math.min(item.cantidad_sin_cubrir, parte.cantidad) : 0
-    return suma + (parte.cantidad - sinCubrir) * parte.precio * (i === 0 ? 1 - item.descuento_pct / 100 : 1)
-  }, 0)), [partes, item.cantidad_sin_cubrir, item.descuento_pct])
+    return suma + parte.cantidad * parte.precio * (i === 0 ? 1 - item.descuento_pct / 100 : 1)
+  }, 0)), [partes, item.descuento_pct])
 
   const actualizar = (clave: string, cambios: Partial<Parte>) => setPartes((actuales) => actuales.map((parte) => (parte.clave === clave ? { ...parte, ...cambios } : parte)))
   const elegirProducto = async (clave: string, producto: Product) => {
@@ -98,7 +97,7 @@ export function PartirItemModal({ item, canal, prefill, onAplicar, onClose }: {
       <p className="ped-intro">Cada parte queda como un ítem con su propio precio. Las {cant(item.cantidad_despachada)} u ya despachadas se quedan en la primera parte; el surtido de almacén no se mueve.</p>
       <ol className="ped-partes">
         {partes.map((parte, i) => {
-          const subtotal = redondear2((parte.cantidad - (i === 0 ? Math.min(item.cantidad_sin_cubrir, parte.cantidad) : 0)) * parte.precio)
+          const subtotal = redondear2(parte.cantidad * parte.precio)
           return <li key={parte.clave} className="ped-parte">
             <div className="ped-parte-cab"><strong>Parte {i + 1}</strong>{i >= 2 && <button type="button" className="ped-btn ped-btn-icono" aria-label={`Quitar parte ${i + 1}`} onClick={() => setPartes((actuales) => actuales.filter((p) => p.clave !== parte.clave))}><Trash2 aria-hidden /></button>}</div>
             <div className="ped-parte-campos">

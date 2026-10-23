@@ -17,7 +17,7 @@ export interface ItemBorrador extends PedidoItem {
 }
 
 export interface ErrorLocal {
-  codigo: 'ITEM_NO_ENCONTRADO' | 'CANTIDAD_BAJO_DESPACHADO' | 'ITEM_CON_DESPACHO' | 'PARTIR_NO_CUADRA' | 'PRECIO_BLOQUEADO' | 'SIN_SALDO' | 'CANTIDAD_INVALIDA'
+  codigo: 'ITEM_NO_ENCONTRADO' | 'CANTIDAD_BAJO_DESPACHADO' | 'ITEM_CON_DESPACHO' | 'PARTIR_NO_CUADRA' | 'PRECIO_BLOQUEADO' | 'SIN_SALDO' | 'SIN_FALTANTE' | 'CANTIDAD_INVALIDA'
   item_id: number | null
   /** Posición del cambio que lo originó dentro de la lista de cambios. */
   indice: number
@@ -41,10 +41,9 @@ export interface ResultadoAplicacion {
 
 export const redondear2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
 
-const subtotalDe = (item: Pick<PedidoItem, 'cantidad_presentacion' | 'cantidad_sin_cubrir' | 'precio_unitario' | 'descuento_pct' | 'estado'>): number =>
-  item.estado === 'QUITADO'
-    ? 0
-    : redondear2(Math.max(0, item.cantidad_presentacion - item.cantidad_sin_cubrir) * item.precio_unitario * (1 - item.descuento_pct / 100))
+// Lo "sin cubrir" SIGUE cobrándose hasta que el Seller decida (addendum §3): nunca se descuenta solo.
+const subtotalDe = (item: Pick<PedidoItem, 'cantidad_presentacion' | 'precio_unitario' | 'descuento_pct' | 'estado'>): number =>
+  item.estado === 'QUITADO' ? 0 : redondear2(item.cantidad_presentacion * item.precio_unitario * (1 - item.descuento_pct / 100))
 
 const enBorrador = (item: PedidoItem): ItemBorrador => ({
   ...item,
@@ -114,7 +113,10 @@ export const aplicarCambios = (base: PedidoDetalle, cambios: CambioPedido[]): Re
       case 'agregar': {
         if (!(cambio.cantidad_presentacion > 0)) { falla(indice, 'CANTIDAD_INVALIDA', null, 'La cantidad debe ser mayor a cero.'); return }
         const nombre = cambio.descripcion ?? cambio.nombre ?? 'Producto'
-        const lineaId = siguienteTemporal--
+        const compra = Math.min(Math.max(cambio.cantidad_compra ?? 0, 0), cambio.cantidad_presentacion)
+        const lineasNuevas: PedidoLineaSurtido[] = []
+        if (cambio.cantidad_presentacion - compra > 0) lineasNuevas.push({ id: siguienteTemporal--, descripcion: nombre, cantidad_presentacion: cambio.cantidad_presentacion - compra, estado: 'POR_DESPACHAR', tipo_surtido: 'ORIGINAL', ubicacion: null, alistada: false, nota: null })
+        if (compra > 0) lineasNuevas.push({ id: siguienteTemporal--, descripcion: nombre, cantidad_presentacion: compra, estado: 'POR_COMPRAR', tipo_surtido: 'COMPRA', ubicacion: null, alistada: false, nota: null })
         items.push(nuevoItem({
           producto_id: cambio.producto_id,
           presentacion_id: cambio.presentacion_id,
@@ -126,7 +128,7 @@ export const aplicarCambios = (base: PedidoDetalle, cambios: CambioPedido[]): Re
           precio_unitario: cambio.precio_unitario,
           descuento_pct: cambio.descuento_pct,
           origen_item_id: null,
-          lineas: [{ id: lineaId, descripcion: nombre, cantidad_presentacion: cambio.cantidad_presentacion, estado: cambio.faltante === 'COMPRAR' ? 'POR_COMPRAR' : 'POR_DESPACHAR', tipo_surtido: cambio.faltante === 'COMPRAR' ? 'COMPRA' : 'ORIGINAL', ubicacion: null, tanda: null, alistada: false, nota: null }],
+          lineas: lineasNuevas,
         }))
         return
       }
@@ -198,14 +200,20 @@ export const aplicarCambios = (base: PedidoDetalle, cambios: CambioPedido[]): Re
       case 'cambiar_producto_saldo': {
         const item = buscar(indice, cambio.item_id)
         if (!item) return
-        if (item.cantidad_sin_cubrir <= 0) { falla(indice, 'SIN_SALDO', item.id, 'Este ítem no tiene saldo sin cubrir.'); return }
-        const saldo = item.cantidad_sin_cubrir
-        item.cantidad_presentacion -= saldo
+        // Igual que el servidor: lo ya despachado se queda; TODO el resto pasa al producto nuevo.
+        const saldo = item.cantidad_presentacion - item.cantidad_despachada
+        if (saldo <= 1e-4) { falla(indice, 'SIN_SALDO', item.id, 'Ese ítem ya no tiene saldo por entregar.'); return }
+        item.cantidad_presentacion = item.cantidad_despachada
         item.cantidad_sin_cubrir = 0
-        item.lineas = item.lineas.filter((linea) => linea.estado !== 'SIN_CUBRIR')
+        item.lineas = item.lineas.filter((linea) => linea.estado === 'DESPACHADA')
+        if (item.cantidad_presentacion <= 1e-4) item.estado = 'QUITADO'
         recalcular(item)
-        marcar(item.id, 'MODIFICADO')
+        marcar(item.id, item.estado === 'QUITADO' ? 'QUITADO' : 'MODIFICADO')
         const nombre = cambio.nombre ?? 'Producto'
+        const compra = Math.min(Math.max(cambio.cantidad_compra ?? 0, 0), saldo)
+        const lineasNuevas: PedidoLineaSurtido[] = []
+        if (saldo - compra > 0) lineasNuevas.push({ id: siguienteTemporal--, descripcion: nombre, cantidad_presentacion: saldo - compra, estado: 'POR_DESPACHAR', tipo_surtido: 'SUSTITUTO', ubicacion: null, alistada: false, nota: null })
+        if (compra > 0) lineasNuevas.push({ id: siguienteTemporal--, descripcion: nombre, cantidad_presentacion: compra, estado: 'POR_COMPRAR', tipo_surtido: 'COMPRA', ubicacion: null, alistada: false, nota: null })
         const creado = nuevoItem({
           producto_id: cambio.producto_id,
           presentacion_id: cambio.presentacion_id,
@@ -217,20 +225,21 @@ export const aplicarCambios = (base: PedidoDetalle, cambios: CambioPedido[]): Re
           precio_unitario: cambio.precio_unitario,
           descuento_pct: 0,
           origen_item_id: item.id,
-          lineas: [{ id: siguienteTemporal--, descripcion: nombre, cantidad_presentacion: saldo, estado: 'POR_DESPACHAR', tipo_surtido: 'SUSTITUTO', ubicacion: null, tanda: null, alistada: false, nota: null }],
+          lineas: lineasNuevas,
         })
         items.splice(items.indexOf(item) + 1, 0, creado)
         return
       }
       case 'cerrar_saldo': {
+        // "Cobrar solo lo entregado": la cantidad baja a lo despachado; sin despachos, el servidor quita el ítem.
         const item = buscar(indice, cambio.item_id)
         if (!item) return
-        if (item.cantidad_despachada <= 0) { falla(indice, 'SIN_SALDO', item.id, 'No hay unidades despachadas: usa Quitar ítem.'); return }
         item.cantidad_presentacion = item.cantidad_despachada
         item.cantidad_sin_cubrir = 0
         item.lineas = item.lineas.filter((linea) => linea.estado === 'DESPACHADA')
+        if (item.cantidad_presentacion <= 1e-4) item.estado = 'QUITADO'
         recalcular(item)
-        marcar(item.id, 'MODIFICADO')
+        marcar(item.id, item.estado === 'QUITADO' ? 'QUITADO' : 'MODIFICADO')
         return
       }
       case 'quitar': {
@@ -244,20 +253,25 @@ export const aplicarCambios = (base: PedidoDetalle, cambios: CambioPedido[]): Re
         return
       }
       case 'saldo_a_compra': {
+        // Solo cambia dónde se surte lo que falta: el dinero no se mueve.
         const item = buscar(indice, cambio.item_id)
         if (!item) return
-        if (item.cantidad_sin_cubrir <= 0) { falla(indice, 'SIN_SALDO', item.id, 'Este ítem no tiene saldo sin cubrir.'); return }
+        if (item.cantidad_sin_cubrir <= 0) { falla(indice, 'SIN_FALTANTE', item.id, 'Ese ítem no tiene cantidad sin cubrir.'); return }
         const saldo = item.cantidad_sin_cubrir
         item.cantidad_sin_cubrir = 0
         const sinCubrir = item.lineas.find((linea) => linea.estado === 'SIN_CUBRIR')
         if (sinCubrir) { sinCubrir.estado = 'POR_COMPRAR'; sinCubrir.tipo_surtido = 'COMPRA' }
-        else item.lineas.push({ id: siguienteTemporal--, descripcion: item.descripcion, cantidad_presentacion: saldo, estado: 'POR_COMPRAR', tipo_surtido: 'COMPRA', ubicacion: null, tanda: null, alistada: false, nota: null })
-        recalcular(item)
+        else item.lineas.push({ id: siguienteTemporal--, descripcion: item.descripcion, cantidad_presentacion: saldo, estado: 'POR_COMPRAR', tipo_surtido: 'COMPRA', ubicacion: null, alistada: false, nota: null })
         marcar(item.id, 'MODIFICADO')
         return
       }
       case 'datos': {
-        datos = { descuento_general: cambio.descuento_general, condicion_pago: cambio.condicion_pago, medio_pago: cambio.medio_pago, referencia: cambio.referencia }
+        datos = {
+          descuento_general: cambio.descuento_general ?? datos.descuento_general,
+          condicion_pago: cambio.condicion_pago !== undefined ? cambio.condicion_pago : datos.condicion_pago,
+          medio_pago: cambio.medio_pago !== undefined ? cambio.medio_pago : datos.medio_pago,
+          referencia: cambio.referencia !== undefined ? cambio.referencia : datos.referencia,
+        }
         return
       }
     }
@@ -298,13 +312,31 @@ export const resumenCambios = (cambios: CambioPedido[], base: PedidoDetalle): Re
   return resultado
 }
 
-/** Quita los campos solo-de-interfaz antes de mandar los cambios al servidor. */
+const sinVacios = <T extends Record<string, unknown>>(objeto: T): Partial<T> =>
+  Object.fromEntries(Object.entries(objeto).filter(([, valor]) => valor !== undefined)) as Partial<T>
+
+/**
+ * Forma exacta que espera `editar_pedido` (addendum §4): quita los campos solo-de-interfaz,
+ * manda `cantidad_compra` (número) y deja la parte 0 de un `partir` sin producto ni líneas
+ * (siempre es el producto original; lo que no se lista se queda con ella). `datos` ya viene
+ * con solo las llaves que cambiaron (el servidor toca únicamente las que recibe).
+ */
 export const cambiosParaServidor = (cambios: CambioPedido[]): unknown[] =>
   cambios.map((cambio) => {
     switch (cambio.op) {
-      case 'agregar': { const { nombre, presentacion_nombre, ...resto } = cambio; void nombre; void presentacion_nombre; return resto }
-      case 'cambiar_producto_saldo': { const { nombre, ...resto } = cambio; void nombre; return resto }
-      case 'partir': return { ...cambio, partes: cambio.partes.map(({ nombre, ...parte }) => { void nombre; return parte }) }
+      case 'agregar': { const { nombre, presentacion_nombre, ...resto } = cambio; void nombre; void presentacion_nombre; return sinVacios({ ...resto, cantidad_compra: resto.cantidad_compra ?? 0 }) }
+      case 'cantidad': return sinVacios({ ...cambio, cantidad_compra: cambio.cantidad_compra ?? 0 })
+      case 'cambiar_producto_saldo': { const { nombre, ...resto } = cambio; void nombre; return sinVacios({ ...resto, cantidad_compra: resto.cantidad_compra ?? 0 }) }
+      case 'partir':
+        return {
+          op: 'partir',
+          item_id: cambio.item_id,
+          partes: cambio.partes.map(({ nombre, ...parte }, indice) => {
+            void nombre
+            if (indice === 0) return { cantidad_presentacion: parte.cantidad_presentacion, precio_unitario: parte.precio_unitario }
+            return sinVacios({ producto_id: parte.producto_id, presentacion_id: parte.presentacion_id, cantidad_presentacion: parte.cantidad_presentacion, precio_unitario: parte.precio_unitario, linea_ids: parte.linea_ids })
+          }),
+        }
       default: return cambio
     }
   })

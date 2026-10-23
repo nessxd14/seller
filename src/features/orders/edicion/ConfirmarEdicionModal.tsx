@@ -65,7 +65,7 @@ export function ConfirmarEdicionModal({ base, cambios, resumen, onClose, onRecar
     setErrorGuardar(null)
     try {
       const resultado = await sensitiveOperations.ejecutarIdempotente('edit_order', operacionId.current, huella, () => pedidoEdicionService.editar(pedido.id, pedido.version, cambios, motivo.trim()))
-      onGuardado(resultado)
+      onGuardado({ version: resultado.version, total: resultado.total_nuevo })
     } catch (error) {
       if (error instanceof EdicionPedidoError && error.codigo === 'VERSION_CAMBIADA') setVersionCambiada(true)
       else setErrorGuardar(error instanceof Error ? error.message : 'No se pudo guardar la edición.')
@@ -102,19 +102,19 @@ export function ConfirmarEdicionModal({ base, cambios, resumen, onClose, onRecar
           </ul>
           <p className="ped-diff-total"><span>Total del pedido {bs(previa.total_anterior)} → <strong>{bs(previa.total_nuevo)}</strong></span><Chip tone={previa.delta < 0 ? 'red' : 'orange'}>{deltaBs(previa.delta)}</Chip></p>
         </Paso>
-        <Paso numero={2} titulo="Cuenta del cliente (Hermes)">
+        {previa.cuenta.tiene_cuenta !== false && <Paso numero={2} titulo="Cuenta del cliente (Hermes)">
           <dl className="ped-cuenta-diff">
             <div><dt>Partida</dt><dd>{bs(previa.cuenta.partida_antes)} → <strong>{bs(previa.cuenta.partida_despues)}</strong></dd></div>
             <div><dt>Pagado</dt><dd>{bs(previa.cuenta.pagado)}</dd></div>
             <div><dt>Saldo</dt><dd>{bs(previa.cuenta.saldo_antes)} → <strong>{bs(previa.cuenta.saldo_despues)}</strong></dd></div>
           </dl>
           {previa.cuenta.saldo_a_favor > 0 && <p className="ped-nota ped-ambar">Queda saldo a favor del cliente: {bs(previa.cuenta.saldo_a_favor)}</p>}
-        </Paso>
+        </Paso>}
         <Paso numero={3} titulo="Qué le llega a almacén">
-          {previa.almacen.length === 0 ? <p className="ped-nota">Nada: estos cambios no mueven el surtido.</p> : <ul className="ped-almacen">{previa.almacen.map((a, i) => <li key={i}><Chip tone={a.accion === 'LINEA_NUEVA' ? 'blue' : a.accion === 'LINEA_CANCELADA' || a.accion === 'COMPRA_CANCELADA' ? 'red' : a.accion === 'AVISO_CERRADO' ? 'violet' : 'gray'}>{{ LINEA_NUEVA: 'Línea nueva', LINEA_CANCELADA: 'Línea cancelada', COMPRA_CANCELADA: 'Compra cancelada', SIN_CAMBIO_FISICO: 'Sin cambio físico', AVISO_CERRADO: 'Aviso cerrado' }[a.accion]}</Chip><span>{a.texto}</span></li>)}</ul>}
+          {previa.almacen.length === 0 ? <p className="ped-nota">Nada: estos cambios no mueven el surtido.</p> : <ul className="ped-almacen">{previa.almacen.map((a, i) => <li key={i}><Chip tone={a.accion === 'LINEA_NUEVA' ? 'blue' : a.accion === 'LINEA_CANCELADA' ? 'red' : 'amber'}>{{ LINEA_NUEVA: 'Línea nueva', LINEA_CANCELADA: 'Línea cancelada', LINEA_REDUCIDA: 'Línea reducida' }[a.accion]}</Chip><span>{a.texto}</span></li>)}</ul>}
         </Paso>
         {previa.advertencias.map((a, i) => <p key={i} className="ped-aviso-caja ped-aviso-caja-ambar" role="status"><TriangleAlert aria-hidden />{a.texto}</p>)}
-        {erroresReales.map((e, i) => <p key={i} className="ped-aviso-caja ped-aviso-caja-rojo" role="alert"><TriangleAlert aria-hidden />{e.texto}</p>)}
+        {erroresReales.map((e, i) => <p key={i} className="ped-aviso-caja ped-aviso-caja-rojo" role="alert"><TriangleAlert aria-hidden />{e.texto}{(e.codigo === 'REDUCCION_BAJO_PAGADO' || e.codigo === 'PARTIDA_DESFASADA') && ' Tus cambios se conservan; se resuelve en Hermes.'}</p>)}
       </>}
       <label className="ped-motivo"><span className="ped-campo-etiqueta">Motivo del cambio</span>
         <textarea rows={3} required value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej.: el cliente aceptó el sustituto a Bs 2,00 y pidió 5 Fixocola más" />

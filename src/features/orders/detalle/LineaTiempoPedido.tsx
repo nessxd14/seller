@@ -36,7 +36,7 @@ function VersionesPanel({ versiones, activa, onElegir }: { versiones: VersionTie
     <ul>
       {versiones.map((v) => <li key={v.version}>
         <button type="button" className={activa === v.version ? 'activa' : ''} aria-pressed={activa === v.version} onClick={() => onElegir(v.version)}>
-          <strong>v{v.version}</strong><span>{v.etiqueta}</span><b>{bs(v.total)}</b>
+          <strong>v{v.version} · {v.etiqueta}</strong>{(v.es_vigente ?? v === versiones[0]) && <Chip tone="green">Vigente</Chip>}<b>{bs(v.total)}</b>
         </button>
       </li>)}
     </ul>
@@ -59,7 +59,7 @@ function VersionLectura({ pedidoId, version, versiones, onVolver }: { pedidoId: 
   const previa = indice > 0 ? cargadas![indice - 1] : undefined
   const diff = actual ? diffVersionLines(previa?.lineas, actual.lineas) : null
   return <section className="ped-version-lectura" aria-label={`Versión ${version}`}>
-    <p className="version-readonly-banner">Estás viendo la versión {version}{resumen ? ` · ${resumen.etiqueta}` : ''} — no es la vigente, solo lectura. <button type="button" onClick={onVolver}>Volver a la línea de tiempo</button></p>
+    <p className="version-readonly-banner">Estás viendo v{version}{resumen ? ` · ${resumen.etiqueta}` : ''}: el pedido como estaba antes de ese cambio. Solo lectura. <button type="button" onClick={onVolver}>Volver a la línea de tiempo</button></p>
     {!featureFlags.supabase && <p className="ped-nota">El detalle de líneas por versión solo está disponible con la base conectada. Total de esta versión: {resumen ? bs(resumen.total) : '—'}.</p>}
     {featureFlags.supabase && !cargadas && !fallo && <p className="ped-nota">Cargando versión…</p>}
     {fallo && <p className="ped-nota ped-rojo" role="alert">No se pudo cargar la versión.</p>}

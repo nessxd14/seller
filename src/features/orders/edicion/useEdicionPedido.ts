@@ -71,12 +71,17 @@ export function useEdicionPedido(pedidoId: number) {
     editarValor(item, 'precio', () => ({ op: 'precio', item_id: item.id, precio_unitario: precio, descuento_pct: item.descuento_pct }), (previo) => previo.precio_unitario === precio), [editarValor])
 
   /** Los datos del pedido son un único cambio: se reemplaza, o se quita si vuelven a los originales. */
-  const setDatos = useCallback((datos: Omit<DatosCambio, 'op'>) => {
+  const setDatos = useCallback((datos: Required<Omit<DatosCambio, 'op'>>) => {
     if (!base) return
     setCambios((actuales) => {
       const sinDatos = actuales.filter((cambio) => cambio.op !== 'datos')
-      const igual = datos.descuento_general === base.pedido.descuento_general && datos.condicion_pago === base.pedido.condicion_pago && datos.medio_pago === base.pedido.medio_pago && (datos.referencia ?? '') === (base.pedido.referencia ?? '')
-      return igual ? sinDatos : [...sinDatos, { op: 'datos', ...datos }]
+      // El servidor solo toca las llaves que recibe: se mandan únicamente las que cambiaron.
+      const cambio: DatosCambio = { op: 'datos' }
+      if (datos.descuento_general !== base.pedido.descuento_general) cambio.descuento_general = datos.descuento_general
+      if (datos.condicion_pago !== base.pedido.condicion_pago) cambio.condicion_pago = datos.condicion_pago
+      if (datos.medio_pago !== base.pedido.medio_pago) cambio.medio_pago = datos.medio_pago
+      if ((datos.referencia ?? '') !== (base.pedido.referencia ?? '')) cambio.referencia = datos.referencia
+      return Object.keys(cambio).length === 1 ? sinDatos : [...sinDatos, cambio]
     })
   }, [base])
 

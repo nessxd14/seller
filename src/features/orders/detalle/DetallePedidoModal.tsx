@@ -27,7 +27,6 @@ export const pestanaDesdeUrl = (search: string): PestanaDetalle => {
 
 const textoAccion: Record<AccionAviso, string> = {
   MANTENER_PRECIO: 'Se mantiene el precio del ítem.',
-  ACEPTAR: 'Aviso aceptado.',
   RECHAZAR_SUSTITUTO: 'Sustituto rechazado.',
 }
 
@@ -89,7 +88,7 @@ export function DetallePedidoModal({ order, detalle, notify, onRecargar, onClose
     <div className="modal-body ped-detalle">
       <div className="ped-cabecera">
         <div className="ped-cabecera-datos">
-          <p className="ped-cabecera-titulo"><strong>{pedido.numero}</strong><Chip tone="gray">Versión {pedido.version}</Chip></p>
+          <p className="ped-cabecera-titulo"><strong>{pedido.numero}</strong><Chip tone="gray">Versión {pedido.version}</Chip>{estados.items_cuadran === false && <Chip tone="amber">Revisar totales</Chip>}</p>
           <p className="ped-cabecera-meta">
             <span>{pedido.cliente_nombre}</span>
             <span>{order.channel === 'mayoreo' ? 'Mayoreo' : order.channel === 'institucional' ? 'Institucional' : order.channel === 'corporativo' ? 'Corporativo' : pedido.categoria}</span>
@@ -132,7 +131,7 @@ export function DetallePedidoModal({ order, detalle, notify, onRecargar, onClose
                 <div className="ped-resumen-total"><dt>Total</dt><dd>{bs(pedido.total)}</dd></div>
               </dl>
             </section>
-            <section className="ped-tarjeta ped-tarjeta-oscura">
+            {cuenta.tiene_cuenta !== false && <section className="ped-tarjeta ped-tarjeta-oscura">
               <h4>Cuenta del cliente</h4>
               <dl className="ped-resumen">
                 <div><dt>Partida en Hermes</dt><dd>{bs(cuenta.partida_total)}</dd></div>
@@ -142,7 +141,7 @@ export function DetallePedidoModal({ order, detalle, notify, onRecargar, onClose
               {cuenta.sincronizada
                 ? <p className="ped-sync ped-sync-ok"><i aria-hidden />Partida al día</p>
                 : <p className="ped-sync ped-sync-aviso"><i aria-hidden />Partida desfasada</p>}
-            </section>
+            </section>}
             <section className="ped-tarjeta">
               <h4>Última actividad</h4>
               {ultimos.length === 0 ? <p className="ped-nota">Sin actividad todavía.</p> : <ul className="ped-actividad">

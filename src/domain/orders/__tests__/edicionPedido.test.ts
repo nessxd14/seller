@@ -4,7 +4,7 @@ import type { CambioPedido } from '../pedidoEdicion.types'
 import { crearDetalleEscenario } from '../../../infrastructure/mock/PedidoEdicion.escenario'
 
 const base = crearDetalleEscenario()
-const agregarCorrector: CambioPedido = { op: 'agregar', producto_id: 9001, presentacion_id: null, cantidad_presentacion: 12, precio_unitario: 4.5, descuento_pct: 0, es_personalizado: false, descripcion: null, unidad_medida: null, faltante: null, nombre: 'Corrector líquido' }
+const agregarCorrector: CambioPedido = { op: 'agregar', producto_id: 9001, presentacion_id: null, cantidad_presentacion: 12, precio_unitario: 4.5, descuento_pct: 0, es_personalizado: false, descripcion: null, unidad_medida: null, cantidad_compra: 0, nombre: 'Corrector líquido' }
 const partirTrijet: CambioPedido = {
   op: 'partir', item_id: 901, partes: [
     { producto_id: 4410, presentacion_id: 88, cantidad_presentacion: 200, precio_unitario: 0.85, linea_ids: [4746] },
@@ -16,7 +16,7 @@ const fixocola20: CambioPedido = { op: 'cantidad', item_id: 903, cantidad_presen
 describe('aplicarCambios', () => {
   it('sin cambios deja el total del servidor intacto', () => {
     const r = aplicarCambios(base, [])
-    expect(r.totalLocal).toBe(908)
+    expect(r.totalLocal).toBe(1060)
     expect(r.errores).toEqual([])
     expect(r.porItem.size).toBe(0)
   })
@@ -27,26 +27,28 @@ describe('aplicarCambios', () => {
     expect(nuevo.id).toBeLessThan(0)
     expect(nuevo.subtotal).toBe(54)
     expect(nuevo.lineas).toHaveLength(1)
-    expect(r.totalLocal).toBe(962)
+    expect(r.totalLocal).toBe(1114)
     expect(r.porItem.get(nuevo.id)).toBe('NUEVO')
   })
 
-  it('agregar con faltante COMPRAR deja la línea por comprar', () => {
-    const r = aplicarCambios(base, [{ ...agregarCorrector, faltante: 'COMPRAR' } as CambioPedido])
-    expect(r.items.at(-1)!.lineas[0].estado).toBe('POR_COMPRAR')
+  it('agregar con cantidad_compra manda esa parte a Por comprar', () => {
+    const r = aplicarCambios(base, [{ ...agregarCorrector, cantidad_compra: 12 }])
+    expect(r.items.at(-1)!.lineas.map((l) => l.estado)).toEqual(['POR_COMPRAR'])
+    const parcial = aplicarCambios(base, [{ ...agregarCorrector, cantidad_compra: 5 }])
+    expect(parcial.items.at(-1)!.lineas.map((l) => [l.estado, l.cantidad_presentacion])).toEqual([['POR_DESPACHAR', 7], ['POR_COMPRAR', 5]])
   })
 
   it('cantidad recalcula el subtotal y marca el ítem como modificado', () => {
     const r = aplicarCambios(base, [fixocola20])
     expect(r.items.find((i) => i.id === 903)!.subtotal).toBe(120)
-    expect(r.totalLocal).toBe(938)
+    expect(r.totalLocal).toBe(1090)
     expect(r.porItem.get(903)).toBe('MODIFICADO')
   })
 
   it('cantidad no puede bajar de lo despachado', () => {
     const r = aplicarCambios(base, [{ op: 'cantidad', item_id: 904, cantidad_presentacion: 5 }])
     expect(r.errores[0]).toMatchObject({ codigo: 'CANTIDAD_BAJO_DESPACHADO', item_id: 904 })
-    expect(r.totalLocal).toBe(908)
+    expect(r.totalLocal).toBe(1060)
   })
 
   it('cantidad cero o negativa es inválida', () => {
@@ -56,7 +58,7 @@ describe('aplicarCambios', () => {
   it('precio cambia el subtotal con descuento', () => {
     const r = aplicarCambios(base, [{ op: 'precio', item_id: 902, precio_unitario: 12, descuento_pct: 10 }])
     expect(r.items.find((i) => i.id === 902)!.subtotal).toBe(162)
-    expect(r.totalLocal).toBe(905)
+    expect(r.totalLocal).toBe(1057)
   })
 
   it('precio respeta precio_bloqueado del servidor', () => {
@@ -74,7 +76,7 @@ describe('aplicarCambios', () => {
     expect(primera.lineas.map((l) => l.id)).toEqual([4746])
     expect(segunda.lineas.map((l) => l.id)).toEqual([4765])
     expect(segunda.subtotal).toBe(600)
-    expect(r.totalLocal).toBe(1253)
+    expect(r.totalLocal).toBe(1405)
     expect(r.porItem.get(901)).toBe('PARTIDO')
     expect(r.porItem.get(segunda.id)).toBe('PARTIDO')
   })
@@ -92,7 +94,7 @@ describe('aplicarCambios', () => {
   it('quitar marca el ítem y resta su subtotal', () => {
     const r = aplicarCambios(base, [{ op: 'quitar', item_id: 902 }])
     expect(r.items.find((i) => i.id === 902)!.estado).toBe('QUITADO')
-    expect(r.totalLocal).toBe(743)
+    expect(r.totalLocal).toBe(895)
     expect(r.porItem.get(902)).toBe('QUITADO')
   })
 
@@ -106,7 +108,13 @@ describe('aplicarCambios', () => {
     expect(r.items).toHaveLength(4)
   })
 
-  it('cerrar_saldo deja el ítem en lo despachado y descarta lo pendiente', () => {
+  it('sin cubrir sigue cobrándose: el subtotal del ítem no se descuenta', () => {
+    const item = aplicarCambios(base, []).items.find((i) => i.id === 904)!
+    expect(item.cantidad_sin_cubrir).toBe(4)
+    expect(item.subtotal).toBe(380)
+  })
+
+  it('cerrar_saldo (cobrar solo lo entregado) deja el ítem en lo despachado y descarta lo pendiente', () => {
     const r = aplicarCambios(base, [{ op: 'cerrar_saldo', item_id: 904 }])
     const item = r.items.find((i) => i.id === 904)!
     expect(item.cantidad_presentacion).toBe(6)
@@ -116,8 +124,11 @@ describe('aplicarCambios', () => {
     expect(r.totalLocal).toBe(908)
   })
 
-  it('cerrar_saldo sin unidades despachadas pide usar Quitar', () => {
-    expect(aplicarCambios(base, [{ op: 'cerrar_saldo', item_id: 903 }]).errores[0].codigo).toBe('SIN_SALDO')
+  it('cerrar_saldo sin unidades despachadas quita el ítem, como el servidor', () => {
+    const r = aplicarCambios(base, [{ op: 'cerrar_saldo', item_id: 903 }])
+    expect(r.errores).toEqual([])
+    expect(r.items.find((i) => i.id === 903)!.estado).toBe('QUITADO')
+    expect(r.totalLocal).toBe(970)
   })
 
   it('saldo_a_compra pasa lo sin cubrir a cobrarse y deja la línea por comprar', () => {
@@ -130,7 +141,7 @@ describe('aplicarCambios', () => {
   })
 
   it('saldo_a_compra sin saldo sin cubrir es un error', () => {
-    expect(aplicarCambios(base, [{ op: 'saldo_a_compra', item_id: 902 }]).errores[0].codigo).toBe('SIN_SALDO')
+    expect(aplicarCambios(base, [{ op: 'saldo_a_compra', item_id: 902 }]).errores[0].codigo).toBe('SIN_FALTANTE')
   })
 
   it('cambiar_producto_saldo mueve lo sin cubrir a un ítem nuevo con su precio', () => {
@@ -146,14 +157,15 @@ describe('aplicarCambios', () => {
 
   it('datos cambia el descuento general y el total', () => {
     const r = aplicarCambios(base, [{ op: 'datos', descuento_general: 8, condicion_pago: 'CONTADO', medio_pago: 'QR', referencia: 'Entrega jueves' }])
-    expect(r.totalLocal).toBe(900)
+    expect(r.totalLocal).toBe(1052)
+    expect(aplicarCambios(base, [{ op: 'datos', referencia: 'x' }]).datos).toMatchObject({ descuento_general: 0, condicion_pago: 'CREDITO', referencia: 'x' })
     expect(r.datos).toMatchObject({ condicion_pago: 'CONTADO', medio_pago: 'QR', referencia: 'Entrega jueves' })
   })
 
   it('un ítem inexistente se reporta y no rompe el resto', () => {
     const r = aplicarCambios(base, [{ op: 'quitar', item_id: 12345 }, fixocola20])
     expect(r.errores[0].codigo).toBe('ITEM_NO_ENCONTRADO')
-    expect(r.totalLocal).toBe(938)
+    expect(r.totalLocal).toBe(1090)
   })
 
   it('no muta el detalle base', () => {
@@ -162,12 +174,12 @@ describe('aplicarCambios', () => {
     expect(JSON.stringify(base)).toBe(copia)
   })
 
-  it('escenario completo del canvas: 908,00 → 1.337,00 (+429,00)', () => {
+  it('escenario completo del canvas: 1.060,00 → 1.489,00 (+429,00)', () => {
     const r = aplicarCambios(base, [partirTrijet, fixocola20, agregarCorrector])
     expect(r.errores).toEqual([])
-    expect(r.totalLocal).toBe(1337)
+    expect(r.totalLocal).toBe(1489)
     expect(r.totalLocal - base.pedido.total).toBe(429)
-    expect(r.totalLocal - base.cuenta.pagado).toBe(1037)
+    expect(r.totalLocal - base.cuenta.pagado).toBe(1189)
   })
 })
 
@@ -197,6 +209,24 @@ describe('cambiosParaServidor', () => {
     expect(agregar).not.toHaveProperty('nombre')
     expect((partir.partes as Array<Record<string, unknown>>)[1]).not.toHaveProperty('nombre')
     expect(partir.partes).toHaveLength(2)
+  })
+
+  it('emite las formas exactas del addendum', () => {
+    const [agregar, cantidad, partir, saldo, datos] = cambiosParaServidor([
+      agregarCorrector,
+      { op: 'cantidad', item_id: 903, cantidad_presentacion: 20 },
+      partirTrijet,
+      { op: 'cambiar_producto_saldo', item_id: 904, producto_id: 777, presentacion_id: null, precio_unitario: 35, nombre: 'X' },
+      { op: 'datos', referencia: 'x' },
+    ]) as Array<Record<string, unknown>>
+    expect(agregar).toMatchObject({ op: 'agregar', cantidad_compra: 0 })
+    expect(agregar).not.toHaveProperty('faltante')
+    expect(cantidad).toEqual({ op: 'cantidad', item_id: 903, cantidad_presentacion: 20, cantidad_compra: 0 })
+    const [parte0, parte1] = partir.partes as Array<Record<string, unknown>>
+    expect(parte0).toEqual({ cantidad_presentacion: 200, precio_unitario: 0.85 })
+    expect(parte1).toEqual({ producto_id: 850, presentacion_id: 91, cantidad_presentacion: 300, precio_unitario: 2, linea_ids: [4765] })
+    expect(saldo).toEqual({ op: 'cambiar_producto_saldo', item_id: 904, producto_id: 777, presentacion_id: null, precio_unitario: 35, cantidad_compra: 0 })
+    expect(datos).toEqual({ op: 'datos', referencia: 'x' })
   })
 })
 
