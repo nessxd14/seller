@@ -111,22 +111,45 @@
 
 /* Ítems con su surtido */
 .ped-tabla-caja { overflow-x: auto; background: #fff; border: 1px solid var(--ped-borde); border-radius: 16px; }
-.ped-tabla { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 13px; }
+.ped-tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
 .ped-tabla thead th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--ped-tinta-tenue); padding: 12px 16px 8px; border-bottom: 1px solid var(--ped-borde); }
 .ped-tabla tbody { border-bottom: 1px solid var(--ped-borde); }
 .ped-tabla tbody:last-child { border-bottom: 0; }
-.ped-tabla td, .ped-tabla tbody th { padding: 12px 16px 6px; vertical-align: top; text-align: left; font-weight: 400; }
+.ped-tabla td, .ped-tabla tbody th { padding: 12px 18px 6px; vertical-align: top; text-align: left; font-weight: 400; }
 .ped-tabla .ped-num { text-align: right; white-space: nowrap; }
 .ped-tabla td small, .ped-tabla th small { display: block; font-size: 11.5px; color: var(--ped-tinta-tenue); }
 .ped-item-nombre strong { display: block; font-size: 13.5px; }
 .ped-item-quitado { opacity: .6; }
 .ped-item-quitado .ped-item-nombre strong { text-decoration: line-through; }
-.ped-tabla .ped-fila-lineas td { padding: 0 16px 12px; }
-.ped-lineas { list-style: none; margin: 0 0 0 4px; padding: 0 0 0 14px; border-left: 2px solid var(--ped-borde); display: grid; gap: 6px; }
-.ped-lineas li { display: grid; grid-template-columns: minmax(120px, 1fr) 52px auto minmax(90px, auto); align-items: center; gap: 10px; font-size: 12.5px; }
-.ped-linea-cant { text-align: right; font-weight: 700; }
-.ped-linea-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.ped-lineas { list-style: none; }
 .ped-lineas small { color: var(--ped-tinta-tenue); }
+
+/* Detalle: ancho real del modal. commercial-forms.css fija
+   `.modal.product-detail-modal.wide { width: min(920px…) }` y gana por especificidad. */
+.modal.ped-modal.wide { width: min(1160px, calc(100vw - 40px)); max-width: none; }
+
+/* Ítems con su surtido */
+.ped-tabla { min-width: 600px; table-layout: fixed; }
+.ped-tabla .ped-col-cant { width: 120px; }
+.ped-tabla .ped-col-precio { width: 112px; }
+.ped-tabla .ped-col-sub { width: 124px; }
+.ped-tabla thead th { padding: 12px 18px 10px; }
+.ped-tabla .ped-fila-item > th, .ped-tabla .ped-fila-item > td { padding: 16px 18px 8px; }
+.ped-item-nombre strong { font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.ped-item-meta { display: block; margin-top: 3px; font-size: 11.5px; letter-spacing: .2px; color: var(--ped-tinta-tenue); }
+.ped-sin-cubrir { display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 6px; background: #fbe9e7; color: #9d3328; font-size: 11.5px; font-weight: 600; }
+.ped-tabla .ped-unidad { display: block; margin-top: 2px; font-size: 11.5px; color: var(--ped-tinta-tenue); white-space: normal; line-height: 1.3; }
+
+.ped-tabla .ped-fila-lineas td { padding: 0 18px 16px 30px; }
+.ped-lineas { margin: 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--ped-borde); display: grid; gap: 2px; }
+.ped-lineas li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 5px 0; font-size: 12.5px; line-height: 1.4; }
+.ped-lineas .ped-linea-cant { min-width: 92px; font-weight: 700; white-space: nowrap; text-align: left; }
+.ped-linea-unidad { font-weight: 400; color: var(--ped-tinta-tenue); }
+.ped-linea-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.ped-linea-ubic { color: var(--ped-tinta-tenue); }
+.ped-linea-ubic::before { content: "·"; margin-right: 10px; color: #cfc9be; }
+.ped-linea-otro { flex-basis: 100%; padding-left: 104px; margin-top: -2px; font-weight: 600; color: #5f3aa3; overflow-wrap: anywhere; }
+.ped-lineas .ped-lineas-historial { font-size: 11.5px; color: var(--ped-tinta-tenue); font-style: italic; }
 
 /* ── Línea de tiempo ───────────────────────────────────────── */
 .ped-tiempo { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }

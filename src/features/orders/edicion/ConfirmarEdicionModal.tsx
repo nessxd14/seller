@@ -96,6 +96,8 @@ export function ConfirmarEdicionModal({ base, cambios, resumen, onClose, onRecar
         <div><p>Estos cambios ya no aplican con la versión nueva y se quitaron de tu edición:</p><ul>{descartados.map((d, i) => <li key={i}>{d.texto}</li>)}</ul></div>
       </div>}
       {previa && <>
+        {/* Con ok:false el servidor manda cuenta y totales en null: solo se muestran los errores. */}
+        {previa.ok !== false && previa.cuenta && previa.total_anterior != null && previa.total_nuevo != null && previa.delta != null && <>
         <Paso numero={1} titulo="Cambios en el pedido">
           <ul className="ped-diff">
             {resumen.map((r) => <li key={r.indice}><span>{r.texto}</span>{r.delta !== 0 && <b className={r.delta > 0 ? 'ped-mas' : 'ped-menos'}>{deltaBs(r.delta)}</b>}</li>)}
@@ -113,6 +115,7 @@ export function ConfirmarEdicionModal({ base, cambios, resumen, onClose, onRecar
         <Paso numero={3} titulo="Qué le llega a almacén">
           {previa.almacen.length === 0 ? <p className="ped-nota">Nada: estos cambios no mueven el surtido.</p> : <ul className="ped-almacen">{previa.almacen.map((a, i) => <li key={i}><Chip tone={a.accion === 'LINEA_NUEVA' ? 'blue' : a.accion === 'LINEA_CANCELADA' ? 'red' : 'amber'}>{{ LINEA_NUEVA: 'Línea nueva', LINEA_CANCELADA: 'Línea cancelada', LINEA_REDUCIDA: 'Línea reducida' }[a.accion]}</Chip><span>{a.texto}</span></li>)}</ul>}
         </Paso>
+        </>}
         {previa.advertencias.map((a, i) => <p key={i} className="ped-aviso-caja ped-aviso-caja-ambar" role="status"><TriangleAlert aria-hidden />{a.texto}</p>)}
         {erroresReales.map((e, i) => <p key={i} className="ped-aviso-caja ped-aviso-caja-rojo" role="alert"><TriangleAlert aria-hidden />{e.texto}{(e.codigo === 'REDUCCION_BAJO_PAGADO' || e.codigo === 'PARTIDA_DESFASADA') && ' Tus cambios se conservan; se resuelve en Hermes.'}</p>)}
       </>}

@@ -106,8 +106,16 @@ export function EditarPedidoView({ pedidoId, notify, onGuardado }: {
     window.history.replaceState({}, '', window.location.pathname)
     const item = base.items.find((candidato) => candidato.id === intento.itemId)
     if (!item) { notify('El ítem del aviso ya no está en el pedido.'); return }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- el atajo del aviso abre su paso una única vez al cargar
-    if (intento.tipo === 'precio_propio') setPartir({ itemId: item.id, prefill: { lineaId: intento.lineaId } })
+    if (intento.tipo === 'precio_propio') {
+      // Si el sustituto cubre todo el ítem, la parte 0 quedaría en 0 y el servidor no deja partir: se cambia el precio del ítem.
+      const coberturaOriginal = item.lineas.filter((linea) => linea.tipo_surtido !== 'SUSTITUTO').reduce((total, linea) => total + (linea.cubre ?? linea.cantidad_presentacion), 0)
+      if (coberturaOriginal <= 0) {
+        notify('El sustituto cubre todo el ítem: se cambia el precio del ítem.')
+        agregarCambio({ op: 'precio', item_id: item.id, precio_unitario: item.precio_unitario, descuento_pct: item.descuento_pct })
+      }
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- el atajo del aviso abre su paso una única vez al cargar
+      else setPartir({ itemId: item.id, prefill: { lineaId: intento.lineaId } })
+    }
     else if (intento.tipo === 'reemplazar') setSaldo(item.id)
     else if (intento.tipo === 'cobrar_entregado') agregarCambio({ op: 'cerrar_saldo', item_id: item.id })
     else agregarCambio({ op: 'saldo_a_compra', item_id: item.id })
