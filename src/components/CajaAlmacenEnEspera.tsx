@@ -6,7 +6,6 @@ import { RechazoVtdModal, type RechazoVtdData } from './RechazoVtdModal'
 import { AjusteVtdModal, type AjusteVtdPayload } from './AjusteVtdModal'
 import '../styles/caja-almacen.css'
 
-const RESUELTOS = ['CANCELADO', 'RETORNO_PENDIENTE', 'RETORNADO', 'ENTREGADO']
 const message = (e: unknown) => e instanceof Error ? e.message : 'No se pudo completar la acción.'
 
 export function CajaAlmacenEnEspera() {
@@ -40,14 +39,11 @@ export function CajaAlmacenEnEspera() {
   const rechazar = async (data: RechazoVtdData) => {
     if (!rejection) return
     const { op, ventaId } = rejection
+    // La base cierra la operación en la misma transacción al rechazar la última VTD pendiente;
+    // al releer, una operación cerrada ya no aparece en la lista.
     const ok = await run(async () => {
       await operarCajaAlmacen('rechazar', op.operacion.id, String(op.operacion.sesion_id), { venta_id: ventaId, ...data })
-      const fresh = (await load()).find(o => o.operacion.id === op.operacion.id)
-      // Cerrar sólo si no queda material físico pendiente de entrega.
-      if (fresh?.operacion.comprobante && fresh.vtds.length && fresh.vtds.every(v => RESUELTOS.includes(v.estado)) && !fresh.vtds.some(v => v.estado === 'EN_CAJA')) {
-        await completar(fresh)
-        await load()
-      }
+      await load()
     })
     if (ok) setRejection(null)
   }

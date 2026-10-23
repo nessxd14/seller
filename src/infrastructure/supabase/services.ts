@@ -301,6 +301,7 @@ export const turnoService = {
     turnoRepository.registrarMovimientoTurno({ ...input, idempotencyKey: input.idempotencyKey ?? createUuid() }),
   resolverGasto: turnoRepository.resolverGasto,
   cerrar: (sesionId: string, denominaciones: Denominaciones, cajonVacio: boolean = false) => turnoRepository.cerrarTurno(sesionId, denominaciones, cajonVacio),
+  cerrarGerente: (sesionId: string, denominaciones: Denominaciones, motivo: string, cajonVacio: boolean = false) => turnoRepository.cerrarTurnoGerente(sesionId, denominaciones, motivo, cajonVacio),
   marcarCobroFueraDeArqueo: (movimientoId: string, fuera: boolean = true) => turnoRepository.marcarCobroFueraDeArqueo(movimientoId, fuera),
   revisar: turnoRepository.revisarTurno,
   arqueoSorpresa: turnoRepository.registrarArqueoSorpresa,

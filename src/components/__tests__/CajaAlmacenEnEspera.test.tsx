@@ -48,15 +48,17 @@ describe('CajaAlmacenEnEspera', () => {
     expect(mocks.operar).toHaveBeenCalledTimes(1)
   })
 
-  it('completa automáticamente cuando todas las VTD quedan resueltas', async () => {
-    mocks.listar.mockResolvedValueOnce({ operaciones: [op([vtd('SOLICITADO')])] }).mockResolvedValue({ operaciones: [op([vtd('CANCELADO')])] })
+  it('rechazar no llama a completar: la base cierra la operación y desaparece al releer', async () => {
+    mocks.listar.mockResolvedValueOnce({ operaciones: [op([vtd('SOLICITADO')])] }).mockResolvedValue({ operaciones: [] })
     mocks.operar.mockResolvedValue({})
-    render(<CajaAlmacenEnEspera />)
+    const { container } = render(<CajaAlmacenEnEspera />)
     await rechazar()
     click(screen.getByLabelText(/Confirmo que devolví/))
     type(screen.getByLabelText('Referencia de devolución'), 'QR-123')
     click(screen.getByRole('button', { name: 'Confirmar rechazo' }))
-    await waitFor(() => expect(mocks.operar).toHaveBeenCalledWith('completar', 'op-1', '57', {}))
+    await waitFor(() => expect(container.innerHTML).toBe(''))
+    expect(mocks.operar).toHaveBeenCalledTimes(1)
+    expect(mocks.operar).not.toHaveBeenCalledWith('completar', expect.anything(), expect.anything(), expect.anything())
   })
 
   it('no completa si queda una VTD EN_CAJA y ofrece completar manualmente', async () => {

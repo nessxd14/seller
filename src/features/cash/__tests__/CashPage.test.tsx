@@ -14,7 +14,7 @@ vi.mock('../useCashRefresh', () => ({ useCashRefresh: (refresh: () => Promise<vo
 // "esperado"/"diferencia" en la pantalla de Caja; un gerente sí. resumen_turno ya lo
 // esconde server-side (esperadoEfectivoBs: null para cajero) — este test cubre que el
 // frontend efectivamente respeta ese null y no lo recalcula por su cuenta.
-const { getSession, getResumenTurno, getSesionAbierta, abrirTurno, cerrarTurno, registrarMovimiento, listarMovimientos, marcarFuera, gastosPendientes, turnosEnRevision, resolverGasto, revisarTurno, conteoCierre, sesionAbierta, cajeroSession, gerenteSession, resumenBase } = vi.hoisted(() => {
+const { getSession, getResumenTurno, getSesionAbierta, abrirTurno, cerrarTurno, cerrarGerente,registrarMovimiento, listarMovimientos, marcarFuera, gastosPendientes, turnosEnRevision, resolverGasto, revisarTurno, conteoCierre, sesionAbierta, cajeroSession, gerenteSession, resumenBase } = vi.hoisted(() => {
   const sesionAbierta: TurnoSesion = {
     id: '1', cajaId: 1, cajaNombre: 'Caja Tienda', estado: 'ABIERTA', aperturaBs: 500,
     cajeroId: 'u1', abiertaPor: 'natalia@roari.com', abiertaEn: new Date().toISOString(), diferenciaRelevoBs: null,
@@ -27,7 +27,7 @@ const { getSession, getResumenTurno, getSesionAbierta, abrirTurno, cerrarTurno, 
   }
   const cajeroSession: AuthSession = { user: { id: 'u1', name: 'Natalia Cajera', role: 'cajero', active: true, email: 'natalia@roari.com' }, expiresAt: '2999-01-01T00:00:00Z' }
   const gerenteSession: AuthSession = { user: { id: 'u2', name: 'Rony Gerente', role: 'gerente', active: true, email: 'rony@roari.com' }, expiresAt: '2999-01-01T00:00:00Z' }
-  return { getSession: vi.fn(), getResumenTurno: vi.fn(), getSesionAbierta: vi.fn(), abrirTurno: vi.fn(), cerrarTurno: vi.fn(), registrarMovimiento: vi.fn(), listarMovimientos: vi.fn(), marcarFuera: vi.fn(), gastosPendientes: vi.fn(), turnosEnRevision: vi.fn(), resolverGasto: vi.fn(), revisarTurno: vi.fn(), conteoCierre: vi.fn(), sesionAbierta, cajeroSession, gerenteSession, resumenBase }
+  return { getSession: vi.fn(), getResumenTurno: vi.fn(), getSesionAbierta: vi.fn(), abrirTurno: vi.fn(), cerrarTurno: vi.fn(), cerrarGerente: vi.fn(),registrarMovimiento: vi.fn(), listarMovimientos: vi.fn(), marcarFuera: vi.fn(), gastosPendientes: vi.fn(), turnosEnRevision: vi.fn(), resolverGasto: vi.fn(), revisarTurno: vi.fn(), conteoCierre: vi.fn(), sesionAbierta, cajeroSession, gerenteSession, resumenBase }
 })
 
 vi.mock('../../../infrastructure/services', () => ({
@@ -37,6 +37,7 @@ vi.mock('../../../infrastructure/services', () => ({
     getSesionAbierta: (...args: unknown[]) => getSesionAbierta(...args),
     abrir: (...args: unknown[]) => abrirTurno(...args),
     cerrar: (...args: unknown[]) => cerrarTurno(...args),
+    cerrarGerente: (...args: unknown[]) => cerrarGerente(...args),
     registrarMovimiento: (...args: unknown[]) => registrarMovimiento(...args),
     marcarCobroFueraDeArqueo: (...args: unknown[]) => marcarFuera(...args),
     getUltimaSesionCerrada: vi.fn().mockResolvedValue(null),
@@ -428,29 +429,36 @@ describe('Pistas "i" en Caja (Brief Caja VTD obligatorio E)', () => {
   })
 })
 
-describe('Cerrar turno — VTD abiertas (cobradas no bloquean)', () => {
+describe('Cerrar turno — VTD abiertas: la base decide', () => {
   const vtd = (over: Record<string, unknown> = {}) => ({ id: 'v1', cobroExigible: true, pagoPosterior: false, totalCents: 10000, paidCents: 0, ...over })
   const listAbiertas = () => ventaDirectaService.listAbiertas as unknown as ReturnType<typeof vi.fn>
   const pulsarCerrar = () => fireEvent.click(screen.getByRole('button', { name: /Cerrar turno/ }))
+  const AVISO = 'Hay 1 venta(s) directa(s) pendientes. Resuélvelas en "Operaciones en espera de Almacén" antes de cerrar.'
 
-  it('una VTD abierta sin cobrar bloquea el cierre y avisa "sin cobrar"', async () => {
+  it('una VTD abierta sin cobrar no bloquea en el cliente: avisa y deja llegar a cerrar_turno', async () => {
     listAbiertas().mockResolvedValue([vtd()])
     await cargarCaja()
     pulsarCerrar()
-    await waitFor(() => expect(notify).toHaveBeenCalledWith('No se puede cerrar el turno: hay 1 venta(s) directa(s) sin cobrar. Cóbralas, márcalas como pago posterior o anúlalas antes de cerrar.'))
-    expect(screen.queryByText(PASO_CONTEO)).toBeNull()
+    await screen.findByText(PASO_CONTEO)
+    expect(notify).toHaveBeenCalledWith(AVISO)
+    expect(notify).not.toHaveBeenCalledWith(expect.stringContaining('se puede cerrar'))
+    cantidad(1)
+    fireEvent.click(boton('Continuar'))
+    fireEvent.click(await screen.findByRole('button', { name: 'No entrego nada' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar cierre' }))
+    await waitFor(() => expect(cerrarTurno).toHaveBeenCalledWith('1', { '100': 1 }, false))
   })
 
-  it('una VTD abierta ya cobrada abre el cierre y avisa que sigue en Almacén', async () => {
+  it('una VTD cobrada también da el aviso no bloqueante', async () => {
     listAbiertas().mockResolvedValue([vtd({ paidCents: 10000 })])
     await cargarCaja()
     pulsarCerrar()
     await screen.findByText(PASO_CONTEO)
-    expect(notify).toHaveBeenCalledWith('1 venta(s) directa(s) cobrada(s) siguen pendientes de despacho en Almacén. El turno se puede cerrar; quedan en la cola de Almacén.')
+    expect(notify).toHaveBeenCalledWith(AVISO)
   })
 
-  it('una VTD abierta con pago posterior abre el cierre', async () => {
-    listAbiertas().mockResolvedValue([vtd({ pagoPosterior: true })])
+  it('si falla la consulta de VTD abiertas, el cierre se abre igual', async () => {
+    listAbiertas().mockRejectedValue(new Error('red'))
     await cargarCaja()
     pulsarCerrar()
     await screen.findByText(PASO_CONTEO)
@@ -462,6 +470,65 @@ describe('Cerrar turno — VTD abiertas (cobradas no bloquean)', () => {
     pulsarCerrar()
     await screen.findByText(PASO_CONTEO)
     expect(notify).not.toHaveBeenCalled()
+  })
+})
+
+describe('Cerrar turno — cierre forzado del gerente', () => {
+  const BLOQUEO = 'No puedes cerrar el turno: hay 1 VTD en espera de Almacén sin cobrar.'
+  const intentarCierre = async () => {
+    await abrirCierre()
+    cantidad(2)
+    fireEvent.click(boton('Continuar'))
+    fireEvent.click(await screen.findByRole('button', { name: 'No entrego nada' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar cierre' }))
+    await waitFor(() => expect(cerrarTurno).toHaveBeenCalledWith('1', { '100': 2 }, false))
+  }
+
+  it('gerente: tras el bloqueo por VTD ofrece "Cerrar como gerente" y llama con el mismo conteo y el motivo', async () => {
+    cerrarTurno.mockRejectedValue(new Error(BLOQUEO))
+    cerrarGerente.mockResolvedValue({ sesionId: '1', estado: 'CERRADA', forzado: true, pendientes: [{ ventaId: '784', numero: 'VTD-2026-00784', totalBs: 240 }] })
+    await cargarCaja(gerenteSession)
+    await intentarCierre()
+    expect(await screen.findByText(BLOQUEO)).toBeTruthy()
+    const confirmar = await screen.findByRole('button', { name: 'Cerrar como gerente' }) as HTMLButtonElement
+    expect(confirmar.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Motivo del cierre'), { target: { value: 'corto' } })
+    expect(confirmar.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Motivo del cierre'), { target: { value: 'Almacén no despachó VTD-784' } })
+    fireEvent.click(confirmar)
+    await waitFor(() => expect(cerrarGerente).toHaveBeenCalledWith('1', { '100': 2 }, 'Almacén no despachó VTD-784', false))
+    const pendientes = await screen.findByRole('list', { name: 'VTD pendientes' })
+    expect(pendientes.textContent).toContain('VTD-2026-00784 · Bs 240,00')
+    expect(screen.getByText(/quedan en «Operaciones en espera de Almacén»/)).toBeTruthy()
+  })
+
+  it('gerente: el error de cerrar_turno_gerente se muestra en el modal', async () => {
+    cerrarTurno.mockRejectedValue(new Error(BLOQUEO))
+    cerrarGerente.mockRejectedValue(new Error('El motivo debe tener al menos 10 caracteres.'))
+    await cargarCaja(gerenteSession)
+    await intentarCierre()
+    fireEvent.change(await screen.findByLabelText('Motivo del cierre'), { target: { value: 'Motivo suficientemente largo' } })
+    fireEvent.click(boton('Cerrar como gerente'))
+    expect((await screen.findByText('El motivo debe tener al menos 10 caracteres.')).getAttribute('role')).toBe('alert')
+    expect(screen.queryByRole('list', { name: 'VTD pendientes' })).toBeNull()
+  })
+
+  it('gerente: otro error de cierre no ofrece el cierre forzado', async () => {
+    const otro = 'Conteo en cero: el sistema espera efectivo en el cajón. Si está vacío, márcalo.'
+    cerrarTurno.mockRejectedValue(new Error(otro))
+    await cargarCaja(gerenteSession)
+    await intentarCierre()
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(otro))
+    expect(screen.queryByRole('button', { name: 'Cerrar como gerente' })).toBeNull()
+  })
+
+  it('cajero: ve el mensaje de la base y nunca la opción de gerente', async () => {
+    cerrarTurno.mockRejectedValue(new Error(BLOQUEO))
+    await cargarCaja()
+    await intentarCierre()
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(BLOQUEO))
+    expect(screen.queryByRole('button', { name: 'Cerrar como gerente' })).toBeNull()
+    expect(cerrarGerente).not.toHaveBeenCalled()
   })
 })
 
