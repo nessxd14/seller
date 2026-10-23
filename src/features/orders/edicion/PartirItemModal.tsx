@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Check, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import { Modal } from '../../../components/Modal'
 import { NumberField } from '../../../components/NumberField'
-import { redondear2, type ItemBorrador } from '../../../domain/orders/edicionPedido'
+import { despachadoDe, redondear2, type ItemBorrador } from '../../../domain/orders/edicionPedido'
 import type { CambioPedido, PedidoLineaSurtido } from '../../../domain/orders/pedidoEdicion.types'
 import { listPresentations } from '../../../infrastructure/services'
 import { precioSugerido } from '../../../domain/pricing/precioPresentacion'
@@ -63,7 +63,8 @@ export function PartirItemModal({ item, canal, prefill, onAplicar, onClose }: {
 
   const total = redondear2(partes.reduce((suma, parte) => suma + parte.cantidad, 0))
   const cuadra = Math.abs(total - item.cantidad_presentacion) < 1e-9
-  const minimoPrimera = item.cantidad_despachada
+  // Lo despachado por las líneas vivas que se quedan en la primera parte (no las que pasan a otra).
+  const minimoPrimera = item.lineas.filter((linea) => partes[0].lineaIds.includes(linea.id)).reduce((suma, linea) => suma + despachadoDe(linea), 0)
   const importeAntes = item.subtotal
   const importeDespues = useMemo(() => redondear2(partes.reduce((suma, parte, i) => {
     return suma + parte.cantidad * parte.precio * (i === 0 ? 1 - item.descuento_pct / 100 : 1)

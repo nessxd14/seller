@@ -62,6 +62,7 @@ describe('pedidoEdicionMock (escenario PED-2026-00706)', () => {
     const bajar: CambioPedido[] = [{ op: 'quitar', item_id: 902 }, { op: 'quitar', item_id: 903 }, { op: 'datos', descuento_general: 1500 }]
     const previa = await pedidoEdicionMock.previsualizar(PEDIDO_ESCENARIO_ID, detalle.pedido.version, bajar)
     expect(previa.errores.map((e) => e.codigo)).toContain('REDUCCION_BAJO_PAGADO')
+    expect(previa).toMatchObject({ ok: false, cuenta: null, total_anterior: null, total_nuevo: null, delta: null })
     await expect(pedidoEdicionMock.editar(PEDIDO_ESCENARIO_ID, detalle.pedido.version, bajar, 'x')).rejects.toMatchObject({ codigo: 'REDUCCION_BAJO_PAGADO' })
   })
 })
