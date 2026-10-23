@@ -110,8 +110,14 @@ export function EditarPedidoView({ pedidoId, notify, onGuardado }: {
       // Si el sustituto cubre todo el ítem, la parte 0 quedaría en 0 y el servidor no deja partir: se cambia el precio del ítem.
       const coberturaOriginal = item.lineas.filter((linea) => linea.tipo_surtido !== 'SUSTITUTO').reduce((total, linea) => total + (linea.cubre ?? linea.cantidad_presentacion), 0)
       if (coberturaOriginal <= 0) {
+        // No se registra nada: el cambio nace cuando el vendedor edita el precio. Solo se deja el campo enfocado.
         notify('El sustituto cubre todo el ítem: se cambia el precio del ítem.')
-        agregarCambio({ op: 'precio', item_id: item.id, precio_unitario: item.precio_unitario, descuento_pct: item.descuento_pct })
+        const etiqueta = `Precio de ${item.descripcion}`
+        requestAnimationFrame(() => {
+          const campo = Array.from(document.querySelectorAll<HTMLInputElement>('.ped-fila input')).find((candidato) => candidato.getAttribute('aria-label') === etiqueta)
+          campo?.focus()
+          campo?.select()
+        })
       }
       // eslint-disable-next-line react-hooks/set-state-in-effect -- el atajo del aviso abre su paso una única vez al cargar
       else setPartir({ itemId: item.id, prefill: { lineaId: intento.lineaId } })

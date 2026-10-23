@@ -126,7 +126,7 @@
 
 /* Detalle: ancho real del modal. commercial-forms.css fija
    `.modal.product-detail-modal.wide { width: min(920px…) }` y gana por especificidad. */
-.modal.ped-modal.wide { width: min(1160px, calc(100vw - 40px)); max-width: none; }
+.modal.commercial-modal.ped-modal.wide { width: min(1160px, calc(100vw - 40px)); max-width: none; }
 
 /* Ítems con su surtido */
 .ped-tabla { min-width: 600px; table-layout: fixed; }
