@@ -331,49 +331,57 @@ export async function calcularRepartoFifo(clienteId: number, monto: number): Pro
   }))
 }
 
-// Brief S-I: a diferencia de los demás endpoints, agregar-lineas-pedido puede fallar
-// DESPUÉS de que las líneas ya quedaron agregadas en Cation (el paso a Hermes es el que
-// falló, y ese paso no se revierte) — cationOk distingue ese caso (el llamador tiene que
-// refrescar el pedido igual, aunque el resultado sea un error) de un fallo previo a
-// Cation (nada cambió, no hay nada que refrescar).
-export class AgregarLineasHttpError extends Error {
-  constructor(message: string, public readonly status: number, public readonly cationOk: boolean) {
+// SEL-01: la ampliación es una sola transacción en la base (public.ampliar_pedido): las
+// líneas y el cargo en la cartera se confirman juntos o no se confirma nada. La clave la
+// genera quien llama y se reutiliza en cada reintento del mismo envío: si la respuesta se
+// pierde, repetir con la misma clave devuelve el resultado ya confirmado sin agregar nada.
+export class AmpliarPedidoError extends Error {
+  constructor(message: string, public readonly code: string | null) {
     super(message)
-    this.name = 'AgregarLineasHttpError'
+    this.name = 'AmpliarPedidoError'
   }
+  /** PT409: la clave ya se usó con otro contenido, o el pedido cambió mientras se editaba. */
+  get esConflicto(): boolean { return this.code === 'PT409' }
 }
 
 export interface AgregarLineasResultado {
   pedidoId: number
   lineasAgregadas: number
   montoAdicional: number
-  // null: no hubo monto adicional que sincronizar (ver api/hermes/agregar-lineas-pedido.ts).
+  version: number
+  // null: sin cargo en cartera (ítems sin costo o cliente sin cuenta corriente).
   camino: 'MISMA_PARTIDA' | 'PARTIDA_HIJA' | null
   entregaNumero: number | null
+  /** true: la base ya había confirmado esta misma ampliación (reintento). */
+  repetida: boolean
 }
 
-/** SÍ lanza — el llamador (OrdersPage) necesita distinguir éxito de fallo para decidir
- * qué mensaje mostrar. El mensaje de error, cuando viene de Hermes (p. ej. "el pedido no
- * tiene ninguna partida abierta"), se propaga tal cual — nunca se reemplaza por uno
- * genérico. */
-export async function agregarLineasPedido(input: { pedidoId: number | string; lineas: unknown[]; motivo?: string }): Promise<AgregarLineasResultado> {
-  const response = await fetch('/api/hermes/agregar-lineas-pedido', {
-    method: 'POST',
-    headers: await authHeaders(),
-    body: JSON.stringify({ pedidoId: input.pedidoId, lineas: input.lineas, motivo: input.motivo || undefined }),
+/** SÍ lanza AmpliarPedidoError con el mensaje literal de la base. Si lanza, no quedó nada
+ * escrito: la transacción se revierte entera. */
+export async function agregarLineasPedido(input: {
+  pedidoId: number | string
+  clave: string
+  lineas: unknown[]
+  motivo?: string
+  versionEsperada?: number
+}): Promise<AgregarLineasResultado> {
+  const { data, error } = await supabase.rpc('ampliar_pedido', {
+    p_pedido_id: Number(input.pedidoId),
+    p_clave: input.clave,
+    p_lineas: input.lineas,
+    p_motivo: input.motivo || null,
+    p_version_esperada: input.versionEsperada ?? null,
   })
-  const data = await response.json().catch(() => null)
-  if (!response.ok) {
-    const message = (data && typeof data === 'object' && 'error' in data && typeof data.error === 'string' && data.error) || 'No se pudieron agregar los ítems al pedido'
-    const cationOk = data != null && typeof data === 'object' && 'lineasAgregadas' in data
-    throw new AgregarLineasHttpError(message, response.status, cationOk)
-  }
+  if (error) throw new AmpliarPedidoError(error.message || 'No se pudieron agregar los ítems al pedido', error.code ?? null)
+  const r = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
   return {
-    pedidoId: Number(data?.pedidoId),
-    lineasAgregadas: Number(data?.lineasAgregadas ?? 0),
-    montoAdicional: Number(data?.montoAdicional ?? 0),
-    camino: data?.camino === 'MISMA_PARTIDA' || data?.camino === 'PARTIDA_HIJA' ? data.camino : null,
-    entregaNumero: data?.entregaNumero != null ? Number(data.entregaNumero) : null,
+    pedidoId: Number(r.pedido_id),
+    lineasAgregadas: Number(r.lineas_agregadas ?? 0),
+    montoAdicional: Number(r.monto_adicional ?? 0),
+    version: Number(r.version ?? 0),
+    camino: r.camino === 'MISMA_PARTIDA' || r.camino === 'PARTIDA_HIJA' ? r.camino : null,
+    entregaNumero: r.entrega_numero != null ? Number(r.entrega_numero) : null,
+    repetida: r.repetida === true,
   }
 }
 

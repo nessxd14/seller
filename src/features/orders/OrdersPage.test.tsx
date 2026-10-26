@@ -70,7 +70,7 @@ vi.mock('../../infrastructure/supabase/OrderRepository.supabase', () => ({
 vi.mock('../../infrastructure/hermes/client', () => ({
   registrarPago: vi.fn(),
   agregarLineasPedido: vi.fn(),
-  AgregarLineasHttpError: class AgregarLineasHttpError extends Error {},
+  AmpliarPedidoError: class AmpliarPedidoError extends Error { get esConflicto() { return false } },
 }))
 vi.mock('../../infrastructure/supabase/PendienteSyncHermesPagoRepository', () => ({
   pendienteSyncHermesPagoRepository: { registrarFallo: vi.fn() },
