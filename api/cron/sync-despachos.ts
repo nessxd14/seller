@@ -6,9 +6,8 @@ import { createClient } from '@supabase/supabase-js'
 // HERMES_URL/HERMES_SERVICE_ROLE_KEY, formato de error) — la diferencia es quién dispara
 // esto: Vercel Cron, no un cajero, así que no hay sesión de usuario que verificar acá.
 // En su lugar se verifica el header estándar que Vercel agrega solo cuando CRON_SECRET
-// está configurado como variable de entorno (Authorization: Bearer ${CRON_SECRET}) — si
-// no está configurado, Vercel no lo manda, y este endpoint queda sin ese chequeo hasta
-// que se configure (ver nota en la descripción del PR).
+// está configurado como variable de entorno (Authorization: Bearer ${CRON_SECRET}). Si
+// no está configurado, el endpoint responde 503 y no procesa nada (SEL-05).
 const LIMITE_POR_CORRIDA = 50
 const MAX_INTENTOS = 10
 
@@ -33,11 +32,11 @@ const extraerMensajeError = (data: unknown, status: number): string => {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') { res.status(405).json({ error: 'Method not allowed' }); return }
 
+  // SEL-05: falla cerrado. Sin CRON_SECRET configurado el endpoint no corre para nadie;
+  // antes quedaba abierto a cualquier GET anónimo.
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const auth = req.headers.authorization
-    if (auth !== `Bearer ${cronSecret}`) { res.status(401).json({ error: 'No autorizado' }); return }
-  }
+  if (!cronSecret) { res.status(503).json({ error: 'CRON_SECRET no está configurado' }); return }
+  if (req.headers.authorization !== `Bearer ${cronSecret}`) { res.status(401).json({ error: 'No autorizado' }); return }
 
   const hermesUrl = process.env.HERMES_URL
   const hermesServiceKey = process.env.HERMES_SERVICE_ROLE_KEY

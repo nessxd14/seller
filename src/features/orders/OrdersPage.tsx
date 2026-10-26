@@ -16,7 +16,7 @@ import { buildLineasJsonb, listComprasDePedido, marcarPedidoAtencionVista, type 
 import { diffVersionLines } from '../../domain/orders/versionDiff'
 import { decidirEliminacionPedido } from '../../domain/orders/deletionDecision'
 import { matchesNumero } from '../../domain/documents/matchesNumero'
-import { agregarLineasPedido, AgregarLineasHttpError } from '../../infrastructure/hermes/client'
+import { agregarLineasPedido, AmpliarPedidoError } from '../../infrastructure/hermes/client'
 import { CobroDestinoField } from '../../components/CobroDestinoField'
 import { aplicarDestinoCobro, destinoObligatorio, destinoPendiente, useCobroDestino, type CobroDestino } from '../../components/useCobroDestino'
 import { channelToCategoria, type PosPaymentMethodExt } from '../../infrastructure/supabase/mappers'
@@ -108,10 +108,12 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   const [advanceOpen, setAdvanceOpen] = useState(false)
   const [balanceOpen, setBalanceOpen] = useState(false)
   const { saldo: orderBalance } = useSaldoCliente(selected?.customerId, selected?.id)
-  // Brief S-I: "Agregar ítems" — agrega líneas a un pedido ya armado, encadenando
-  // agregar_lineas_pedido (Cation) con procesar_adicion_pedido (Hermes) vía el endpoint
-  // propio (api/hermes/agregar-lineas-pedido.ts).
+  // SEL-01: "Agregar ítems" llama a ampliar_pedido, que agrega las líneas y el cargo en la
+  // cartera en una sola transacción. addItemsKey identifica un envío: se conserva en los
+  // reintentos (respuesta perdida = mismo resultado, sin duplicar) y se renueva al abrir.
   const [addItemsOpen, setAddItemsOpen] = useState(false)
+  const [addItemsKey, setAddItemsKey] = useState(() => crypto.randomUUID())
+  const [versionsLoadedFor, setVersionsLoadedFor] = useState<string | null>(null)
   const [advances, setAdvances] = useState<Array<{ id: string; amountCents: number; method: string | null; note: string; at: string }>>([])
   const [reasonModal, setReasonModal] = useState<{ action: 'cancel' | 'restore'; order: OrderView } | null>(null)
   // Brief S11 Bloque B: conteo de versiones por pedido (para resaltar filas editadas en
@@ -243,11 +245,12 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the version browser immediately when the selected order changes, before the new fetch resolves
     setViewingVersionIndex(null)
     setVersions([])
+    setVersionsLoadedFor(null)
     if (!selected || !featureFlags.supabase) return
     const id = Number(selected.id)
     if (!Number.isFinite(id)) return
     let cancelled = false
-    void listVersionesPedido(id).then((v) => { if (!cancelled) setVersions(v) })
+    void listVersionesPedido(id).then((v) => { if (!cancelled) { setVersions(v); setVersionsLoadedFor(selected.id) } })
     return () => { cancelled = true }
   }, [selected])
   const viewingIndex = viewingVersionIndex ?? (versions.length ? versions.length - 1 : null)
@@ -288,29 +291,36 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
     setAdvances(await cashService.getAdvancesForOrder(selected.id))
     refreshCobros()
   }
-  // Brief S-I: el mensaje distingue MISMA_PARTIDA (nada especial que avisar) de
-  // PARTIDA_HIJA (una nueva entrega nació porque el pedido ya había salido parcialmente
-  // — el cajero tiene que saberlo, no es un detalle interno).
+  // El mensaje distingue MISMA_PARTIDA de PARTIDA_HIJA: una entrega nueva nace cuando el
+  // pedido ya había salido o ya estaba pagado, y quien amplía tiene que saberlo.
+  const openAddItems = () => { setAddItemsKey(crypto.randomUUID()); setAddItemsOpen(true) }
   const submitAddItems = async (lines: WorkflowLine[], motivo: string) => {
     if (!selected) return
     const lineasJsonb = buildLineasJsonb(lines, selected.channel)
+    // Solo se exige versión cuando el historial de este pedido ya cargó; si no, la base
+    // igual serializa ampliaciones del mismo pedido.
+    const versionEsperada = versionsLoadedFor === selected.id
+      ? versions.reduce((max, v) => Math.max(max, v.version), 0)
+      : undefined
     try {
-      const resultado = await agregarLineasPedido({ pedidoId: selected.id, lineas: lineasJsonb, motivo: motivo || undefined })
+      const resultado = await agregarLineasPedido({ pedidoId: selected.id, clave: addItemsKey, lineas: lineasJsonb, motivo: motivo || undefined, versionEsperada })
       setAddItemsOpen(false)
+      setAddItemsKey(crypto.randomUUID())
       await load()
       refreshCobros()
       notify(
         resultado.camino === 'PARTIDA_HIJA'
-          ? `Se generó la Entrega ${resultado.entregaNumero ?? ''} — el pedido ya había salido parcialmente.`
+          ? `Se generó la Entrega ${resultado.entregaNumero ?? ''} por lo agregado.`
           : 'Se agregó al pedido.'
       )
     } catch (error) {
-      if (error instanceof AgregarLineasHttpError && error.cationOk) {
-        // Las líneas ya quedaron agregadas en Cation (paso anterior, no se revierte) —
-        // el pedido tiene que reflejarlas aunque el paso de Hermes haya fallado.
-        setAddItemsOpen(false)
+      if (error instanceof AmpliarPedidoError && error.esConflicto) {
+        // El pedido cambió o la clave ya se usó con otro contenido: se recarga y el
+        // siguiente intento sale con clave nueva sobre el pedido vigente.
+        setAddItemsKey(crypto.randomUUID())
         await load()
       }
+      // Cualquier otro error: no quedó nada escrito; se conserva la clave para reintentar.
       notify(error instanceof Error ? error.message : 'No se pudieron agregar los ítems al pedido')
     }
   }
@@ -451,7 +461,7 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
       <ResumenCobroPedido cobro={getCobro(selected.id)} />
       <details className="cobro-traza-acordeon"><summary>Partidas saldadas y responsables de cobros</summary><DetalleCobroPedido pedidoId={selected.id} /></details>
       <div className="order-overview"><div><span>Total del pedido vigente</span><strong>{formatMoney(money(orderTotal(selected)))}</strong></div><div><span>Ítems del pedido vigente</span><strong>{selected.lines.filter((line) => !lineaInactiva(line.lineStatus)).length}</strong></div><div><span>Anticipos registrados</span><strong>{formatMoney(money(advances.reduce((sum, advance) => sum + advance.amountCents, 0)))}</strong></div></div>
-      <div className="panel-top-actions">{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && (orderBalance?.disponible ?? 0) > 0 && <button className="secondary-button credit-apply-button" disabled={!sessionId} onClick={() => setBalanceOpen(true)}><HandCoins /> Usar saldo a favor</button>}<button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" disabled={selected.status === 'cancelled' || !selected.lines.some((line) => !lineaInactiva(line.lineStatus))} title="Registro manual de cantidades y firmas de esta entrega" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={readOnly || selected.status === 'cancelled' || (featureFlags.supabase && !sessionId)} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button>{featureFlags.supabase && !usarEdicion && !readOnly && selected.status !== 'cancelled' && <button className="secondary-button" onClick={()=>setAddItemsOpen(true)}><PackagePlus /> Agregar ítems</button>}</div>
+      <div className="panel-top-actions">{featureFlags.supabase && !readOnly && selected.status !== 'cancelled' && (orderBalance?.disponible ?? 0) > 0 && <button className="secondary-button credit-apply-button" disabled={!sessionId} onClick={() => setBalanceOpen(true)}><HandCoins /> Usar saldo a favor</button>}<button className="secondary-button" onClick={()=>setOrderDoc(selected)}><FileDown /> Pedido A4</button><button className="secondary-button" disabled={selected.status === 'cancelled' || !selected.lines.some((line) => !lineaInactiva(line.lineStatus))} title="Registro manual de cantidades y firmas de esta entrega" onClick={()=>setDeliveryNote(selected)}><FileDown /> Nota de entrega A4</button><button className="secondary-button" disabled={readOnly || selected.status === 'cancelled' || (featureFlags.supabase && !sessionId)} onClick={()=>setAdvanceOpen(true)}><HandCoins /> Registrar anticipo</button>{featureFlags.supabase && !usarEdicion && !readOnly && selected.status !== 'cancelled' && <button className="secondary-button" onClick={openAddItems}><PackagePlus /> Agregar ítems</button>}</div>
       {(orderBalance?.aplicadoPedido ?? 0) > 0 && <div className="credit-payment-summary"><strong>Saldo a favor aplicado: Bs {orderBalance!.aplicadoPedido.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><span>Pendiente sin pagos en revisión: Bs {orderBalance!.pedidoPendiente.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>}<div className="order-status-line"><PackageCheck /><div><span>Estado actual</span><strong>{statusLabel[selected.status]}</strong></div></div>
       {selected.conditionPago && <div className="autoria-row"><span className="channel-chip">{condicionPagoLabel[selected.conditionPago]}</span>{selected.medioPago && <span className="channel-chip">{metodoPagoLabel[selected.medioPago] ?? selected.medioPago}</span>}</div>}
       {/* Brief S3 Parte B: autoría — quién creó el pedido, y si nació de una conversión,
