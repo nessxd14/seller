@@ -98,9 +98,10 @@ export const ventaDirectaMockRepository = {
     const subtotalCents = lines.reduce((sum, l) => sum + l.precioUnitarioCents * l.cantidadPresentacion, 0)
     return store.save({ ...existing, lines, subtotalCents, totalCents: subtotalCents - existing.discountCents })
   },
-  async anular(id: string): Promise<VentaDirectaRecord> {
+  async anular(id: string, motivo: string): Promise<VentaDirectaRecord> {
     const existing = await store.get(id)
     if (!existing) throw new Error('Venta directa no encontrada')
+    if (motivo.trim().length < 5) throw new Error('El motivo de la anulación debe tener al menos 5 caracteres')
     return store.save({ ...existing, estado: 'ANULADA' })
   },
   // Réplica de marcar_vtd_pago_posterior: VTD ABIERTA sin pago, motivo >= 5, contacto >= 3 si no hay cliente.

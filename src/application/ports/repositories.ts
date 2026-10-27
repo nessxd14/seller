@@ -1,4 +1,4 @@
-import type { BorradorOperacionRecord, BorradorOperacionTipo, CashSessionRecord, CobrarVtdResultado, CustomerRecord, OrderView, QuoteDraft, VentaDirectaRecord, VtdPorCobrar } from '../shared/models'
+import type { AnulacionResultado, AnulacionSolicitud, AnulacionSolicitudEstado, AnulacionSolicitudResultado, BorradorOperacionRecord,BorradorOperacionTipo, CashSessionRecord, CobrarVtdResultado, CustomerRecord, OrderView, QuoteDraft, VentaDirectaRecord, VtdPorCobrar } from '../shared/models'
 import type { Product } from '../../types'
 import type { CategoriaPedido } from '../../domain/orders/segmentoPedido'
 
@@ -93,13 +93,27 @@ export interface VentaDirectaRepository {
   // ajustes: solo reduce (nunca sube) — la RPC rechaza subir; ver brief 2.5. motivo es
   // obligatorio (rechazo/cambio de cantidad) — la RPC lo exige apenas alguna línea cambia.
   ajustar(id:string,ajustes:Array<{lineaId:string;cantidadPresentacion:number}>,cashSessionId:string|undefined,motivo:string,context:MutationContext):Promise<VentaDirectaRecord>
-  anular(id:string,cashSessionId:string|undefined,context:MutationContext):Promise<VentaDirectaRecord>
+  // motivo: obligatorio (>= 5) — anular_venta lo exige y solo Ness/gerente pueden anular (app_puede_anular).
+  anular(id:string,cashSessionId:string|undefined,motivo:string,context:MutationContext):Promise<VentaDirectaRecord>
   // Brief Caja VTD: cobro de VTD postcobrado por caja — cobrar_vtd, independiente de
   // abrir_venta/completar_venta (no toca Kardex). listPorCobrar lee v_vtd_por_cobrar.
   listPorCobrar():Promise<VtdPorCobrar[]>
   cobrarVtd(input:{ventaIds:string[];sesionCajaId:string;pagos:SaleCheckoutPayment[]},context:MutationContext&{idempotencyKey:string}):Promise<CobrarVtdResultado>
   // Entrega sin cobro: solo VTD ABIERTA sin pago; motivo >= 5 caracteres, contacto obligatorio sin cliente.
   marcarPagoPosterior(ventaId:string,motivo:string,contacto:string|undefined):Promise<void>
+}
+
+// Anulación de tickets (VTA + VTD). Los permisos y la sesión de la devolución los decide la base.
+export interface AnulacionRepository {
+  /** app_puede_anular(): solo Ness y el gerente (tabla anulador_autorizado), nunca derivado de rol/permisos. */
+  puedeAnular():Promise<boolean>
+  anular(ventaId:string,motivo:string):Promise<AnulacionResultado>
+  solicitar(ventaId:string,motivo:string):Promise<AnulacionSolicitudResultado>
+  retirar(solicitudId:string):Promise<void>
+  aprobar(solicitudId:string,nota?:string):Promise<AnulacionResultado>
+  rechazar(solicitudId:string,nota:string):Promise<void>
+  /** estado undefined = SOLICITADA; null = todos los estados. */
+  listar(estado?:AnulacionSolicitudEstado|null,limite?:number):Promise<AnulacionSolicitud[]>
 }
 
 // Brief S1 — borrador_operacion: guardado explícito y cross-device, distinto de

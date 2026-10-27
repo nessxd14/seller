@@ -9,6 +9,7 @@ import { LocalIdempotencyService } from '../../application/idempotency/Idempoten
 import { SensitiveOperationExecutor } from '../../application/idempotency/SensitiveOperationExecutor'
 import { transferService as rawTransferService, type CreateTransferInput } from './TransferRepository.mock'
 import { ventaDirectaMockRepository } from './VentaDirectaRepository.mock'
+import { anulacionMockRepository } from './AnulacionRepository.mock'
 import type { BorradorOperacionTipo, VentaDirectaRecord } from '../../application/shared/models'
 import { borradorOperacionMockRepository } from './BorradorOperacionRepository.mock'
 import { mockAuthSessionProvider } from './MockAuthSessionProvider'
@@ -196,6 +197,8 @@ export const borradorOperacionService = {
   remove: (id: string) => borradorOperacionMockRepository.remove(id),
 }
 
+export const anulacionService = anulacionMockRepository
+
 export const ventaDirectaService = {
   getUbicacionVentasDirectas(): Promise<number> {
     return ventaDirectaMockRepository.getUbicacionVentasDirectas()
@@ -217,8 +220,8 @@ export const ventaDirectaService = {
   ajustar(id: string, ajustes: Array<{ lineaId: string; cantidadPresentacion: number }>, _cashSessionId: string | undefined, motivo: string): Promise<VentaDirectaRecord> {
     return ventaDirectaMockRepository.ajustar(id, ajustes, motivo)
   },
-  anular(id: string): Promise<VentaDirectaRecord> {
-    return ventaDirectaMockRepository.anular(id)
+  anular(id: string, _cashSessionId: string | undefined, motivo: string): Promise<VentaDirectaRecord> {
+    return ventaDirectaMockRepository.anular(id, motivo)
   },
   listPorCobrar() {
     return ventaDirectaMockRepository.listPorCobrar()

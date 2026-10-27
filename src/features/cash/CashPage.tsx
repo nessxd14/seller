@@ -5,7 +5,9 @@ import { hasPermission } from '../../application/auth/AuthSessionProvider'
 import type { VtdPendienteCierre } from '../../infrastructure/supabase/TurnoRepository.supabase'
 import type { CajaFaltanteRecord, CajaGastoRecord, CashSessionRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoResumen, TurnoSesion, TurnoTicket, TurnoMovimiento } from '../../application/shared/models'
 import { sugerirPagosQr, type SugerenciaQr } from '../../domain/cash/qrSuggestions'
-import { authSessionProvider, cashService, sensitiveOperations, turnoService, ventaDirectaService } from '../../infrastructure/services'
+import { anulacionService, authSessionProvider, cashService, sensitiveOperations, turnoService, ventaDirectaService } from '../../infrastructure/services'
+import type { AnulacionSolicitud } from '../../application/shared/models'
+import { MisSolicitudesAnulacion, SolicitudesAnulacionBandeja } from './SolicitudesAnulacion'
 import { formatMoney, money } from '../../domain/common/money'
 import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
@@ -163,13 +165,21 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
   const [movimientos, setMovimientos] = useState<TurnoMovimiento[]>([])
   const [loadError, setLoadError] = useState('')
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
+  // "Mis solicitudes de anulación": solo para quien no anula directo (Ness / gerente las revisan en Supervisión).
+  const [misSolicitudes, setMisSolicitudes] = useState<AnulacionSolicitud[]>([])
 
   const load = useCallback(async () => {
     try {
       const [r, t, m] = await Promise.all([turnoService.resumen(sesion.id), turnoService.misTickets(sesion.id), turnoService.movimientos(sesion.id)])
       setResumen(r); setTickets(t); setMovimientos(m); setUpdatedAt(new Date()); setLoadError('')
     } catch (error) { setLoadError(error instanceof Error ? error.message : 'No se pudo actualizar el turno') }
-  }, [sesion.id])
+    if (!readOnly) {
+      try {
+        const puede = await anulacionService.puedeAnular().catch(() => false)
+        setMisSolicitudes(puede ? [] : await anulacionService.listar(null, 20))
+      } catch { /* informativo: conserva lo último cargado */ }
+    }
+  }, [sesion.id, readOnly])
   useCashRefresh(load, sesion.id)
 
   const registrarMovimiento = async (subtipo: 'GASTO' | 'REMESA' | 'INYECCION', montoBs: number, motivo: string, comprobantePath?: string, idempotencyKey?: string) => {
@@ -280,6 +290,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
       onVerComprobante={(path) => { void turnoService.comprobanteUrl(path).then((url) => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); else notify('No se pudo abrir el comprobante') }) }}
       onAlternarArqueo={(m) => void alternarFueraDeArqueo(m)}
     />
+    {!readOnly && <MisSolicitudesAnulacion solicitudes={misSolicitudes} notify={notify} onChanged={() => void load()} />}
     {featureFlags.supabase && <CajaComprobantes sessionId={sesion.id} />}
     {featureFlags.supabase && !readOnly && <CajaAlmacenEnEspera />}
     {movimientoOpen && <MovimientoTurnoModal tipo={movimientoOpen} sesionId={sesion.id} onClose={() => setMovimientoOpen(null)} onConfirm={registrarMovimiento} />}
@@ -294,7 +305,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
       <footer className="modal-actions"><button className="primary-button full-button" onClick={() => { setCloseResult(null); onClosed() }}>Aceptar</button></footer>
     </Modal>}
     {reprintId && <VentaTicket id={reprintId} onClose={() => setReprintId(null)} />}
-    {detalleVentaId && <VentaDetalleModal key={detalleVentaId} id={detalleVentaId} onClose={() => setDetalleVentaId(null)} />}
+    {detalleVentaId && <VentaDetalleModal key={detalleVentaId} id={detalleVentaId} notify={notify} onChanged={() => void load()} onClose={() => setDetalleVentaId(null)} />}
   </div>
 }
 
@@ -524,9 +535,24 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
   const [pagosPorVerificar, setPagosPorVerificar] = useState<PagoPorVerificar[]>([])
   const [movimientosSinVincular, setMovimientosSinVincular] = useState<MovimientoBancoQr[]>([])
 
+  // Solicitudes de anulación: solo Ness / gerente (app_puede_anular) ven la sección. Se cargan con el
+  // mismo ciclo de refresco del panel y un fallo aquí no tumba el resto de la supervisión.
+  const [puedeAnular, setPuedeAnular] = useState(false)
+  const [anulacionesPendientes, setAnulacionesPendientes] = useState<AnulacionSolicitud[]>([])
+  const [anulacionesResueltas, setAnulacionesResueltas] = useState<AnulacionSolicitud[]>([])
+
   const [loadError, setLoadError] = useState('')
   const load = useCallback(async () => {
     try {
+    const puede = await anulacionService.puedeAnular().catch(() => false)
+    setPuedeAnular(puede)
+    if (puede) {
+      try {
+        const [pendientes, recientes] = await Promise.all([anulacionService.listar('SOLICITADA'), anulacionService.listar(null, 20)])
+        setAnulacionesPendientes(pendientes)
+        setAnulacionesResueltas(recientes.filter((s) => s.estado !== 'SOLICITADA'))
+      } catch { /* la bandeja conserva lo último cargado */ }
+    }
     const abierta = await turnoService.getSesionAbierta()
     setSesion(abierta)
     const [r, g, rev, f, banco, pagos, movimientos] = await Promise.all([
@@ -660,6 +686,7 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
         <div><button type="button" onClick={() => void resolverFaltante(f.id, 'REPUESTO')}>Repuesto</button><button type="button" onClick={() => void resolverFaltante(f.id, 'CONDONADO')}>Condonado</button></div>
       </div>) : <FeatureState type="empty" text="Sin faltantes pendientes" />}
     </section>
+    {puedeAnular && <SolicitudesAnulacionBandeja pendientes={anulacionesPendientes} resueltas={anulacionesResueltas} notify={notify} onResolved={() => void load()} />}
     {featureFlags.supabase && <CajaAlmacenEnEspera />}
     <section className="cash-movements pagos-verificar">
       <header>

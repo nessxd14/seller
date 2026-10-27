@@ -484,6 +484,45 @@ export interface VentaTicketRecord {
   pagos: VentaTicketPago[]
 }
 
+// Anulación de tickets (VTA + VTD): anular_venta / solicitar_anulacion_venta y compañía. La base
+// decide quién puede anular y de qué turno sale la devolución; la UI solo lo explica.
+export type AnulacionSolicitudEstado = 'SOLICITADA' | 'APROBADA' | 'RECHAZADA' | 'RETIRADA'
+export interface AnulacionResultado {
+  ventaId: string
+  estado: 'ANULADA'
+  estadoPrevio?: string
+  devuelto: number
+  reintegroSesionId?: string
+  fueraDeArqueo: boolean
+  kardexRevertido?: boolean
+  via?: string
+  solicitudId?: string
+}
+export interface AnulacionSolicitudResultado { solicitudId: string; ventaId: string; numero?: string; estado: 'SOLICITADA' }
+export interface AnulacionSolicitud {
+  id: string
+  ventaId: string
+  numero: string | null
+  total: number
+  ventaEstado: string
+  cliente?: string
+  estado: AnulacionSolicitudEstado
+  motivo: string
+  solicitadaPor?: string
+  solicitadaEn: string
+  sesionSolicitudId?: string
+  resueltaPor?: string
+  resueltaEn?: string
+  notaResolucion?: string
+  reintegroMonto?: number
+  reintegroSesionId?: string
+  reintegroFueraDeArqueo?: boolean
+  reintegroDetalle?: unknown
+  sesionCobroId?: string
+  sesionCobroAbierta: boolean
+  cobrado: number
+}
+
 export interface CajaFaltanteRecord {
   id: string
   sesionCajaId: string

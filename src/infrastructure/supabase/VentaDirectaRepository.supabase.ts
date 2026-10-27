@@ -190,10 +190,10 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
     return updated
   }
 
-  async anular(id: string, cashSessionId: string | undefined, context: MutationContext): Promise<VentaDirectaRecord> {
+  async anular(id: string, cashSessionId: string | undefined, motivo: string, context: MutationContext): Promise<VentaDirectaRecord> {
     const actor = context.actorId ?? 'pos'
     const numericId = Number(id)
-    const { error } = await supabase.rpc('anular_venta', { p_venta_id: numericId, p_usuario: actor, p_sesion_caja_id: cashSessionId ? Number(cashSessionId) : null })
+    const { error } = await supabase.rpc('anular_venta', { p_venta_id: numericId, p_usuario: actor, p_sesion_caja_id: cashSessionId ? Number(cashSessionId) : null, p_motivo: motivo })
     if (error) throw toError(error)
     const updated = await fetchVtdById(numericId)
     if (!updated) throw new NotFoundError('No se pudo releer la venta directa anulada')
