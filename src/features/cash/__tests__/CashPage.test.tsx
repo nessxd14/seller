@@ -30,8 +30,11 @@ const { getSession, getResumenTurno, getSesionAbierta, abrirTurno, cerrarTurno, 
   return { getSession: vi.fn(), getResumenTurno: vi.fn(), getSesionAbierta: vi.fn(), abrirTurno: vi.fn(), cerrarTurno: vi.fn(), cerrarGerente: vi.fn(),registrarMovimiento: vi.fn(), listarMovimientos: vi.fn(), marcarFuera: vi.fn(), gastosPendientes: vi.fn(), turnosEnRevision: vi.fn(), resolverGasto: vi.fn(), revisarTurno: vi.fn(), conteoCierre: vi.fn(), sesionAbierta, cajeroSession, gerenteSession, resumenBase }
 })
 
+const anul = vi.hoisted(() => ({ puedeAnular: vi.fn(), listar: vi.fn(), aprobar: vi.fn(), rechazar: vi.fn(), retirar: vi.fn(), solicitar: vi.fn(), anular: vi.fn() }))
+
 vi.mock('../../../infrastructure/services', () => ({
-  authSessionProvider: { getSession },
+  authSessionProvider: { getSession, subscribe: () => () => {} },
+  anulacionService: anul,
   cashService: { getOpenSession: vi.fn().mockResolvedValue({ id: '1', register: 'Caja Tienda', openedAt: new Date().toISOString(), openingCents: 50000, status: 'open', movements: [] }) },
   turnoService: {
     getSesionAbierta: (...args: unknown[]) => getSesionAbierta(...args),
@@ -72,6 +75,8 @@ beforeEach(() => {
   resolverGasto.mockResolvedValue(undefined)
   revisarTurno.mockResolvedValue(undefined)
   conteoCierre.mockResolvedValue(null)
+  anul.puedeAnular.mockResolvedValue(false)
+  anul.listar.mockResolvedValue([])
 })
 
 describe('CashPage — conteo ciego (Brief Caja-1 B3)', () => {

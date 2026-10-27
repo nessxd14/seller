@@ -24,6 +24,7 @@ import type { BorradorOperacionTipo, VentaDirectaRecord } from '../../applicatio
 import { borradorOperacionRepository } from './BorradorOperacionRepository.supabase'
 import * as turnoRepository from './TurnoRepository.supabase'
 import * as pedidoVendedorRepository from './PedidoVendedorRepository.supabase'
+import { anulacionRepository } from './AnulacionRepository.supabase'
 import type { Denominaciones } from '../../application/shared/models'
 
 export const configService = configRepository
@@ -253,9 +254,9 @@ export const ventaDirectaService = {
     const actorId = await currentActorId()
     return ventaDirectaRepository.ajustar(id, ajustes, cashSessionId, motivo, { actorId })
   },
-  async anular(id: string, cashSessionId: string | undefined): Promise<VentaDirectaRecord> {
+  async anular(id: string, cashSessionId: string | undefined, motivo: string): Promise<VentaDirectaRecord> {
     const actorId = await currentActorId()
-    return ventaDirectaRepository.anular(id, cashSessionId, { actorId })
+    return ventaDirectaRepository.anular(id, cashSessionId, motivo, { actorId })
   },
   // Brief Caja VTD: "Agregar VTD" desde el carrito de venta — lista v_vtd_por_cobrar.
   async listPorCobrar() {
@@ -277,6 +278,9 @@ export const ventaDirectaService = {
     )
   },
 }
+
+// Anulación de tickets (VTA + VTD): anular directo (Ness/gerente) o solicitar y revisar.
+export const anulacionService = anulacionRepository
 
 // Piso: pedido del vendedor en su teléfono (guardar/retirar/anular/mis pedidos).
 export const pedidoVendedorService = {

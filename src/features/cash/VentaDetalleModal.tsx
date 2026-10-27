@@ -1,15 +1,26 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../../components/Modal'
-import { saleService } from '../../infrastructure/services'
-import type { VentaTicketRecord } from '../../application/shared/models'
+import { AnularVentaModal } from '../../components/AnularVentaModal'
+import { usePuedeAnular } from '../../components/usePuedeAnular'
+import { anulacionService, saleService } from '../../infrastructure/services'
+import type { AnulacionSolicitud, VentaTicketRecord } from '../../application/shared/models'
+import { mensajeAnulacion, type AnularVentaResultado } from '../../domain/sales/anulacion'
 
 const bs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export function VentaDetalleModal({ id, onClose }: { id: string; onClose: () => void }) {
+/**
+ * Detalle de una venta (Actividad → "Ver productos"). Pie con la anulación: Ness/gerente anulan
+ * (con motivo); el resto solicita. `onChanged` avisa al padre para recargar tras anular/solicitar/retirar.
+ */
+export function VentaDetalleModal({ id, onClose, notify, onChanged }: { id: string; onClose: () => void; notify?: (message: string) => void; onChanged?: () => void }) {
   const [venta, setVenta] = useState<VentaTicketRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
+  const puedeAnular = usePuedeAnular()
+  const [pendiente, setPendiente] = useState<AnulacionSolicitud | null>(null)
+  const [anulando, setAnulando] = useState(false)
+  const [retirando, setRetirando] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -22,6 +33,41 @@ export function VentaDetalleModal({ id, onClose }: { id: string; onClose: () => 
     }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [id, attempt])
+
+  // Solicitud pendiente de esta venta: Ness/gerente ven todas, el resto solo las suyas (lo filtra la base).
+  useEffect(() => {
+    let cancelled = false
+    anulacionService.listar('SOLICITADA')
+      .then((filas) => { if (!cancelled) setPendiente(filas.find((s) => s.ventaId === id) ?? null) })
+      .catch(() => { if (!cancelled) setPendiente(null) })
+    return () => { cancelled = true }
+  }, [id, attempt])
+
+  const retirar = async () => {
+    if (!pendiente || retirando) return
+    setRetirando(true)
+    try {
+      await anulacionService.retirar(pendiente.id)
+      notify?.('Solicitud de anulación retirada')
+      setPendiente(null)
+      onChanged?.()
+    } catch (err) {
+      notify?.(err instanceof Error ? err.message : 'No se pudo retirar la solicitud')
+    } finally {
+      setRetirando(false)
+    }
+  }
+
+  const terminado = (result: AnularVentaResultado) => {
+    notify?.(mensajeAnulacion(venta?.numero, result))
+    setAnulando(false)
+    onChanged?.()
+    onClose()
+  }
+
+  const anulable = !!venta && venta.estado !== 'ANULADA'
+  // Lo cobrado sale de los pagos guardados de la venta; el turno del cobro solo lo conoce la fila de solicitud.
+  const cobrado = venta ? venta.pagos.reduce((sum, p) => sum + p.montoBs, 0) : undefined
 
   return <Modal className="cash-dialog cash-sale-detail" title={venta?.numero ? `Productos · ${venta.numero}` : 'Detalle de venta'} onClose={onClose}>
     <div className="modal-body">
@@ -40,8 +86,13 @@ export function VentaDetalleModal({ id, onClose }: { id: string; onClose: () => 
           <div><dt>Descuento</dt><dd>Bs {bs(venta.descuentoBs)}</dd></div>
           <div><dt>Total de la venta</dt><dd>Bs {bs(venta.totalBs)}</dd></div>
         </dl>
+        {anulable && pendiente && <p className="anular-venta-pendiente" role="status">Anulación solicitada · esperando revisión <button type="button" className="aprobacion-link" disabled={retirando} onClick={() => void retirar()}>Retirar</button></p>}
       </>}
     </div>
-    <footer className="modal-actions"><button type="button" className="primary-button" onClick={onClose}>Cerrar detalle</button></footer>
+    <footer className="modal-actions">
+      {anulable && !pendiente && <button type="button" className={puedeAnular ? 'danger-button' : 'secondary-button'} onClick={() => setAnulando(true)}>{puedeAnular ? 'Anular venta' : 'Solicitar anulación'}</button>}
+      <button type="button" className="primary-button" onClick={onClose}>Cerrar detalle</button>
+    </footer>
+    {anulando && venta && <AnularVentaModal venta={{ id, numero: venta.numero, total: venta.totalBs, cobrado }} puedeAnular={puedeAnular} onDone={terminado} onClose={() => setAnulando(false)} />}
   </Modal>
 }

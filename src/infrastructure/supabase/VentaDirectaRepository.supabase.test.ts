@@ -18,8 +18,14 @@ describe('VentaDirectaRepository — errores de la base (Brief Caja VTD obligato
 
   it('conserva el code 42501 para que esErrorAutorizacion siga funcionando', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'no autorizado', code: '42501' } })
-    const error = await repo.anular('7', undefined, { actorId: 'a' }).catch((e: unknown) => e)
+    const error = await repo.anular('7', undefined, 'Error de cobro', { actorId: 'a' }).catch((e: unknown) => e)
     expect((error as { code?: string }).code).toBe('42501')
+  })
+
+  it('anular manda el motivo a anular_venta', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'x', code: 'P0001' } })
+    await repo.anular('7', '3', 'Error de cobro', { actorId: 'a' }).catch(() => undefined)
+    expect(rpc).toHaveBeenCalledWith('anular_venta', { p_venta_id: 7, p_usuario: 'a', p_sesion_caja_id: 3, p_motivo: 'Error de cobro' })
   })
 })
 

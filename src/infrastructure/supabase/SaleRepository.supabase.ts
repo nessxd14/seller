@@ -2,7 +2,6 @@ import { supabase } from './supabaseClient'
 import type { MutationContext, SaleCheckoutLine, SalePortRecord, SaleRepository } from '../../application/ports/repositories'
 import { NotFoundError } from '../../application/errors/AppError'
 import { centsToNumeric, locationToSucursalId, methodToMetodoPago, numericToCents } from './mappers'
-import { getOpenSession } from './CashRepository.supabase'
 import type { VentaTicketRecord } from '../../application/shared/models'
 
 type EstadoVenta = 'ABIERTA' | 'COMPLETADA' | 'ANULADA'
@@ -141,11 +140,10 @@ export class SupabaseSaleRepository implements SaleRepository {
     throw new Error('En modo Supabase, usa saleService.checkout() — registrar_venta confirma la venta de forma atómica.')
   }
 
-  async cancel(id: string, _reason: string, context: MutationContext): Promise<SalePortRecord> {
+  async cancel(id: string, reason: string, context: MutationContext): Promise<SalePortRecord> {
     const actor = context.actorId ?? 'pos'
-    const session = await getOpenSession()
-    if (!session) throw new Error('No hay una sesión de caja abierta para anular la venta')
-    const { error } = await supabase.rpc('anular_venta', { p_venta_id: Number(id), p_usuario: actor, p_sesion_caja_id: Number(session.id) })
+    // La base decide de qué turno sale la devolución (p_sesion_caja_id se ignora).
+    const { error } = await supabase.rpc('anular_venta', { p_venta_id: Number(id), p_usuario: actor, p_sesion_caja_id: null, p_motivo: reason })
     if (error) throw error
     const updated = await this.getById(id)
     if (!updated) throw new NotFoundError('No se pudo releer la venta anulada')

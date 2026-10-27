@@ -4,6 +4,9 @@ import { FeatureShell, FeatureState } from '../shared/FeatureShell'
 import { Modal } from '../../components/Modal'
 import { VtdTicketPreviewModal } from '../../components/VtdTicketPreviewModal'
 import { CobrarVtdPaymentModal } from '../../components/CobrarVtdPaymentModal'
+import { AnularVentaModal } from '../../components/AnularVentaModal'
+import { usePuedeAnular } from '../../components/usePuedeAnular'
+import { mensajeAnulacion, type AnularVentaResultado } from '../../domain/sales/anulacion'
 import { useCobroVtd } from './useCobroVtd'
 import { useCashSession } from '../../context/CashSessionContext'
 import { ventaDirectaService } from '../../infrastructure/services'
@@ -28,6 +31,8 @@ function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify:
   const [ventas, setVentas] = useState<VentaDirectaRecord[] | null>(null)
   const [ajustando, setAjustando] = useState<VentaDirectaRecord | null>(null)
   const [ticketing, setTicketing] = useState<VentaDirectaRecord | null>(null)
+  const [anulando, setAnulando] = useState<VentaDirectaRecord | null>(null)
+  const puedeAnular = usePuedeAnular()
   const [busyId, setBusyId] = useState<string | null>(null)
   const [cobrando, setCobrando] = useState<VentaDirectaRecord | null>(null)
   const [pagoPosterior, setPagoPosterior] = useState<VentaDirectaRecord | null>(null)
@@ -105,18 +110,12 @@ function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify:
     }
   }
 
-  const anular = async (venta: VentaDirectaRecord) => {
-    if (!window.confirm(`¿Anular ${venta.numero}? Si pasó por Caja–Almacén, el sistema te indicará cómo resolverla.`)) return
-    setBusyId(venta.id)
-    try {
-      await ventaDirectaService.anular(venta.id, venta.sesionCajaId || sessionId || undefined)
-      notify(`${venta.numero} anulada`)
-      void load()
-    } catch (error) {
-      manejarError(error, 'anular la venta')
-    } finally {
-      setBusyId(null)
-    }
+  // Anular (Ness/gerente) o solicitar la anulación (resto) pasa por AnularVentaModal: motivo obligatorio,
+  // y los errores de la base —incluidos los de Caja–Almacén— se muestran ahí tal cual.
+  const terminarAnulacion = (venta: VentaDirectaRecord, result: AnularVentaResultado) => {
+    notify(mensajeAnulacion(venta.numero, result))
+    setAnulando(null)
+    void load()
   }
 
   if (ventas === null) return <FeatureShell eyebrow="ALMACÉN" title="Venta Directa" subtitle="Ventas abiertas de este turno de caja">{loadError ? <><p role="alert">{loadError}</p><button disabled={refreshing} onClick={() => void load()}>Reintentar</button></> : <FeatureState type="skeleton" text="Cargando…" />}</FeatureShell>
@@ -161,13 +160,14 @@ function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify:
                     {porCobrar && <button className="primary-button vtd-card-cobrar" disabled={busyId === venta.id} onClick={() => { cobro.clearError(); setCobrando(venta) }}><HandCoins size={12} /> Cobrar</button>}
                     {porCobrar && <button className="vtd-card-pago-posterior-btn" disabled={busyId === venta.id} onClick={() => setPagoPosterior(venta)}>Pago posterior…</button>}
                     <button className="vtd-card-completar" disabled={busyId === venta.id} onClick={() => void consultarEntrega(venta)}><RefreshCw size={12} /> Consultar entrega</button>
-                    <button className="danger-button" disabled={busyId === venta.id} onClick={() => void anular(venta)}><Ban size={12} /> Anular</button>
+                    <button className="danger-button" disabled={busyId === venta.id} onClick={() => setAnulando(venta)}><Ban size={12} /> {puedeAnular ? 'Anular' : 'Solicitar anulación'}</button>
                   </div>
                 </article>
               )
             })}
           </div>}
       {ajustando && <AjustarVentaModal venta={ajustando} onClose={() => setAjustando(null)} onDone={() => { setAjustando(null); load() }} notify={notify} />}
+      {anulando && <AnularVentaModal venta={{ id: anulando.id, numero: anulando.numero, total: anulando.totalCents / 100, cobrado: anulando.paidCents / 100 }} puedeAnular={puedeAnular} nota="Si pasó por Caja–Almacén, el sistema te indicará cómo resolverla." onDone={(result) => terminarAnulacion(anulando, result)} onClose={() => setAnulando(null)} />}
       {ticketing && <VtdTicketPreviewModal venta={ticketing} onClose={() => setTicketing(null)} />}
       {cobrando && <CobrarVtdPaymentModal ventas={[aPorCobrar(cobrando)]} submitting={cobro.submitting} error={cobro.error} onClose={() => { cobro.clearError(); setCobrando(null) }} onConfirm={(payments) => void confirmarCobro(cobrando, payments)} />}
       {pagoPosterior && <PagoPosteriorModal venta={pagoPosterior} onClose={() => setPagoPosterior(null)} onDone={() => { notify(`${pagoPosterior.numero} marcada como pago posterior`); setPagoPosterior(null); load() }} />}

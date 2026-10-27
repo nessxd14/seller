@@ -520,3 +520,30 @@ body:has(.remote-cash-app) { min-width:0; overflow:auto; margin:0; background:#f
   .cash-workspace .actividad-filtro { flex-shrink:0; }
   .cash-workspace .actividad-detalle .credit-client-tag { display:none !important; }
 }
+
+/* Anulación de tickets: modal único, bandeja de revisión y lista del cajero. */
+.anular-venta-modal .anular-venta-refund, .bandeja-anulaciones .anular-venta-refund { margin:0 0 12px; padding:10px 12px; border-radius:10px; background:#eef4ff; border:1px solid #cfe0fb; color:var(--cash-ink); font-size:13px; line-height:1.5; }
+.anular-venta-modal .anular-venta-nota { margin:0 0 12px; color:var(--cash-muted); font-size:12px; }
+.anular-venta-motivo { display:grid; gap:6px; font-size:13px; font-weight:650; }
+.anular-venta-motivo textarea { width:100%; min-height:84px; padding:10px 12px; border:1px solid #cbd9ec; border-radius:10px; font:500 15px 'Manrope Variable',sans-serif; resize:vertical; }
+.anular-venta-motivo small { color:var(--cash-muted); font-weight:500; }
+.anular-venta-motivo small.anular-venta-contador-corto { color:#9b3529; }
+.anular-venta-modal .primary-button.peligro { background:#b3261e; border-color:#b3261e; }
+.cash-sale-detail .danger-button { min-height:44px; padding:10px 16px; border-radius:10px; border:1px solid #f3d0c8; background:#fff0ed; color:#9b3529; font-weight:700; }
+.anular-venta-pendiente { margin:12px 0 0; padding:10px 12px; border-radius:10px; background:#fff7e6; border:1px solid #f1dcae; color:#854F0B; font-size:13px; font-weight:650; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.anulacion-contador { display:inline-block; min-width:22px; padding:1px 8px; margin-left:6px; border-radius:999px; background:#2563eb; color:#fff; font-size:12px; text-align:center; }
+.anulacion-motivo { margin:6px 0; font-size:13px; font-style:italic; color:var(--cash-ink); }
+.anulacion-badge { display:inline-block; width:fit-content; padding:3px 8px; border-radius:7px; font-size:11px; font-weight:700; }
+.anulacion-badge.turno { background:#dbeafe; color:#1e40af; }
+.anulacion-badge.fuera-de-arqueo { background:#fef3c7; color:#854F0B; }
+.anulacion-badge.sin-cobro { background:#eef1f5; color:#526279; }
+.anulacion-chip { padding:2px 8px; border-radius:7px; font-size:11px; font-style:normal; font-weight:700; background:#eef1f5; color:#526279; }
+.anulacion-chip.solicitada { background:#fef3c7; color:#854F0B; }
+.anulacion-chip.aprobada { background:#d1fae5; color:#065f46; }
+.anulacion-chip.rechazada { background:#fee2e2; color:#9b3529; }
+.anulacion-resueltas { margin-top:12px; font-size:13px; }
+.anulacion-resueltas ul, .mis-anulaciones ul { list-style:none; margin:8px 0 0; padding:0; display:grid; gap:10px; }
+.anulacion-resueltas li, .mis-anulaciones li { display:grid; gap:2px; }
+.anulacion-resueltas small, .mis-anulaciones small { color:var(--cash-muted); }
+.mis-anulaciones { padding:16px 18px; }
+.anulacion-vacia { color:var(--cash-muted); font-size:13px; }

@@ -4,10 +4,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import type { VentaDirectaRecord } from '../../../application/shared/models'
 import { VentaDirectaPage } from '../VentaDirectaPage'
 
-const mocks = vi.hoisted(() => ({ listAbiertas: vi.fn(), completar: vi.fn(), cobrarVtd: vi.fn(), getById: vi.fn(), marcarPagoPosterior: vi.fn() }))
+const mocks = vi.hoisted(() => ({ listAbiertas: vi.fn(), completar: vi.fn(), cobrarVtd: vi.fn(), getById: vi.fn(), marcarPagoPosterior: vi.fn(), puedeAnular: vi.fn(), anular: vi.fn(), solicitar: vi.fn() }))
 vi.mock('../../../context/CashSessionContext', () => ({ useCashSession: () => ({ sessionId: '1' }) }))
 vi.mock('../../../components/VtdTicketPreviewModal', () => ({ VtdTicketPreviewModal: ({ venta }: { venta: VentaDirectaRecord }) => <div role="dialog" aria-label="ticket">ticket {venta.numero}</div> }))
 vi.mock('../../../infrastructure/services', () => ({
+  authSessionProvider: { subscribe: () => () => {} },
+  anulacionService: { puedeAnular: (...a: unknown[]) => mocks.puedeAnular(...a), anular: (...a: unknown[]) => mocks.anular(...a), solicitar: (...a: unknown[]) => mocks.solicitar(...a) },
   ventaDirectaService: {
     listAbiertas: (...a: unknown[]) => mocks.listAbiertas(...a),
     completar: (...a: unknown[]) => mocks.completar(...a),
@@ -26,7 +28,7 @@ const base: VentaDirectaRecord = {
 const TRIGGER_MSG = 'VTD-2026-00001 no está cobrada. Cóbrala en caja antes de entregar, o márcala como pago posterior con motivo.'
 const entrega = () => screen.getByRole('button', { name: /Consultar entrega/ }) as HTMLButtonElement
 
-beforeEach(() => { vi.clearAllMocks(); mocks.listAbiertas.mockResolvedValue([base]) })
+beforeEach(() => { vi.clearAllMocks(); mocks.listAbiertas.mockResolvedValue([base]); mocks.puedeAnular.mockResolvedValue(true) })
 afterEach(cleanup)
 
 describe('Bandeja de Venta Directa — cobro obligatorio (Brief Caja VTD obligatorio A3/A5)', () => {
@@ -153,5 +155,54 @@ describe('Bandeja de Venta Directa — cobro obligatorio (Brief Caja VTD obligat
       fireEvent.click(confirmar())
       expect((await screen.findByRole('alert')).textContent).toBe('VTD-2026-00001 ya tiene un pago registrado')
     })
+  })
+})
+
+describe('Bandeja de Venta Directa — anulación con motivo', () => {
+  const abrirAnular = async (nombre: RegExp) => {
+    render(<VentaDirectaPage notify={() => {}} />)
+    fireEvent.click(await screen.findByRole('button', { name: nombre }))
+    return screen.findByRole('dialog', { name: /Anular|Solicitar anulación/ })
+  }
+
+  it('Ness/gerente: pide motivo (>= 5) y anula con él', async () => {
+    mocks.anular.mockResolvedValue({ ventaId: '1', estado: 'ANULADA', devuelto: 0, fueraDeArqueo: false })
+    const notify = vi.fn()
+    render(<VentaDirectaPage notify={notify} />)
+    await waitFor(() => expect(mocks.puedeAnular).toHaveBeenCalled())
+    fireEvent.click(await screen.findByRole('button', { name: /^Anular$/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Anular VTD-2026-00001' })
+    const enviar = within(dialog).getByRole('button', { name: 'Anular venta' }) as HTMLButtonElement
+    expect(enviar.disabled).toBe(true)
+    fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'abc' } })
+    expect(enviar.disabled).toBe(true)
+    fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'Error de cobro' } })
+    fireEvent.click(enviar)
+    await waitFor(() => expect(mocks.anular).toHaveBeenCalledWith('1', 'Error de cobro'))
+    expect(mocks.solicitar).not.toHaveBeenCalled()
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(expect.stringContaining('VTD-2026-00001 anulada')))
+  })
+
+  it('cajero: solo "Solicitar anulación" y crea una solicitud', async () => {
+    mocks.puedeAnular.mockResolvedValue(false)
+    mocks.solicitar.mockResolvedValue({ solicitudId: '9', ventaId: '1', numero: 'VTD-2026-00001', estado: 'SOLICITADA' })
+    const dialog = await abrirAnular(/Solicitar anulación/)
+    expect(dialog.getAttribute('aria-label')).toBe('Solicitar anulación de VTD-2026-00001')
+    expect(within(dialog).getByText('Ness o el gerente revisarán tu solicitud.')).toBeTruthy()
+    fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'Cliente se arrepintió' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enviar solicitud' }))
+    await waitFor(() => expect(mocks.solicitar).toHaveBeenCalledWith('1', 'Cliente se arrepintió'))
+    expect(mocks.anular).not.toHaveBeenCalled()
+  })
+
+  it('muestra el error de la base tal cual dentro del modal', async () => {
+    mocks.anular.mockRejectedValue(new Error('La venta pasó por Caja–Almacén: resuélvela allí'))
+    render(<VentaDirectaPage notify={() => {}} />)
+    await waitFor(() => expect(mocks.puedeAnular).toHaveBeenCalled())
+    fireEvent.click(await screen.findByRole('button', { name: /^Anular$/ }))
+    const dialog = await screen.findByRole('dialog', { name: /Anular/ })
+    fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'Error de cobro' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Anular venta' }))
+    expect((await within(dialog).findByRole('alert')).textContent).toBe('La venta pasó por Caja–Almacén: resuélvela allí')
   })
 })
