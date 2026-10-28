@@ -71,7 +71,7 @@ interface PedidoLineaRow {
 
 interface PedidoEventoRow {
   id: number
-  accion: 'ANULADO' | 'RESTAURADO' | 'LINEA_RECHAZADA' | 'PEDIDO_RECHAZADO' | 'LINEA_CAMBIADA' | 'LINEA_RETIRADA' | 'LINEAS_AGREGADAS' | 'REMANENTE_CANCELADO'
+  accion: 'ANULADO' | 'RESTAURADO' | 'LINEA_RECHAZADA' | 'PEDIDO_RECHAZADO' | 'LINEA_CAMBIADA' | 'LINEA_RETIRADA' | 'LINEAS_AGREGADAS' | 'REMANENTE_CANCELADO' | 'REEMPLAZO_MATERIAL'
   motivo: string | null
   estado_previo: string | null
   usuario: string
@@ -92,6 +92,7 @@ const accionLabel: Record<PedidoEventoRow['accion'], string> = {
   PEDIDO_RECHAZADO: 'Pendientes rechazados en almacén',
   REMANENTE_CANCELADO: 'Remanente cancelado y cartera ajustada en Hermes',
   LINEA_CAMBIADA: 'Línea cambiada',
+  REEMPLAZO_MATERIAL: 'Almacén cambió el material · revisar con el cliente',
   LINEA_RETIRADA: 'Línea retirada',
   LINEAS_AGREGADAS: 'Ítems agregados',
 }
