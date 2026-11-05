@@ -10,6 +10,7 @@ import type { VtdPorCobrar } from '../../application/shared/models'
 // El carrito permite cobrar una VTD sola o junto a productos de mostrador.
 // La prueba usa un turno propio y stock suficiente; el bloqueo viene de mezclar VTD.
 const listPorCobrar = vi.fn()
+const infoCajaAlmacen = vi.fn().mockResolvedValue([])
 const cobrarVtd = vi.fn()
 const vtdSeleccionable: VtdPorCobrar = { ventaId: '1', numero: 'VTD-2026-00001', estado: 'ABIERTA', clienteNombre: 'Juan Pérez', totalBs: 150, pagoPosterior: false, creadoEn: new Date().toISOString() }
 
@@ -22,6 +23,7 @@ vi.mock('../../infrastructure/services', () => ({
     getUbicacionVentasDirectas: vi.fn().mockResolvedValue(1),
     listAbiertas: vi.fn().mockResolvedValue([]),
     listPorCobrar: (...args: unknown[]) => listPorCobrar(...args),
+    infoCajaAlmacen: (...args: unknown[]) => infoCajaAlmacen(...args),
     cobrarVtd: (...args: unknown[]) => cobrarVtd(...args),
     getById: vi.fn().mockResolvedValue(null),
   },
@@ -80,6 +82,16 @@ describe('CartPanel — cobro de VTD desde el carrito (Brief Caja VTD)', () => {
     await waitFor(() => expect(screen.getByText(/VTD-2026-00001/)).toBeTruthy())
     expect((screen.getByRole('button',{name:/Cobrar todo/}) as HTMLButtonElement).disabled).toBe(false)
     expect(screen.queryByText(/Por ahora la VTD se cobra sola/)).toBeNull()
+  })
+
+  it('no ofrece VTD que ya tienen operación Caja–Almacén: vincularlas fallaría', async () => {
+    listPorCobrar.mockResolvedValue([vtdSeleccionable])
+    infoCajaAlmacen.mockResolvedValueOnce([{ ventaId: vtdSeleccionable.ventaId, cajaAlmacen: true }])
+    render(<Wrapper withCatalogItem={false} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Agregar VTD por cobrar' }))
+    await screen.findByText(/se cobran desde Ventas Directas/)
+    expect(screen.queryByText('VTD-2026-00001')).toBeNull()
   })
 
   it('mezclar catálogo + VTD habilita un cobro único con el total combinado', async () => {

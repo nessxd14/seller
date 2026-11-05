@@ -18,13 +18,16 @@ export function useCobroVtd({ sessionId, notify }: { sessionId: string | null | 
   const [ticketQueue, setTicketQueue] = useState<VentaDirectaRecord[]>([])
 
   /** true si el cobro quedó registrado (incluye el reintento idempotente). */
-  const cobrar = async (ventaIds: string[], payments: SaleCheckoutPayment[]): Promise<boolean> => {
+  const cobrar = async (ventaIds: string[], payments: SaleCheckoutPayment[], opciones: { cajaAlmacen?: boolean } = {}): Promise<boolean> => {
     if (!sessionId || inFlight.current || !ventaIds.length) return false
     inFlight.current = true
     setSubmitting(true)
     setError('')
     try {
-      const resultado = await ventaDirectaService.cobrarVtd({ ventaIds, sesionCajaId: sessionId, pagos: payments })
+      // Una VTD de Caja–Almacén se cobra por su operación (vtd_cobrar), una a la vez.
+      const resultado = opciones.cajaAlmacen
+        ? await ventaDirectaService.cobrarVtdBandeja({ ventaId: ventaIds[0], sesionCajaId: sessionId, pagos: payments })
+        : await ventaDirectaService.cobrarVtd({ ventaIds, sesionCajaId: sessionId, pagos: payments })
       notify(resultado.reintento
         ? 'Este cobro ya estaba registrado. No se cobró dos veces.'
         : `VTD cobrada — Bs ${money(resultado.totalBs)}${resultado.cambioBs > 0 ? ` · Cambio Bs ${money(resultado.cambioBs)}` : ''}`)

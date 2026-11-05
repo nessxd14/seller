@@ -277,6 +277,26 @@ export const ventaDirectaService = {
       ventaDirectaRepository.cobrarVtd(input, { actorId, idempotencyKey }),
     )
   },
+  // Bandeja sobre VTD de Caja–Almacén. Misma regla de clave que cobrarVtd: un reintento no cobra dos veces.
+  infoCajaAlmacen(ventaIds: string[]) {
+    return ventaDirectaRepository.infoCajaAlmacen(ventaIds)
+  },
+  async cobrarVtdBandeja(input: { ventaId: string; sesionCajaId: string; pagos: SaleCheckoutPayment[] }) {
+    const actorId = await currentActorId()
+    const aggregateId = cobroVtdFingerprint({ actorId, sesionCajaId: input.sesionCajaId, ventaIds: [input.ventaId], pagos: input.pagos })
+    return sensitiveOperations.execute('cobrar_vtd', aggregateId, (idempotencyKey) =>
+      ventaDirectaRepository.cobrarVtdBandeja(input, { idempotencyKey }),
+    )
+  },
+  ajustarVtdBandeja(ventaId: string, lineas: { linea_id: number; cantidad_presentacion: number }[], motivo: string, devolucion?: object): Promise<void> {
+    return ventaDirectaRepository.ajustarVtdBandeja(ventaId, lineas, motivo, devolucion)
+  },
+  rechazarVtdBandeja(ventaId: string, motivo: string, devolucionRealizada: boolean, referencia: string): Promise<void> {
+    return ventaDirectaRepository.rechazarVtdBandeja(ventaId, motivo, devolucionRealizada, referencia)
+  },
+  pagoPosteriorVtdBandeja(ventaId: string, motivo: string, contacto?: string): Promise<void> {
+    return ventaDirectaRepository.pagoPosteriorVtdBandeja(ventaId, motivo, contacto)
+  },
 }
 
 // Anulación de tickets (VTA + VTD): anular directo (Ness/gerente) o solicitar y revisar.

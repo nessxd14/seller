@@ -3,6 +3,7 @@ import { toError } from './postgrestError'
 import type { MutationContext, VentaDirectaAbrirLine, VentaDirectaRepository } from '../../application/ports/repositories'
 import type { CobrarVtdResultado, VentaDirectaRecord, VtdEstado, VtdLine, VtdPorCobrar } from '../../application/shared/models'
 import type { SaleCheckoutPayment } from '../../application/ports/repositories'
+import type { VtdCajaAlmacenInfo } from '../../application/shared/cajaAlmacen'
 import { NotFoundError } from '../../application/errors/AppError'
 import { centsToNumeric, methodToMetodoPago, numericToCents, SUCURSAL_ALMACEN_ID } from './mappers'
 
@@ -264,6 +265,70 @@ export class SupabaseVentaDirectaRepository implements VentaDirectaRepository {
       cambioBs: r.cambio != null ? num(r.cambio) : 0,
       pendienteVerificacion: r.pendiente_verificacion === true,
     }
+  }
+
+  // Desde 2026-10-19 las VTD nacen en una operación Caja–Almacén y guardar_integridad rechaza
+  // cobrar_vtd / ajustar_venta_abierta / marcar_vtd_pago_posterior sobre ellas. Estas RPC buscan
+  // su operación (migración 20261022230000_vtd_bandeja_caja_almacen).
+  async infoCajaAlmacen(ventaIds: string[]): Promise<VtdCajaAlmacenInfo[]> {
+    if (!ventaIds.length) return []
+    const { data, error } = await supabase.rpc('vtd_info', { p_venta_ids: ventaIds.map(Number) })
+    if (error) throw toError(error)
+    type Row = {
+      venta_id: number; caja_almacen: boolean; operacion_id: string | null; operacion_cerrada: boolean | null
+      turno_abierto: boolean | null; entrega: VtdCajaAlmacenInfo['entrega'] | null; version: number | null
+      faltante: VtdCajaAlmacenInfo['faltante']; lineas: VtdCajaAlmacenInfo['lineas'] | null
+    }
+    return ((data ?? []) as Row[]).map((r) => ({
+      ventaId: String(r.venta_id),
+      cajaAlmacen: r.caja_almacen === true,
+      operacionId: r.operacion_id ?? undefined,
+      operacionCerrada: r.operacion_cerrada === true,
+      turnoAbierto: r.turno_abierto === true,
+      entrega: r.entrega ?? undefined,
+      version: r.version ?? 0,
+      faltante: r.faltante ?? null,
+      lineas: r.lineas ?? [],
+    }))
+  }
+
+  // vtd_cobrar devuelve el comprobante de caja (cobro_caja.documento), no el resultado de cobrar_vtd.
+  async cobrarVtdBandeja(input: { ventaId: string; sesionCajaId: string; pagos: SaleCheckoutPayment[] }, context: { idempotencyKey: string }): Promise<CobrarVtdResultado> {
+    const { data, error } = await supabase.rpc('vtd_cobrar', {
+      p_venta_id: Number(input.ventaId),
+      p_pagos: input.pagos.map((p) => ({
+        metodo: methodToMetodoPago(p.method),
+        monto: centsToNumeric(p.amountCents),
+        ...(p.receivedCents != null ? { recibido: centsToNumeric(p.receivedCents) } : {}),
+      })),
+      p_sesion_id: Number(input.sesionCajaId),
+      p_idempotencia: context.idempotencyKey,
+    })
+    if (error) throw toError(error)
+    const r = data as { reintento?: boolean; total: number | string; cambio?: number | string | null; pagos?: { metodo: string }[] }
+    return {
+      reintento: r.reintento === true,
+      sesionCajaId: input.sesionCajaId,
+      ventas: [{ ventaId: input.ventaId, numero: null, totalBs: num(r.total), estado: 'ABIERTA' }],
+      totalBs: num(r.total),
+      cambioBs: num(r.cambio),
+      pendienteVerificacion: (r.pagos ?? []).some((p) => p.metodo !== 'EFECTIVO'),
+    }
+  }
+
+  async ajustarVtdBandeja(ventaId: string, lineas: { linea_id: number; cantidad_presentacion: number }[], motivo: string, devolucion?: object): Promise<void> {
+    const { error } = await supabase.rpc('vtd_ajustar', { p_venta_id: Number(ventaId), p_lineas: lineas, p_motivo: motivo, p_devolucion: devolucion ?? null })
+    if (error) throw toError(error)
+  }
+
+  async rechazarVtdBandeja(ventaId: string, motivo: string, devolucionRealizada: boolean, referencia: string): Promise<void> {
+    const { error } = await supabase.rpc('vtd_rechazar', { p_venta_id: Number(ventaId), p_motivo: motivo, p_devolucion_realizada: devolucionRealizada, p_referencia: referencia || null })
+    if (error) throw toError(error)
+  }
+
+  async pagoPosteriorVtdBandeja(ventaId: string, motivo: string, contacto: string | undefined): Promise<void> {
+    const { error } = await supabase.rpc('vtd_pago_posterior', { p_venta_id: Number(ventaId), p_motivo: motivo, p_contacto: contacto ?? null })
+    if (error) throw toError(error)
   }
 }
 

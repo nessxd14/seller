@@ -59,3 +59,37 @@ describe('listPorCobrar', () => {
     expect(rows[1]).toMatchObject({ pagoPosterior: false, pagoPosteriorMotivo: undefined })
   })
 })
+
+describe('RPC de la bandeja para VTD de Caja–Almacén', () => {
+  it('infoCajaAlmacen traduce vtd_info y no consulta sin ventas', async () => {
+    expect(await repo.infoCajaAlmacen([])).toEqual([])
+    expect(rpc).not.toHaveBeenCalled()
+    rpc.mockResolvedValue({ data: [{ venta_id: 7, caja_almacen: true, operacion_id: 'op', operacion_cerrada: false, turno_abierto: true, entrega: 'EN_CAJA', version: 2, faltante: null, lineas: [] }, { venta_id: 8, caja_almacen: false, operacion_id: null, operacion_cerrada: null, turno_abierto: null, entrega: null, version: null, faltante: null, lineas: null }], error: null })
+    const filas = await repo.infoCajaAlmacen(['7', '8'])
+    expect(rpc).toHaveBeenCalledWith('vtd_info', { p_venta_ids: [7, 8] })
+    expect(filas[0]).toMatchObject({ ventaId: '7', cajaAlmacen: true, entrega: 'EN_CAJA', version: 2 })
+    expect(filas[1]).toMatchObject({ ventaId: '8', cajaAlmacen: false, entrega: undefined, lineas: [] })
+  })
+
+  it('cobrarVtdBandeja llama a vtd_cobrar y traduce el comprobante', async () => {
+    rpc.mockResolvedValue({ data: { id: 5, numero: 'CJA-1', total: 90, ventas: [7], cambio: 10, pagos: [{ metodo: 'EFECTIVO', monto: 50 }, { metodo: 'QR', monto: 40 }], reintento: true }, error: null })
+    const r = await repo.cobrarVtdBandeja({ ventaId: '7', sesionCajaId: '3', pagos: [{ method: 'cash', amountCents: 5000, receivedCents: 6000 }, { method: 'qr', amountCents: 4000 }] }, { idempotencyKey: 'clave-1234' })
+    expect(rpc).toHaveBeenCalledWith('vtd_cobrar', { p_venta_id: 7, p_pagos: [{ metodo: 'EFECTIVO', monto: 50, recibido: 60 }, { metodo: 'QR', monto: 40 }], p_sesion_id: 3, p_idempotencia: 'clave-1234' })
+    expect(r).toMatchObject({ reintento: true, totalBs: 90, cambioBs: 10, pendienteVerificacion: true, sesionCajaId: '3' })
+  })
+
+  it('ajustar, rechazar y pago posterior envían los parámetros de sus RPC', async () => {
+    rpc.mockResolvedValue({ data: {}, error: null })
+    await repo.ajustarVtdBandeja('7', [{ linea_id: 1, cantidad_presentacion: 2 }], 'Falta material')
+    expect(rpc).toHaveBeenLastCalledWith('vtd_ajustar', { p_venta_id: 7, p_lineas: [{ linea_id: 1, cantidad_presentacion: 2 }], p_motivo: 'Falta material', p_devolucion: null })
+    await repo.rechazarVtdBandeja('7', 'Cliente se fue', true, '')
+    expect(rpc).toHaveBeenLastCalledWith('vtd_rechazar', { p_venta_id: 7, p_motivo: 'Cliente se fue', p_devolucion_realizada: true, p_referencia: null })
+    await repo.pagoPosteriorVtdBandeja('7', 'Paga el viernes', undefined)
+    expect(rpc).toHaveBeenLastCalledWith('vtd_pago_posterior', { p_venta_id: 7, p_motivo: 'Paga el viernes', p_contacto: null })
+  })
+
+  it('propaga el mensaje de la base', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'La operación ya se cobró', code: 'P0001' } })
+    await expect(repo.rechazarVtdBandeja('7', 'Cliente se fue', false, '')).rejects.toThrow('La operación ya se cobró')
+  })
+})

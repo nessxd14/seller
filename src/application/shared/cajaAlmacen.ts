@@ -52,6 +52,20 @@ export const faltanteTexto = (v: Pick<CajaAlmacenVtd, 'faltante' | 'lineas'>) =>
   const tiene = reportes.reduce((s, f) => s + f.cantidad_presentacion_disponible, 0)
   return `Almacén tiene ${tiene} de ${pedido}`
 }
+// Fila de vtd_info: cómo está cada VTD en Caja–Almacén. Sin operación: cajaAlmacen=false.
+export interface VtdCajaAlmacenInfo {
+  ventaId: string
+  cajaAlmacen: boolean
+  operacionId?: string
+  operacionCerrada: boolean
+  turnoAbierto: boolean
+  entrega?: CajaAlmacenVtd['estado']
+  version: number
+  faltante: CajaAlmacenVtd['faltante']
+  lineas: CajaAlmacenVtdLinea[]
+}
+// El material todavía no se entregó al cliente: se puede cobrar, marcar pago posterior o rechazar.
+export const entregaPendiente = (info?: VtdCajaAlmacenInfo) => info?.entrega === 'SOLICITADO' || info?.entrega === 'EN_CAJA'
 export const vtdVigente = (v: CajaAlmacenVtd) => ['SOLICITADO', 'EN_CAJA', 'ENTREGADO'].includes(v.estado)
 
 // PostgreSQL jsonb ordena las claves; comparar el texto sin normalizar produciría

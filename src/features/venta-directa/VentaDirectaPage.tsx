@@ -5,6 +5,11 @@ import { Modal } from '../../components/Modal'
 import { VtdTicketPreviewModal } from '../../components/VtdTicketPreviewModal'
 import { CobrarVtdPaymentModal } from '../../components/CobrarVtdPaymentModal'
 import { AnularVentaModal } from '../../components/AnularVentaModal'
+import { AjusteVtdModal, type AjusteVtdPayload } from '../../components/AjusteVtdModal'
+import { RechazoVtdModal, type RechazoVtdData } from '../../components/RechazoVtdModal'
+import { useCajaAlmacen } from '../../context/CajaAlmacenContext'
+import { entregaPendiente, faltanteTexto, vtdEstadoLabels, type CajaAlmacenVtd, type VtdCajaAlmacenInfo } from '../../application/shared/cajaAlmacen'
+import '../../styles/caja-almacen.css'
 import { usePuedeAnular } from '../../components/usePuedeAnular'
 import { mensajeAnulacion, type AnularVentaResultado } from '../../domain/sales/anulacion'
 import { useCobroVtd } from './useCobroVtd'
@@ -34,8 +39,16 @@ function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify:
   const [anulando, setAnulando] = useState<VentaDirectaRecord | null>(null)
   const puedeAnular = usePuedeAnular()
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [cobrando, setCobrando] = useState<VentaDirectaRecord | null>(null)
+  const [cobrando, setCobrando] = useState<VtdPorCobrar | null>(null)
   const [pagoPosterior, setPagoPosterior] = useState<VentaDirectaRecord | null>(null)
+  // Cómo está cada VTD en Caja–Almacén: decide qué RPC usa cada botón.
+  const [info, setInfo] = useState<Map<string, VtdCajaAlmacenInfo>>(new Map())
+  const [otrosTurnos, setOtrosTurnos] = useState<VtdPorCobrar[]>([])
+  const [ajusteOperacion, setAjusteOperacion] = useState<VentaDirectaRecord | null>(null)
+  const [rechazando, setRechazando] = useState<VentaDirectaRecord | null>(null)
+  const [accionBusy, setAccionBusy] = useState(false)
+  const [accionError, setAccionError] = useState('')
+  const almacen = useCajaAlmacen()
   const [loadError, setLoadError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const requests = useRef({ active: true, sequence: 0 })
@@ -47,9 +60,15 @@ function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify:
     const current = ++state.sequence
     setRefreshing(true)
     try {
-      const abiertas = await ventaDirectaService.listAbiertas(sessionId)
+      const [abiertas, porCobrar] = await Promise.all([ventaDirectaService.listAbiertas(sessionId), ventaDirectaService.listPorCobrar()])
+      const ajenas = porCobrar.filter((v) => !abiertas.some((a) => a.id === v.ventaId))
+      const filas = await ventaDirectaService.infoCajaAlmacen([...abiertas.map((v) => v.id), ...ajenas.map((v) => v.ventaId)])
       if (!state.active || current !== state.sequence) return
+      const mapa = new Map(filas.map((f) => [f.ventaId, f]))
+      setInfo(mapa)
       setVentas(abiertas)
+      // Entregadas con pago posterior, o sin cobrar de un turno ya cerrado. Las de otro turno abierto son de su cajero.
+      setOtrosTurnos(ajenas.filter((v) => v.estado === 'COMPLETADA' || (mapa.get(v.ventaId)?.cajaAlmacen && !mapa.get(v.ventaId)?.turnoAbierto)))
       setLoadError('')
     } catch (error) {
       if (state.active && current === state.sequence) setLoadError(error instanceof Error ? error.message : 'No se pudo actualizar la bandeja')
@@ -77,12 +96,36 @@ function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify:
   useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 30000); return () => clearInterval(id) }, [])
 
   const cobro = useCobroVtd({ sessionId, notify })
-  const confirmarCobro = async (venta: VentaDirectaRecord, payments: SaleCheckoutPayment[]) => {
-    if (await cobro.cobrar([venta.id], payments)) {
+  // La operación activa del carrito puede cambiar desde aquí (una VTD se separa o se rechaza).
+  const refrescar = () => {
+    void load()
+    void almacen.refresh().catch(() => {})
+  }
+  const confirmarCobro = async (venta: VtdPorCobrar, payments: SaleCheckoutPayment[]) => {
+    if (await cobro.cobrar([venta.ventaId], payments, { cajaAlmacen: !!info.get(venta.ventaId)?.cajaAlmacen })) {
       setCobrando(null)
-      void load()
+      refrescar()
     }
   }
+  const accionOperacion = async (accion: () => Promise<void>, mensaje: string, cerrar: () => void) => {
+    if (accionBusy) return
+    setAccionBusy(true)
+    setAccionError('')
+    try {
+      await accion()
+      notify(mensaje)
+      cerrar()
+      refrescar()
+    } catch (error) {
+      setAccionError(error instanceof Error ? error.message : 'No se pudo completar la acción')
+    } finally {
+      setAccionBusy(false)
+    }
+  }
+  const ajustarEnOperacion = (venta: VentaDirectaRecord, payload: AjusteVtdPayload) =>
+    accionOperacion(() => ventaDirectaService.ajustarVtdBandeja(venta.id, payload.lineas, payload.motivo, payload.devolucion), `${venta.numero} ajustada`, () => setAjusteOperacion(null))
+  const rechazarEnOperacion = (venta: VentaDirectaRecord, data: RechazoVtdData) =>
+    accionOperacion(() => ventaDirectaService.rechazarVtdBandeja(venta.id, data.motivo, data.devolucion_realizada, data.referencia), `${venta.numero} rechazada`, () => setRechazando(null))
 
   const manejarError = (error: unknown, accion: string) => {
     if (esErrorAutorizacion(error)) {
@@ -95,13 +138,18 @@ function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify:
   const consultarEntrega = async (venta: VentaDirectaRecord) => {
     setBusyId(venta.id)
     try {
-      const actual = await ventaDirectaService.getById(venta.id)
+      const [actual, filas] = await Promise.all([ventaDirectaService.getById(venta.id), ventaDirectaService.infoCajaAlmacen([venta.id])])
       if (!actual) throw new Error('No se encontró la venta directa')
+      const entrega = filas[0]?.entrega
       notify(actual.estado === 'COMPLETADA'
         ? `${venta.numero}: Almacén ya autorizó la salida`
         : actual.estado === 'ANULADA'
           ? `${venta.numero} está anulada`
-          : `${venta.numero}: pendiente de autorizar la salida en Almacén`)
+          : entrega === 'EN_CAJA'
+            ? `${venta.numero}: Almacén ya envió el material a Caja`
+            : filas[0]?.faltante
+              ? `${venta.numero}: Almacén reportó faltante. Ajusta la venta`
+              : `${venta.numero}: pendiente de autorizar la salida en Almacén`)
       await load()
     } catch (error) {
       manejarError(error, 'consultar la entrega')
@@ -132,7 +180,14 @@ function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify:
               const vieja = antiguedad >= VTD_ANTIGUEDAD_AVISO_MIN
               const pagado = venta.paidCents > 0
               // El cobro y la entrega son pasos independientes; Almacén autoriza la salida.
-              const porCobrar = !pagado && !venta.pagoPosterior && venta.cobroExigible && venta.totalCents > 0
+              const estadoAlmacen = info.get(venta.id)
+              const enOperacion = !!estadoAlmacen?.cajaAlmacen
+              const pendiente = entregaPendiente(estadoAlmacen)
+              const exigible = !pagado && venta.cobroExigible && venta.totalCents > 0
+              // En Caja–Almacén también se puede cobrar una VTD marcada con pago posterior si el cliente paga antes.
+              const porCobrar = exigible && (enOperacion ? pendiente : !venta.pagoPosterior)
+              const puedePagoPosterior = exigible && !venta.pagoPosterior && (!enOperacion || pendiente)
+              const puedeAjustar = !enOperacion || estadoAlmacen?.entrega === 'SOLICITADO'
               return (
                 <article className={`vtd-card ${vieja ? 'vtd-card-vieja' : ''}`} key={venta.id}>
                   <div className="vtd-card-top">
@@ -150,15 +205,18 @@ function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify:
                   </div>
                   {venta.pagoPosterior && !pagado && <p className="vtd-card-pago-posterior"><strong>{venta.pagoPosteriorMotivo}</strong>{venta.pagoPosteriorContacto && <span>Se lleva: {venta.pagoPosteriorContacto}</span>}</p>}
                   {vieja && <p className="vtd-card-aviso"><AlertTriangle size={11} /> Abierta hace {antiguedad} min</p>}
+                  {estadoAlmacen?.entrega && <p className="vtd-card-entrega">{vtdEstadoLabels[estadoAlmacen.entrega]}</p>}
+                  {estadoAlmacen?.entrega === 'SOLICITADO' && estadoAlmacen.faltante && <strong className="caja-almacen-faltante" role="status">{faltanteTexto(estadoAlmacen)}. Ajusta la VTD</strong>}
                   <ul className="vtd-card-lines">
                     {venta.lines.map((line) => <li key={line.id}>{line.cantidadPresentacion} × {line.name}{line.presentacionNombre ? ` (${line.presentacionNombre})` : ''}</li>)}
                   </ul>
                   <div className="vtd-card-total"><span>Total</span><strong>Bs {money(venta.totalCents)}</strong></div>
                   <div className="vtd-card-actions">
                     <button disabled={busyId === venta.id} onClick={() => setTicketing(venta)}><Printer size={12} /> Ticket</button>
-                    <button disabled={busyId === venta.id} onClick={() => setAjustando(venta)}><Minus size={12} /> Ajustar</button>
-                    {porCobrar && <button className="primary-button vtd-card-cobrar" disabled={busyId === venta.id} onClick={() => { cobro.clearError(); setCobrando(venta) }}><HandCoins size={12} /> Cobrar</button>}
-                    {porCobrar && <button className="vtd-card-pago-posterior-btn" disabled={busyId === venta.id} onClick={() => setPagoPosterior(venta)}>Pago posterior…</button>}
+                    {puedeAjustar && <button disabled={busyId === venta.id} onClick={() => { setAccionError(''); if (enOperacion) setAjusteOperacion(venta); else setAjustando(venta) }}><Minus size={12} /> Ajustar</button>}
+                    {porCobrar && <button className="primary-button vtd-card-cobrar" disabled={busyId === venta.id} onClick={() => { cobro.clearError(); setCobrando(aPorCobrar(venta)) }}><HandCoins size={12} /> Cobrar</button>}
+                    {puedePagoPosterior && <button className="vtd-card-pago-posterior-btn" disabled={busyId === venta.id} onClick={() => setPagoPosterior(venta)}>Pago posterior…</button>}
+                    {enOperacion && pendiente && <button disabled={busyId === venta.id} onClick={() => { setAccionError(''); setRechazando(venta) }}>Rechazar</button>}
                     <button className="vtd-card-completar" disabled={busyId === venta.id} onClick={() => void consultarEntrega(venta)}><RefreshCw size={12} /> Consultar entrega</button>
                     <button className="danger-button" disabled={busyId === venta.id} onClick={() => setAnulando(venta)}><Ban size={12} /> {puedeAnular ? 'Anular' : 'Solicitar anulación'}</button>
                   </div>
@@ -166,11 +224,27 @@ function VentaDirectaBandeja({ sessionId, notify }: { sessionId: string; notify:
               )
             })}
           </div>}
+      {otrosTurnos.length > 0 && <section className="vtd-otros-turnos" aria-label="Por cobrar de otros turnos">
+        <h3>Por cobrar de otros turnos</h3>
+        <div className="vtd-bandeja-cards">
+          {otrosTurnos.map((v) => (
+            <article className="vtd-card" key={v.ventaId}>
+              <div className="vtd-card-top"><strong>{v.numero ?? `#${v.ventaId}`}</strong><span className={`vtd-modo-tag ${v.pagoPosterior ? 'pago-posterior' : 'por-cobrar'}`}>{v.pagoPosterior ? 'PAGO POSTERIOR' : 'POR COBRAR'}</span></div>
+              {v.clienteNombre && <p className="vtd-card-entrega">{v.clienteNombre}</p>}
+              {v.pagoPosterior && <p className="vtd-card-pago-posterior"><strong>{v.pagoPosteriorMotivo}</strong>{v.pagoPosteriorContacto && <span>Se lleva: {v.pagoPosteriorContacto}</span>}</p>}
+              <div className="vtd-card-total"><span>Total</span><strong>Bs {money(Math.round(v.totalBs * 100))}</strong></div>
+              <div className="vtd-card-actions"><button className="primary-button vtd-card-cobrar" onClick={() => { cobro.clearError(); setCobrando(v) }}><HandCoins size={12} /> Cobrar</button></div>
+            </article>
+          ))}
+        </div>
+      </section>}
       {ajustando && <AjustarVentaModal venta={ajustando} onClose={() => setAjustando(null)} onDone={() => { setAjustando(null); load() }} notify={notify} />}
       {anulando && <AnularVentaModal venta={{ id: anulando.id, numero: anulando.numero, total: anulando.totalCents / 100, cobrado: anulando.paidCents / 100 }} puedeAnular={puedeAnular} nota="Si pasó por Caja–Almacén, el sistema te indicará cómo resolverla." onDone={(result) => terminarAnulacion(anulando, result)} onClose={() => setAnulando(null)} />}
       {ticketing && <VtdTicketPreviewModal venta={ticketing} onClose={() => setTicketing(null)} />}
-      {cobrando && <CobrarVtdPaymentModal ventas={[aPorCobrar(cobrando)]} submitting={cobro.submitting} error={cobro.error} onClose={() => { cobro.clearError(); setCobrando(null) }} onConfirm={(payments) => void confirmarCobro(cobrando, payments)} />}
-      {pagoPosterior && <PagoPosteriorModal venta={pagoPosterior} onClose={() => setPagoPosterior(null)} onDone={() => { notify(`${pagoPosterior.numero} marcada como pago posterior`); setPagoPosterior(null); load() }} />}
+      {ajusteOperacion && <AjusteVtdModal vtd={aCajaAlmacenVtd(ajusteOperacion, info.get(ajusteOperacion.id))} paid={ajusteOperacion.paidCents > 0} busy={accionBusy} error={accionError} onCancel={() => setAjusteOperacion(null)} onConfirm={(payload) => ajustarEnOperacion(ajusteOperacion, payload)} />}
+      {rechazando && <RechazoVtdModal ventaNumero={rechazando.numero} paid={rechazando.paidCents > 0} busy={accionBusy} error={accionError} onCancel={() => setRechazando(null)} onConfirm={(data) => rechazarEnOperacion(rechazando, data)} />}
+      {cobrando && <CobrarVtdPaymentModal ventas={[cobrando]} submitting={cobro.submitting} error={cobro.error} onClose={() => { cobro.clearError(); setCobrando(null) }} onConfirm={(payments) => void confirmarCobro(cobrando, payments)} />}
+      {pagoPosterior && <PagoPosteriorModal venta={pagoPosterior} cajaAlmacen={!!info.get(pagoPosterior.id)?.cajaAlmacen} onClose={() => setPagoPosterior(null)} onDone={() => { notify(`${pagoPosterior.numero} marcada como pago posterior`); setPagoPosterior(null); refrescar() }} />}
       {cobro.ticketQueue.length > 0 && <VtdTicketPreviewModal venta={cobro.ticketQueue[0]} onClose={cobro.closeTicket} />}
     </FeatureShell>
   )
@@ -182,8 +256,13 @@ const aPorCobrar = (venta: VentaDirectaRecord): VtdPorCobrar => ({
   pagoPosteriorContacto: venta.pagoPosteriorContacto, creadoPor: venta.creadoPor, creadoEn: venta.creadoEn, sesionCreacionId: venta.sesionCajaId,
 })
 
-/** Entrega sin cobro (marcar_vtd_pago_posterior): motivo siempre; contacto solo si la venta no tiene cliente. */
-export function PagoPosteriorModal({ venta, onClose, onDone }: { venta: VentaDirectaRecord; onClose: () => void; onDone: () => void }) {
+const aCajaAlmacenVtd = (venta: VentaDirectaRecord, info?: VtdCajaAlmacenInfo): CajaAlmacenVtd => ({
+  venta_id: Number(venta.id), numero: venta.numero, total: venta.totalCents / 100, cliente_id: venta.customerId ? Number(venta.customerId) : null,
+  cliente: venta.customerName ?? null, estado: info?.entrega ?? 'SOLICITADO', version: info?.version ?? 0, faltante: info?.faltante ?? null, lineas: info?.lineas ?? [],
+})
+
+/** Entrega sin cobro (vtd_pago_posterior o marcar_vtd_pago_posterior): motivo siempre; contacto solo si la venta no tiene cliente. */
+export function PagoPosteriorModal({ venta, cajaAlmacen = false, onClose, onDone }: { venta: VentaDirectaRecord; cajaAlmacen?: boolean; onClose: () => void; onDone: () => void }) {
   const [motivo, setMotivo] = useState('')
   const [contacto, setContacto] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -195,7 +274,8 @@ export function PagoPosteriorModal({ venta, onClose, onDone }: { venta: VentaDir
     setSubmitting(true)
     setError('')
     try {
-      await ventaDirectaService.marcarPagoPosterior(venta.id, motivo.trim(), contacto.trim() || undefined)
+      if (cajaAlmacen) await ventaDirectaService.pagoPosteriorVtdBandeja(venta.id, motivo.trim(), contacto.trim() || undefined)
+      else await ventaDirectaService.marcarPagoPosterior(venta.id, motivo.trim(), contacto.trim() || undefined)
       onDone()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo marcar el pago posterior')
