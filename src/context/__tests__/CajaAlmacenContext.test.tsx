@@ -5,13 +5,15 @@ import { PosProvider, usePos } from '../PosContext'
 import { CajaAlmacenProvider, useCajaAlmacen } from '../CajaAlmacenContext'
 import type { CajaAlmacenRecord } from '../../application/shared/cajaAlmacen'
 
-const qa = vi.hoisted(() => ({ state: { operacion: null, vtds: [] } as CajaAlmacenRecord, fail: false }))
+const qa = vi.hoisted(() => ({ state: { operacion: null, vtds: [] } as CajaAlmacenRecord, fail: false, parked: null as CajaAlmacenRecord | null }))
 vi.mock('../CashSessionContext', () => ({ useCashSession: () => ({ sessionId: '1' }) }))
 vi.mock('../../infrastructure/services', () => ({ authSessionProvider: { getSession: async () => ({ user: { id: 'cajero', active: true, role: 'cajero' } }), subscribe: () => () => {} } }))
-vi.mock('../../infrastructure/supabase/CajaAlmacen.supabase', () => ({ operarCajaAlmacen: async (action: string, id: string | null, _session: string, data: Record<string, unknown>) => {
+vi.mock('../../infrastructure/supabase/CajaAlmacen.supabase', () => ({ listarCajaAlmacenEnEspera: async () => ({ operaciones: qa.parked ? [qa.parked] : [] }), operarCajaAlmacen: async (action: string, id: string | null, _session: string, data: Record<string, unknown>) => {
   if (qa.fail) throw new Error('Sin conexión')
   if (action === 'vincular') qa.state = { operacion: { id: id!, cajero_id: 'cajero', sesion_id: 1, revision: 1, estado: 'ACTIVA', comprobante: null, cerrado_en: null, borrador: data.borrador as never }, vtds: [{ venta_id: 12, numero: 'VTD-QA', total: 120, estado: 'SOLICITADO', version: 0, cliente: null, cliente_id: null }] }
   if (action === 'guardar' && qa.state.operacion) { qa.state.operacion.borrador = data.borrador as never; qa.state.operacion.revision++ }
+  if (action === 'aparcar') { qa.parked = structuredClone({ ...qa.state, operacion: { ...qa.state.operacion!, borrador: data.borrador as never } }); qa.state = { operacion: null, vtds: [] }; return structuredClone(qa.parked) }
+  if (action === 'retomar') { qa.state = structuredClone(qa.parked!); qa.parked = null }
   if (action === 'completar' && qa.state.operacion) qa.state.operacion = { ...qa.state.operacion, estado: 'COMPLETADA', cerrado_en: '2026-10-17' }
   return structuredClone(qa.state)
 } }))
@@ -24,11 +26,13 @@ function Probe() {
     <button onClick={() => void w.link([{ ventaId: '12', numero: 'VTD-QA', totalBs: 120, estado: 'ABIERTA', pagoPosterior: false, creadoEn: '' }])}>Agregar VTD</button>
     <button onClick={p.newOperation}>Nueva operación</button><button onClick={p.clearOperation}>Limpiar</button>
     <button onClick={() => void w.refresh().catch(() => {})}>Actualizar</button><button onClick={() => void w.resolve('completar')}>Completar</button>
+    <button onClick={() => void w.park()}>Dejar en espera</button><button onClick={() => void w.resume(qa.parked!.operacion!.id)}>Retomar</button>
+    <output data-testid="espera">{w.enEspera}</output><output data-testid="vtds">{p.vtdsEnCarrito.length}</output>
     <span>{w.error}</span>
   </>
 }
 const mount = () => render(<PosProvider><CajaAlmacenProvider><Probe /></CajaAlmacenProvider></PosProvider>)
-beforeEach(() => { sessionStorage.clear(); localStorage.clear(); qa.state = { operacion: null, vtds: [] }; qa.fail = false })
+beforeEach(() => { sessionStorage.clear(); localStorage.clear(); qa.state = { operacion: null, vtds: [] }; qa.fail = false; qa.parked = null })
 afterEach(cleanup)
 
 describe('operación Caja–Almacén', () => {
@@ -63,5 +67,41 @@ describe('operación Caja–Almacén', () => {
     await act(async () => { fireEvent.click(screen.getByText('Actualizar')) })
     expect(screen.getByTestId('locked').textContent).toBe('false')
     expect(screen.getByTestId('total').textContent).toBe('80')
+  })
+})
+
+describe('dejar en espera y retomar', () => {
+  const conVtd = async () => {
+    mount()
+    fireEvent.click(screen.getByText('Agregar VTA'))
+    fireEvent.click(screen.getByText('Agregar VTD'))
+    await waitFor(() => expect(screen.getByTestId('total').textContent).toBe('200'))
+  }
+  it('libera el carrito, avisa de la espera y permite otra venta', async () => {
+    await conVtd()
+    const id = screen.getByTestId('id').textContent
+    fireEvent.click(screen.getByText('Dejar en espera'))
+    await waitFor(() => expect(screen.getByTestId('total').textContent).toBe('0'))
+    await waitFor(() => expect(screen.getByTestId('espera').textContent).toBe('1'))
+    expect(screen.getByTestId('id').textContent).not.toBe(id)
+    fireEvent.click(screen.getByText('Agregar 20'))
+    expect(screen.getByTestId('total').textContent).toBe('20')
+  })
+  it('retomar recupera borrador y VTD con el carrito vacío', async () => {
+    await conVtd()
+    fireEvent.click(screen.getByText('Dejar en espera'))
+    await waitFor(() => expect(screen.getByTestId('espera').textContent).toBe('1'))
+    fireEvent.click(screen.getByText('Retomar'))
+    await waitFor(() => expect(screen.getByTestId('vtds').textContent).toBe('1'))
+    expect(screen.getByTestId('total').textContent).toBe('200')
+  })
+  it('no pisa una venta en curso al retomar', async () => {
+    await conVtd()
+    fireEvent.click(screen.getByText('Dejar en espera'))
+    await waitFor(() => expect(screen.getByTestId('espera').textContent).toBe('1'))
+    fireEvent.click(screen.getByText('Agregar 20'))
+    fireEvent.click(screen.getByText('Retomar'))
+    await screen.findByText(/Cobra o suspende la venta actual/)
+    expect(screen.getByTestId('total').textContent).toBe('20')
   })
 })

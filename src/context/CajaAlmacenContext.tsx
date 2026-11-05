@@ -3,7 +3,7 @@ import { usePos } from './PosContext'
 import { useCashSession } from './CashSessionContext'
 import { featureFlags } from '../config/featureFlags'
 import { authSessionProvider } from '../infrastructure/services'
-import { operarCajaAlmacen } from '../infrastructure/supabase/CajaAlmacen.supabase'
+import { listarCajaAlmacenEnEspera, operarCajaAlmacen } from '../infrastructure/supabase/CajaAlmacen.supabase'
 import { draftFingerprint, vtdVigente, type CajaAlmacenDraft, type CajaAlmacenRecord } from '../application/shared/cajaAlmacen'
 import type { VtdPorCobrar } from '../application/shared/models'
 
@@ -17,9 +17,13 @@ interface WarehouseContext {
   refresh: (recover?: boolean) => Promise<void>
   flush: () => Promise<void>
   resolve: (action: 'completar' | 'rechazar' | 'cerrar_rechazo' | 'ajustar', data?: object) => Promise<boolean>
+  // Decisión del 19 oct: una VTD pendiente no bloquea al cajero. Deja la operación en espera y la retoma después.
+  park: () => Promise<boolean>
+  resume: (operacionId: string) => Promise<boolean>
+  enEspera: number
 }
 const Context = createContext<WarehouseContext | null>(null)
-const inactive: WarehouseContext = { managed: false, record: null, error: '', busy: false, link: async () => true, createRequest: async () => false, refresh: async () => {}, flush: async () => {}, resolve: async () => false }
+const inactive: WarehouseContext = { managed: false, record: null, error: '', busy: false, link: async () => true, createRequest: async () => false, refresh: async () => {}, flush: async () => {}, resolve: async () => false, park: async () => false, resume: async () => false, enEspera: 0 }
 export const useCajaAlmacen = () => useContext(Context) ?? inactive
 
 export function CajaAlmacenProvider({ children }: { children: ReactNode }) {
@@ -28,6 +32,7 @@ export function CajaAlmacenProvider({ children }: { children: ReactNode }) {
   const [record, setRecord] = useState<CajaAlmacenRecord | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [enEspera, setEnEspera] = useState(0)
   const current = useRef<CajaAlmacenRecord | null>(null)
   const loadedId = useRef<string | null>(null)
   const actorId = useRef<string | null>(null)
@@ -37,6 +42,7 @@ export function CajaAlmacenProvider({ children }: { children: ReactNode }) {
   const serial = useRef<Promise<void>>(Promise.resolve())
   const posRef = useRef(pos)
   const saved = useRef('')
+  const conEspera = useRef(false)
   const draft: CajaAlmacenDraft = useMemo(() => ({ cart: pos.cart, channel: pos.channel, discount: pos.discount, customer: pos.customer, pedido: pos.pedidoEnCarrito, vendedorId: pos.vendedorId }), [pos.cart,pos.channel,pos.discount,pos.customer,pos.pedidoEnCarrito,pos.vendedorId])
   const draftJson = draftFingerprint(draft)
   const draftRef = useRef(draft)
@@ -96,10 +102,15 @@ export function CajaAlmacenProvider({ children }: { children: ReactNode }) {
     return work
   }, [apply])
 
+  const contarEnEspera = useCallback(async () => {
+    try { setEnEspera((await listarCajaAlmacenEnEspera()).operaciones.length) } catch { /* el aviso no debe interrumpir la venta */ }
+  }, [])
   const hasOperation = !!record?.operacion
   const canSave = !!record?.operacion && !record.operacion.comprobante
+  useEffect(() => { conEspera.current = enEspera > 0 }, [enEspera])
   useEffect(() => {
     let disposed = false
+    let contar = true
     const update = async () => {
       if (document.visibilityState === 'hidden') return
       try {
@@ -112,16 +123,19 @@ export function CajaAlmacenProvider({ children }: { children: ReactNode }) {
         }
         actorId.current = nextActor
         await refresh()
+        // Sin polling propio: se cuenta al abrir y al enfocar la ventana, y en cada revisión solo si ya hay espera.
+        if (nextActor && (conEspera.current || contar)) { contar = false; void contarEnEspera() }
       } catch (e) { if (!disposed && (current.current?.operacion || (e as { code?: string }).code !== 'PGRST202')) setError(e instanceof Error ? e.message : 'No se pudo consultar la operación.') }
     }
     if (featureFlags.supabase) void update()
     const tick = () => { void update() }
+    const onFocus = () => { contar = true; tick() }
     const unsubscribe = featureFlags.supabase ? authSessionProvider.subscribe?.(tick) : undefined
-    window.addEventListener('focus', tick)
+    window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', tick)
     const timer = window.setInterval(tick, hasOperation ? 15_000 : 60_000)
-    return () => { disposed = true; unsubscribe?.(); clearInterval(timer); window.removeEventListener('focus', tick); document.removeEventListener('visibilitychange', tick) }
-  }, [refresh, hasOperation])
+    return () => { disposed = true; unsubscribe?.(); clearInterval(timer); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', tick) }
+  }, [refresh, hasOperation, contarEnEspera])
 
   useEffect(() => {
     if (!canSave) return
@@ -160,6 +174,37 @@ export function CajaAlmacenProvider({ children }: { children: ReactNode }) {
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo resolver la operación.'); return false }
     finally { pending.current = false; setBusy(false) }
   }
+  const park = async () => {
+    const op = current.current?.operacion
+    if (!op || op.comprobante || pending.current) return false
+    pending.current = true; setBusy(true); setError('')
+    epoch.current++
+    try {
+      await flush()
+      await operarCajaAlmacen('aparcar', op.id, String(op.sesion_id), { borrador: draftRef.current })
+      loadedId.current = null; current.current = null; saved.current = ''
+      setRecord(null)
+      posRef.current.finishWarehouseOperation()
+      void contarEnEspera()
+      return true
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo dejar la operación en espera.'); return false }
+    finally { pending.current = false; setBusy(false) }
+  }
+  const resume = async (operacionId: string) => {
+    if (pending.current) return false
+    if (current.current?.operacion) { setError('Deja en espera o cobra tu operación actual antes de retomar otra.'); return false }
+    // Retomar reemplaza el carrito por el borrador guardado: no se pisa una venta en curso.
+    if (posRef.current.cart.length > 0) { setError('Cobra o suspende la venta actual antes de retomar otra operación.'); return false }
+    pending.current = true; setBusy(true); setError('')
+    epoch.current++
+    try {
+      const next = await operarCajaAlmacen('retomar', operacionId)
+      apply(next, true)
+      void contarEnEspera()
+      return true
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo retomar la operación.'); return false }
+    finally { pending.current = false; setBusy(false) }
+  }
   const createRequest = async (solicitud: object) => {
     if (pending.current) return false
     pending.current = true; setBusy(true); setError('')
@@ -176,5 +221,5 @@ export function CajaAlmacenProvider({ children }: { children: ReactNode }) {
     } catch (e) { uncertain.current = attempted && !(e as {code?: string}).code; setError(e instanceof Error ? e.message : 'No se pudo solicitar el material.'); return false }
     finally { pending.current = false; setBusy(false); posRef.current.setWarehouseLock(!!current.current?.operacion || uncertain.current, !!current.current?.operacion?.comprobante || uncertain.current) }
   }
-  return <Context.Provider value={{ managed: featureFlags.supabase, record, error, busy, link, createRequest, refresh, flush, resolve }}>{children}</Context.Provider>
+  return <Context.Provider value={{ managed: featureFlags.supabase, record, error, busy, link, createRequest, refresh, flush, resolve, park, resume, enEspera }}>{children}</Context.Provider>
 }

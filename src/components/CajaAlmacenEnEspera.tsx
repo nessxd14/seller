@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { faltanteTexto, vtdEstadoLabels, type CajaAlmacenEnEsperaOperacion } from '../application/shared/cajaAlmacen'
+import { useCajaAlmacen } from '../context/CajaAlmacenContext'
 import { listarCajaAlmacenEnEspera, operarCajaAlmacen } from '../infrastructure/supabase/CajaAlmacen.supabase'
 import { RechazoVtdModal, type RechazoVtdData } from './RechazoVtdModal'
 import { AjusteVtdModal, type AjusteVtdPayload } from './AjusteVtdModal'
@@ -9,6 +10,7 @@ import '../styles/caja-almacen.css'
 const message = (e: unknown) => e instanceof Error ? e.message : 'No se pudo completar la acción.'
 
 export function CajaAlmacenEnEspera() {
+  const almacen = useCajaAlmacen()
   const [ops, setOps] = useState<CajaAlmacenEnEsperaOperacion[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -53,6 +55,9 @@ export function CajaAlmacenEnEspera() {
     const ok = await run(async () => { await operarCajaAlmacen('ajustar', op.operacion.id, String(op.operacion.sesion_id), payload); await load() })
     if (ok) setAdjusting(null)
   }
+  const retomar = (op: CajaAlmacenEnEsperaOperacion) => void run(async () => {
+    if (await almacen.resume(op.operacion.id)) await load()
+  })
   const completarEntrega = (op: CajaAlmacenEnEsperaOperacion) => void run(async () => { await completar(op); await load() })
 
   if (!ops.length && !error) return null
@@ -68,10 +73,11 @@ export function CajaAlmacenEnEspera() {
         <div><b>{op.operacion.comprobante?.numero ?? 'Sin comprobante'}</b>{op.operacion.comprobante && <span> · {`Bs ${Number(op.operacion.comprobante.total).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</span>}{op.turno_cerrado && <span className="badge"> Turno cerrado</span>}</div>
         <ul>{op.vtds.map(v => <li key={v.venta_id}><div><b>{v.numero}</b>{v.cliente && <span>{v.cliente}</span>}<span>{vtdEstadoLabels[v.estado]}</span>{v.estado === 'SOLICITADO' && v.faltante && <strong className="caja-almacen-faltante" role="status">{faltanteTexto(v)} — ajusta la VTD</strong>}</div>
           {['SOLICITADO', 'EN_CAJA'].includes(v.estado) && <div className="caja-almacen-buttons">{v.estado === 'SOLICITADO' && <button type="button" className="secondary-button" disabled={busy} onClick={() => setAdjusting({ op, ventaId: v.venta_id })}>Ajustar</button>}<button type="button" className="secondary-button" disabled={busy} onClick={() => setRejection({ op, ventaId: v.venta_id })}>Rechazar</button></div>}</li>)}</ul>
+        {!paid && op.operacion.estado === 'ACTIVA' && <div className="caja-almacen-buttons"><button type="button" className="secondary-button" disabled={busy || almacen.busy} onClick={() => retomar(op)}>Retomar en el carrito</button></div>}
         {delivered && <div className="caja-almacen-buttons"><button type="button" className="primary-button" disabled={busy} onClick={() => completarEntrega(op)}>Completar entrega y operación</button></div>}
       </article>
     })}
-    {error && <p role="alert">{error}</p>}
+    {(error || almacen.error) && <p role="alert">{error || almacen.error}</p>}
     {adjusting && adjusting.op.vtds.find(v => v.venta_id === adjusting.ventaId) && <AjusteVtdModal vtd={adjusting.op.vtds.find(v => v.venta_id === adjusting.ventaId)!} paid={!!adjusting.op.operacion.comprobante} busy={busy} error={error} onCancel={() => setAdjusting(null)} onConfirm={ajustar} />}
     {rejection && rejOp && <RechazoVtdModal ventaNumero={rejOp.vtds.find(v => v.venta_id === rejection.ventaId)?.numero} paid={!!rejOp.operacion.comprobante} busy={busy} error={error} onCancel={() => setRejection(null)} onConfirm={rechazar} />}
   </section>
