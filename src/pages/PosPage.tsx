@@ -43,9 +43,14 @@ import { PedidoVendedorCobro } from '../features/caja-pedidos/PedidoVendedorCobr
 import { parsearCodigoPedido } from '../domain/sales/pedidoCaja'
 import { useRoute } from '../router/useRoute'
 import { presentacionAlAgregar } from '../lib/presentacionAlAgregar'
+import { useEsCelular } from '../mobile/useEsCelular'
+import type { Modulo } from '../mobile/navegacionMovil'
 
 // Piso (teléfono del vendedor): carga diferida para que el escáner y su código no entren al bundle del POS de escritorio.
 const PedidoPisoApp = lazy(() => import('../features/piso/PedidoPisoApp').then((m) => ({ default: m.PedidoPisoApp })))
+// Versión celular (< 768 px): carga diferida, así su código y su CSS nunca llegan a la computadora.
+const SellerMovil = lazy(() => import('../mobile/SellerMovil').then((m) => ({ default: m.SellerMovil })))
+const VentaMovil = lazy(() => import('../mobile/SellerMovil').then((m) => ({ default: m.VentaMovil })))
 
 const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 
@@ -90,6 +95,7 @@ function PosContent() {
   const [pagoModalOpen, setPagoModalOpen] = useState(false)
   const [ambiguousIds, setAmbiguousIds] = useState<number[] | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const celular = useEsCelular()
   // Un vendedor no usa el POS de escritorio: cualquier ruta que no sea un detalle (/pedidos/:id, …) lo lleva a /piso.
   const esVendedor = session?.user.role === 'vendedor'
   useEffect(() => { if (esVendedor && route.kind === 'none') navigateTo(pisoPath, { replace: true }) }, [esVendedor, route.kind])
@@ -307,8 +313,10 @@ function PosContent() {
     const unsubscribe = authSessionProvider.subscribe((value) => setSession(value))
     return () => { cancelled = true; unsubscribe() }
   }, [])
+  // Módulo encendido en esta fase (mismo criterio de siempre; extraído para que el celular arme su menú).
+  const moduloHabilitado = (name: string) => name === 'Venta' || name === 'Suspendidas' || name === 'Borradores' || (name === 'Cotizaciones' && featureFlags.quotations) || (name === 'Pedidos' && featureFlags.orders) || (name === 'Venta Directa' && featureFlags.ventaDirectaAlmacen) || name === 'Clientes' || (name === 'Caja' && featureFlags.cash) || name === 'Productos' || name === 'Inventario' || name === 'Traslados' || name === 'Reportes' || (name === 'Comisiones' && featureFlags.comisiones) || name === 'Configuración'
   const navigate = (name: string) => {
-    const enabled = name === 'Venta' || name === 'Suspendidas' || name === 'Borradores' || (name === 'Cotizaciones' && featureFlags.quotations) || (name === 'Pedidos' && featureFlags.orders) || (name === 'Venta Directa' && featureFlags.ventaDirectaAlmacen) || name === 'Clientes' || (name === 'Caja' && featureFlags.cash) || name === 'Productos' || name === 'Inventario' || name === 'Traslados' || name === 'Reportes' || (name === 'Comisiones' && featureFlags.comisiones) || name === 'Configuración'
+    const enabled = moduloHabilitado(name)
     const permission = (PERMISOS_MODULO[name] ?? (() => true))(session)
     if (enabled && permission) setActiveModule(name)
     else if(enabled) notify('Tu rol no permite abrir este módulo')
@@ -346,6 +354,18 @@ function PosContent() {
   }
   // Un vendedor que aún no fue redirigido (primer render) no debe ver ni un instante el POS completo.
   if (esVendedor && route.kind === 'none') return null
+  if (celular) {
+    const puedeAbrir = (m: Modulo) => moduloHabilitado(m) && (PERMISOS_MODULO[m] ?? (() => true))(session)
+    const contenido = blockKind ? <IntegrationState kind={blockKind} /> : !moduloPermitido ? <div className="module-blocked" role="alert"><h2>Tu rol no permite abrir este módulo</h2></div> : page
+    const venta = blockKind ? contenido : !moduloPermitido ? contenido : <VentaMovil search={search} setSearch={setSearch} category={category} setCategory={setCategory} notify={notify}
+      onPedidoVendedor={puedeCobrarPedidos ? (pedidoId) => { if (!sessionId) notify('Abrí tu turno para cobrar'); else setPedidosVendedor({ pedidoId }) } : undefined}
+      carrito={<CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} pedidosVendedorEnEspera={enEspera} onOpenPedidosVendedor={puedeCobrarPedidos ? () => setPedidosVendedor({}) : undefined} />} />
+    const extras = <>{!featureFlags.supabase && <AuthDevSelector onChange={setSession} />}{toast && <div className="toast">✓ <span>{toast}</span></div>}{pagoModalOpen && <PagoModal onClose={() => setPagoModalOpen(false)} notify={notify} />}{pedidosVendedor && sessionId && <PedidoVendedorCobro initialCart={pedidoEnCarrito} onCartChange={setPedidoEnCarrito} sessionId={sessionId} initialPedidoId={pedidosVendedor.pedidoId} notify={notify} onChanged={() => setRefrescoCola((n) => n + 1)} onClose={() => setPedidosVendedor(null)} />}{ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onPick={(product) => { setAmbiguousIds(null); void presentacionAlAgregar(product.id, 'tienda').then((permiso) => { if (!permiso.ok) { notify(permiso.mensaje); return } addProduct(product); notify(`${product.nombre} agregado`) }) }} onClose={() => setAmbiguousIds(null)} />}</>
+    return <Suspense fallback={null}><SellerMovil session={session} activo={activeModule} onNavegar={navigate} puedeAbrir={puedeAbrir} rutaDetalle={route.kind !== 'none'} contenido={contenido} venta={venta} extras={extras}
+      onRegistrarPago={() => setPagoModalOpen(true)}
+      onPedidoPiso={hasPermission(session, 'floor_order') ? () => navigateTo(pisoPath) : undefined}
+      onCerrarSesion={featureFlags.supabase ? () => void supabaseAuthSessionProvider.signOut() : undefined} /></Suspense>
+  }
   return <div className={`app-shell pos-root ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`} data-modo={mode}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} newBlocked={warehouseLocked} onRegistrarPago={() => setPagoModalOpen(true)} user={session?.user} onOpenSettings={() => navigate('Configuración')} onOpenShortcuts={() => setShortcutsOpen(true)} />{blockKind?<IntegrationState kind={blockKind}/>:!moduloPermitido?<main className="catalog"><div className="module-blocked" role="alert"><h2>Tu rol no permite abrir este módulo</h2></div></main>:page}</div>{activeModule === 'Venta'&&!blocked&&moduloPermitido && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} pedidosVendedorEnEspera={enEspera} onOpenPedidosVendedor={puedeCobrarPedidos ? () => setPedidosVendedor({}) : undefined} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}{pagoModalOpen && <PagoModal onClose={() => setPagoModalOpen(false)} notify={notify} />}{pedidosVendedor && sessionId && <PedidoVendedorCobro initialCart={pedidoEnCarrito} onCartChange={setPedidoEnCarrito} sessionId={sessionId} initialPedidoId={pedidosVendedor.pedidoId} notify={notify} onChanged={() => setRefrescoCola((n) => n + 1)} onClose={() => setPedidosVendedor(null)} />}{ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onPick={(product) => { setAmbiguousIds(null); void presentacionAlAgregar(product.id, 'tienda').then((permiso) => { if (!permiso.ok) { notify(permiso.mensaje); return } addProduct(product); notify(`${product.nombre} agregado`) }) }} onClose={() => setAmbiguousIds(null)} />}{shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}</div>
 }
 

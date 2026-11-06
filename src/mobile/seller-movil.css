@@ -1,0 +1,243 @@
+/* Seller · versión celular (< 768 px). Azul Claro de DESIGN.md.
+   Este archivo solo se carga en el celular (import diferido) y todo va bajo .movil-app
+   o body:has(.movil-app): la versión de computadora no lo ve. */
+
+html:has(.movil-app), body:has(.movil-app), #root:has(.movil-app) { min-width: 0; width: 100%; height: auto; overflow: visible; }
+body:has(.movil-app) { min-width: 0; background: #f3f6fa; -webkit-text-size-adjust: 100%; overscroll-behavior-y: contain; }
+
+/* Tokens en <html> para que también los vean las ventanas que se montan fuera de .movil-app (portales). */
+html:has(.movil-app) {
+  --m-primary: #2563eb; --m-primary-soft: #eaf1ff; --m-ink: #142033; --m-muted: #526279; --m-line: #dce5f1;
+  --m-page: #f3f6fa; --m-surface: #fff; --m-summary: #14243c; --m-danger: #b42318; --m-ok: #067647;
+  --m-barra: 56px; --m-tabs: 64px; --m-safe: env(safe-area-inset-bottom, 0px);
+  --orange: #2563eb; --orange-dark: #1d4ed8; /* los componentes heredados usan --orange como acento */
+}
+.movil-app {
+  font-family: 'Manrope Variable', 'DM Sans', system-ui, sans-serif; color: var(--m-ink); background: var(--m-page);
+  min-height: 100dvh; width: 100%; overflow-x: clip;
+}
+.movil-app *, .movil-app *::before, .movil-app *::after { box-sizing: border-box; }
+.movil-app input, .movil-app select, .movil-app textarea { font-size: 16px; } /* 16 px: Android no hace zoom al enfocar */
+
+/* ---------- Barra superior ---------- */
+.movil-barra { position: sticky; top: 0; z-index: 40; height: var(--m-barra); display: flex; align-items: center; gap: 10px; padding: 0 12px 0 16px; background: rgb(255 255 255 / 92%); backdrop-filter: blur(12px); border-bottom: 1px solid var(--m-line); }
+.movil-barra-titulo { flex: 1; min-width: 0; }
+.movil-barra-titulo h1 { margin: 0; font-size: 19px; line-height: 1.1; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.movil-barra-titulo small { display: block; color: var(--m-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.movil-avatar { width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--m-summary); color: #fff; font-weight: 700; font-size: 13px; display: grid; place-items: center; }
+
+/* ---------- Contenido ---------- */
+.movil-contenido { padding-bottom: calc(var(--m-tabs) + var(--m-safe) + 16px); min-width: 0; }
+.movil-contenido.es-modulo { padding-left: 12px; padding-right: 12px; padding-top: 12px; }
+
+/* ---------- Barra inferior ---------- */
+.movil-tabs { position: fixed; z-index: 45; left: 0; right: 0; bottom: 0; height: calc(var(--m-tabs) + var(--m-safe)); padding: 0 4px var(--m-safe); display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: rgb(255 255 255 / 96%); backdrop-filter: blur(12px); border-top: 1px solid var(--m-line); }
+.movil-tabs button { border: 0; background: transparent; color: var(--m-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; font-weight: 600; min-width: 0; position: relative; -webkit-tap-highlight-color: transparent; }
+.movil-tabs button svg { width: 22px; height: 22px; transition: transform .16s ease-out; }
+.movil-tabs button span { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.movil-tabs button[aria-current='page'] { color: var(--m-primary); }
+.movil-tabs button[aria-current='page']::before { content: ''; position: absolute; top: 6px; width: 54px; height: 30px; border-radius: 999px; background: var(--m-primary-soft); z-index: -1; }
+.movil-tabs button:active svg { transform: scale(.9); }
+
+/* ---------- Hoja "Más" ---------- */
+.movil-hoja-fondo { position: fixed; inset: 0; z-index: 90; background: rgb(20 32 51 / 45%); display: flex; align-items: flex-end; animation: movil-fundido .16s ease-out; }
+.movil-hoja { width: 100%; max-height: 88dvh; overflow-y: auto; background: var(--m-surface); border-radius: 20px 20px 0 0; padding: 8px 16px calc(16px + var(--m-safe)); animation: movil-subir .2s cubic-bezier(.2,.8,.2,1); }
+.movil-hoja::before { content: ''; display: block; width: 40px; height: 4px; border-radius: 4px; background: var(--m-line); margin: 0 auto 10px; }
+.movil-hoja > header { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--m-line); }
+.movil-hoja > header div { flex: 1; min-width: 0; }
+.movil-hoja > header strong, .movil-hoja > header small { display: block; }
+.movil-hoja > header small { color: var(--m-muted); font-size: 13px; text-transform: capitalize; }
+.movil-cerrar { width: 44px; height: 44px; border: 0; border-radius: 12px; background: var(--m-page); display: grid; place-items: center; color: var(--m-ink); }
+.movil-acciones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 0; }
+.movil-acciones button { min-height: 48px; border: 0; border-radius: 12px; background: var(--m-primary-soft); color: var(--m-primary); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.movil-modulos { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.movil-modulos button { width: 100%; min-height: 76px; border: 1px solid var(--m-line); border-radius: 14px; background: var(--m-surface); color: var(--m-ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 12px; font-weight: 600; text-align: center; padding: 6px; }
+.movil-modulos button svg { width: 22px; height: 22px; color: var(--m-primary); }
+.movil-modulos button[aria-current='page'] { border-color: var(--m-primary); background: var(--m-primary-soft); }
+.movil-salir { width: 100%; min-height: 48px; margin-top: 4px; border: 1px solid var(--m-line); border-radius: 12px; background: transparent; color: var(--m-danger); font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.movil-app svg { flex: none; }
+@keyframes movil-subir { from { transform: translateY(24px); opacity: .6 } to { transform: none; opacity: 1 } }
+@keyframes movil-fundido { from { opacity: 0 } to { opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { .movil-hoja, .movil-hoja-fondo, .movil-carrito { animation: none !important; transition: none !important; } }
+
+/* ---------- Venta ---------- */
+.movil-venta-captura { position: sticky; top: var(--m-barra); z-index: 30; padding: 10px 12px; background: var(--m-page); }
+.movil-buscador { display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 4px 0 12px; background: var(--m-surface); border: 1px solid var(--m-line); border-radius: 14px; }
+.movil-buscador:focus-within { border-color: var(--m-primary); box-shadow: 0 0 0 3px #2563eb26; }
+.movil-buscador > svg { width: 20px; height: 20px; color: var(--m-muted); }
+.movil-buscador input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--m-ink); }
+.movil-limpiar, .movil-escanear { width: 44px; height: 40px; border: 0; border-radius: 10px; display: grid; place-items: center; background: transparent; color: var(--m-muted); }
+.movil-escanear { background: var(--m-primary); color: #fff; }
+.movil-escanear[aria-pressed='true'] { background: var(--m-summary); }
+.movil-limpiar svg, .movil-escanear svg { width: 20px; height: 20px; }
+.movil-camara { margin-top: 10px; display: grid; gap: 8px; }
+.movil-camara .piso-visor { position: relative; height: 30dvh; min-height: 170px; border-radius: 14px; overflow: hidden; background: #0b1220; }
+.movil-camara .piso-visor video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.movil-camara .piso-visor.destello { box-shadow: inset 0 0 0 3px #34d399; }
+.movil-camara .piso-visor-error { margin: 0; padding: 18px; color: #fff; font-size: 14px; text-align: center; }
+.movil-camara .piso-visor-aviso { position: absolute; left: 8px; right: 8px; bottom: 8px; margin: 0; padding: 6px 10px; border-radius: 8px; background: rgb(0 0 0 / 60%); color: #fff; font-size: 12px; }
+.movil-camara-cerrar { justify-self: center; min-height: 40px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--m-primary-soft); color: var(--m-primary); font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.movil-camara-cerrar svg { width: 16px; height: 16px; }
+
+/* Canal comercial / motivo de traslado: una fila deslizable */
+.movil-venta-canal .channel-wrap { margin: 0; padding: 0 12px 4px; display: block; }
+.movil-venta-canal .channel-wrap > .eyebrow { display: none; }
+.movil-venta-canal .channel-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; background: transparent; padding: 0; border-radius: 0; }
+.movil-venta-canal .channel-tabs::-webkit-scrollbar { display: none; }
+.movil-venta-canal .channel-tabs button { flex: none; min-height: 40px; padding: 0 14px; border: 1px solid var(--m-line); border-radius: 999px; background: var(--m-surface); color: var(--m-muted); box-shadow: none; }
+.movil-venta-canal .channel-tabs button.active { background: var(--m-ink); border-color: var(--m-ink); color: #fff; }
+.movil-venta-canal .channel-tabs button.active small { color: #c9d4e5; }
+.movil-venta-canal .channel-tabs svg { width: 16px; height: 16px; }
+.movil-venta-canal .channel-tabs strong { font-size: 13px; }
+.movil-venta-canal .channel-tabs small { display: none; }
+
+/* Catálogo como lista: una fila por producto, botón grande a la derecha */
+.movil-venta-catalogo { padding: 0 12px; }
+.movil-venta-catalogo .catalog-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 6px 0 2px; }
+.movil-venta-catalogo .catalog-chips:empty { display: none; }
+.movil-venta-catalogo .category-row { border-top: 0; padding-top: 8px; gap: 8px; display: flex; align-items: center; }
+.movil-venta-catalogo .category-scroll button { height: 36px; padding: 0 14px; font-size: 13px; }
+.movil-venta-catalogo .category-scroll button.active { background: var(--m-ink); border-color: var(--m-ink); }
+.movil-venta-catalogo .brand-filter { min-width: 0; flex: 1; height: 36px; font-size: 14px; }
+.movil-venta-catalogo .section-heading { margin: 12px 0 8px; }
+.movil-venta-catalogo .section-heading p { font-size: 14px; }
+.movil-venta-catalogo .product-grid { grid-template-columns: 1fr !important; gap: 8px !important; }
+.movil-venta-catalogo .product-card { display: grid; grid-template-columns: 64px 1fr; align-items: stretch; border-radius: 14px; border-color: var(--m-line); box-shadow: none; transform: none !important; }
+.movil-venta-catalogo .product-card .product-visual { height: 100% !important; min-height: 64px; width: 64px; }
+.movil-venta-catalogo .product-card .product-visual svg { width: 30px; height: 30px; }
+.movil-venta-catalogo .product-card .product-visual img { width: 100%; height: 100%; object-fit: cover; }
+.movil-venta-catalogo .product-info { padding: 10px 10px 8px 12px; min-width: 0; position: relative; }
+.movil-venta-catalogo .product-info h3 { font-size: 14px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; margin: 4px 0 2px; }
+.movil-venta-catalogo .product-info p, .movil-venta-catalogo .product-info > small { font-size: 12px; }
+.movil-venta-catalogo .stock-pill { font-size: 12px; }
+.movil-venta-catalogo .product-bottom { margin-top: 6px; padding-top: 6px; align-items: center; }
+.movil-venta-catalogo .product-bottom strong { font-size: 16px; }
+.movil-venta-catalogo .product-bottom button { height: 44px; min-width: 96px; padding: 0 14px; border-radius: 12px; font-size: 14px; background: var(--m-primary); justify-content: center; }
+.movil-venta-catalogo .product-bottom button svg { width: 16px; }
+.movil-venta-catalogo .catalog-en-carrito { font-size: 12px; color: var(--m-primary); font-weight: 700; }
+.movil-venta-catalogo .catalog-en-carrito.is-empty { display: none; }
+.movil-venta-catalogo .empty-products { height: auto; padding: 40px 0; }
+
+/* Barra del carrito: siempre a la vista sobre la navegación */
+.movil-barra-carrito { position: fixed; z-index: 44; left: 10px; right: 10px; bottom: calc(var(--m-tabs) + var(--m-safe) + 8px); min-height: 60px; border: 0; border-radius: 16px; background: var(--m-primary); color: #fff; display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 10px; box-shadow: 0 10px 24px #1d4ed84d; text-align: left; animation: movil-subir .2s cubic-bezier(.2,.8,.2,1); }
+.movil-barra-carrito-cuenta { position: relative; width: 44px; height: 44px; border-radius: 12px; background: rgb(255 255 255 / 18%); display: grid; place-items: center; }
+.movil-barra-carrito-cuenta svg { width: 22px; height: 22px; }
+.movil-barra-carrito-cuenta b { position: absolute; top: -6px; right: -6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #fff; color: var(--m-primary); font-size: 12px; display: grid; place-items: center; }
+.movil-barra-carrito-texto { flex: 1; min-width: 0; }
+.movil-barra-carrito-texto small, .movil-barra-carrito-texto strong { display: block; }
+.movil-barra-carrito-texto small { font-size: 12px; opacity: .85; }
+.movil-barra-carrito-texto strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.movil-barra-carrito-accion { font-weight: 700; font-size: 14px; }
+.movil-venta:has(.movil-barra-carrito) .movil-venta-catalogo { padding-bottom: 76px; }
+
+/* Hoja del carrito: pantalla completa, el panel de escritorio ocupa todo el alto */
+.movil-carrito { position: fixed; z-index: 60; inset: 0; display: flex; flex-direction: column; background: var(--m-surface); transform: translateY(100%); visibility: hidden; transition: transform .24s cubic-bezier(.2,.8,.2,1), visibility 0s .24s; }
+.movil-carrito.abierto { transform: none; visibility: visible; transition: transform .24s cubic-bezier(.2,.8,.2,1), visibility 0s; }
+.movil-carrito-cabecera { flex: none; display: flex; padding: 8px 10px; border-bottom: 1px solid var(--m-line); background: var(--m-surface); }
+.movil-carrito-cabecera button { min-height: 44px; padding: 0 12px; border: 0; border-radius: 12px; background: var(--m-primary-soft); color: var(--m-primary); font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+.movil-carrito-cabecera svg { width: 18px; height: 18px; }
+.movil-carrito .cart-panel { flex: 1; min-height: 0; height: auto !important; width: 100% !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; margin: 0 !important; padding-bottom: var(--m-safe); }
+.movil-carrito .cart-panel button { min-height: 40px; }
+.movil-carrito .pay-button { min-height: 52px; font-size: 15px; }
+.movil-carrito kbd, .movil-carrito .kbd, .movil-carrito .hotkey-hint { display: none !important; }
+
+/* ---------- Ventanas (modales) como hojas inferiores ---------- */
+body:has(.movil-app) .modal-backdrop { padding: 0; place-items: end stretch; align-items: end; z-index: 100; }
+body:has(.movil-app) .modal-backdrop > .modal, body:has(.movil-app) .modal-backdrop > [role='dialog'] { width: 100% !important; max-width: 100% !important; max-height: 94dvh; border-radius: 20px 20px 0 0; margin: 0; padding-bottom: env(safe-area-inset-bottom, 0px); animation: movil-subir .2s cubic-bezier(.2,.8,.2,1); }
+body:has(.movil-app) .modal .form-grid { grid-template-columns: 1fr; }
+body:has(.movil-app) .modal .payment-methods { grid-template-columns: repeat(3, 1fr); }
+body:has(.movil-app) .modal .modal-actions { position: sticky; bottom: 0; background: inherit; flex-wrap: wrap; }
+body:has(.movil-app) .modal .modal-actions > button { flex: 1 1 140px; min-height: 48px; }
+body:has(.movil-app) .modal kbd { display: none; }
+
+/* ---------- Aviso flotante y sesión de prueba ---------- */
+.movil-app .toast { bottom: calc(var(--m-tabs) + var(--m-safe) + 80px); max-width: calc(100vw - 32px); font-size: 14px; z-index: 210; }
+.movil-app .auth-dev-selector { position: static; transform: none; margin: 8px 12px; width: auto; max-width: none; flex-wrap: wrap; }
+
+/* ---------- Módulos reutilizados del escritorio (feature-page) ---------- */
+.movil-contenido > .feature-page { height: auto !important; max-height: none !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; background: transparent !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; backdrop-filter: none !important; min-width: 0; width: 100%; }
+.movil-contenido .feature-header { padding: 0; margin: 0 0 12px; gap: 8px; flex-wrap: wrap; justify-content: flex-start; }
+/* El título ya está en la barra superior: se quitan antetítulo, título y bajada; quedan las acciones. */
+.movil-contenido .feature-header > div:first-child:has(h1) { display: none; }
+.movil-contenido .feature-header:not(:has(> :nth-child(2))) { display: none; }
+.movil-contenido .feature-header > :is(button, a, div) { flex: 1 1 auto; }
+.movil-contenido .feature-header button { min-height: 44px; justify-content: center; }
+.movil-contenido .feature-toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; margin-bottom: 12px; border-radius: 14px; }
+.movil-contenido .feature-toolbar > * { flex: 1 1 100%; min-width: 0; max-width: 100%; }
+.movil-contenido .feature-toolbar :is(input, select) { width: 100%; min-height: 44px; }
+.movil-contenido :is(.pedidos-segmento-tabs, .commission-tabs, .turno-tabs, .filter-toggle-row) { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; max-width: 100%; }
+.movil-contenido :is(.pedidos-segmento-tabs, .commission-tabs, .turno-tabs, .filter-toggle-row) > * { flex: none; min-height: 40px; }
+.movil-contenido .ped-filtros { display: flex; flex-wrap: wrap; gap: 8px; }
+.movil-contenido .ped-filtros > * { flex: 1 1 calc(50% - 8px); min-width: 0; }
+.movil-contenido .ped-filtros :is(select, input) { width: 100%; min-height: 44px; }
+
+/* Tablas → tarjetas. El encabezado de columnas no sirve en una sola columna. */
+.movil-contenido .feature-table { overflow: visible !important; max-height: none !important; border: 0 !important; background: transparent !important; box-shadow: none !important; display: grid; gap: 8px; min-width: 0; }
+.movil-contenido .feature-table > .table-head { display: none !important; }
+.movil-contenido .feature-table > article, .movil-contenido .feature-table > div:not(.table-head) > article { position: relative; display: flex !important; flex-wrap: wrap; align-items: center; gap: 6px 10px; grid-template-columns: none !important; min-width: 0 !important; width: 100% !important; padding: 12px 14px !important; background: var(--m-surface); border: 1px solid var(--m-line) !important; border-radius: 14px; font-size: 13px; }
+.movil-contenido .feature-table article > :is(span, div, strong, small) { min-width: 0; overflow-wrap: anywhere; }
+.movil-contenido .feature-table article > :first-child:not(a), .movil-contenido .feature-table article > a:first-child + * { flex: 1 1 100%; font-size: 15px; }
+.movil-contenido .feature-table article .row-actions { flex: 1 1 100%; display: flex; gap: 6px; justify-content: flex-end; position: relative; z-index: 1; }
+.movil-contenido .feature-table article .row-actions button { min-width: 44px; min-height: 40px; }
+.movil-contenido .feature-table > div:not(.table-head) { min-width: 0; }
+
+/* Pedidos: número y total arriba, cliente, y abajo los estados. */
+.movil-contenido .orders-table > article > * { order: 5; }
+.movil-contenido .orders-table > article > .ped-numero-celda { order: 1; flex: 1 1 auto !important; width: auto !important; font-size: 14px !important; }
+.movil-contenido .orders-table > article > strong { order: 2; font-size: 16px; font-variant-numeric: tabular-nums; }
+.movil-contenido .orders-table > article > .ped-numero-celda + span { order: 3; flex: 1 1 100%; font-size: 15px; font-weight: 600; }
+.movil-contenido .orders-table > article > strong + span { order: 4; color: var(--m-muted); font-size: 12px; flex: 1 1 100%; }
+.movil-contenido .orders-table > article > .ped-avisos-celda:has(> small:only-child) { display: none; }
+
+/* Inventario: nombre arriba; tienda / almacén / total como cifras con etiqueta. */
+.movil-contenido .inventory-table > article > span:not(.status-chip) { font-variant-numeric: tabular-nums; font-weight: 700; }
+.movil-contenido .inventory-table > article > span:nth-of-type(1)::before { content: 'Tienda '; font-weight: 500; color: var(--m-muted); }
+.movil-contenido .inventory-table > article > span:nth-of-type(2)::before { content: 'Almacén '; font-weight: 500; color: var(--m-muted); }
+.movil-contenido .inventory-table > article > span:nth-of-type(3)::before { content: 'Total '; font-weight: 500; color: var(--m-muted); }
+.movil-contenido .inventory-table > article > .status-chip { margin-left: auto; }
+
+/* Productos: precios por canal con su etiqueta. */
+.movil-contenido .products-table > article > span:nth-of-type(2)::before { content: 'Retail '; color: var(--m-muted); font-weight: 500; }
+.movil-contenido .products-table > article > span:nth-of-type(3)::before { content: 'Mayoreo '; color: var(--m-muted); font-weight: 500; }
+.movil-contenido .products-table > article > span:nth-of-type(4)::before { content: 'Instit. '; color: var(--m-muted); font-weight: 500; }
+.movil-contenido .products-table > article > span:nth-of-type(5)::before { content: 'Corp. '; color: var(--m-muted); font-weight: 500; }
+.movil-contenido .products-table > article > span:nth-of-type(1) { flex: 1 1 100%; color: var(--m-muted); font-size: 12px; }
+
+/* Listas de gestión (clientes, comisiones) y estadísticas */
+.movil-contenido :is(.management-stats, .reports-stat-tiles) { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8px; }
+.movil-contenido .customer-grid { grid-template-columns: 1fr !important; }
+.movil-contenido .pagination-bar { flex-wrap: wrap; gap: 8px; justify-content: center; }
+.movil-contenido .settings-section { padding: 14px !important; }
+.movil-contenido .settings-section .form-grid { grid-template-columns: 1fr !important; }
+.movil-contenido .module-blocked { padding: 32px 8px; text-align: center; }
+
+/* Acento Azul Claro en los botones heredados (en escritorio llevan naranja fijo). */
+body:has(.movil-app) :is(.primary-button, .pay-button, .product-bottom button) { background: var(--m-primary) !important; background-image: none !important; color: #fff; box-shadow: 0 6px 16px #2563eb33 !important; border-color: var(--m-primary); }
+body:has(.movil-app) :is(.primary-button, .pay-button):disabled { background: #b9c8e6 !important; box-shadow: none !important; }
+body:has(.movil-app) :is(input, select, textarea):focus { border-color: var(--m-primary) !important; box-shadow: 0 0 0 3px #2563eb26 !important; outline: 0; }
+body:has(.movil-app) :is(.primary-button, .secondary-button) { min-height: 44px; }
+
+/* ---------- Caja ---------- */
+/* Barras fijas de Caja: debajo de la barra superior y encima de la navegación inferior. */
+.movil-contenido .turno-actionbar { top: calc(var(--m-barra) + 4px); }
+.movil-contenido .cash-opening-count > footer { bottom: calc(var(--m-tabs) + var(--m-safe) + 8px); }
+.movil-contenido .cash-opening { padding: 18px; border-radius: 18px; }
+.movil-contenido :is(.cash-layout, .cash-layout.turno-layout) { grid-template-columns: minmax(0, 1fr) !important; gap: 12px; }
+.movil-contenido .cash-hero { grid-column: 1 / -1; }
+
+/* ---------- Editores de líneas (traslados, cotizaciones, pedidos) dentro de ventanas ---------- */
+body:has(.movil-app) .modal :is(.line-add-controls, .editor-lines, .draft-lines) { grid-column: 1 / -1; width: 100%; min-width: 0; }
+body:has(.movil-app) .modal .line-add-controls { display: flex; flex-direction: column; gap: 8px; }
+body:has(.movil-app) .modal .line-add-controls > :is(input, select, button) { width: 100%; min-height: 44px; }
+body:has(.movil-app) .modal .product-search-results { width: 100%; max-height: 40dvh; overflow-y: auto; }
+body:has(.movil-app) .modal .product-search-results button { min-height: 48px; width: 100%; text-align: left; }
+body:has(.movil-app) .modal .draft-line-row { display: flex !important; flex-wrap: wrap; align-items: center; gap: 8px; grid-template-columns: none !important; padding: 10px 0; }
+body:has(.movil-app) .modal .draft-line-row > :first-child { flex: 1 1 100%; min-width: 0; }
+body:has(.movil-app) .modal .draft-line-row > :not(:first-child) { flex: 1 1 auto; min-width: 0; }
+body:has(.movil-app) .modal .draft-line-row :is(input, select) { min-height: 44px; max-width: 100%; }
+body:has(.movil-app) .modal .empty-hint { width: auto !important; }
+body:has(.movil-app) .modal .draft-line-top { display: flex !important; flex-direction: row !important; flex-wrap: wrap; align-items: center; gap: 8px; grid-template-columns: none !important; width: 100%; }
+body:has(.movil-app) .modal .draft-line-top > span { flex: 1 1 100%; min-width: 0; }
+body:has(.movil-app) .modal :is(.draft-line-row, .draft-line-top) > input { flex: 0 0 96px; width: 96px; }
+body:has(.movil-app) .modal :is(.draft-line-row, .draft-line-top) > select { flex: 1 1 120px; width: auto; }
+body:has(.movil-app) .modal :is(.draft-line-row, .draft-line-top) > button { flex: 0 0 44px; width: 44px; min-height: 44px; }
