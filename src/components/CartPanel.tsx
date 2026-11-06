@@ -61,7 +61,7 @@ type CartBorradorEstado =
   | { mode: 'traslado'; cart: CartItemType[]; trasladoMotivo: TransferMotivo; trasladoOrigenId: number; trasladoDestinoId: number }
   | { mode: 'ventaDirecta'; cart: CartItemType[]; vtdUbicacionId: number | null; vtdPrecobrado: boolean }
 
-export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, onRequestTransfer, pedidosVendedorEnEspera = 0, onOpenPedidosVendedor }: { notify: (message: string) => void; onOpenDraftOrder: (draft: QuoteDraft) => void; onGoToCash: () => void; sellerName?: string; onRequestTransfer?: (request: PendingTransferRequest) => void; pedidosVendedorEnEspera?: number; onOpenPedidosVendedor?: () => void }) {
+export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, onRequestTransfer, pedidosVendedorEnEspera = 0, onOpenPedidosVendedor, onTrasladoCreado }: { notify: (message: string) => void; onOpenDraftOrder: (draft: QuoteDraft) => void; onGoToCash: () => void; sellerName?: string; onRequestTransfer?: (request: PendingTransferRequest) => void; pedidosVendedorEnEspera?: number; onOpenPedidosVendedor?: () => void; /** Solo la versión celular lo pasa: muestra su ticket térmico con QR en lugar de la ventana del QR. Sin él, todo igual que siempre. */ onTrasladoCreado?: (traslado: TransferRecord) => void }) {
   const { warehouseLocked, warehousePaid, pedidoEnCarrito, vtdsEnCarrito: vtdCobroSeleccionadas = [], setVtdsEnCarrito: setVtdCobroSeleccionadas, vendedorId, setVendedorId, channel, cart, subtotal, total, discount, setDiscount, operationNumber, operationId, clearOperation, loadSuspendedSale, updateItem, addCustomItem, customer, mode, setMode, trasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, notifyVentaSuspendida, setSelectedLineId, lastRemoved, undoLastRemove } = usePos()
   const { sessionId } = useCashSession()
   const { saldo: customerBalance } = useSaldoCliente(mode === 'venta' ? customer?.id : undefined)
@@ -322,7 +322,8 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       clearOperation()
       limpiarBorrador()
       notify('Solicitud de traslado creada')
-      setTrasladoCreado(creado)
+      if (onTrasladoCreado) onTrasladoCreado(creado)
+      else setTrasladoCreado(creado)
     } catch (error) {
       notify(error instanceof Error ? error.message : 'No se pudo crear la solicitud de traslado')
     } finally {
