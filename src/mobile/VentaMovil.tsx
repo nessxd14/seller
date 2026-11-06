@@ -14,6 +14,8 @@ import { EscanerContinuo, vibrar, vibrarDesconocido } from '../features/piso/Esc
 import type { Product } from '../types'
 import { CERRAR_CARRITO } from './useBotonAtras'
 import { PreTicketMovil } from './PreTicketMovil'
+import { TrasladoTicketMovil } from './TrasladoTicketMovil'
+import type { TransferRecord } from '../application/shared/models'
 
 const bs = (v: number) => v.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -22,8 +24,9 @@ export interface VentaMovilProps {
   setSearch: (value: string) => void
   category: string
   setCategory: (value: string) => void
-  /** El mismo panel de carrito del escritorio (cliente, líneas, VTD, cobro); en el celular vive en una hoja. */
-  carrito: ReactNode
+  /** El mismo panel de carrito del escritorio (cliente, líneas, VTD, cobro); en el celular vive en una hoja.
+   *  Recibe con qué avisar un traslado creado, para mostrar su ticket térmico con QR. */
+  carrito: (alCrearTraslado: (traslado: TransferRecord) => void) => ReactNode
   /** Abre en caja un pedido de vendedor leído por su QR (PDV-…). Ausente si el rol no cobra pedidos. */
   onPedidoVendedor?: (pedidoId: string) => void
   /** Pedidos de piso enviados a caja y aún sin tomar (el mismo contador del carrito de escritorio). */
@@ -44,6 +47,7 @@ export function VentaMovil({ search, setSearch, category, setCategory, carrito, 
   const [camara, setCamara] = useState(false)
   const [ambiguos, setAmbiguos] = useState<number[] | null>(null)
   const [preTicket, setPreTicket] = useState(false)
+  const [trasladoCreado, setTrasladoCreado] = useState<TransferRecord | null>(null)
   const unidades = cart.reduce((n, item) => n + item.cantidad, 0)
 
   // El carrito vacío no se queda abierto (por ejemplo, después de cobrar). Ajuste durante el render, sin efecto.
@@ -127,10 +131,11 @@ export function VentaMovil({ search, setSearch, category, setCategory, carrito, 
         <button type="button" className="movil-ticket" disabled={!cart.length} onClick={() => setPreTicket(true)}><ReceiptText aria-hidden="true" /> Ticket previo</button>
         <button type="button" className="movil-nueva" disabled={nuevaBloqueada} onClick={onNueva} aria-label="Nueva venta"><Plus aria-hidden="true" /> Nueva</button>
       </header>
-      {carrito}
+      {carrito(setTrasladoCreado)}
     </section>
 
     {preTicket && <PreTicketMovil onClose={() => setPreTicket(false)} />}
+    {trasladoCreado && <TrasladoTicketMovil traslado={trasladoCreado} onClose={() => setTrasladoCreado(null)} />}
     {ambiguos && <AmbiguousScanPicker productIds={ambiguos} onPick={(p) => { setAmbiguos(null); void agregarProducto(p) }} onClose={() => setAmbiguos(null)} />}
   </div>
 }

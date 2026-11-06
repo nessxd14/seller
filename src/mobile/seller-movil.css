@@ -317,7 +317,8 @@ body:has(.movil-app) .modal .draft-lines .custom-line-row > :first-child { flex:
 /* ---------- Avisos flotantes: abajo y a todo el ancho ---------- */
 body:has(.movil-app) .toast { left: 12px !important; right: 12px !important; width: auto !important; max-width: none !important; transform: none !important; bottom: calc(var(--m-tabs) + var(--m-safe) + 12px) !important; padding: 12px 14px; font-size: 14px; line-height: 1.4; text-align: left; border-radius: 12px; }
 body:has(.movil-pie-venta) .toast { bottom: calc(var(--m-tabs) + var(--m-safe) + 84px) !important; }
-body:has(.movil-app):has(.modal-backdrop) .toast { bottom: calc(96px + var(--m-safe)) !important; }
+/* Con una ventana abierta el aviso va arriba: abajo taparía sus botones. */
+body:has(.movil-app):has(.modal-backdrop) .toast { top: calc(12px + env(safe-area-inset-top, 0px)) !important; bottom: auto !important; }
 /* Botones secundarios del carrito (Suspender, Ticket previo, Revisar, Guardar) también en traslado, donde el panel no lleva cart-panel-light. */
 .movil-carrito .cart-secondary-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .movil-carrito .cart-secondary-row > button { min-height: 40px; padding: 0 12px; border: 1px solid var(--m-line); border-radius: 10px; background: var(--m-surface); color: var(--m-ink); font-size: 13px; font-weight: 600; }
