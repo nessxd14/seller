@@ -1,3 +1,4 @@
+import type { VtdCajaAlmacenInfo } from '../shared/cajaAlmacen'
 import type { AnulacionResultado, AnulacionSolicitud, AnulacionSolicitudEstado, AnulacionSolicitudResultado, BorradorOperacionRecord,BorradorOperacionTipo, CashSessionRecord, CobrarVtdResultado, CustomerRecord, OrderView, QuoteDraft, VentaDirectaRecord, VtdPorCobrar } from '../shared/models'
 import type { Product } from '../../types'
 import type { CategoriaPedido } from '../../domain/orders/segmentoPedido'
@@ -98,6 +99,12 @@ export interface VentaDirectaRepository {
   // Brief Caja VTD: cobro de VTD postcobrado por caja — cobrar_vtd, independiente de
   // abrir_venta/completar_venta (no toca Kardex). listPorCobrar lee v_vtd_por_cobrar.
   listPorCobrar():Promise<VtdPorCobrar[]>
+  // Bandeja sobre VTD de Caja–Almacén (vtd_info / vtd_*): la base busca la operación de cada VTD.
+  infoCajaAlmacen(ventaIds:string[]):Promise<VtdCajaAlmacenInfo[]>
+  cobrarVtdBandeja(input:{ventaId:string;sesionCajaId:string;pagos:SaleCheckoutPayment[]},context:{idempotencyKey:string}):Promise<CobrarVtdResultado>
+  ajustarVtdBandeja(ventaId:string,lineas:{linea_id:number;cantidad_presentacion:number}[],motivo:string,devolucion?:object):Promise<void>
+  rechazarVtdBandeja(ventaId:string,motivo:string,devolucionRealizada:boolean,referencia:string):Promise<void>
+  pagoPosteriorVtdBandeja(ventaId:string,motivo:string,contacto:string|undefined):Promise<void>
   cobrarVtd(input:{ventaIds:string[];sesionCajaId:string;pagos:SaleCheckoutPayment[]},context:MutationContext&{idempotencyKey:string}):Promise<CobrarVtdResultado>
   // Entrega sin cobro: solo VTD ABIERTA sin pago; motivo >= 5 caracteres, contacto obligatorio sin cliente.
   marcarPagoPosterior(ventaId:string,motivo:string,contacto:string|undefined):Promise<void>

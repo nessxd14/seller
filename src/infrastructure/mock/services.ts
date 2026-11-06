@@ -1,3 +1,5 @@
+import type { VtdCajaAlmacenInfo } from '../../application/shared/cajaAlmacen'
+import type { SaleCheckoutPayment } from '../../application/ports/repositories'
 import { QuoteService } from '../../application/quotations/QuoteService'
 import { OrderService } from '../../application/orders/OrderService'
 import { CustomerService } from '../../application/customers/CustomerService'
@@ -227,6 +229,24 @@ export const ventaDirectaService = {
     return ventaDirectaMockRepository.listPorCobrar()
   },
   marcarPagoPosterior(ventaId: string, motivo: string, contacto?: string): Promise<void> {
+    return ventaDirectaMockRepository.marcarPagoPosterior(ventaId, motivo, contacto)
+  },
+  // El mock no tiene operaciones Caja–Almacén: vtd_info responde caja_almacen=false y la bandeja usa el camino directo.
+  infoCajaAlmacen(ventaIds: string[]): Promise<VtdCajaAlmacenInfo[]> {
+    return Promise.resolve(ventaIds.map((ventaId) => ({ ventaId, cajaAlmacen: false, operacionCerrada: false, turnoAbierto: false, version: 0, faltante: null, lineas: [] })))
+  },
+  async cobrarVtdBandeja(input: { ventaId: string; sesionCajaId: string; pagos: SaleCheckoutPayment[] }) {
+    return ventaDirectaMockRepository.cobrarVtd({ ventaIds: [input.ventaId], sesionCajaId: input.sesionCajaId, pagos: input.pagos })
+  },
+  async ajustarVtdBandeja(ventaId: string, lineas: { linea_id: number; cantidad_presentacion: number }[], motivo: string, _devolucion?: object): Promise<void> {
+    void _devolucion
+    await ventaDirectaMockRepository.ajustar(ventaId, lineas.map((l) => ({ lineaId: String(l.linea_id), cantidadPresentacion: l.cantidad_presentacion })), motivo)
+  },
+  async rechazarVtdBandeja(ventaId: string, motivo: string, _devolucionRealizada: boolean, _referencia: string): Promise<void> {
+    void _devolucionRealizada; void _referencia
+    await ventaDirectaMockRepository.anular(ventaId, motivo)
+  },
+  pagoPosteriorVtdBandeja(ventaId: string, motivo: string, contacto?: string): Promise<void> {
     return ventaDirectaMockRepository.marcarPagoPosterior(ventaId, motivo, contacto)
   },
   async cobrarVtd(input: Parameters<typeof ventaDirectaMockRepository.cobrarVtd>[0]) {

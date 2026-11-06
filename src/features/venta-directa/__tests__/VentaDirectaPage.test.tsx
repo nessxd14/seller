@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import type { VentaDirectaRecord } from '../../../application/shared/models'
 import { VentaDirectaPage } from '../VentaDirectaPage'
 
-const mocks = vi.hoisted(() => ({ listAbiertas: vi.fn(), completar: vi.fn(), cobrarVtd: vi.fn(), getById: vi.fn(), marcarPagoPosterior: vi.fn(), puedeAnular: vi.fn(), anular: vi.fn(), solicitar: vi.fn() }))
+const mocks = vi.hoisted(() => ({ listAbiertas: vi.fn(), completar: vi.fn(), cobrarVtd: vi.fn(), getById: vi.fn(), marcarPagoPosterior: vi.fn(), puedeAnular: vi.fn(), anular: vi.fn(), solicitar: vi.fn(), listPorCobrar: vi.fn(), info: vi.fn(), cobrarBandeja: vi.fn(), ajustarBandeja: vi.fn(), rechazarBandeja: vi.fn(), pagoPosteriorBandeja: vi.fn(), refreshAlmacen: vi.fn() }))
+vi.mock('../../../context/CajaAlmacenContext', () => ({ useCajaAlmacen: () => ({ refresh: mocks.refreshAlmacen }) }))
 vi.mock('../../../context/CashSessionContext', () => ({ useCashSession: () => ({ sessionId: '1' }) }))
 vi.mock('../../../components/VtdTicketPreviewModal', () => ({ VtdTicketPreviewModal: ({ venta }: { venta: VentaDirectaRecord }) => <div role="dialog" aria-label="ticket">ticket {venta.numero}</div> }))
 vi.mock('../../../infrastructure/services', () => ({
@@ -17,6 +18,12 @@ vi.mock('../../../infrastructure/services', () => ({
     getById: (...a: unknown[]) => mocks.getById(...a),
     marcarPagoPosterior: (...a: unknown[]) => mocks.marcarPagoPosterior(...a),
     anular: vi.fn(), ajustar: vi.fn(),
+    listPorCobrar: (...a: unknown[]) => mocks.listPorCobrar(...a),
+    infoCajaAlmacen: (...a: unknown[]) => mocks.info(...a),
+    cobrarVtdBandeja: (...a: unknown[]) => mocks.cobrarBandeja(...a),
+    ajustarVtdBandeja: (...a: unknown[]) => mocks.ajustarBandeja(...a),
+    rechazarVtdBandeja: (...a: unknown[]) => mocks.rechazarBandeja(...a),
+    pagoPosteriorVtdBandeja: (...a: unknown[]) => mocks.pagoPosteriorBandeja(...a),
   },
 }))
 
@@ -28,7 +35,7 @@ const base: VentaDirectaRecord = {
 const TRIGGER_MSG = 'VTD-2026-00001 no está cobrada. Cóbrala en caja antes de entregar, o márcala como pago posterior con motivo.'
 const entrega = () => screen.getByRole('button', { name: /Consultar entrega/ }) as HTMLButtonElement
 
-beforeEach(() => { vi.clearAllMocks(); mocks.listAbiertas.mockResolvedValue([base]); mocks.puedeAnular.mockResolvedValue(true) })
+beforeEach(() => { vi.clearAllMocks(); mocks.listAbiertas.mockResolvedValue([base]); mocks.puedeAnular.mockResolvedValue(true); mocks.listPorCobrar.mockResolvedValue([]); mocks.info.mockResolvedValue([]); mocks.refreshAlmacen.mockResolvedValue(undefined) })
 afterEach(cleanup)
 
 describe('Bandeja de Venta Directa — cobro obligatorio (Brief Caja VTD obligatorio A3/A5)', () => {
@@ -204,5 +211,84 @@ describe('Bandeja de Venta Directa — anulación con motivo', () => {
     fireEvent.change(within(dialog).getByLabelText(/Motivo/), { target: { value: 'Error de cobro' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Anular venta' }))
     expect((await within(dialog).findByRole('alert')).textContent).toBe('La venta pasó por Caja–Almacén: resuélvela allí')
+  })
+})
+
+describe('Bandeja de Venta Directa — VTD de Caja–Almacén', () => {
+  const lineas = [{ linea_id: 11, nombre: 'Resma', presentacion: 'Paquete', cantidad_presentacion: 2 }]
+  const conEntrega = (entrega: string, extra: object = {}) => mocks.info.mockResolvedValue([{ ventaId: '1', cajaAlmacen: true, operacionCerrada: false, turnoAbierto: true, entrega, version: 3, faltante: null, lineas, ...extra }])
+
+  it('"Cobrar" usa vtd_cobrar y no cobrar_vtd', async () => {
+    conEntrega('SOLICITADO')
+    mocks.cobrarBandeja.mockResolvedValue({ reintento: false, sesionCajaId: '1', ventas: [], totalBs: 150, cambioBs: 0, pendienteVerificacion: false })
+    mocks.getById.mockResolvedValue({ ...base, paidCents: 15000 })
+    render(<VentaDirectaPage notify={vi.fn()} />)
+    await screen.findByText('Pendiente de verificación de Almacén')
+    fireEvent.click(screen.getByRole('button', { name: /^Cobrar$/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar cobro' }))
+    await waitFor(() => expect(mocks.cobrarBandeja).toHaveBeenCalledWith({ ventaId: '1', sesionCajaId: '1', pagos: [{ method: 'cash', amountCents: 15000, receivedCents: 15000 }] }))
+    expect(mocks.cobrarVtd).not.toHaveBeenCalled()
+    await waitFor(() => expect(mocks.refreshAlmacen).toHaveBeenCalled())
+  })
+
+  it('"Pago posterior…" usa vtd_pago_posterior', async () => {
+    conEntrega('SOLICITADO')
+    render(<VentaDirectaPage notify={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Pago posterior…' }))
+    const dialog = await screen.findByRole('dialog')
+    const [motivo, contacto] = [within(dialog).getByPlaceholderText(/Por qué se entrega/), within(dialog).getByPlaceholderText(/Carlos/)]
+    fireEvent.change(motivo, { target: { value: 'Paga el viernes' } })
+    fireEvent.change(contacto, { target: { value: 'Ana 7001' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Marcar pago posterior' }))
+    await waitFor(() => expect(mocks.pagoPosteriorBandeja).toHaveBeenCalledWith('1', 'Paga el viernes', 'Ana 7001'))
+    expect(mocks.marcarPagoPosterior).not.toHaveBeenCalled()
+  })
+
+  it('"Rechazar" usa vtd_rechazar y muestra el error de la base en el modal', async () => {
+    conEntrega('EN_CAJA')
+    mocks.rechazarBandeja.mockRejectedValueOnce(new Error('No hay efectivo suficiente en este turno'))
+    render(<VentaDirectaPage notify={vi.fn()} />)
+    await screen.findByText('Material enviado a Caja')
+    fireEvent.click(screen.getByRole('button', { name: 'Rechazar' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'El cliente se fue' } })
+    fireEvent.click(within(dialog).getAllByRole('button').at(-1)!)
+    await within(dialog).findByText('No hay efectivo suficiente en este turno')
+    expect(mocks.rechazarBandeja).toHaveBeenCalledWith('1', 'El cliente se fue', false, '')
+  })
+
+  it('con el material en Caja no ofrece Ajustar', async () => {
+    conEntrega('EN_CAJA')
+    render(<VentaDirectaPage notify={vi.fn()} />)
+    await screen.findByText('Material enviado a Caja')
+    expect(screen.queryByRole('button', { name: /Ajustar/ })).toBeNull()
+  })
+
+  it('"Ajustar" abre el ajuste de operación con el faltante de Almacén', async () => {
+    conEntrega('SOLICITADO', { faltante: [{ linea_id: 11, cantidad_presentacion_disponible: 1 }] })
+    mocks.getById.mockResolvedValue({ ...base, lines: [{ ...base.lines[0], id: '11' }] })
+    render(<VentaDirectaPage notify={vi.fn()} />)
+    await screen.findByText(/Almacén tiene 1 de 2/)
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    const dialog = await screen.findByRole('dialog')
+    await within(dialog).findByText(/Nuevo total/)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar ajuste' }))
+    await waitFor(() => expect(mocks.ajustarBandeja).toHaveBeenCalledWith('1', [{ linea_id: 11, cantidad_presentacion: 1 }], 'Almacén reportó faltante', undefined))
+  })
+
+  it('lista entregadas con pago posterior y turnos cerrados, pero no las de otro turno abierto', async () => {
+    const fila = (ventaId: string, estado: string, extra: object = {}) => ({ ventaId, numero: `VTD-${ventaId}`, estado, totalBs: 90, pagoPosterior: false, creadoEn: '', ...extra })
+    mocks.listAbiertas.mockResolvedValue([])
+    mocks.listPorCobrar.mockResolvedValue([fila('7', 'COMPLETADA', { pagoPosterior: true, pagoPosteriorMotivo: 'Paga el viernes' }), fila('8', 'ABIERTA'), fila('9', 'ABIERTA')])
+    mocks.info.mockResolvedValue([
+      { ventaId: '7', cajaAlmacen: true, turnoAbierto: false, entrega: 'ENTREGADO', version: 1, faltante: null, lineas: [], operacionCerrada: true },
+      { ventaId: '8', cajaAlmacen: true, turnoAbierto: false, entrega: 'SOLICITADO', version: 1, faltante: null, lineas: [], operacionCerrada: false },
+      { ventaId: '9', cajaAlmacen: true, turnoAbierto: true, entrega: 'SOLICITADO', version: 1, faltante: null, lineas: [], operacionCerrada: false },
+    ])
+    render(<VentaDirectaPage notify={vi.fn()} />)
+    const seccion = await screen.findByRole('region', { name: 'Por cobrar de otros turnos' })
+    expect(within(seccion).getByText('VTD-7')).toBeTruthy()
+    expect(within(seccion).getByText('VTD-8')).toBeTruthy()
+    expect(within(seccion).queryByText('VTD-9')).toBeNull()
   })
 })

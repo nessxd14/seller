@@ -18,7 +18,13 @@ export function CobrarVtdPickerModal({ yaSeleccionadas, onClose, onAdd }: { yaSe
   const [checked, setChecked] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    void ventaDirectaService.listPorCobrar().then(setVentas).catch((err) => setError(err instanceof Error ? err.message : 'No se pudo cargar la lista de VTD por cobrar'))
+    // Una VTD con operación Caja–Almacén no se puede vincular a otra: se cobra desde Ventas Directas.
+    void (async () => {
+      const lista = await ventaDirectaService.listPorCobrar()
+      const info = await ventaDirectaService.infoCajaAlmacen(lista.map((v) => v.ventaId))
+      const conOperacion = new Set(info.filter((i) => i.cajaAlmacen).map((i) => i.ventaId))
+      setVentas(lista.filter((v) => !conOperacion.has(v.ventaId)))
+    })().catch((err) => setError(err instanceof Error ? err.message : 'No se pudo cargar la lista de VTD por cobrar'))
   }, [])
 
   const disponibles = useMemo(() => (ventas ?? []).filter((v) => !yaSeleccionadas.includes(v.ventaId)), [ventas, yaSeleccionadas])
@@ -60,7 +66,7 @@ export function CobrarVtdPickerModal({ yaSeleccionadas, onClose, onAdd }: { yaSe
                   </li>
                 ))}
               </ul>
-            : <p className="mock-note">No hay VTD por cobrar{query ? ' que coincidan con la búsqueda' : ''}.</p>}
+            : <p className="mock-note">No hay VTD por cobrar{query ? ' que coincidan con la búsqueda' : ''}. Las VTD solicitadas a Almacén se cobran desde Ventas Directas.</p>}
       </div>
       <footer className="modal-actions">
         <button className="secondary-button" onClick={onClose}>Cancelar</button>
