@@ -462,7 +462,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   const sellerLabel = pedidoEnCarrito?.pedido.vendedor ?? vendedores.find(v => v.id === vendedorId)?.nombre ?? (vendedorId ? 'Asignado' : 'Sin asignar')
   const modeLabel = mode === 'traslado' ? 'Traslado' : mode === 'ventaDirecta' ? 'Venta directa' : 'Venta'
   return <aside className={`cart-panel ${mode !== 'traslado' ? 'cart-panel-light' : ''} ${creditorCustomer ? 'cart-acreedor' : ''}`}>
-    <CajaAlmacenPanel />
+    <CajaAlmacenPanel notify={notify} onGoToCash={onGoToCash} />
     {borradorPendiente && !warehouseLocked && <BorradorBanner guardadoEn={borradorPendiente.guardadoEn} onRetomar={retomarBorrador} onDescartar={descartarBorrador} />}
     <div className="cart-header">
       <h2>{modeLabel} <b>#{operationNumber}</b></h2>

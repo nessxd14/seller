@@ -9,15 +9,16 @@ import type { VentaDirectaRecord } from '../application/shared/models'
 import { faltanteTexto, vtdEstadoLabels } from '../application/shared/cajaAlmacen'
 import '../styles/caja-almacen.css'
 
-export function CajaAlmacenPanel() {
-  const { record, error, busy, refresh, flush, resolve } = useCajaAlmacen()
+export function CajaAlmacenPanel({ notify, onGoToCash }: { notify?: (message: string) => void; onGoToCash?: () => void } = {}) {
+  const { record, error, busy, refresh, flush, resolve, park, enEspera } = useCajaAlmacen()
   const { cart } = usePos()
   const [rejection, setRejection] = useState<number | null>(null)
   const [adjusting, setAdjusting] = useState<number | null>(null)
   const [ticket, setTicket] = useState<VentaDirectaRecord | null>(null)
   const [localError, setLocalError] = useState('')
   const op = record?.operacion
-  if (!op && !error) return null
+  const aviso = enEspera > 0 && !op ? <p className="caja-almacen-espera-aviso" role="status">{enEspera} {enEspera === 1 ? 'operación' : 'operaciones'} en espera de Almacén{onGoToCash && <> · <button type="button" className="vtd-retail-error-link" onClick={onGoToCash}>Ver en Caja</button></>}</p> : null
+  if (!op && !error) return aviso
   const paid = !!op?.comprobante
   const pending = record?.vtds.some(v => v.estado === 'SOLICITADO')
   const rejectedAll = !!record?.vtds.length && record.vtds.every(v => ['CANCELADO','RETORNO_PENDIENTE','RETORNADO'].includes(v.estado))
@@ -28,6 +29,7 @@ export function CajaAlmacenPanel() {
       <details><summary>Entregas, QR y rechazos ({record.vtds.length})</summary><ul>{record.vtds.map(v => <li key={v.venta_id}><div><b>{v.numero}</b><span>{vtdEstadoLabels[v.estado]}</span>{v.estado === 'SOLICITADO' && v.faltante && <strong className="caja-almacen-faltante" role="status">{faltanteTexto(v)} — ajusta la VTD</strong>}</div><div className="caja-almacen-buttons"><button className="secondary-button" disabled={busy} onClick={() => void print(v.venta_id)}>Ver QR</button>{v.estado === 'SOLICITADO' && <button className="secondary-button" disabled={busy} onClick={() => setAdjusting(v.venta_id)}>Ajustar</button>}{['SOLICITADO','EN_CAJA'].includes(v.estado) && <button className="secondary-button" disabled={busy} onClick={() => { setRejection(v.venta_id) }}>Rechazar</button>}</div></li>)}</ul></details>
       <div className="caja-almacen-buttons">{paid && <button className="secondary-button" disabled={busy} onClick={() => void flush().then(() => refresh()).catch(e => setLocalError(e.message))}>Actualizar estado de Almacén</button>}
       {paid && <button className="primary-button" disabled={busy || pending} onClick={() => void resolve('completar')}>{busy ? 'Confirmando…' : 'Completar entrega y operación'}</button>}
+      {!paid && !rejectedAll && <button className="secondary-button" disabled={busy} onClick={() => void park().then(ok => { if (ok) notify?.('Operación en espera. Retómala desde Caja o cóbrala en Ventas Directas.') })}>Dejar en espera</button>}
       {!paid && rejectedAll && cart.length === 0 && <button className="primary-button" disabled={busy} onClick={() => void resolve('cerrar_rechazo')}>Finalizar rechazo</button>}</div></>}
     {(error || localError) && <p role="alert">{error || localError}</p>}
     {!op && error && <><p>Comprueba si la solicitud quedó registrada antes de continuar.</p><button className="secondary-button" disabled={busy} onClick={() => void refresh(true).catch(e => setLocalError(e.message))}>Consultar operación pendiente</button></>}
