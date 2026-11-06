@@ -1,5 +1,5 @@
-import { ChevronDown, ScanLine, Search, ShoppingCart, X } from 'lucide-react'
-import { useCallback, useState, type ReactNode } from 'react'
+import { BellRing, ChevronDown, Plus, ScanLine, Search, ShoppingCart, X } from 'lucide-react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { usePos } from '../context/PosContext'
 import { featureFlags } from '../config/featureFlags'
 import { products } from '../data/products'
@@ -12,6 +12,7 @@ import { ProductCatalog } from '../components/ProductCatalog'
 import { SalesChannelTabs } from '../components/SalesChannelTabs'
 import { EscanerContinuo, vibrar, vibrarDesconocido } from '../features/piso/EscanerContinuo'
 import type { Product } from '../types'
+import { CERRAR_CARRITO } from './useBotonAtras'
 
 const bs = (v: number) => v.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -24,10 +25,19 @@ export interface VentaMovilProps {
   carrito: ReactNode
   /** Abre en caja un pedido de vendedor leído por su QR (PDV-…). Ausente si el rol no cobra pedidos. */
   onPedidoVendedor?: (pedidoId: string) => void
+  /** Pedidos de piso enviados a caja y aún sin tomar (el mismo contador del carrito de escritorio). */
+  pedidosEnEspera?: number
+  /** Abre la cola de pedidos de piso. Ausente si el rol no cobra pedidos. */
+  onAbrirPedidos?: () => void
+  /** "Nueva operación" del escritorio: mismas validaciones y la misma confirmación. */
+  onNueva: () => void
+  nuevaBloqueada?: boolean
   notify: (mensaje: string) => void
 }
 
-export function VentaMovil({ search, setSearch, category, setCategory, carrito, onPedidoVendedor, notify }: VentaMovilProps) {
+const ETIQUETA_MODO: Record<string, string> = { venta: 'Venta', traslado: 'Traslado', ventaDirecta: 'Venta directa' }
+
+export function VentaMovil({ search, setSearch, category, setCategory, carrito, onPedidoVendedor, pedidosEnEspera = 0, onAbrirPedidos, onNueva, nuevaBloqueada = false, notify }: VentaMovilProps) {
   const { cart, total, addProduct, mode } = usePos()
   const [carritoAbierto, setCarritoAbierto] = useState(false)
   const [camara, setCamara] = useState(false)
@@ -36,7 +46,16 @@ export function VentaMovil({ search, setSearch, category, setCategory, carrito, 
 
   // El carrito vacío no se queda abierto (por ejemplo, después de cobrar). Ajuste durante el render, sin efecto.
   const [largoPrevio, setLargoPrevio] = useState(cart.length)
-  if (cart.length !== largoPrevio) { setLargoPrevio(cart.length); if (!cart.length) setCarritoAbierto(false) }
+  if (cart.length !== largoPrevio) { setLargoPrevio(cart.length); if (!cart.length && largoPrevio > 0) setCarritoAbierto(false) }
+
+  // Abrir el carrito apaga la cámara: no tiene sentido seguir escaneando detrás de la hoja.
+  const abrirCarrito = () => { setCamara(false); setCarritoAbierto(true) }
+  // Botón Atrás de Android (ver useBotonAtras).
+  useEffect(() => {
+    const cerrar = () => setCarritoAbierto(false)
+    window.addEventListener(CERRAR_CARRITO, cerrar)
+    return () => window.removeEventListener(CERRAR_CARRITO, cerrar)
+  }, [])
 
   const agregarProducto = useCallback(async (producto: Product, cantidad = 1, presentacion?: Parameters<typeof presentacionAlAgregar>[2]) => {
     const permiso = mode === 'traslado' ? { ok: true as const } : await presentacionAlAgregar(producto.id, 'tienda', presentacion)
@@ -85,16 +104,25 @@ export function VentaMovil({ search, setSearch, category, setCategory, carrito, 
     <div className="movil-venta-canal"><SalesChannelTabs /></div>
     <div className="movil-venta-catalogo"><ProductCatalog search={search} category={category} setCategory={setCategory} /></div>
 
-    {cart.length > 0 && !carritoAbierto && <button type="button" className="movil-barra-carrito" onClick={() => setCarritoAbierto(true)}>
-      <span className="movil-barra-carrito-cuenta"><ShoppingCart aria-hidden="true" /><b>{cart.length}</b></span>
-      <span className="movil-barra-carrito-texto"><small>{cart.length} {cart.length === 1 ? 'producto' : 'productos'} · {unidades} uds</small><strong>{mode === 'traslado' ? 'Ver traslado' : `Bs ${bs(total)}`}</strong></span>
-      <span className="movil-barra-carrito-accion">Ver carrito</span>
-    </button>}
+    {!carritoAbierto && <div className="movil-pie-venta">
+      {pedidosEnEspera > 0 && onAbrirPedidos && <button type="button" className="movil-aviso-pedidos" onClick={onAbrirPedidos}><BellRing aria-hidden="true" /> {pedidosEnEspera} {pedidosEnEspera === 1 ? 'pedido de piso espera' : 'pedidos de piso esperan'} cobro</button>}
+      {/* Siempre visible: aun vacío, el carrito es donde están "+ Agregar" (VTD por cobrar, pedidos de piso, ítem personalizado) y el cambio de modo. */}
+      <button type="button" className={`movil-barra-carrito ${cart.length ? '' : 'vacio'}`} onClick={abrirCarrito}>
+        <span className="movil-barra-carrito-cuenta"><ShoppingCart aria-hidden="true" />{cart.length > 0 && <b>{cart.length}</b>}</span>
+        {cart.length
+          ? <span className="movil-barra-carrito-texto"><small>{ETIQUETA_MODO[mode] ?? 'Venta'} · {cart.length} {cart.length === 1 ? 'producto' : 'productos'} · {unidades} uds</small><strong>{mode === 'traslado' ? 'Ver traslado' : `Bs ${bs(total)}`}</strong></span>
+          : <span className="movil-barra-carrito-texto"><small>{ETIQUETA_MODO[mode] ?? 'Venta'} · carrito vacío</small><strong>Agregar VTD, pedido o ítem</strong></span>}
+        <span className="movil-barra-carrito-accion">{cart.length ? 'Ver carrito' : 'Abrir'}</span>
+      </button>
+    </div>}
 
     {/* El panel queda montado aunque esté oculto: conserva lo que el cajero va armando (cliente, notas, VTD).
         pos-root + data-modo: los estilos del carrito de escritorio cuelgan de esos atributos. */}
     <section className={`movil-carrito pos-root ${carritoAbierto ? 'abierto' : ''}`} data-modo={mode} aria-label="Carrito" aria-hidden={!carritoAbierto} inert={!carritoAbierto}>
-      <header className="movil-carrito-cabecera"><button type="button" onClick={() => setCarritoAbierto(false)}><ChevronDown aria-hidden="true" /> Seguir agregando</button></header>
+      <header className="movil-carrito-cabecera">
+        <button type="button" onClick={() => setCarritoAbierto(false)}><ChevronDown aria-hidden="true" /> Seguir agregando</button>
+        <button type="button" className="movil-nueva" disabled={nuevaBloqueada} onClick={onNueva}><Plus aria-hidden="true" /> Nueva venta</button>
+      </header>
       {carrito}
     </section>
 

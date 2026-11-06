@@ -10,7 +10,7 @@ html:has(.movil-app) {
   --m-primary: #2563eb; --m-primary-soft: #eaf1ff; --m-ink: #142033; --m-muted: #526279; --m-line: #dce5f1;
   --m-page: #f3f6fa; --m-surface: #fff; --m-summary: #14243c; --m-danger: #b42318; --m-ok: #067647;
   --m-barra: 56px; --m-tabs: 64px; --m-safe: env(safe-area-inset-bottom, 0px);
-  --orange: #2563eb; --orange-dark: #1d4ed8; /* los componentes heredados usan --orange como acento */
+  --orange: #2563eb; --orange-dark: #1d4ed8; --cc-orange: #2563eb; /* los componentes heredados usan estas variables como acento */
 }
 .movil-app {
   font-family: 'Manrope Variable', 'DM Sans', system-ui, sans-serif; color: var(--m-ink); background: var(--m-page);
@@ -24,6 +24,10 @@ html:has(.movil-app) {
 .movil-barra-titulo { flex: 1; min-width: 0; }
 .movil-barra-titulo h1 { margin: 0; font-size: 19px; line-height: 1.1; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .movil-barra-titulo small { display: block; color: var(--m-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.movil-turno { flex: none; min-height: 36px; padding: 0 12px; border: 1px solid var(--m-line); border-radius: 999px; background: var(--m-surface); color: var(--m-muted); font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+.movil-turno i { width: 8px; height: 8px; border-radius: 50%; background: #98a2b3; }
+.movil-turno.abierto { color: var(--m-ok); border-color: #b7e4c7; background: #f0fbf4; }
+.movil-turno.abierto i { background: #12b76a; box-shadow: 0 0 0 3px #12b76a26; }
 .movil-avatar { width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--m-summary); color: #fff; font-weight: 700; font-size: 13px; display: grid; place-items: center; }
 
 /* ---------- Contenido ---------- */
@@ -32,7 +36,7 @@ html:has(.movil-app) {
 
 /* ---------- Barra inferior ---------- */
 .movil-tabs { position: fixed; z-index: 45; left: 0; right: 0; bottom: 0; height: calc(var(--m-tabs) + var(--m-safe)); padding: 0 4px var(--m-safe); display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: rgb(255 255 255 / 96%); backdrop-filter: blur(12px); border-top: 1px solid var(--m-line); }
-.movil-tabs button { border: 0; background: transparent; color: var(--m-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; font-weight: 600; min-width: 0; position: relative; -webkit-tap-highlight-color: transparent; }
+.movil-tabs button { border: 0; background: transparent; color: var(--m-muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 12px; font-weight: 600; min-width: 0; position: relative; -webkit-tap-highlight-color: transparent; }
 .movil-tabs button svg { width: 22px; height: 22px; transition: transform .16s ease-out; }
 .movil-tabs button span { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .movil-tabs button[aria-current='page'] { color: var(--m-primary); }
@@ -94,7 +98,8 @@ html:has(.movil-app) {
 /* Catálogo como lista: una fila por producto, botón grande a la derecha */
 .movil-venta-catalogo { padding: 0 12px; }
 .movil-venta-catalogo .catalog-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 6px 0 2px; }
-.movil-venta-catalogo .catalog-chips:empty { display: none; }
+.movil-venta-catalogo .catalog-chips:empty, .movil-venta-catalogo .catalog-chips-hint { display: none; }
+.movil-venta-catalogo .catalog-familia-header { font-size: 12px; }
 .movil-venta-catalogo .category-row { border-top: 0; padding-top: 8px; gap: 8px; display: flex; align-items: center; }
 .movil-venta-catalogo .category-scroll button { height: 36px; padding: 0 14px; font-size: 13px; }
 .movil-venta-catalogo .category-scroll button.active { background: var(--m-ink); border-color: var(--m-ink); }
@@ -102,8 +107,8 @@ html:has(.movil-app) {
 .movil-venta-catalogo .section-heading { margin: 12px 0 8px; }
 .movil-venta-catalogo .section-heading p { font-size: 14px; }
 .movil-venta-catalogo .product-grid { grid-template-columns: 1fr !important; gap: 8px !important; }
-.movil-venta-catalogo .product-card { display: grid; grid-template-columns: 64px 1fr; align-items: stretch; border-radius: 14px; border-color: var(--m-line); box-shadow: none; transform: none !important; }
-.movil-venta-catalogo .product-card .product-visual { height: 100% !important; min-height: 64px; width: 64px; }
+.movil-venta-catalogo .product-card { display: grid; grid-template-columns: 68px 1fr; align-items: start; border-radius: 14px; border-color: var(--m-line); box-shadow: none; transform: none !important; }
+.movil-venta-catalogo .product-card .product-visual { height: 56px !important; min-height: 0; width: 56px; margin: 12px 0 0 12px; border-radius: 12px; }
 .movil-venta-catalogo .product-card .product-visual svg { width: 30px; height: 30px; }
 .movil-venta-catalogo .product-card .product-visual img { width: 100%; height: 100%; object-fit: cover; }
 .movil-venta-catalogo .product-info { padding: 10px 10px 8px 12px; min-width: 0; position: relative; }
@@ -119,7 +124,8 @@ html:has(.movil-app) {
 .movil-venta-catalogo .empty-products { height: auto; padding: 40px 0; }
 
 /* Barra del carrito: siempre a la vista sobre la navegación */
-.movil-barra-carrito { position: fixed; z-index: 44; left: 10px; right: 10px; bottom: calc(var(--m-tabs) + var(--m-safe) + 8px); min-height: 60px; border: 0; border-radius: 16px; background: var(--m-primary); color: #fff; display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 10px; box-shadow: 0 10px 24px #1d4ed84d; text-align: left; animation: movil-subir .2s cubic-bezier(.2,.8,.2,1); }
+.movil-pie-venta { position: fixed; z-index: 44; left: 10px; right: 10px; bottom: calc(var(--m-tabs) + var(--m-safe) + 8px); display: grid; gap: 8px; }
+.movil-barra-carrito { width: 100%; min-height: 60px; border: 0; border-radius: 16px; background: var(--m-primary); color: #fff; display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 10px; box-shadow: 0 10px 24px #1d4ed84d; text-align: left; animation: movil-subir .2s cubic-bezier(.2,.8,.2,1); }
 .movil-barra-carrito-cuenta { position: relative; width: 44px; height: 44px; border-radius: 12px; background: rgb(255 255 255 / 18%); display: grid; place-items: center; }
 .movil-barra-carrito-cuenta svg { width: 22px; height: 22px; }
 .movil-barra-carrito-cuenta b { position: absolute; top: -6px; right: -6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #fff; color: var(--m-primary); font-size: 12px; display: grid; place-items: center; }
@@ -128,14 +134,25 @@ html:has(.movil-app) {
 .movil-barra-carrito-texto small { font-size: 12px; opacity: .85; }
 .movil-barra-carrito-texto strong { font-size: 18px; font-variant-numeric: tabular-nums; }
 .movil-barra-carrito-accion { font-weight: 700; font-size: 14px; }
-.movil-venta:has(.movil-barra-carrito) .movil-venta-catalogo { padding-bottom: 76px; }
+.movil-venta-catalogo { padding-bottom: 84px; }
+.movil-venta:has(.movil-aviso-pedidos) .movil-venta-catalogo { padding-bottom: 136px; }
+/* Carrito vacío: la barra queda presente pero discreta. */
+.movil-barra-carrito.vacio { background: var(--m-surface); color: var(--m-ink); border: 1px solid var(--m-line); box-shadow: 0 6px 18px rgb(20 32 51 / 10%); animation: none; }
+.movil-barra-carrito.vacio .movil-barra-carrito-cuenta { background: var(--m-primary-soft); color: var(--m-primary); }
+.movil-barra-carrito.vacio .movil-barra-carrito-texto small { color: var(--m-muted); opacity: 1; }
+.movil-barra-carrito.vacio .movil-barra-carrito-texto strong { font-size: 15px; }
+.movil-barra-carrito.vacio .movil-barra-carrito-accion { color: var(--m-primary); }
+.movil-aviso-pedidos { justify-self: stretch; min-height: 44px; border: 1px solid #f5c26b; border-radius: 12px; background: #fff7e6; color: #8a4b00; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 6px 16px rgb(138 75 0 / 12%); }
+.movil-aviso-pedidos svg { width: 18px; height: 18px; }
 
 /* Hoja del carrito: pantalla completa, el panel de escritorio ocupa todo el alto */
 .movil-carrito { position: fixed; z-index: 60; inset: 0; display: flex; flex-direction: column; background: var(--m-surface); transform: translateY(100%); visibility: hidden; transition: transform .24s cubic-bezier(.2,.8,.2,1), visibility 0s .24s; }
 .movil-carrito.abierto { transform: none; visibility: visible; transition: transform .24s cubic-bezier(.2,.8,.2,1), visibility 0s; }
-.movil-carrito-cabecera { flex: none; display: flex; padding: 8px 10px; border-bottom: 1px solid var(--m-line); background: var(--m-surface); }
+.movil-carrito-cabecera { flex: none; display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--m-line); background: var(--m-surface); }
 .movil-carrito-cabecera button { min-height: 44px; padding: 0 12px; border: 0; border-radius: 12px; background: var(--m-primary-soft); color: var(--m-primary); font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
 .movil-carrito-cabecera svg { width: 18px; height: 18px; }
+.movil-carrito-cabecera .movil-nueva { background: transparent; border: 1px solid var(--m-line); color: var(--m-ink); }
+.movil-carrito-cabecera .movil-nueva:disabled { opacity: .45; }
 .movil-carrito .cart-panel { flex: 1; min-height: 0; height: auto !important; width: 100% !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; margin: 0 !important; padding-bottom: var(--m-safe); }
 .movil-carrito .cart-panel button { min-height: 40px; }
 .movil-carrito .pay-button { min-height: 52px; font-size: 15px; }
@@ -151,7 +168,7 @@ body:has(.movil-app) .modal .modal-actions > button { flex: 1 1 140px; min-heigh
 body:has(.movil-app) .modal kbd { display: none; }
 
 /* ---------- Aviso flotante y sesión de prueba ---------- */
-.movil-app .toast { bottom: calc(var(--m-tabs) + var(--m-safe) + 80px); max-width: calc(100vw - 32px); font-size: 14px; z-index: 210; }
+.movil-app .toast { z-index: 210; }
 .movil-app .auth-dev-selector { position: static; transform: none; margin: 8px 12px; width: auto; max-width: none; flex-wrap: wrap; }
 
 /* ---------- Módulos reutilizados del escritorio (feature-page) ---------- */
@@ -241,3 +258,57 @@ body:has(.movil-app) .modal .draft-line-top > span { flex: 1 1 100%; min-width: 
 body:has(.movil-app) .modal :is(.draft-line-row, .draft-line-top) > input { flex: 0 0 96px; width: 96px; }
 body:has(.movil-app) .modal :is(.draft-line-row, .draft-line-top) > select { flex: 1 1 120px; width: auto; }
 body:has(.movil-app) .modal :is(.draft-line-row, .draft-line-top) > button { flex: 0 0 44px; width: 44px; min-height: 44px; }
+
+/* ---------- Teclado abierto ---------- */
+/* Android sube la barra inferior y la del carrito sobre el teclado y tapan el campo: se ocultan mientras se escribe. */
+body:has(.movil-app :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='button']), textarea):focus) :is(.movil-tabs, .movil-pie-venta) { display: none; }
+
+/* ---------- Carrito: acentos azules, sin atajos de teclado y controles para el dedo ---------- */
+.movil-carrito :is(kbd, .kbd) { display: none !important; }
+.movil-carrito .customer-select::after { display: none !important; content: none !important; }
+.movil-carrito .channel-badge { background: var(--m-primary-soft) !important; color: #1d4ed8 !important; font-size: 12px; }
+.movil-carrito :is(.cart-line-edit, .cart-chrome-toggle, .cart-chrome-toggle[aria-pressed='true']) { color: #1d4ed8 !important; }
+.movil-carrito .cart-toolbar summary { color: #1d4ed8 !important; border-color: #bcd2f4 !important; background: var(--m-primary-soft) !important; min-height: 40px; display: inline-flex; align-items: center; }
+.movil-carrito .cart-item-selected { background: #f5f8ff !important; box-shadow: inset 3px 0 0 var(--m-primary) !important; }
+.movil-carrito .customer-select svg { color: var(--m-primary); }
+.movil-carrito details button.active { color: #1d4ed8 !important; background: var(--m-primary-soft) !important; }
+.movil-carrito .qty-control { height: auto !important; }
+.movil-carrito .qty-control button { min-width: 40px !important; min-height: 40px !important; }
+.movil-carrito .qty-control .qty-value { min-width: 40px !important; font-size: 15px; }
+.movil-carrito :is(.price-inline-display, .cart-line-edit, .origin-pin-trigger) { min-height: 40px !important; font-size: 13px !important; }
+.movil-carrito summary { min-height: 40px; min-width: 40px; }
+.movil-carrito .cart-item :is(span, small) { font-size: 12px; }
+
+/* ---------- Letra mínima legible en chips y etiquetas ---------- */
+body:has(.movil-app) :is(.status-chip, .channel-chip, .order-payment-badge, .vigencia-warning) { font-size: 12px !important; }
+body:has(.movil-app) :is(.channel-badge, .cart-product-count, .cart-panel label, .payment-methods button, .payment-methods span, .product-bottom span, .order-payment-legend, .order-payment-legend span, .row-actions button, .customer-picker button, .payment-fields span, .modal header p) { font-size: 12px !important; }
+body:has(.movil-app) .modal > header button { width: 44px; height: 44px; }
+body:has(.movil-app) :is(.secondary-button, .feature-toolbar button, .order-payment-legend button) { font-size: 13px !important; min-height: 40px; }
+.movil-contenido .order-payment-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.movil-contenido .ped-banner { flex-wrap: wrap; }
+body:has(.movil-app) .modal .qty-control button { min-width: 40px; min-height: 40px; }
+/* El botón "i" de cada producto es chico a la vista; su área de toque crece sin moverlo. */
+.movil-app .product-info-trigger::after { content: ''; position: absolute; inset: -12px; }
+
+/* Campos de 16 px en todas partes, también en ventanas: con menos, Android hace zoom al tocarlos. */
+body:has(.movil-app) :is(input:not([type='checkbox'], [type='radio'], [type='range']), select, textarea) { font-size: 16px !important; }
+/* Cabecera del carrito en una línea: número de venta sin partir, vendedor se acorta. */
+.movil-carrito .cart-header { flex-wrap: nowrap; gap: 6px; }
+.movil-carrito .cart-header h2 { white-space: nowrap; font-size: 17px !important; }
+.movil-carrito .cart-header :is(details, .cart-seller) { min-width: 0; flex-shrink: 1; }
+/* Con el teclado abierto la barra inferior no está: el pie de la apertura baja a su lugar. */
+body:has(.movil-app :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='button']), textarea):focus) .movil-contenido .cash-opening-count > footer { bottom: 8px; }
+
+/* ---------- Rejillas de escritorio a una columna ---------- */
+.movil-contenido :is(.order-grid, .customer-grid, .suspended-grid, .vtd-bandeja-cards, .borradores-cards, .traslados-grupo-cards, .precios-cards, .inventory-layout, .ped-edicion-grid, .ped-items-grid, .document-editor-layout, .product-detail-columns, .commission-payment-panel, .profile-details) { grid-template-columns: minmax(0, 1fr) !important; }
+body:has(.movil-app) :is(.order-payment-detail dl, .doc-kv-grid, .doc-kv-grid.doc-kv-grid-wide, .product-price-grid, .suspended-grid article > div, .cobro-traza-importes, .cobro-traza-personas, .cobro-traza-partidas) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+.movil-contenido .vtd-card-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.movil-contenido .vtd-card-actions > * { min-height: 44px; }
+/* Ítems personalizados en los editores: misma fila compacta que los de catálogo. */
+body:has(.movil-app) .modal .draft-lines .custom-line-row { display: flex !important; flex-wrap: wrap; gap: 8px; grid-template-columns: none !important; }
+body:has(.movil-app) .modal .draft-lines .custom-line-row > :first-child { flex: 1 1 100%; }
+
+/* ---------- Avisos flotantes: abajo y a todo el ancho ---------- */
+body:has(.movil-app) .toast { left: 12px !important; right: 12px !important; width: auto !important; max-width: none !important; transform: none !important; bottom: calc(var(--m-tabs) + var(--m-safe) + 12px) !important; padding: 12px 14px; font-size: 14px; line-height: 1.4; text-align: left; border-radius: 12px; }
+body:has(.movil-pie-venta) .toast { bottom: calc(var(--m-tabs) + var(--m-safe) + 84px) !important; }
+body:has(.movil-app):has(.modal-backdrop) .toast { bottom: calc(96px + var(--m-safe)) !important; }

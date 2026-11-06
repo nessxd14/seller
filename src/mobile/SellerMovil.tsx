@@ -1,6 +1,8 @@
 import { ArrowLeftRight, BarChart3, Boxes, ClipboardList, FileText, HandCoins, LayoutGrid, LogOut, MoreHorizontal, PauseCircle, Percent, Save, ScanLine, Settings, ShoppingBag, Users, WalletCards, Warehouse, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AuthSession } from '../application/auth/AuthSessionProvider'
+import { useCashSession } from '../context/CashSessionContext'
+import { useBotonAtras } from './useBotonAtras'
 import { modulosMas, pestanasPara, type Modulo } from './navegacionMovil'
 import './seller-movil.css'
 
@@ -40,6 +42,17 @@ export function SellerMovil({ session, activo, onNavegar, puedeAbrir, rutaDetall
   const mas = modulosMas(pestanas, puedeAbrir)
   const [masAbierto, setMasAbierto] = useState(false)
   const principal = useRef<HTMLElement>(null)
+  const { sessionId } = useCashSession()
+  const conCaja = puedeAbrir('Caja')
+  useBotonAtras(activo, onNavegar)
+
+  // La hoja "Más" se cierra con Escape, igual que las ventanas (el botón Atrás de Android lo usa).
+  useEffect(() => {
+    if (!masAbierto) return
+    const alTeclear = (e: KeyboardEvent) => { if (e.key === 'Escape') setMasAbierto(false) }
+    document.addEventListener('keydown', alTeclear)
+    return () => document.removeEventListener('keydown', alTeclear)
+  }, [masAbierto])
 
   // Arranque: el celular abre en la pantalla principal del rol (cajero → Venta, gerente → Caja, reponedor → Traslados).
   // Solo una vez por rol y nunca si la URL ya pidió un detalle.
@@ -63,6 +76,7 @@ export function SellerMovil({ session, activo, onNavegar, puedeAbrir, rutaDetall
   return <div className="movil-app" data-modulo={activo}>
     <header className="movil-barra">
       <div className="movil-barra-titulo"><h1>{activo}</h1>{session?.user.name && <small>{session.user.name}</small>}</div>
+      {conCaja && activo !== 'Caja' && <button type="button" className={`movil-turno ${sessionId ? 'abierto' : ''}`} onClick={() => ir('Caja')}><i aria-hidden="true" />{sessionId ? 'Caja abierta' : 'Caja cerrada'}</button>}
       <button type="button" className="movil-avatar" aria-label="Cuenta y más opciones" onClick={() => setMasAbierto(true)}>{iniciales(session?.user.name ?? 'Usuario')}</button>
     </header>
 
