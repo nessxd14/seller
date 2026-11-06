@@ -152,7 +152,13 @@ html:has(.movil-app) {
 .movil-carrito-cabecera button { min-height: 44px; padding: 0 12px; border: 0; border-radius: 12px; background: var(--m-primary-soft); color: var(--m-primary); font-weight: 700; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
 .movil-carrito-cabecera svg { width: 18px; height: 18px; }
 .movil-carrito-cabecera .movil-nueva { background: transparent; border: 1px solid var(--m-line); color: var(--m-ink); }
+.movil-carrito-cabecera > button { flex: 0 1 auto; min-width: 0; white-space: nowrap; padding: 0 10px; font-size: 13px; }
+.movil-carrito-cabecera .movil-ticket { flex: 1 1 auto; justify-content: center; background: var(--m-surface); border: 1px solid #bcd2f4; }
+.movil-carrito-cabecera .movil-ticket:disabled { opacity: .45; }
 .movil-carrito-cabecera .movil-nueva:disabled { opacity: .45; }
+/* Pre-ticket en el celular: el papel entra en la pantalla. */
+body:has(.movil-app) .modal .ticket { max-width: 100%; margin-left: auto; margin-right: auto; }
+body:has(.movil-app) .modal .print-options { flex-wrap: wrap; gap: 8px; }
 .movil-carrito .cart-panel { flex: 1; min-height: 0; height: auto !important; width: 100% !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; margin: 0 !important; padding-bottom: var(--m-safe); }
 .movil-carrito .cart-panel button { min-height: 40px; }
 .movil-carrito .pay-button { min-height: 52px; font-size: 15px; }
@@ -312,3 +318,7 @@ body:has(.movil-app) .modal .draft-lines .custom-line-row > :first-child { flex:
 body:has(.movil-app) .toast { left: 12px !important; right: 12px !important; width: auto !important; max-width: none !important; transform: none !important; bottom: calc(var(--m-tabs) + var(--m-safe) + 12px) !important; padding: 12px 14px; font-size: 14px; line-height: 1.4; text-align: left; border-radius: 12px; }
 body:has(.movil-pie-venta) .toast { bottom: calc(var(--m-tabs) + var(--m-safe) + 84px) !important; }
 body:has(.movil-app):has(.modal-backdrop) .toast { bottom: calc(96px + var(--m-safe)) !important; }
+/* Botones secundarios del carrito (Suspender, Ticket previo, Revisar, Guardar) también en traslado, donde el panel no lleva cart-panel-light. */
+.movil-carrito .cart-secondary-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.movil-carrito .cart-secondary-row > button { min-height: 40px; padding: 0 12px; border: 1px solid var(--m-line); border-radius: 10px; background: var(--m-surface); color: var(--m-ink); font-size: 13px; font-weight: 600; }
+.movil-carrito .cart-secondary-row > button:disabled { opacity: .45; }

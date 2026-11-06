@@ -1,4 +1,4 @@
-import { BellRing, ChevronDown, Plus, ScanLine, Search, ShoppingCart, X } from 'lucide-react'
+import { BellRing, ChevronDown, Plus, ReceiptText, ScanLine, Search, ShoppingCart, X } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { usePos } from '../context/PosContext'
 import { featureFlags } from '../config/featureFlags'
@@ -13,6 +13,7 @@ import { SalesChannelTabs } from '../components/SalesChannelTabs'
 import { EscanerContinuo, vibrar, vibrarDesconocido } from '../features/piso/EscanerContinuo'
 import type { Product } from '../types'
 import { CERRAR_CARRITO } from './useBotonAtras'
+import { PreTicketMovil } from './PreTicketMovil'
 
 const bs = (v: number) => v.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -42,6 +43,7 @@ export function VentaMovil({ search, setSearch, category, setCategory, carrito, 
   const [carritoAbierto, setCarritoAbierto] = useState(false)
   const [camara, setCamara] = useState(false)
   const [ambiguos, setAmbiguos] = useState<number[] | null>(null)
+  const [preTicket, setPreTicket] = useState(false)
   const unidades = cart.reduce((n, item) => n + item.cantidad, 0)
 
   // El carrito vacío no se queda abierto (por ejemplo, después de cobrar). Ajuste durante el render, sin efecto.
@@ -120,12 +122,15 @@ export function VentaMovil({ search, setSearch, category, setCategory, carrito, 
         pos-root + data-modo: los estilos del carrito de escritorio cuelgan de esos atributos. */}
     <section className={`movil-carrito pos-root ${carritoAbierto ? 'abierto' : ''}`} data-modo={mode} aria-label="Carrito" aria-hidden={!carritoAbierto} inert={!carritoAbierto}>
       <header className="movil-carrito-cabecera">
-        <button type="button" onClick={() => setCarritoAbierto(false)}><ChevronDown aria-hidden="true" /> Seguir agregando</button>
-        <button type="button" className="movil-nueva" disabled={nuevaBloqueada} onClick={onNueva}><Plus aria-hidden="true" /> Nueva venta</button>
+        <button type="button" onClick={() => setCarritoAbierto(false)}><ChevronDown aria-hidden="true" /> Seguir</button>
+        {/* Pre-ticket de VTA, VTD o traslado según el modo del carrito. */}
+        <button type="button" className="movil-ticket" disabled={!cart.length} onClick={() => setPreTicket(true)}><ReceiptText aria-hidden="true" /> Ticket previo</button>
+        <button type="button" className="movil-nueva" disabled={nuevaBloqueada} onClick={onNueva} aria-label="Nueva venta"><Plus aria-hidden="true" /> Nueva</button>
       </header>
       {carrito}
     </section>
 
+    {preTicket && <PreTicketMovil onClose={() => setPreTicket(false)} />}
     {ambiguos && <AmbiguousScanPicker productIds={ambiguos} onPick={(p) => { setAmbiguos(null); void agregarProducto(p) }} onClose={() => setAmbiguos(null)} />}
   </div>
 }
