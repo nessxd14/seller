@@ -89,6 +89,40 @@ export async function testCheckoutCaja(db, claims) {
   await db.query("select hermes.confirmar_pago($1,'test')",[partial.pagoId]);await db.query("select hermes.confirmar_pago($1,'test')",[excess.pagoId])
   assert.equal(Number((await db.query('select pendiente from hermes.v_partida_estado where pedido_id=890031')).rows[0].pendiente),60,'El excedente no se aplica a otro pedido')
   assert.equal(Number((await db.query("select monto from hermes.movimiento_cuenta where pago_id=$1 and tipo='ANTICIPO'",[excess.pagoId])).rows[0].monto),-10,'El excedente queda como anticipo del cliente')
+
+  await db.exec(`alter table public.movimiento_caja enable row level security;
+    create policy test_checkout_caja_autenticados on public.movimiento_caja to authenticated using (true);
+    grant select on public.movimiento_caja to hermes_app;
+    insert into public.cliente(id,nombre,tipo_precio,activo) values(890040,'Cliente abono a cuenta sintético','mayorista',true);
+    insert into public.pedido(id,categoria,cliente_id,total,subtotal,numero,creado_en) values
+      (890040,'MAYOR',890040,2000,2000,'PED-ANTIGUO','2026-10-01T12:00:00Z'),
+      (890041,'MAYOR',890040,3000,3000,'PED-POSTERIOR','2026-10-02T12:00:00Z');`)
+  await db.exec(await fs.readFile(new URL('../migrations/20261107225524_hermes_fifo_solo_abono_cuenta.sql',import.meta.url),'utf8'))
+  const registrar = async (pedidoId, monto, clave) => (await db.query(`select public.registrar_cobro_cation(
+    p_pedido_id=>$1,p_cliente_id=>890040,p_monto=>$2,p_metodo=>'EFECTIVO',p_sesion_id=>900001,p_idempotencia=>$3) result`,[pedidoId,monto,clave])).rows[0].result
+  const aplicaciones = async pagoId => (await db.query(`select p.pedido_id, a.monto
+    from hermes.pago_aplicacion a join hermes.partida_abierta p on p.id=a.partida_id
+    where a.pago_id=$1 order by p.pedido_id`,[pagoId])).rows.map(r=>[Number(r.pedido_id),Number(r.monto)])
+
+  await claims('00000000-0000-0000-0000-000000000002')
+  const aCuenta = await registrar(null,3000,'test-abono-a-cuenta')
+  await claims('00000000-0000-0000-0000-000000000001')
+  await db.query("select hermes.confirmar_pago($1,'test')",[aCuenta.pagoId])
+  assert.deepEqual(await aplicaciones(aCuenta.pagoId),[[890040,2000],[890041,1000]])
+  await db.exec(`insert into public.pedido(id,categoria,cliente_id,total,subtotal,numero,creado_en)
+    values(890042,'MAYOR',890040,750,750,'PED-NUEVO','2026-10-03T12:00:00Z');`)
+  const pendientes = (await db.query(`select pedido_id,pendiente from hermes.v_partida_estado
+    where pedido_id between 890040 and 890042 order by pedido_id`)).rows.map(r=>Number(r.pendiente))
+  assert.deepEqual(pendientes,[0,2000,750])
+
+  await claims('00000000-0000-0000-0000-000000000002')
+  const dirigido = await registrar(890042,100,'test-dirigido-sin-reparto')
+  assert.deepEqual(await aplicaciones(dirigido.pagoId),[[890042,100]])
+  await db.query('delete from hermes.pago_aplicacion where pago_id=$1',[dirigido.pagoId])
+  await claims('00000000-0000-0000-0000-000000000001')
+  await db.query("select hermes.confirmar_pago($1,'test')",[dirigido.pagoId])
+  assert.deepEqual(await aplicaciones(dirigido.pagoId),[],'El cobro dirigido sin reparto no pasa a otra deuda')
+  assert.equal(Number((await db.query("select monto from hermes.movimiento_cuenta where pago_id=$1 and tipo='ANTICIPO'",[dirigido.pagoId])).rows[0].monto),-100)
   assert.equal((await db.query("select has_function_privilege('anon','public.checkout_caja(jsonb,jsonb,bigint,text,bigint,numeric,numeric,uuid,bigint[],jsonb,bigint[])','EXECUTE') allowed")).rows[0].allowed,false)
   await claims(seller)
   await assert.rejects(()=>call('test-seller-not-cash',{vtds:[],payments:[{metodo:'EFECTIVO',monto:20}]}),/No autorizado/)
