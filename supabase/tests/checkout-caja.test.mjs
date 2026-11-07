@@ -97,7 +97,7 @@ export async function testCheckoutCaja(db, claims) {
     insert into public.pedido(id,categoria,cliente_id,total,subtotal,numero,creado_en) values
       (890040,'MAYOR',890040,2000,2000,'PED-ANTIGUO','2026-10-01T12:00:00Z'),
       (890041,'MAYOR',890040,3000,3000,'PED-POSTERIOR','2026-10-02T12:00:00Z');`)
-  await db.exec(await fs.readFile(new URL('../migrations/20261107224406_hermes_fifo_solo_abono_cuenta.sql',import.meta.url),'utf8'))
+  await db.exec(await fs.readFile(new URL('../migrations/20261107225524_hermes_fifo_solo_abono_cuenta.sql',import.meta.url),'utf8'))
   const registrar = async (pedidoId, monto, clave) => (await db.query(`select public.registrar_cobro_cation(
     p_pedido_id=>$1,p_cliente_id=>890040,p_monto=>$2,p_metodo=>'EFECTIVO',p_sesion_id=>900001,p_idempotencia=>$3) result`,[pedidoId,monto,clave])).rows[0].result
   const aplicaciones = async pagoId => (await db.query(`select p.pedido_id, a.monto
