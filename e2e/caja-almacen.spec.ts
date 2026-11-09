@@ -36,10 +36,14 @@ test('VTA vinculada habilitada, recuperación y cierre pendiente de Almacén', a
 test('solicitar material conserva la operación y permite añadir VTA antes de cobrar', async ({ page }) => {
   const writes=await fixture(page,{products:true})
   await page.goto('/')
-  await page.locator('.cart-operation-menu > summary').click()
   await page.getByRole('button',{name:'Venta directa de almacén',exact:true}).click()
   await page.getByRole('button',{name:'Agregar Material de Almacén QA',exact:true}).click()
-  await page.getByRole('button',{name:/Solicitar a Almacén y continuar VTA/}).click()
+  await page.getByRole('button',{name:/Solicitar a Almacén/}).click()
+  // El ticket con el QR para Almacén se abre solo tras la solicitud.
+  const ticket=page.getByRole('dialog',{name:'Ticket de venta directa'})
+  await expect(ticket).toBeVisible()
+  await ticket.getByRole('button',{name:'Cerrar',exact:true}).first().click()
+  await expect(ticket).toHaveCount(0)
   await expect(page.locator('.caja-almacen-panel')).toContainText('Continúa esta operación')
   await expect(page.locator('.catalog-chips')).not.toContainText('Material de Almacén QA')
   await normalItem(page)

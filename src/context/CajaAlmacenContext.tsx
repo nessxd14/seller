@@ -13,7 +13,8 @@ interface WarehouseContext {
   error: string
   busy: boolean
   link: (vtds: VtdPorCobrar[]) => Promise<boolean>
-  createRequest: (solicitud: object) => Promise<boolean>
+  // Devuelve los venta_id de las VTD que creó la llamada; vacío si falló.
+  createRequest: (solicitud: object) => Promise<number[]>
   refresh: (recover?: boolean) => Promise<void>
   flush: () => Promise<void>
   resolve: (action: 'completar' | 'rechazar' | 'cerrar_rechazo' | 'ajustar', data?: object) => Promise<boolean>
@@ -23,7 +24,7 @@ interface WarehouseContext {
   enEspera: number
 }
 const Context = createContext<WarehouseContext | null>(null)
-const inactive: WarehouseContext = { managed: false, record: null, error: '', busy: false, link: async () => true, createRequest: async () => false, refresh: async () => {}, flush: async () => {}, resolve: async () => false, park: async () => false, resume: async () => false, enEspera: 0 }
+const inactive: WarehouseContext = { managed: false, record: null, error: '', busy: false, link: async () => true, createRequest: async () => [], refresh: async () => {}, flush: async () => {}, resolve: async () => false, park: async () => false, resume: async () => false, enEspera: 0 }
 export const useCajaAlmacen = () => useContext(Context) ?? inactive
 
 export function CajaAlmacenProvider({ children }: { children: ReactNode }) {
@@ -205,20 +206,21 @@ export function CajaAlmacenProvider({ children }: { children: ReactNode }) {
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo retomar la operación.'); return false }
     finally { pending.current = false; setBusy(false) }
   }
-  const createRequest = async (solicitud: object) => {
-    if (pending.current) return false
+  const createRequest = async (solicitud: object): Promise<number[]> => {
+    if (pending.current) return []
     pending.current = true; setBusy(true); setError('')
     epoch.current++
     posRef.current.setWarehouseLock(true, false)
     let attempted = false
+    const previas = new Set((current.current?.vtds ?? []).map(v => v.venta_id))
     try {
       if (!sessionId) throw new Error('Abre tu turno antes de solicitar material.')
       const emptyDraft = { ...draftRef.current, cart: [], discount: 0 }
       attempted = true
       const next = await operarCajaAlmacen('crear_vtd', posRef.current.operationId, sessionId, { solicitud, borrador: emptyDraft })
       apply(next, true)
-      return true
-    } catch (e) { uncertain.current = attempted && !(e as {code?: string}).code; setError(e instanceof Error ? e.message : 'No se pudo solicitar el material.'); return false }
+      return next.vtds.filter(v => !previas.has(v.venta_id)).map(v => v.venta_id)
+    } catch (e) { uncertain.current = attempted && !(e as {code?: string}).code; setError(e instanceof Error ? e.message : 'No se pudo solicitar el material.'); return [] }
     finally { pending.current = false; setBusy(false); posRef.current.setWarehouseLock(!!current.current?.operacion || uncertain.current, !!current.current?.operacion?.comprobante || uncertain.current) }
   }
   return <Context.Provider value={{ managed: featureFlags.supabase, record, error, busy, link, createRequest, refresh, flush, resolve, park, resume, enEspera }}>{children}</Context.Provider>
