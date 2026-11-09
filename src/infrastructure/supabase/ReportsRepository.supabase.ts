@@ -5,6 +5,7 @@ import type {
   ReportsRepository, ValuacionRow, VentaRow,
 } from '../../application/ports/reportsRepository'
 import { numericToCents } from './mappers'
+import { leerTodo } from './paginacion'
 
 // numeric columns come back from PostgREST as strings — this normalizes any of
 // string/number/null/undefined into a plain JS number.
@@ -149,22 +150,13 @@ export class SupabaseReportsRepository implements ReportsRepository {
    * strictly paginated through the UI instead.
    */
   async getSummary(dates: ReportDateRange): Promise<ReportSummary> {
-    const fetchAll = async (table: string, select: string): Promise<Array<Record<string, unknown>>> => {
-      const rows: Array<Record<string, unknown>> = []
-      let page = 0
-      const PAGE = 1000
-      for (;;) {
-        const { data, error } = await supabase.from(table).select(select).gte('fecha', dates.from).lte('fecha', dates.to).range(page * PAGE, page * PAGE + PAGE - 1)
-        if (error) throw error
-        rows.push(...((data ?? []) as unknown as Array<Record<string, unknown>>))
-        if (!data || data.length < PAGE) break
-        page += 1
-      }
-      return rows
-    }
+    // Orden total, verificado contra la base: v_reporte_ventas tiene una fila por venta_id
+    // (= venta.id) y v_reporte_caja agrupa por sesion_caja.id, así que sesion_id es único.
     const [ventaRows, cajaRows] = await Promise.all([
-      fetchAll('v_reporte_ventas', 'total'),
-      fetchAll('v_reporte_caja', 'diferencia'),
+      leerTodo<Record<string, unknown>>((desde, hasta) => supabase.from('v_reporte_ventas').select('total')
+        .gte('fecha', dates.from).lte('fecha', dates.to).order('venta_id', { ascending: true }).range(desde, hasta)),
+      leerTodo<Record<string, unknown>>((desde, hasta) => supabase.from('v_reporte_caja').select('diferencia')
+        .gte('fecha', dates.from).lte('fecha', dates.to).order('sesion_id', { ascending: true }).range(desde, hasta)),
     ])
     const totalVendidoCents = ventaRows.reduce((sum, row) => sum + numericToCents(num(row.total)), 0)
     const operaciones = ventaRows.length

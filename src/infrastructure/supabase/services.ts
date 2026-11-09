@@ -37,9 +37,6 @@ const currentActorId = async (): Promise<string> => {
 }
 
 const bigPage = { page: 1, pageSize: 200 }
-// Brief P1: 320 pedidos hoy, ya sobre los 200 de bigPage — el tope real es el hard cap de
-// PostgREST (1000 filas por request), no un número elegido a mano.
-const bigPageOrders = { page: 1, pageSize: 1000 }
 
 export const quoteService = {
   async list(): Promise<QuoteDraft[]> {
@@ -82,11 +79,10 @@ export const quoteService = {
 
 export const orderService = {
   // Brief P1: categorias filtra pedido.categoria del lado del servidor (segmento
-  // Retail/Wholesale) — bigPageOrders cubre hasta el tope duro de PostgREST (1000 filas),
-  // así que "Todos" (320 hoy) no queda truncado como con el bigPage genérico de 200.
+  // Retail/Wholesale) — listAll pagina de verdad (páginas de 1000), así que "Todos" no
+  // queda truncado por el tope de PostgREST.
   async list(input?: { categorias?: CategoriaPedido[] }): Promise<OrderView[]> {
-    const { items } = await orderRepository.list({ categorias: input?.categorias, page: bigPageOrders })
-    return items
+    return orderRepository.listAll({ categorias: input?.categorias })
   },
   // Brief: /pedidos/:id (y la vista previa/impresión) necesitan traer un pedido puntual
   // sin pedir la lista completa — list() ya no trae líneas (mismo tope de 1.000 filas de
@@ -130,6 +126,8 @@ export const customerService = {
   // small page size, while existing no-arg callers (DraftOrderEditor) keep getting the
   // full list exactly as before.
   async list(input?: { query?: string; page?: { page: number; pageSize: number } }): Promise<CustomerRecord[]> {
+    // Sin query ni página: el padrón completo, paginado de verdad (antes bigPage cortaba en 200).
+    if (!input?.query && !input?.page) return customerRepository.listAll()
     const { items } = await customerRepository.list({ query: input?.query, page: input?.page ?? bigPage })
     return items
   },

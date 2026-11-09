@@ -5,6 +5,7 @@ import type {
   ComisionProductoHuerfano, ComisionRegla, ComisionReglaInput, ComisionSeguimiento, ComisionVendedor,
 } from '../../application/ports/comisionesRepository'
 import { numericToCents } from './mappers'
+import { leerTodo } from './paginacion'
 
 const num = (value: unknown): number => (value === null || value === undefined || value === '' ? 0 : Number(value))
 // porcentaje viene como fracción (0.01 = 1%) -> basis points (100).
@@ -207,12 +208,18 @@ export class SupabaseComisionesRepository implements ComisionesRepository {
 
   async getProductosHuerfanos(dates: ReportDateRange): Promise<ComisionProductoHuerfano[]> {
     // v_comision_huerfano_linea es línea a línea — se agrega client-side por producto,
-    // igual que getSummary en ReportsRepository (volumen chico, sin paginar 1000 filas).
-    const { data, error } = await supabase.from('v_comision_huerfano_linea').select('*')
+    // igual que getSummary en ReportsRepository.
+    // La vista no tiene clave única (UNION ALL de líneas de pedido y de venta, sin id de
+    // línea): se ordena por TODAS las columnas seleccionadas. Dos filas idénticas en todas
+    // ellas son intercambiables, así que si una cambia de página el resultado no cambia.
+    const data = await leerTodo<Record<string, unknown>>((desde, hasta) => supabase.from('v_comision_huerfano_linea')
+      .select('producto_id, producto_nombre, marca, fecha, monto')
       .gte('fecha', dates.from).lte('fecha', dates.to)
-    if (error) throw error
+      .order('producto_id', { ascending: true }).order('fecha', { ascending: true }).order('monto', { ascending: true })
+      .order('producto_nombre', { ascending: true }).order('marca', { ascending: true })
+      .range(desde, hasta))
     const porProducto = new Map<string, ComisionProductoHuerfano>()
-    for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    for (const row of data) {
       const id = String(row.producto_id)
       const existente = porProducto.get(id)
       const monto = numericToCents(num(row.monto))
