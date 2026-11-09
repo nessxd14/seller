@@ -1,72 +1,17 @@
 import { supabase } from './supabaseClient'
 import type { ProductRepository, Page, PageRequest } from '../../application/ports/repositories'
-import type { Product, SalesChannel } from '../../types'
+import type { Product } from '../../types'
 import { hoyLocal, sumarDiasIso } from '../../domain/common/fechas'
+import { buscarEnCatalogo, resolverCodigoLocal } from '../../domain/catalog/catalogoLocal'
+import {
+  num, rowToPresentation, rowToProduct, singlePresentation,
+  type LineIdentifiers, type Presentation, type PresentacionRow, type ProductoRow, type ResolverRow, type ScannedPresentation,
+} from '../../domain/catalog/mapeoProducto'
+import { PRODUCT_COLUMNS } from './productoColumnas'
+import { catalogoLocal } from './CatalogoLocal.supabase'
 
-interface ProductoRow {
-  id: number
-  nombre: string
-  sku_interno: string | null
-  marca: string | null
-  unidad_base: string | null
-  precio_base: number | string | null
-  precio_mayoreo: number | string | null
-  precio_institucion: number | string | null
-  precio_corporativo: number | string | null
-  activo: boolean
-  imagen_url: string | null
-  stock_min: number | string | null
-  punto_reorden: number | string | null
-  familia_id: number | null
-  // Mismo patrón que producto(nombre,sku_interno) en TransferRepository.supabase.ts:
-  // embed por nombre de tabla destino (no alias), PostgREST resuelve la FK
-  // producto_familia_id_fkey solo y devuelve un objeto (relación to-one).
-  familia?: { nombre: string } | null
-}
-
-const num = (value: number | string | null | undefined): number => (value == null ? 0 : Number(value))
-
-/**
- * Channel-price resolution with retail fallback (TAREA 2, option a confirmed by Ness): a
- * missing precio_mayoreo/precio_institucion/precio_corporativo must NEVER be charged as Bs 0 —
- * it falls back to precio_base (retail) and is flagged as "heredado" (inherited, not
- * negotiated) so the UI can mark it distinctly from a real, deliberately-set channel price.
- * Never applied to retail itself — retail has no fallback target, it IS the fallback source.
- */
-const precioCanal = (valor: number | string | null, retail: number): { precio: number; heredado: boolean } =>
-  valor == null ? { precio: retail, heredado: true } : { precio: Number(valor), heredado: false }
-
-const rowToProduct = (row: ProductoRow, codes?: { barra?: string; fabrica?: string }): Product => {
-  const retail = num(row.precio_base)
-  const mayoreo = precioCanal(row.precio_mayoreo, retail)
-  const institucional = precioCanal(row.precio_institucion, retail)
-  const corporativo = precioCanal(row.precio_corporativo, retail)
-  return {
-    id: row.id,
-    sku: row.sku_interno ?? String(row.id),
-    codigoBarra: codes?.barra ?? '',
-    codigoFabrica: codes?.fabrica ?? '',
-    nombre: row.nombre,
-    descripcion: row.marca ?? '',
-    categoria: row.marca ?? 'General',
-    imagen: '',
-    imagenUrl: row.imagen_url ?? undefined,
-    color: '#585b63',
-    precioRetail: retail,
-    precioMayoreo: mayoreo.precio,
-    precioInstitucional: institucional.precio,
-    precioCorporativo: corporativo.precio,
-    stockTienda: 0,
-    stockAlmacen: 0,
-    preciosHeredados: { mayoreo: mayoreo.heredado, institucional: institucional.heredado, corporativo: corporativo.heredado },
-    // Brief S2: agrupar resultados de búsqueda por familia (el caso "goma eva" — variantes
-    // del mismo artículo dispersas). Solo 32% de cobertura (ver comentario histórico en
-    // ProductCatalog.tsx) — la mayoría de los productos no tiene familia, y eso está bien:
-    // agrupan en un balde "Otros" en vez de forzar una familia que no existe.
-    familiaId: row.familia_id ?? undefined,
-    familiaNombre: row.familia?.nombre ?? undefined,
-  }
-}
+export { PRODUCT_COLUMNS, rowToProduct }
+export type { LineIdentifiers, Presentation, ScannedPresentation }
 
 /**
  * Batch-fetch each product's REAL barcode (`identificador.tipo='barra'`) and factory code
@@ -116,26 +61,15 @@ const fetchBarcodeCodes = async (productIds: number[]): Promise<Map<number, { ba
   return result
 }
 
-const PRODUCT_COLUMNS = 'id,nombre,sku_interno,marca,unidad_base,precio_base,precio_mayoreo,precio_institucion,precio_corporativo,activo,imagen_url,stock_min,punto_reorden,familia_id,familia(nombre)'
-
-interface ResolverRow { producto_id: number; presentacion_id?: number | null; factor_unidad_base?: number | string | null; presentacion_nombre?: string | null }
-
-/** Presentación que resuelve un código de barras: sin precios (el carrito los carga al elegir presentación). */
-export type ScannedPresentation = Omit<Presentation, 'precios' | 'tienePrecioPropio' | 'vendeTienda' | 'vendeAlmacen'>
-
-/** La presentación de un código solo se informa cuando TODAS las filas del producto apuntan a la misma. */
-const singlePresentation = (rows: ResolverRow[]): ScannedPresentation | undefined => {
-  const ids = new Set(rows.map((row) => row.presentacion_id ?? null))
-  if (ids.size !== 1) return undefined
-  const [first] = rows
-  if (first.presentacion_id == null) return undefined
-  const factor = num(first.factor_unidad_base ?? 1) || 1
-  return { id: first.presentacion_id, nombre: first.presentacion_nombre ?? '', factorUnidadBase: factor, esBase: factor === 1 }
-}
-
 export class SupabaseProductRepository implements ProductRepository {
   async search(input: { query?: string; category?: string; active?: boolean; page: PageRequest }): Promise<Page<Product>> {
     const { query, active, page } = input
+    const indice = catalogoLocal.indice()
+    if (active === true && indice) {
+      const { items, total } = buscarEnCatalogo(indice, query ?? '', { page: page.page, pageSize: page.pageSize })
+      return { items, page: page.page, pageSize: page.pageSize, total }
+    }
+    void catalogoLocal.asegurarCarga()
     const from = (page.page - 1) * page.pageSize
     const to = from + page.pageSize - 1
     let builder = supabase.from('producto').select(PRODUCT_COLUMNS, { count: 'exact' })
@@ -205,6 +139,9 @@ export class SupabaseProductRepository implements ProductRepository {
   async getById(id: string): Promise<Product | null> {
     const numericId = Number(id)
     if (!Number.isFinite(numericId)) return null
+    // El índice solo tiene activos: un id ausente puede ser inactivo, así que se consulta la red.
+    const local = catalogoLocal.indice()?.productos.get(numericId)
+    if (local) return { ...local }
     const { data, error } = await supabase.from('producto').select(PRODUCT_COLUMNS).eq('id', numericId).maybeSingle()
     if (error) throw error
     if (!data) return null
@@ -214,6 +151,10 @@ export class SupabaseProductRepository implements ProductRepository {
 
   /** Exact-match lookup by internal SKU (barcode-scanner style Enter-to-search). */
   async findBySku(sku: string): Promise<Product | null> {
+    const indice = catalogoLocal.indice()
+    const idLocal = indice?.productoPorSku.get(sku)
+    const local = idLocal != null ? indice?.productos.get(idLocal) : undefined
+    if (local) return { ...local }
     const { data, error } = await supabase.from('producto').select(PRODUCT_COLUMNS).eq('sku_interno', sku).maybeSingle()
     if (error) throw error
     if (!data) return null
@@ -239,6 +180,15 @@ export class SupabaseProductRepository implements ProductRepository {
     // eslint-disable-next-line no-control-regex -- los lectores físicos a veces mandan basura de control antes del Enter
     const code = codigo.trim().replace(/[\x00-\x1F\x7F]/g, '')
     if (!code) return { kind: 'not_found' }
+    const indice = catalogoLocal.indice()
+    const local = indice ? resolverCodigoLocal(indice, code) : null
+    if (local) {
+      if (local.kind === 'ambiguous') return local
+      const product = await this.getById(String(local.productId))
+      if (!product) return { kind: 'not_found' }
+      return local.presentation ? { kind: 'found', product, presentation: local.presentation } : { kind: 'found', product }
+    }
+    // Sin índice o sin respuesta cierta (p. ej. un código registrado hace un minuto): red como siempre.
     const { data, error } = await supabase.rpc('resolver_identificador', { p_codigo: code })
     if (error) throw error
     const rows = (data ?? []) as ResolverRow[]
@@ -403,53 +353,22 @@ export const getDisponibilidadPedido = async (productIds: number[]): Promise<Rec
   return result
 }
 
-export interface Presentation {
-  id: number
-  nombre: string
-  factorUnidadBase: number
-  esBase: boolean
-  /** Precio ya resuelto por canal (propio, o precio del canal × factor); null = el producto no tiene precio. */
-  precios: Record<SalesChannel, number | null>
-  tienePrecioPropio: boolean
-  /** Dónde se vende: tienda (mostrador, VTD, celular del piso) y/o almacén (cotizaciones, pedidos mayoristas). Ausente = true. */
-  vendeTienda: boolean
-  vendeAlmacen: boolean
-}
-
-const numOrNull = (value: number | string | null | undefined): number | null => (value == null ? null : num(value))
-
 /**
  * Presentations for a product (e.g. "Caja" with factor 12, "Unidad" base with factor 1), con el precio
  * resuelto por canal que calcula la base (v_presentacion_precio). Siempre por producto: cargarlas en
  * bloque choca con el corte de 1.000 filas de PostgREST.
  */
 export const listPresentations = async (productId: number): Promise<Presentation[]> => {
+  const local = catalogoLocal.indice()?.presentaciones.get(productId)
+  if (local) return local.map((pres) => ({ ...pres, precios: { ...pres.precios } }))
   const { data, error } = await supabase
     .from('v_presentacion_precio')
     .select('presentacion_id,nombre,factor_unidad_base,es_base,activo,precio_retail,precio_mayoreo,precio_institucion,precio_corporativo,tiene_precio_propio,vende_tienda,vende_almacen')
     .eq('producto_id', productId)
     .order('es_base', { ascending: false })
   if (error) throw error
-  const rows = (data ?? []) as Array<{
-    presentacion_id: number; nombre: string; factor_unidad_base: number | string; es_base: boolean; activo: boolean | null
-    precio_retail: number | string | null; precio_mayoreo: number | string | null; precio_institucion: number | string | null; precio_corporativo: number | string | null
-    tiene_precio_propio: boolean | null; vende_tienda?: boolean | null; vende_almacen?: boolean | null
-  }>
-  return rows.filter((row) => row.activo !== false).map((row) => ({
-    id: row.presentacion_id,
-    nombre: row.nombre,
-    factorUnidadBase: num(row.factor_unidad_base),
-    esBase: row.es_base,
-    precios: {
-      retail: numOrNull(row.precio_retail),
-      mayoreo: numOrNull(row.precio_mayoreo),
-      institucional: numOrNull(row.precio_institucion),
-      corporativo: numOrNull(row.precio_corporativo),
-    },
-    tienePrecioPropio: row.tiene_precio_propio === true,
-    vendeTienda: row.vende_tienda !== false,
-    vendeAlmacen: row.vende_almacen !== false,
-  }))
+  const rows = (data ?? []) as PresentacionRow[]
+  return rows.filter((row) => row.activo !== false).map(rowToPresentation)
 }
 
 /**
@@ -508,7 +427,7 @@ export const listBrands = async (): Promise<BrandList> => {
  * Paginado en lotes de 1.000 igual que fetchAllMarcas, para no perder ventas silenciosamente
  * si el rango de 30 días supera el tope de PostgREST.
  */
-export const listFrecuentes = async (limit = 12): Promise<Product[]> => {
+const cargarFrecuentes = async (limit: number): Promise<Product[]> => {
   const desde = sumarDiasIso(hoyLocal(), -30)
   // Frecuencia = en cuántas ventas distintas apareció el producto (una fila de
   // v_reporte_productos_vendidos por línea de venta), NO cuántas unidades se movieron.
@@ -551,8 +470,6 @@ export const listFrecuentes = async (limit = 12): Promise<Product[]> => {
   return productos.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0))
 }
 
-export interface LineIdentifiers { barra?: string; fabrica?: string; marca?: string }
-
 /**
  * Batch-fetch barcode/factory-code/brand for a set of product ids, for the secondary
  * "identifiers" line on order/quote rows (item 2.2). Codes live on `identificador`,
@@ -564,6 +481,12 @@ export interface LineIdentifiers { barra?: string; fabrica?: string; marca?: str
 export const listIdentifiersForProducts = async (productIds: string[]): Promise<Record<string, LineIdentifiers>> => {
   const ids = [...new Set(productIds.map(Number))].filter((id) => Number.isFinite(id))
   if (!ids.length) return {}
+  const indice = catalogoLocal.indice()
+  if (indice && ids.every((id) => indice.productos.has(id))) {
+    const local: Record<string, LineIdentifiers> = {}
+    ids.forEach((id) => { local[String(id)] = { ...indice.identificadoresLinea.get(id) } })
+    return local
+  }
   const [{ data: productos, error: prodError }, { data: presentaciones, error: presError }] = await Promise.all([
     supabase.from('producto').select('id,marca').in('id', ids),
     supabase.from('presentacion').select('id,producto_id').in('producto_id', ids).eq('es_base', true),
@@ -594,4 +517,18 @@ export const listIdentifiersForProducts = async (productIds: string[]): Promise<
     result[String(typed.id)] = { barra: codes?.barra, fabrica: codes?.fabrica, marca: typed.marca ?? undefined }
   })
   return result
+}
+
+const FRECUENTES_TTL_MS = 30 * 60_000
+const frecuentesCache = new Map<number, { cargadoEn: number; promesa: Promise<Product[]> }>()
+
+/** Los más vendidos de 30 días cambian despacio: se guardan 30 min por `limit`; una falla no se guarda. */
+export const listFrecuentes = (limit = 12): Promise<Product[]> => {
+  const guardado = frecuentesCache.get(limit)
+  if (guardado && Date.now() - guardado.cargadoEn < FRECUENTES_TTL_MS) return guardado.promesa.then((items) => [...items])
+  const promesa = cargarFrecuentes(limit)
+  const entrada = { cargadoEn: Date.now(), promesa }
+  frecuentesCache.set(limit, entrada)
+  promesa.catch(() => { if (frecuentesCache.get(limit) === entrada) frecuentesCache.delete(limit) })
+  return promesa.then((items) => [...items])
 }

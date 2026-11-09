@@ -4,6 +4,7 @@ import type { QuoteDraft, WorkflowLine } from '../../application/shared/models'
 import type { CustomerRecord } from '../../application/shared/models'
 import { customerService, productRepository, getStockByProduct, getDisponibilidadPedido, listPresentations, listLineIdentifiers, authSessionProvider } from '../../infrastructure/services'
 import { featureFlags } from '../../config/featureFlags'
+import { catalogoLocal } from '../../infrastructure/supabase/CatalogoLocal.supabase'
 import { aggregateStockBySucursal } from '../inventory/stockAggregation'
 import { formatMoney, money } from '../../domain/common/money'
 import { Modal } from '../../components/Modal'
@@ -36,6 +37,9 @@ import { channelToCategoria } from '../../infrastructure/supabase/mappers'
 import { PrecioSugeridoHint } from './PrecioSugeridoHint'
 
 type EditableChannel = QuoteDraft['channel']
+
+// Sin catálogo en memoria cada tecla es una consulta a la red: se espera a que el usuario pare.
+const DEBOUNCE_BUSQUEDA_RED_MS = 250
 
 const channelTabs: { id: EditableChannel; label: string; icon: typeof Warehouse }[] = [
   { id: 'mayoreo', label: 'Mayoreo', icon: Warehouse },
@@ -162,7 +166,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       void productRepository.search({ query: productQuery, active: true, page: { page: 1, pageSize: 100 } }).then((page) => {
         if (productSearchIdRef.current === requestId) { setProductResults(page.items); setProductLoading(false) }
       }).catch(() => { if (productSearchIdRef.current === requestId) { setProductResults([]); setProductLoading(false); setProductSearchError('No se pudo buscar. Intenta nuevamente.') } })
-    }, 250)
+    }, catalogoLocal.listo() ? 0 : DEBOUNCE_BUSQUEDA_RED_MS)
     return () => { clearTimeout(handle); productSearchIdRef.current += 1 }
   }, [productQuery])
 
@@ -261,9 +265,9 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // productQuery/productResults acá: es justo el reinicio que el brief pide sacar — el
   // buscador se limpia únicamente con Escape (ver ProductQuickAdd).
   const addCatalogProduct = async (product: Product, scanned?: { id: number; nombre: string }) => {
-    const existing = value.lines.find((line) => line.productId === String(product.id) && !line.isCustomItem)
-    if (existing) {
-      updateLine(existing.id, { quantity: existing.quantity + 1 })
+    const sumarUno = (v: QuoteDraft): QuoteDraft => ({ ...v, lines: v.lines.map((line) => (line.productId === String(product.id) && !line.isCustomItem ? { ...line, quantity: line.quantity + 1 } : line)) })
+    if (value.lines.some((line) => line.productId === String(product.id) && !line.isCustomItem)) {
+      setValue(sumarUno)
       return
     }
     // Almacén: solo se ofrecen las presentaciones habilitadas para cotizar / pedir al por mayor.
@@ -292,7 +296,9 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
       sourceLocation: defaultSourceForChannel(),
       ...(inicialNoBase ? { presentacionId: inicialNoBase.id, presentacionNombre: inicialNoBase.nombre, factorUnidadBase: inicialNoBase.factorUnidadBase } : {}),
     }
-    setValue((v) => ({ ...v, lines: [...v.lines, newLine] }))
+    // Dos Enter seguidos pasan el chequeo de arriba antes de que alguno agregue la línea: la
+    // decisión final se toma sobre el estado más reciente, dentro del updater.
+    setValue((v) => (v.lines.some((line) => line.productId === String(product.id) && !line.isCustomItem) ? sumarUno(v) : { ...v, lines: [...v.lines, newLine] }))
     setBasePriceCentsByLine((prev) => ({ ...prev, [lineId]: basePriceCents }))
     setPresentationsByProduct((prev) => ({ ...prev, [String(product.id)]: list }))
     ensureProductData(product)

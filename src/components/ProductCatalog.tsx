@@ -6,6 +6,7 @@ import { usePos } from '../context/PosContext'
 import { ProductVisual } from './ProductVisual'
 import { productRepository, listBrands, getStockBySucursalBatch, listFrecuentes } from '../infrastructure/services'
 import { featureFlags } from '../config/featureFlags'
+import { catalogoLocal } from '../infrastructure/supabase/CatalogoLocal.supabase'
 import type { Product } from '../types'
 import { ProductInfoPopover } from './ProductInfoPopover'
 import { isLineUnpriced } from '../domain/sales/priceCheck'
@@ -29,6 +30,15 @@ const CATEGORIAS = ['Todos', 'Frecuentes']
 // flaco — un chip que muestra una grilla de tres ítems invita a pensar que el catálogo
 // está roto. Por debajo de este umbral, se oculta el chip en vez de mostrarlo vacío.
 const MIN_FRECUENTES = 8
+
+// Sin catálogo en memoria cada tecla es una consulta a la red: se espera a que el usuario pare.
+// Con el catálogo local la respuesta es inmediata y no hace falta esperar.
+const DEBOUNCE_BUSQUEDA_RED_MS = 300
+// El stock sí es en vivo: se pide solo lo que falta o está viejo, y tras una pausa al escribir.
+const STOCK_VIGENCIA_MS = 30_000
+const STOCK_DEBOUNCE_MS = 250
+
+interface StockEnCache { tienda: number; almacen: number; leidoEn: number }
 
 export function ProductCatalog({ search, category, setCategory }: { search: string; category: string; setCategory: (value: string) => void }) {
   const { channel, cart, addProduct, updateQuantity, removeItem, mode } = usePos()
@@ -58,11 +68,11 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   useEffect(() => {
     if (!featureFlags.supabase || category === 'Frecuentes') return
     const requestId = ++searchIdRef.current
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- oculta coincidencias antiguas al cambiar el término
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- marca la búsqueda como pendiente; los resultados anteriores se conservan en pantalla
     setSearchStatus('loading')
     const handle = setTimeout(() => {
       void productRepository.search({ query: search, active: true, page: { page: 1, pageSize: 60 } }).then((page) => { if (searchIdRef.current === requestId) { setRemoteProducts(page.items); setSearchStatus('ready') } }).catch(() => { if (searchIdRef.current === requestId) { setRemoteProducts([]); setSearchStatus('error') } })
-    }, 300)
+    }, catalogoLocal.listo() ? 0 : DEBOUNCE_BUSQUEDA_RED_MS)
     return () => { clearTimeout(handle); searchIdRef.current += 1 }
   }, [search, category, searchRetry])
 
@@ -83,19 +93,35 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
   // no llena stock ahí, para no cargar stock_actual entero por cada producto listado).
   // Se resuelve acá, en un solo batch por lo que esté visible (página de grilla o
   // Frecuentes) — mientras carga, la píldora muestra "—" en vez de un 0 falso.
-  const [stockByProduct, setStockByProduct] = useState<Map<number, { tienda: number; almacen: number }>>(new Map())
-  const [stockLoading, setStockLoading] = useState(false)
+  // Los resultados cambian con cada tecla: el stock se guarda por producto mientras viva el
+  // componente y solo se piden los ids que faltan o tienen más de 30 s.
+  const [stockByProduct, setStockByProduct] = useState<Map<number, StockEnCache>>(new Map())
+  const stockCacheRef = useRef<Map<number, StockEnCache>>(new Map())
+  const montadoRef = useRef(true)
+  useEffect(() => { montadoRef.current = true; return () => { montadoRef.current = false } }, [])
   useEffect(() => {
     if (!featureFlags.supabase) return
     const activeItems = category === 'Frecuentes' ? frecuentes : remoteProducts
     if (!activeItems.length) return
-    let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the loading flag must flip the instant the visible set changes, before the batch fetch resolves
-    setStockLoading(true)
-    void getStockBySucursalBatch(activeItems.map((product) => product.id))
-      .then((stock) => { if (!cancelled) { setStockByProduct(stock); setStockLoading(false) } })
-      .catch(() => { if (!cancelled) setStockLoading(false) })
-    return () => { cancelled = true }
+    const handle = setTimeout(() => {
+      const ahora = Date.now()
+      const faltantes = activeItems.map((product) => product.id).filter((id) => {
+        const guardado = stockCacheRef.current.get(id)
+        return !guardado || ahora - guardado.leidoEn > STOCK_VIGENCIA_MS
+      })
+      if (!faltantes.length) return
+      void getStockBySucursalBatch(faltantes)
+        .then((stock) => {
+          if (!montadoRef.current) return
+          const leidoEn = Date.now()
+          const siguiente = new Map(stockCacheRef.current)
+          stock.forEach((entry, id) => siguiente.set(id, { tienda: entry.tienda, almacen: entry.almacen, leidoEn }))
+          stockCacheRef.current = siguiente
+          setStockByProduct(siguiente)
+        })
+        .catch(() => undefined)
+    }, STOCK_DEBOUNCE_MS)
+    return () => clearTimeout(handle)
   }, [remoteProducts, frecuentes, category])
 
   // Brand ANDs with search + category (all three combined), never a replacement for
@@ -144,7 +170,7 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
         </select>
       )}</div>
     <div className="section-heading"><div><p>Catálogo de productos</p><span>{filtered.length} productos disponibles</span></div><small>Precios en Bs</small></div>
-    {featureFlags.supabase && category !== 'Frecuentes' && searchStatus === 'loading' ? <div className="empty-products" role="status"><LoaderCircle className="spin" /><h3>Buscando productos…</h3></div> : featureFlags.supabase && category !== 'Frecuentes' && searchStatus === 'error' ? <div className="empty-products" role="alert"><PackageOpen /><h3>No se pudo cargar el catálogo</h3><button className="secondary-button" onClick={() => setSearchRetry((n) => n + 1)}>Reintentar</button></div> : filtered.length ? grupos.map((grupo) => {
+    {featureFlags.supabase && category !== 'Frecuentes' && searchStatus === 'loading' && !remoteProducts.length ? <div className="empty-products" role="status"><LoaderCircle className="spin" /><h3>Buscando productos…</h3></div> : featureFlags.supabase && category !== 'Frecuentes' && searchStatus === 'error' ? <div className="empty-products" role="alert"><PackageOpen /><h3>No se pudo cargar el catálogo</h3><button className="secondary-button" onClick={() => setSearchRetry((n) => n + 1)}>Reintentar</button></div> : filtered.length ? grupos.map((grupo) => {
       const sinFamilia = esGrupoSinFamilia(grupo.key)
       if (sinFamilia && !mostrarSinFamilia && grupo.productos.length > 8 && !grupo.productos.some((product) => isExactProductCode(product, query))) {
         return <button key={grupo.key} type="button" className="catalog-sin-familia-toggle" onClick={() => setMostrarSinFamilia(true)}>
@@ -154,13 +180,13 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
       return <div key={grupo.key}>
       {!sinFamilia && grupo.nombre && <h4 className="catalog-familia-header">{grupo.nombre}</h4>}
       {sinFamilia && <h4 className="catalog-familia-header catalog-familia-header-neutro">Otros productos (sin familia asignada) · {grupo.productos.length}</h4>}
-      <div className="product-grid">{grupo.productos.map((product) => {
+      <div className="product-grid" aria-busy={featureFlags.supabase && category !== 'Frecuentes' && searchStatus === 'loading'}>{grupo.productos.map((product) => {
         const enCarrito = cart.find((item) => item.id === product.id && !item.isCustomItem)
         return <article className="product-card" key={product.id}>
           <ProductVisual type={product.imagen} color={product.color} imagenUrl={product.imagenUrl} expandable name={product.nombre} />
           <div className="product-info"><div className="stock-pill"><span /> {
             featureFlags.supabase
-              ? (stockLoading ? '—' : (stockByProduct.get(product.id)?.tienda ?? 0))
+              ? (stockByProduct.get(product.id)?.tienda ?? '—')
               : product.stockTienda
           } en tienda</div><ProductInfoPopover product={product} /><h3 title={product.nombre}>{product.nombre}</h3><p>{product.descripcion}</p><small>SKU {product.sku}</small><div className="product-bottom"><div><span>Precio</span><strong>Bs {money(getPrice(product, channel))}{
             // TAREA A/three-state badges: "heredado" only means something when there's a real
