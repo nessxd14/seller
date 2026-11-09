@@ -238,3 +238,21 @@ describe('DraftOrderEditor — precio por presentación', () => {
     expect(screen.queryByText(/Precio muy bajo/)).toBeNull()
   })
 })
+
+describe('DraftOrderEditor — agregar el mismo producto dos veces seguidas', () => {
+  it('dos Enter rápidos sobre un producto nuevo dejan una sola línea con cantidad 2', async () => {
+    const goma = { id: 77, sku: 'GOMA-77', codigoBarra: '', codigoFabrica: '', nombre: 'Goma Eva', descripcion: '', categoria: '', imagen: '', color: '', precioRetail: 10, precioMayoreo: 10, precioInstitucional: 10, precioCorporativo: 10, stockTienda: 0, stockAlmacen: 0 }
+    vi.mocked(productRepository.search).mockResolvedValue({ items: [goma], page: 1, pageSize: 100, total: 1 })
+    render(<DraftOrderEditor quote={{ ...baseQuote, lines: [] }} onClose={() => {}} onSave={vi.fn()} />)
+    const input = await screen.findByRole('textbox', { name: 'Buscar producto para agregar' })
+    fireEvent.change(input, { target: { value: 'goma' } })
+    await screen.findByText('Goma Eva')
+    // Los dos Enter llegan antes de que el primero termine de agregar la línea.
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+    await waitFor(() => expect(screen.getAllByRole('spinbutton', { name: 'Cantidad Goma Eva' })).toHaveLength(1))
+    expect((screen.getByRole('spinbutton', { name: 'Cantidad Goma Eva' }) as HTMLInputElement).value).toBe('2')
+  })
+})

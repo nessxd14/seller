@@ -36,6 +36,7 @@ import { IntegrationState } from '../features/integration/IntegrationState'
 import { hasPermission, type AuthSession } from '../application/auth/AuthSessionProvider'
 import { authSessionProvider, pedidoVendedorService } from '../infrastructure/services'
 import { supabaseAuthSessionProvider } from '../infrastructure/supabase/SupabaseAuthSessionProvider'
+import { catalogoLocal } from '../infrastructure/supabase/CatalogoLocal.supabase'
 import type { QuoteDraft } from '../application/shared/models'
 import { parseRoute, pisoPath } from '../router/appRoute'
 import { navigate as navigateTo } from '../router/history'
@@ -313,6 +314,22 @@ function PosContent() {
     const unsubscribe = authSessionProvider.subscribe((value) => setSession(value))
     return () => { cancelled = true; unsubscribe() }
   }, [])
+  // Catálogo en memoria (solo Supabase): se carga al haber sesión y se suelta al salir. Se revisa si
+  // cambió al volver a la ventana y al empezar una operación nueva; sin setInterval a propósito.
+  const haySesion = session !== null
+  useEffect(() => {
+    if (!featureFlags.supabase) return
+    if (!haySesion) { catalogoLocal.invalidar(); return }
+    void catalogoLocal.asegurarCarga()
+    const refrescar = () => { void catalogoLocal.refrescarSiCambio() }
+    const alVolver = () => { if (document.visibilityState === 'visible') refrescar() }
+    window.addEventListener('focus', refrescar)
+    document.addEventListener('visibilitychange', alVolver)
+    return () => { window.removeEventListener('focus', refrescar); document.removeEventListener('visibilitychange', alVolver) }
+  }, [haySesion])
+  useEffect(() => {
+    if (featureFlags.supabase && haySesion) void catalogoLocal.refrescarSiCambio()
+  }, [operationId, haySesion])
   // Módulo encendido en esta fase (mismo criterio de siempre; extraído para que el celular arme su menú).
   const moduloHabilitado = (name: string) => name === 'Venta' || name === 'Suspendidas' || name === 'Borradores' || (name === 'Cotizaciones' && featureFlags.quotations) || (name === 'Pedidos' && featureFlags.orders) || (name === 'Venta Directa' && featureFlags.ventaDirectaAlmacen) || name === 'Clientes' || (name === 'Caja' && featureFlags.cash) || name === 'Productos' || name === 'Inventario' || name === 'Traslados' || name === 'Reportes' || (name === 'Comisiones' && featureFlags.comisiones) || name === 'Configuración'
   const navigate = (name: string) => {

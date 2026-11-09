@@ -1,0 +1,1 @@
+export const PRODUCT_COLUMNS = 'id,nombre,sku_interno,marca,unidad_base,precio_base,precio_mayoreo,precio_institucion,precio_corporativo,activo,imagen_url,stock_min,punto_reorden,familia_id,familia(nombre)'
