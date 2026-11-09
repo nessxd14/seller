@@ -185,10 +185,11 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
         return <article className="product-card" key={product.id}>
           <ProductVisual type={product.imagen} color={product.color} imagenUrl={product.imagenUrl} expandable name={product.nombre} />
           <div className="product-info"><div className="stock-pill"><span /> {
-            featureFlags.supabase
-              ? (stockByProduct.get(product.id)?.tienda ?? '—')
-              : product.stockTienda
-          } en tienda</div><ProductInfoPopover product={product} /><h3 title={product.nombre}>{product.nombre}</h3><p>{product.descripcion}</p><small>SKU {product.sku}</small><div className="product-bottom"><div><span>Precio</span><strong>Bs {money(getPrice(product, channel))}{
+            mode === 'ventaDirecta'
+              // Venta directa sale de Almacén Central: ese es el número que importa (solo informativo).
+              ? `${featureFlags.supabase ? (stockByProduct.get(product.id)?.almacen ?? '—') : product.stockAlmacen} en almacén`
+              : `${featureFlags.supabase ? (stockByProduct.get(product.id)?.tienda ?? '—') : product.stockTienda} en tienda`
+          }</div><ProductInfoPopover product={product} /><h3 title={product.nombre}>{product.nombre}</h3><p>{product.descripcion}</p><small>SKU {product.sku}</small><div className="product-bottom"><div><span>Precio</span><strong>Bs {money(getPrice(product, channel))}{
             // TAREA A/three-state badges: "heredado" only means something when there's a real
             // (non-zero) price being inherited from retail — if retail itself is 0/NULL there's
             // nothing to inherit, so this shows "sin precio" instead of the misleading "heredado".

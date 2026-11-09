@@ -58,7 +58,7 @@ function QtyControl({ quantity, onChange }: { quantity: number; onChange: (next:
   </div>
 }
 
-export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTransfer, trasladoDisponible }: { item: CartItemType; onEdit: (viaKeyboard: boolean) => void; originStock?: StockControlInfo; onSetOrigin?: (location: 'Tienda' | 'Almacén') => void; onRequestTransfer?: (shortfall: number) => void; trasladoDisponible?: number }) {
+export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTransfer, trasladoDisponible, almacenDisponible }: { item: CartItemType; onEdit: (viaKeyboard: boolean) => void; originStock?: StockControlInfo; onSetOrigin?: (location: 'Tienda' | 'Almacén') => void; onRequestTransfer?: (shortfall: number) => void; trasladoDisponible?: number; almacenDisponible?: { vendible: number; reservado: number } }) {
   const { channel, mode, updateQuantity, updateItem, removeItem, selectedLineId, setSelectedLineId } = usePos()
   const lineTotal = ventaLineTotalCents(item) / 100
 
@@ -278,6 +278,10 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
         un ítem personalizado no tiene stock que validar. */}
     {!isCustom && insufficient && reservado > 0 && <small className="line-stock-error line-stock-error-compact"><span>Quedan {fmtQty(reservadoVendible)} disponibles. Otras {fmtQty(reservado)} reservadas{reservadoMotivo ? ` para "${reservadoMotivo}"` : ''}.</span></small>}
     {!isCustom && insufficient && reservado === 0 && <small className="line-stock-error line-stock-error-compact"><span>Stock insuficiente en {item.ubicacion}.</span>{tiendaShortfall > 0 && onRequestTransfer && <button type="button" className="request-transfer-link" onClick={() => onRequestTransfer(tiendaShortfall)}>Solicitar a almacén</button>}</small>}
+    {/* Venta directa: solo informativo. Sin clase de error ni efecto en el botón de solicitar: el conteo de Almacén se está rehaciendo y no es confiable todavía. */}
+    {!isCustom && almacenDisponible && (cantidadBase > almacenDisponible.vendible
+      ? <small className="cart-almacen-disp cart-almacen-disp-aviso">Almacén registra {fmtQty(almacenDisponible.vendible)}. Puede faltar.{almacenDisponible.reservado > 0 && ` (${fmtQty(almacenDisponible.reservado)} reservadas para pedidos)`}</small>
+      : <small className="cart-almacen-disp">Almacén: {fmtQty(almacenDisponible.vendible)}{factor !== 1 ? ` ${baseNombre}` : ''} disp.</small>)}
     {!isCustom && !isUnpriced && <PrecioBajoAviso precio={item.precioAplicado} sugerido={precioResuelto} presentacionNombre={presentacionLinea?.nombre} factor={presentacionLinea?.factorUnidadBase ?? 1} baseNombre={baseNombre} />}
   </article>
 }

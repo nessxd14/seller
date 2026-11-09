@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
-import { PosProvider } from '../../context/PosContext'
+import { useEffect } from 'react'
+import { PosProvider, usePos } from '../../context/PosContext'
 import { ProductCatalog } from '../ProductCatalog'
 import { getStockBySucursalBatch, productRepository } from '../../infrastructure/services'
 import type { Product } from '../../types'
@@ -22,7 +23,7 @@ const product = (id: number, nombre: string): Product => ({
   precioRetail: 10, precioMayoreo: 10, precioInstitucional: 10, precioCorporativo: 10, stockTienda: 0, stockAlmacen: 0,
 } as Product)
 const pagina = (items: Product[]) => ({ items, page: 1, pageSize: 60, total: items.length })
-const stockDe = (tienda: number) => ({ tienda, almacen: 0, tiendaLibre: false, almacenLibre: false, tiendaVendible: tienda, almacenVendible: 0, tiendaReservado: 0, almacenReservado: 0, tiendaMotivo: null, almacenMotivo: null })
+const stockDe = (tienda: number, almacen = 0) => ({ tienda, almacen, tiendaLibre: false, almacenLibre: false, tiendaVendible: tienda, almacenVendible: 0, tiendaReservado: 0, almacenReservado: 0, tiendaMotivo: null, almacenMotivo: null })
 
 const montar = (search: string) => <PosProvider><ProductCatalog search={search} category="Todos" setCategory={() => {}} /></PosProvider>
 
@@ -70,5 +71,23 @@ describe('ProductCatalog — búsqueda sin parpadeo', () => {
     expect(vi.mocked(getStockBySucursalBatch).mock.calls[1][0]).toEqual([2])
     expect(await screen.findByText(/20 en tienda/)).toBeTruthy()
     expect(screen.getByText(/10 en tienda/)).toBeTruthy()
+  })
+})
+
+describe('ProductCatalog — etiqueta de stock según el modo', () => {
+  function EntrarEnModo({ modo }: { modo: 'ventaDirecta' }) { const { setMode } = usePos(); useEffect(() => { setMode(modo) }, [modo, setMode]); return null }
+
+  it('en venta directa la píldora muestra el stock de Almacén; en venta sigue mostrando Tienda', async () => {
+    vi.mocked(productRepository.search).mockResolvedValue(pagina([product(1, 'Papel Bond')]))
+    vi.mocked(getStockBySucursalBatch).mockResolvedValue(new Map([[1, stockDe(10, 7)]]))
+
+    const venta = render(montar('pap'))
+    expect(await screen.findByText('10 en tienda', {}, { timeout: 2000 })).toBeTruthy()
+    expect(screen.queryByText(/en almacén/)).toBeNull()
+    venta.unmount()
+
+    render(<PosProvider><EntrarEnModo modo="ventaDirecta" /><ProductCatalog search="pap" category="Todos" setCategory={() => {}} /></PosProvider>)
+    expect(await screen.findByText('7 en almacén', {}, { timeout: 2000 })).toBeTruthy()
+    expect(screen.queryByText(/en tienda/)).toBeNull()
   })
 })

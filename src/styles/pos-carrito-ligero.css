@@ -150,3 +150,7 @@
   .cart-panel-light .cart-remove-item { min-width: 36px; }
   .cart-panel-light .cart-line-controls { row-gap: 10px; }
 }
+
+/* Venta directa: disponibilidad de Almacén en la línea. Solo informativa (nunca estado de error). */
+.cart-item .cart-almacen-disp { display: block; margin-top: 2px; font-size: 11px; color: #8a847a; }
+.cart-item .cart-almacen-disp-aviso { padding: 3px 7px; border-radius: 6px; background: #fff4d6; color: #8a5a00; }
