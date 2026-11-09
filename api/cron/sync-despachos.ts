@@ -1,4 +1,5 @@
 import { hermesHeaders } from '../hermes/_database.js'
+import { secretoValido } from '../_lib/secreto.js'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
@@ -36,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // antes quedaba abierto a cualquier GET anónimo.
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) { res.status(503).json({ error: 'CRON_SECRET no está configurado' }); return }
-  if (req.headers.authorization !== `Bearer ${cronSecret}`) { res.status(401).json({ error: 'No autorizado' }); return }
+  if (!secretoValido(req.headers.authorization, `Bearer ${cronSecret}`)) { res.status(401).json({ error: 'No autorizado' }); return }
 
   const hermesUrl = process.env.HERMES_URL
   const hermesServiceKey = process.env.HERMES_SERVICE_ROLE_KEY

@@ -31,8 +31,8 @@ export async function verificarSesionPos(
   const { data, error } = await supabase.auth.getUser(token)
   if (error || !data.user) return null
   const { data: perfil, error: perfilError } = await supabase.from('perfil').select('rol,activo').eq('id', data.user.id).maybeSingle()
-  if (perfilError || !perfil || perfil.activo === false) return null
-  return { userId: data.user.id, email: data.user.email ?? null, rol: perfil.rol as string, activo: perfil.activo !== false }
+  if (perfilError || !perfil || perfil.activo !== true) return null
+  return { userId: data.user.id, email: data.user.email ?? null, rol: perfil.rol as string, activo: true }
 }
 
 /** Roles autorizados a mover plata en Hermes. Deliberadamente restrictivo:

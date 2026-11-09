@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import { timingSafeEqual } from 'node:crypto'
+import { secretoValido } from '../_lib/secreto.js'
 
 // Brief Caja-2 A3 — ingesta del scraper BNB QR. Mismo esqueleto que
 // api/cron/sync-despachos.ts (imports, manejo de env vars, formato de error), pero acá
@@ -18,19 +18,6 @@ interface MovimientoEntrada {
   originante?: string
   glosa?: string
   raw?: unknown
-}
-
-// Constante en tiempo respecto al CONTENIDO del secreto — comparar buffers de largo
-// distinto con timingSafeEqual tira, así que el único dato que se filtra por timing es
-// el LARGO del header (no el secreto en sí), que es la misma superficie que acepta el
-// brief ("crypto.timingSafeEqual on equal-length buffers").
-function secretoValido(header: string | string[] | undefined, secreto: string): boolean {
-  const valor = Array.isArray(header) ? header[0] : header
-  if (!valor) return false
-  const provisto = Buffer.from(valor)
-  const esperado = Buffer.from(secreto)
-  if (provisto.length !== esperado.length) return false
-  return timingSafeEqual(provisto, esperado)
 }
 
 const ISO_CON_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/

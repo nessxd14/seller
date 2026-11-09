@@ -6,6 +6,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 // moduleResolution "Bundler", así que el fuente sigue typechequeando.
 // Sin la extensión: ERR_MODULE_NOT_FOUND y exit 1 en cada request.
 import { verificarSesionPos, puedeMoverSaldo } from './_auth.js'
+import { usuarioAuditoria } from './_identidad.js'
+import { enteroPositivo } from '../_lib/validacion.js'
 
 // A diferencia de consultar-saldo, acá SÍ hace falta que el frontend distinga éxito de
 // fallo: un fallo real dispara la cola de reintentos (pendiente_sync_hermes) del lado
@@ -22,7 +24,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { clienteId, monto, ventaId, usuarioPos } = (req.body ?? {}) as { clienteId?: unknown; monto?: unknown; ventaId?: unknown; usuarioPos?: unknown }
   const clienteIdNum = Number(clienteId)
   const montoNum = Number(monto)
-  if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0 || !Number.isFinite(montoNum) || montoNum <= 0 || ventaId == null) {
+  const ventaIdNum = enteroPositivo(ventaId)
+  if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0 || !Number.isFinite(montoNum) || montoNum <= 0 || ventaIdNum === null) {
     res.status(400).json({ error: 'Parámetros inválidos' })
     return
   }
@@ -39,8 +42,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         p_cliente_id: clienteIdNum,
         p_monto: montoNum,
         // Clave de idempotencia del otro lado: 'pos-venta-' || p_venta_id — siempre string.
-        p_venta_id: String(ventaId),
-        p_usuario_pos: typeof usuarioPos === 'string' && usuarioPos ? usuarioPos : (sesion.email ?? sesion.userId),
+        p_venta_id: String(ventaIdNum),
+        p_usuario_pos: usuarioAuditoria(sesion, usuarioPos),
       }),
     })
     const data = await response.json().catch(() => null)
