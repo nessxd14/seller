@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient'
 import { ConflictError, NotFoundError } from '../../application/errors/AppError'
+import { leerTodo, porLotes } from './paginacion'
 
 // Brief S11 Bloque B: puede_eliminarse_pedido/eliminar_pedido/guardar_version_pedido son
 // la única fuente de verdad para estas reglas (append-only del Kardex, versión
@@ -104,9 +105,10 @@ export async function listVersionesPedido(pedidoId: number): Promise<PedidoVersi
 export async function contarVersionesPedidos(pedidoIds: number[]): Promise<Map<number, number>> {
   const result = new Map<number, number>()
   if (!pedidoIds.length) return result
-  const { data, error } = await supabase.from('pedido_version').select('pedido_id').in('pedido_id', pedidoIds)
-  if (error) throw error
-  for (const row of (data ?? []) as Array<{ pedido_id: number }>) {
+  // Lotes de 200 ids (URL corta); cada lote paginado por id (único) por si supera las 1000 filas.
+  const filas = await porLotes(pedidoIds, 200, (lote) => leerTodo<{ pedido_id: number }>((desde, hasta) =>
+    supabase.from('pedido_version').select('pedido_id').in('pedido_id', lote).order('id', { ascending: true }).range(desde, hasta)))
+  for (const row of filas) {
     result.set(row.pedido_id, (result.get(row.pedido_id) ?? 0) + 1)
   }
   return result

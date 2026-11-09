@@ -239,7 +239,13 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   useEffect(() => {
     if (!featureFlags.supabase || !orders.length) return
     const ids = orders.map((o) => Number(o.id)).filter(Number.isFinite)
-    void contarVersionesPedidos(ids).then((counts) => setVersionCounts(Object.fromEntries(Array.from(counts.entries()).map(([id, n]) => [String(id), n]))))
+    void contarVersionesPedidos(ids)
+      .then((counts) => setVersionCounts(Object.fromEntries(Array.from(counts.entries()).map(([id, n]) => [String(id), n]))))
+      .catch((error: unknown) => {
+        // El conteo solo resalta filas editadas: si falla, la grilla sigue sin resaltados.
+        console.error('No se pudo contar las versiones de los pedidos', error)
+        setVersionCounts({})
+      })
   }, [orders])
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the version browser immediately when the selected order changes, before the new fetch resolves

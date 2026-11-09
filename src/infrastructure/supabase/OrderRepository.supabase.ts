@@ -6,6 +6,7 @@ import {
   bpToPct, categoriaToChannel, centsToNumeric, channelToCategoria, defaultSucursalForChannel,
   locationToSucursalId, numericToCents, sucursalIdToLocation, type CategoriaPedido, type CondicionPago, type MedioPago,
 } from './mappers'
+import { leerTodo, porLotes } from './paginacion'
 
 type EstadoPedido = 'ABIERTO' | 'COMPLETADO' | 'CANCELADO'
 type EstadoLinea = 'POR_DESPACHAR' | 'DESPACHADA' | 'PENDIENTE' | 'COMPRADO_DIRECTO' | 'ESPECIAL' | 'POR_COMPRAR' | 'RECHAZADO' | 'CAMBIADA' | 'RETIRADA'
@@ -204,14 +205,20 @@ export const marcarPedidoAtencionVista = async (pedidoId: number, usuario?: stri
   if (error) throw error
 }
 
+const LOTE_IDS = 200
+
 // Batch-resuelve numero de cotizacion para los pedidos convertidos de una página/detalle —
 // un solo roundtrip por lista, no uno por fila.
 const resolveSourceQuoteNumeros = async (orders: Array<OrderView & Versioned>): Promise<Array<OrderView & Versioned>> => {
   const ids = Array.from(new Set(orders.map((o) => o.sourceQuoteId).filter((id): id is string => !!id).map(Number)))
   if (!ids.length) return orders
-  const { data, error } = await supabase.from('cotizacion').select('id, numero').in('id', ids)
-  if (error) throw error
-  const numeroById = new Map((data ?? []).map((row) => [String((row as { id: number }).id), (row as { numero: string }).numero]))
+  // Por lotes: leer todos los pedidos deja cientos de ids, que en un solo .in() inflan la URL.
+  const data = await porLotes(ids, LOTE_IDS, async (lote) => {
+    const { data: filas, error } = await supabase.from('cotizacion').select('id, numero').in('id', lote)
+    if (error) throw error
+    return filas ?? []
+  })
+  const numeroById = new Map(data.map((row) => [String((row as { id: number }).id), (row as { numero: string }).numero]))
   return orders.map((order) => order.sourceQuoteId ? { ...order, sourceQuoteNumber: numeroById.get(order.sourceQuoteId) } : order)
 }
 
@@ -258,22 +265,29 @@ export const buildLineasJsonb = (lines: WorkflowLine[], channel: OrderView['chan
     }
   })
 
+type OrderListInput = { query?: string; status?: OrderView['status']; channel?: OrderView['channel']; categorias?: CategoriaPedido[]; dates?: DateRange; page: PageRequest }
+
+const filtrarPedidos = (input: Omit<OrderListInput, 'page'>, conConteo: boolean) => {
+  const { status, channel, categorias, dates } = input
+  let builder = supabase.from('pedido').select('*, cliente(nombre)', conConteo ? { count: 'exact' } : undefined)
+  if (status === 'confirmed') builder = builder.eq('estado', 'ABIERTO')
+  else if (status === 'delivered') builder = builder.eq('estado', 'COMPLETADO')
+  else if (status === 'cancelled') builder = builder.eq('estado', 'CANCELADO')
+  if (channel) builder = builder.eq('categoria', channelToCategoria(channel))
+  // Brief P1: segmento Retail/Wholesale — filtra por categoria del lado del servidor,
+  // nunca por prefijo de numero (los 221 retail históricos son PED-, no TKT-).
+  if (categorias?.length) builder = builder.in('categoria', categorias)
+  if (dates?.from) builder = builder.gte('creado_en', dates.from)
+  if (dates?.to) builder = builder.lte('creado_en', dates.to)
+  return builder
+}
+
 export class SupabaseOrderRepository implements OrderRepository {
-  async list(input: { query?: string; status?: OrderView['status']; channel?: OrderView['channel']; categorias?: CategoriaPedido[]; dates?: DateRange; page: PageRequest }): Promise<Page<OrderView & Versioned>> {
-    const { status, channel, categorias, dates, page } = input
+  async list(input: OrderListInput): Promise<Page<OrderView & Versioned>> {
+    const { page } = input
     const from = (page.page - 1) * page.pageSize
     const to = from + page.pageSize - 1
-    let builder = supabase.from('pedido').select('*, cliente(nombre)', { count: 'exact' })
-    if (status === 'confirmed') builder = builder.eq('estado', 'ABIERTO')
-    else if (status === 'delivered') builder = builder.eq('estado', 'COMPLETADO')
-    else if (status === 'cancelled') builder = builder.eq('estado', 'CANCELADO')
-    if (channel) builder = builder.eq('categoria', channelToCategoria(channel))
-    // Brief P1: segmento Retail/Wholesale — filtra por categoria del lado del servidor,
-    // nunca por prefijo de numero (los 221 retail históricos son PED-, no TKT-).
-    if (categorias?.length) builder = builder.in('categoria', categorias)
-    if (dates?.from) builder = builder.gte('creado_en', dates.from)
-    if (dates?.to) builder = builder.lte('creado_en', dates.to)
-    const { data, error, count } = await builder.order('id', { ascending: false }).range(from, to)
+    const { data, error, count } = await filtrarPedidos(input, true).order('id', { ascending: false }).range(from, to)
     if (error) throw error
     const headers = (data ?? []) as PedidoRow[]
     // La lista no trae líneas: mismo bug que en Cotizaciones (ver QuoteRepository.supabase.ts
@@ -289,6 +303,17 @@ export class SupabaseOrderRepository implements OrderRepository {
     // empty here rather than fetching pedido_evento for every row on every page load.
     const items = await resolveSourceQuoteNumeros(headers.map((header) => rowToOrderView(header, [], [])))
     return { items, page: page.page, pageSize: page.pageSize, total: count ?? 0 }
+  }
+
+  /**
+   * Todos los pedidos que cumplen los filtros, leídos en páginas de 1000 (tope de
+   * PostgREST). Mismo filtro y orden (id desc) que list(); sin líneas ni eventos.
+   * `id` es único, pero la paginación es por offset sobre una tabla viva: un pedido creado
+   * o borrado mientras se leen las páginas puede repetir o saltar una fila (lectura puntual).
+   */
+  async listAll(input: Omit<OrderListInput, 'page'> = {}): Promise<Array<OrderView & Versioned>> {
+    const headers = await leerTodo<PedidoRow>((desde, hasta) => filtrarPedidos(input, false).order('id', { ascending: false }).range(desde, hasta))
+    return resolveSourceQuoteNumeros(headers.map((header) => rowToOrderView(header, [], [])))
   }
 
   async getById(id: string): Promise<(OrderView & Versioned) | null> {

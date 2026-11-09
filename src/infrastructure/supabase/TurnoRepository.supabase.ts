@@ -4,6 +4,7 @@
 // featureFlags.supabase en CashPage.tsx — este repositorio solo se usa ahí.
 import { supabase } from './supabaseClient'
 import { toError } from './postgrestError'
+import { leerTodo, porLotes } from './paginacion'
 import { createUuid } from '../../application/shared/createUuid'
 import type { CajaFaltanteRecord, CajaGastoRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoEstado, TurnoResumen, TurnoSesion, TurnoTicket, TurnoMovimiento } from '../../application/shared/models'
 
@@ -368,22 +369,26 @@ export async function listPagosPorVerificar(): Promise<PagoPorVerificar[]> {
   const sesionIds = ((sesiones ?? []) as { id: number }[]).map((s) => s.id)
   if (!sesionIds.length) return []
 
-  const { data: ventas, error: ventasError } = await supabase.from('venta').select('id, numero').in('sesion_caja_id', sesionIds)
-  if (ventasError) throw toError(ventasError)
-  const ventaRows = (ventas ?? []) as { id: number; numero: string | null }[]
+  const ventaRows = await leerTodo<{ id: number; numero: string | null }>((desde, hasta) =>
+    supabase.from('venta').select('id, numero').in('sesion_caja_id', sesionIds).order('id', { ascending: true }).range(desde, hasta))
+    .catch((e: unknown) => { throw toError(e) })
   const ventaIds = ventaRows.map((v) => v.id)
   if (!ventaIds.length) return []
   const numeroPorVenta = new Map(ventaRows.map((v) => [v.id, v.numero]))
 
-  const { data: pagos, error: pagosError } = await supabase
+  type Row = { id: number; venta_id: number; metodo: string; monto: number | string; creado_en: string }
+  // Lotes de 200 ventas (URL corta); cada lote paginado por id (único) por si supera las 1000 filas.
+  const pagosLotes = await porLotes(ventaIds, 200, (lote) => leerTodo<Row>((desde, hasta) => supabase
     .from('venta_pago')
     .select('id, venta_id, metodo, monto, creado_en')
     .eq('estado_verificacion', 'PENDIENTE')
-    .in('venta_id', ventaIds)
-    .order('creado_en', { ascending: true })
-  if (pagosError) throw toError(pagosError)
-  type Row = { id: number; venta_id: number; metodo: string; monto: number | string; creado_en: string }
-  return ((pagos ?? []) as Row[]).map((r) => ({
+    .in('venta_id', lote)
+    .order('id', { ascending: true })
+    .range(desde, hasta))
+    .catch((e: unknown) => { throw toError(e) }))
+  // Cada lote vuelve ordenado por su cuenta: el orden global se reimpone al juntarlos.
+  const pagos = [...pagosLotes].sort((a, b) => a.creado_en.localeCompare(b.creado_en) || a.id - b.id)
+  return pagos.map((r) => ({
     ventaPagoId: String(r.id),
     ventaId: String(r.venta_id),
     numero: numeroPorVenta.get(r.venta_id) ?? null,

@@ -3,6 +3,7 @@ import type { CustomerRepository, MutationContext, Page, PageRequest, Versioned 
 import type { CustomerRecord } from '../../application/shared/models'
 import { customerTypeToTipoPrecio, tipoPrecioToCustomerType, type TipoPrecioCliente } from './mappers'
 import { coincideBusqueda } from '../../domain/customers/textSearch'
+import { leerTodo } from './paginacion'
 
 interface ClienteRow {
   id: number
@@ -72,6 +73,12 @@ export class SupabaseCustomerRepository implements CustomerRepository {
     const matched = all.filter((c) => coincideBusqueda(`${c.name} ${c.document} ${c.businessName ?? ''} ${c.email}`, trimmedQuery))
     const from = (page.page - 1) * page.pageSize
     return { items: matched.slice(from, from + page.pageSize), page: page.page, pageSize: page.pageSize, total: matched.length }
+  }
+
+  /** Todos los clientes (sin filtro), leídos en páginas de 1000 — el tope de PostgREST. Orden id desc, igual que list(). */
+  async listAll(): Promise<Array<CustomerRecord & Versioned>> {
+    const rows = await leerTodo<ClienteRow>((desde, hasta) => supabase.from('cliente').select('*').order('id', { ascending: false }).range(desde, hasta))
+    return rows.map(rowToCustomer)
   }
 
   async getById(id: string): Promise<(CustomerRecord & Versioned) | null> {

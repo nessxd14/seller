@@ -1,5 +1,14 @@
 import { supabase } from '../supabase/supabaseClient'
 
+// api/hermes/consultar-saldos* rechaza más de 200 ids por llamada (desde #148).
+export const LOTE_SALDOS = 200
+
+const enLotes = <T>(ids: readonly T[]): T[][] => {
+  const lotes: T[][] = []
+  for (let i = 0; i < ids.length; i += LOTE_SALDOS) lotes.push(ids.slice(i, i + LOTE_SALDOS))
+  return lotes
+}
+
 export interface PedidoParaCobro { id: string; number: string; pendienteBs: number }
 export async function consultarPedidosCobro(clienteId: string): Promise<PedidoParaCobro[]> {
   const { data, error } = await supabase.rpc('pedidos_cobro_cliente', { p_cliente_id: Number(clienteId) })
@@ -189,31 +198,36 @@ export async function verificarClienteEnHermes(clienteId: number): Promise<Resul
  */
 export async function consultarSaldos(clienteIds: number[]): Promise<Map<number, SaldoClienteLote> | null> {
   try {
-    const response = await consultarHermesLocal('/api/hermes/consultar-saldos', {
-      method: 'POST',
-      headers: await authHeaders(),
-      body: JSON.stringify({ clienteIds }),
-    })
-    if (!response.ok) return null
-    const data = await response.json()
-    const rows = Array.isArray(data?.saldos) ? data.saldos : []
+    const headers = await authHeaders()
     const map = new Map<number, SaldoClienteLote>()
-    for (const row of rows) {
-      // pos_cliente_id es bigint y hoy viene como número — envolver en Number() igual,
-      // defensivamente, como ya se hace con los montos (si PostgREST empezara a
-      // serializarlo como string, Number.isFinite de un string siempre da false).
-      const posClienteId = Number(row.pos_cliente_id ?? row.posClienteId)
-      if (!Number.isFinite(posClienteId)) continue
-      map.set(posClienteId, {
-        posClienteId,
-        // PostgREST serializa numeric como string ("922.40"). Sin Number() el
-        // === 0 de la UI nunca se cumple y un cliente al día se ve como deudor
-        // de Bs 0,00.
-        saldoConfirmado: Number(row.saldo_confirmado ?? row.saldoConfirmado ?? 0),
-        saldoProvisional: Number(row.saldo_provisional ?? row.saldoProvisional ?? 0),
-        limiteCredito: row.limite_credito != null ? Number(row.limite_credito) : null,
-        situacion: row.situacion ?? 'AL_DIA',
+    // De a lotes de LOTE_SALDOS, en serie. Si un lote falla, todo es null: un mapa parcial
+    // haría pasar a los clientes del lote caído por "sin cuenta".
+    for (const lote of enLotes(clienteIds)) {
+      const response = await consultarHermesLocal('/api/hermes/consultar-saldos', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ clienteIds: lote }),
       })
+      if (!response.ok) return null
+      const data = await response.json()
+      const rows = Array.isArray(data?.saldos) ? data.saldos : []
+      for (const row of rows) {
+        // pos_cliente_id es bigint y hoy viene como número — envolver en Number() igual,
+        // defensivamente, como ya se hace con los montos (si PostgREST empezara a
+        // serializarlo como string, Number.isFinite de un string siempre da false).
+        const posClienteId = Number(row.pos_cliente_id ?? row.posClienteId)
+        if (!Number.isFinite(posClienteId)) continue
+        map.set(posClienteId, {
+          posClienteId,
+          // PostgREST serializa numeric como string ("922.40"). Sin Number() el
+          // === 0 de la UI nunca se cumple y un cliente al día se ve como deudor
+          // de Bs 0,00.
+          saldoConfirmado: Number(row.saldo_confirmado ?? row.saldoConfirmado ?? 0),
+          saldoProvisional: Number(row.saldo_provisional ?? row.saldoProvisional ?? 0),
+          limiteCredito: row.limite_credito != null ? Number(row.limite_credito) : null,
+          situacion: row.situacion ?? 'AL_DIA',
+        })
+      }
     }
     return map
   } catch {
@@ -240,27 +254,31 @@ export interface SaldoSimilar {
  */
 export async function consultarSaldosSimilares(posIds: number[]): Promise<Map<number, SaldoSimilar> | null> {
   try {
-    const response = await consultarHermesLocal('/api/hermes/consultar-saldos-similares', {
-      method: 'POST',
-      headers: await authHeaders(),
-      body: JSON.stringify({ posIds }),
-    })
-    if (!response.ok) return null
-    const data = await response.json()
-    const rows = Array.isArray(data?.saldos) ? data.saldos : []
+    const headers = await authHeaders()
     const map = new Map<number, SaldoSimilar>()
-    for (const row of rows) {
-      const posClienteId = Number(row.pos_cliente_id ?? row.posClienteId)
-      if (!Number.isFinite(posClienteId)) continue
-      map.set(posClienteId, {
-        posClienteId,
-        hermesClienteId: row.hermes_cliente_id != null ? Number(row.hermes_cliente_id) : null,
-        saldoConfirmado: Number(row.saldo_confirmado ?? row.saldoConfirmado ?? 0),
-        montoEnRevision: Number(row.monto_en_revision ?? row.montoEnRevision ?? 0),
-        saldoProvisional: Number(row.saldo_provisional ?? row.saldoProvisional ?? 0),
-        situacion: row.situacion ?? null,
-        partidasAbiertas: Number(row.partidas_abiertas ?? row.partidasAbiertas ?? 0),
+    // Mismo criterio que consultarSaldos: lotes de LOTE_SALDOS en serie, y un lote caído → null.
+    for (const lote of enLotes(posIds)) {
+      const response = await consultarHermesLocal('/api/hermes/consultar-saldos-similares', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ posIds: lote }),
       })
+      if (!response.ok) return null
+      const data = await response.json()
+      const rows = Array.isArray(data?.saldos) ? data.saldos : []
+      for (const row of rows) {
+        const posClienteId = Number(row.pos_cliente_id ?? row.posClienteId)
+        if (!Number.isFinite(posClienteId)) continue
+        map.set(posClienteId, {
+          posClienteId,
+          hermesClienteId: row.hermes_cliente_id != null ? Number(row.hermes_cliente_id) : null,
+          saldoConfirmado: Number(row.saldo_confirmado ?? row.saldoConfirmado ?? 0),
+          montoEnRevision: Number(row.monto_en_revision ?? row.montoEnRevision ?? 0),
+          saldoProvisional: Number(row.saldo_provisional ?? row.saldoProvisional ?? 0),
+          situacion: row.situacion ?? null,
+          partidasAbiertas: Number(row.partidas_abiertas ?? row.partidasAbiertas ?? 0),
+        })
+      }
     }
     return map
   } catch {
