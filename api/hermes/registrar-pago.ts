@@ -6,6 +6,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 // moduleResolution "Bundler", así que el fuente sigue typechequeando.
 // Sin la extensión: ERR_MODULE_NOT_FOUND y exit 1 en cada request.
 import { verificarSesionPos, puedeMoverSaldo } from './_auth.js'
+import { usuarioAuditoria } from './_identidad.js'
+import { enteroPositivo } from '../_lib/validacion.js'
+import { MEDIOS_PAGO_HERMES } from './_medios.js'
 
 // Mismo patrón que registrar-cargo.ts: acá SÍ hace falta que el frontend distinga éxito de
 // fallo — un fallo real dispara la cola de reintentos (pendiente_sync_hermes_pago) del
@@ -24,7 +27,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const clienteIdNum = Number(clienteId)
   const montoNum = Number(monto)
-  if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0 || !Number.isFinite(montoNum) || montoNum <= 0 || typeof medio !== 'string' || !medio || movimientoCajaId == null) {
+  const movimientoCajaIdNum = enteroPositivo(movimientoCajaId)
+  if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0 || !Number.isFinite(montoNum) || montoNum <= 0 || typeof medio !== 'string' || !MEDIOS_PAGO_HERMES.has(medio) || movimientoCajaIdNum === null) {
     res.status(400).json({ error: 'Parámetros inválidos' })
     return
   }
@@ -42,8 +46,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         p_monto: montoNum,
         p_medio: medio,
         p_pedido_id_pos: pedidoId != null ? String(pedidoId) : null,
-        p_movimiento_caja_id: String(movimientoCajaId),
-        p_usuario_pos: typeof usuarioPos === 'string' && usuarioPos ? usuarioPos : (sesion.email ?? sesion.userId),
+        p_movimiento_caja_id: String(movimientoCajaIdNum),
+        p_usuario_pos: usuarioAuditoria(sesion, usuarioPos),
       }),
     })
     const data = await response.json().catch(() => null)

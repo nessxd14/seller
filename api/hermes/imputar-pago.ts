@@ -6,6 +6,10 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 // moduleResolution "Bundler", así que el fuente sigue typechequeando.
 // Sin la extensión: ERR_MODULE_NOT_FOUND y exit 1 en cada request.
 import { verificarSesionPos, puedeMoverSaldo } from './_auth.js'
+import { usuarioAuditoria } from './_identidad.js'
+import { enteroPositivo } from '../_lib/validacion.js'
+
+const MAX_APLICACIONES = 50
 
 // Brief T4 Tarea 2: guarda el reparto (editado o tal cual lo propuso el FIFO) contra un
 // pago todavía PROPUESTO. imputar_pago valida del lado servidor (partida existe y es del
@@ -19,13 +23,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!puedeMoverSaldo(sesion)) { res.status(403).json({ error: 'Tu rol no permite registrar movimientos de saldo' }); return }
 
   const { pagoId, aplicaciones, usuarioPos } = (req.body ?? {}) as { pagoId?: unknown; aplicaciones?: unknown; usuarioPos?: unknown }
-  const pagoIdNum = Number(pagoId)
-  if (!Number.isFinite(pagoIdNum) || pagoIdNum <= 0 || !Array.isArray(aplicaciones) || !aplicaciones.length) {
+  const pagoIdNum = enteroPositivo(pagoId)
+  if (pagoIdNum === null || !Array.isArray(aplicaciones) || !aplicaciones.length || aplicaciones.length > MAX_APLICACIONES) {
     res.status(400).json({ error: 'Parámetros inválidos' })
     return
   }
   const aplicacionesValidas = aplicaciones.every((a) =>
-    a && typeof a === 'object' && Number.isFinite(Number((a as { partidaId?: unknown }).partidaId)) && Number.isFinite(Number((a as { monto?: unknown }).monto))
+    a && typeof a === 'object' && enteroPositivo((a as { partidaId?: unknown }).partidaId) !== null && Number.isFinite(Number((a as { monto?: unknown }).monto))
   )
   if (!aplicacionesValidas) { res.status(400).json({ error: 'Parámetros inválidos' }); return }
 
@@ -40,10 +44,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: JSON.stringify({
         p_pago_id: pagoIdNum,
         p_aplicaciones: (aplicaciones as Array<{ partidaId: unknown; monto: unknown }>).map((a) => ({
-          partida_id: Number(a.partidaId),
+          partida_id: enteroPositivo(a.partidaId),
           monto: Number(a.monto),
         })),
-        p_usuario: typeof usuarioPos === 'string' && usuarioPos ? usuarioPos : (sesion.email ?? sesion.userId),
+        p_usuario: usuarioAuditoria(sesion, usuarioPos),
       }),
     })
     const data = await response.json().catch(() => null)

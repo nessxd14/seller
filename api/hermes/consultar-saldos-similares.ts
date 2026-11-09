@@ -3,6 +3,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 // La extensión .js es obligatoria: package.json declara "type": "module".
 // Sin ella: ERR_MODULE_NOT_FOUND y exit 1 en cada request (ya nos pasó).
 import { verificarSesionPos } from './_auth.js'
+import { listaEnterosPositivos } from '../_lib/validacion.js'
+
+const MAX_IDS = 200
 
 // Brief T2 Tarea 2: saldo de los candidatos del panel de "cliente parecido". A
 // diferencia de consultar-saldos.ts (que usa consultar_saldos, con INNER JOIN a
@@ -17,8 +20,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const sesion = await verificarSesionPos(req.headers.authorization)
   if (!sesion) { res.status(401).json({ error: 'No autenticado' }); return }
 
-  const posIds = req.body?.posIds
-  if (!Array.isArray(posIds) || !posIds.length) { res.status(200).json({ saldos: [] }); return }
+  const posIds = listaEnterosPositivos(req.body?.posIds, MAX_IDS)
+  if (!posIds) { res.status(400).json({ error: `posIds debe ser una lista de enteros positivos (máx. ${MAX_IDS})` }); return }
+  if (!posIds.length) { res.status(200).json({ saldos: [] }); return }
 
   const hermesUrl = process.env.HERMES_URL
   const serviceKey = process.env.HERMES_SERVICE_ROLE_KEY
