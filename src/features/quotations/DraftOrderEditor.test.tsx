@@ -11,6 +11,7 @@ vi.mock('../../infrastructure/services', () => ({
   customerService: { list: vi.fn().mockResolvedValue([]) },
   productRepository: { search: vi.fn().mockResolvedValue({ items: [], total: 0 }), getById: vi.fn().mockResolvedValue(null) },
   getStockByProduct: vi.fn().mockResolvedValue({}),
+  getStockByProductsBatch: vi.fn().mockResolvedValue(new Map()),
   getDisponibilidadPedido: vi.fn().mockResolvedValue({}),
   listPresentations: vi.fn().mockResolvedValue([]),
   listLineIdentifiers: vi.fn().mockResolvedValue({ p1: {} }),

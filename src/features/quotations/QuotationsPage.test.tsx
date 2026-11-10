@@ -32,6 +32,7 @@ vi.mock('../../infrastructure/services', () => ({
   customerService: { list: vi.fn().mockResolvedValue([{ id: 'c2', name: 'Cliente Dos', type: 'wholesale', document: '', phone: '', email: '', address: '', usualChannel: 'mayoreo', paymentTerms: '' }]), getById: vi.fn().mockResolvedValue(null) },
   productRepository: { search: vi.fn().mockResolvedValue({ items: [], total: 0 }), getById: vi.fn().mockResolvedValue(null) },
   getStockByProduct: vi.fn().mockResolvedValue({}),
+  getStockByProductsBatch: vi.fn().mockResolvedValue(new Map()),
   getDisponibilidadPedido: (ids: number[]) => disponibilidadMock(ids),
   listPresentations: vi.fn().mockResolvedValue([]),
   listLineIdentifiers: vi.fn().mockResolvedValue({}),
@@ -45,7 +46,7 @@ vi.mock('../../infrastructure/hermes/client', () => ({
 }))
 vi.mock('../../config/featureFlags', () => ({ featureFlags: { supabase: true } }))
 vi.mock('../../components/SaldoBadge', () => ({ SaldoBadge: () => null }))
-vi.mock('../../infrastructure/supabase/PreciosRepository.supabase', () => ({ precioSugerido: vi.fn().mockResolvedValue(null) }))
+vi.mock('../../infrastructure/supabase/PreciosRepository.supabase', () => ({ precioSugerido: vi.fn().mockResolvedValue(null), precioSugeridoLote: vi.fn().mockResolvedValue([]) }))
 
 beforeEach(() => {
   getByIdMock.mockReset().mockResolvedValue(quoteWithLines)

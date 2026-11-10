@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, Barcode, Briefcase, Building2, Check, FileTe
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { QuoteDraft, WorkflowLine } from '../../application/shared/models'
 import type { CustomerRecord } from '../../application/shared/models'
-import { customerService, productRepository, getStockByProduct, getDisponibilidadPedido, listPresentations, listLineIdentifiers, authSessionProvider } from '../../infrastructure/services'
+import { customerService, productRepository, getStockByProductsBatch, getDisponibilidadPedido, listPresentations, listLineIdentifiers, authSessionProvider } from '../../infrastructure/services'
 import { featureFlags } from '../../config/featureFlags'
 import { catalogoLocal } from '../../infrastructure/supabase/CatalogoLocal.supabase'
 import { aggregateStockBySucursal } from '../inventory/stockAggregation'
@@ -32,7 +32,7 @@ import { AutoriaBadge } from '../../components/AutoriaBadge'
 import { SolicitanteField } from '../../components/SolicitanteField'
 import { evaluarTope } from '../../infrastructure/supabase/ContactoCliente.supabase'
 import { evaluarCredito } from '../../infrastructure/hermes/client'
-import { precioSugerido as fetchPrecioSugerido, type PrecioSugerido } from '../../infrastructure/supabase/PreciosRepository.supabase'
+import { precioSugeridoLote, type PrecioSugerido } from '../../infrastructure/supabase/PreciosRepository.supabase'
 import { channelToCategoria } from '../../infrastructure/supabase/mappers'
 import { PrecioSugeridoHint } from './PrecioSugeridoHint'
 
@@ -131,7 +131,7 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // categoría, por línea. Cacheado por (productId, clienteId, categoria, presentacionId)
   // durante la vida del editor — mismo criterio que presentationsByProduct de arriba.
   const [precioSugeridoByLine, setPrecioSugeridoByLine] = useState<Record<string, PrecioSugerido | null>>({})
-  const precioSugeridoCacheRef = useRef<Map<string, Promise<PrecioSugerido>>>(new Map())
+  const precioSugeridoCacheRef = useRef<Map<string, PrecioSugerido>>(new Map())
   // Item 2.2: barra/fábrica/marca, batch-fetched per productId set so a multi-line
   // quote/order doesn't trigger an identifier lookup per line render.
   const [identifiersByProduct, setIdentifiersByProduct] = useState<Record<string, LineIdentifiers>>({})
@@ -238,10 +238,11 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     const key = String(product.id)
     if (!(key in stockByProduct)) {
       if (featureFlags.supabase) {
-        void getStockByProduct(product.id).then((result) => {
-          const agg = aggregateStockBySucursal(result.onHand)
+        // Una sola lectura de stock_actual: el editor no usa saldo_disponible_pedido.
+        void getStockByProductsBatch([product.id]).then((result) => {
+          const agg = aggregateStockBySucursal(result.get(product.id) ?? [])
           setStockByProduct((prev) => ({ ...prev, [key]: { tienda: agg.tienda, almacen: agg.almacen } }))
-        })
+        }).catch(() => undefined)
       } else {
         setStockByProduct((prev) => ({ ...prev, [key]: { tienda: product.stockTienda, almacen: product.stockAlmacen } }))
       }
@@ -255,7 +256,29 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
   // addCatalogProduct only covers lines added interactively in this session.
   useEffect(() => {
     const ids = Array.from(new Set(quote.lines.filter((l) => !l.isCustomItem && l.productId).map((l) => l.productId)))
-    ids.forEach((id) => { void productRepository.getById(id).then((product) => { if (product) ensureProductData(product) }) })
+    if (!featureFlags.supabase) {
+      ids.forEach((id) => { void productRepository.getById(id).then((product) => { if (product) ensureProductData(product) }) })
+      return
+    }
+    const numericIds = ids.map(Number).filter((id) => Number.isFinite(id))
+    if (!numericIds.length) return
+    // Supabase: una lectura de stock para todo el documento y las presentaciones desde la
+    // memoria del catálogo (asegurarCarga nunca rechaza). Un solo setState por cada una.
+    // Si el stock falla, esos productos quedan sin entrada, como antes.
+    void getStockByProductsBatch(numericIds).then((stock) => {
+      const next: Record<string, LineStock> = {}
+      stock.forEach((rows, id) => {
+        const agg = aggregateStockBySucursal(rows)
+        next[String(id)] = { tienda: agg.tienda, almacen: agg.almacen }
+      })
+      setStockByProduct((prev) => ({ ...prev, ...next }))
+    }).catch(() => undefined)
+    void catalogoLocal.asegurarCarga().then(async () => {
+      const entries = await Promise.all(numericIds.map((id) => listPresentations(id).then((list) => [String(id), list] as const).catch(() => null)))
+      const next: Record<string, LinePresentation[]> = {}
+      for (const entry of entries) if (entry) next[entry[0]] = entry[1]
+      setPresentationsByProduct((prev) => ({ ...prev, ...next }))
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -399,23 +422,40 @@ export function DraftOrderEditor({ quote, isExistingQuote = false, onClose, onSa
     if (!featureFlags.supabase || readOnly) return
     const categoria = channelToCategoria(value.channel)
     const clienteId = value.customerId ? Number(value.customerId) : undefined
+    let cancelled = false
+    const cache = precioSugeridoCacheRef.current
+    const keyOf = (line: WorkflowLine) => `${line.productId}:${clienteId ?? ''}:${categoria}:${line.presentacionId ?? ''}`
+    const lines = catalogLines.filter((line) => Number.isFinite(Number(line.productId)))
     const handle = setTimeout(() => {
-      catalogLines.forEach((line) => {
-        const productId = Number(line.productId)
-        if (!Number.isFinite(productId)) return
-        const cacheKey = `${productId}:${clienteId ?? ''}:${categoria}:${line.presentacionId ?? ''}`
-        const cache = precioSugeridoCacheRef.current
-        let promise = cache.get(cacheKey)
-        if (!promise) {
-          promise = fetchPrecioSugerido(productId, { clienteId, categoria, presentacionId: line.presentacionId })
-          cache.set(cacheKey, promise)
+      void (async () => {
+        const missing = new Map<string, WorkflowLine>()
+        for (const line of lines) {
+          const key = keyOf(line)
+          if (!cache.has(key) && !missing.has(key)) missing.set(key, line)
         }
-        promise
-          .then((result) => setPrecioSugeridoByLine((prev) => ({ ...prev, [line.id]: result })))
-          .catch((err) => { cache.delete(cacheKey); console.error('precio_sugerido falló', err) })
-      })
+        if (missing.size) {
+          const keys = [...missing.keys()]
+          try {
+            const results = await precioSugeridoLote(
+              keys.map((key) => { const line = missing.get(key)!; return { productId: Number(line.productId), presentacionId: line.presentacionId } }),
+              { clienteId, categoria },
+            )
+            // El caché lleva cliente y categoría en la clave: guardar una respuesta tardía es seguro.
+            keys.forEach((key, i) => { if (results[i]) cache.set(key, results[i]) })
+          } catch (err) {
+            console.error('precio_sugerido_lote falló', err)
+          }
+        }
+        if (cancelled) return
+        const next: Record<string, PrecioSugerido | null> = {}
+        for (const line of lines) {
+          const cached = cache.get(keyOf(line))
+          if (cached) next[line.id] = cached
+        }
+        setPrecioSugeridoByLine(next)
+      })()
     }, 250)
-    return () => clearTimeout(handle)
+    return () => { cancelled = true; clearTimeout(handle) }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- catalogLines identity changes every render; keyed manually below to avoid re-firing on unrelated line edits
   }, [catalogLines.map((l) => `${l.id}:${l.productId}:${l.presentacionId ?? ''}`).join('|'), value.customerId, value.channel, readOnly])
 

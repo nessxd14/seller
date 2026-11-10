@@ -19,6 +19,7 @@ export const pedidoEdicionService = featureFlags.supabase ? pedidoEdicionSupabas
 export const customerService = featureFlags.supabase ? supabaseServices.customerService : mockServices.customerService
 export const productRepository = featureFlags.supabase ? supabaseServices.productRepository : mockServices.productRepository
 export const getStockByProduct = featureFlags.supabase ? supabaseServices.getStockByProduct : mockServices.getStockByProduct
+export const getStockByProductsBatch = featureFlags.supabase ? supabaseServices.getStockByProductsBatch : mockServices.getStockByProductsBatch
 export const getDisponibilidadPedido = featureFlags.supabase ? supabaseServices.getDisponibilidadPedido : mockServices.getDisponibilidadPedido
 export const getStockBySucursalBatch = featureFlags.supabase ? supabaseServices.getStockBySucursalBatch : mockServices.getStockBySucursalBatch
 export const listPresentations = featureFlags.supabase ? supabaseServices.listPresentations : mockServices.listPresentations

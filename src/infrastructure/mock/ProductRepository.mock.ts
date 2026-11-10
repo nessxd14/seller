@@ -43,6 +43,12 @@ export const getStockByProduct = async (productId: number): Promise<{ onHand: Ar
   }
 }
 
+export const getStockByProductsBatch = async (productIds: number[]): Promise<Map<number, Array<{ ubicacionId: number; cantidadBase: number }>>> => {
+  const result = new Map<number, Array<{ ubicacionId: number; cantidadBase: number }>>()
+  for (const id of new Set(productIds)) result.set(id, (await getStockByProduct(id)).onHand)
+  return result
+}
+
 export const getDisponibilidadPedido = async (productIds: number[]): Promise<Record<string, { stockFisico: number; reservado: number; disponible: number }>> => {
   const result: Record<string, { stockFisico: number; reservado: number; disponible: number }> = {}
   for (const id of productIds) {

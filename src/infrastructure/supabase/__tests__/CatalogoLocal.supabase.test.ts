@@ -115,6 +115,24 @@ describe('catalogoLocal.refrescarSiCambio', () => {
     expect(cargasDeProducto()).toBe(2)
   })
 
+  it('la versión se lee antes que los datos: un cambio durante la lectura se detecta en el próximo refresco', async () => {
+    const catalogo = await cargarModulo(catalogoChico(), 1)
+    const datos = catalogoChico()
+    fromMock.mockImplementation((tabla: string) => {
+      const builder = constructor(datos[tabla] ?? [])
+      if (tabla !== 'producto') return builder
+      const rangoOriginal = builder.range as (desde: number, hasta: number) => Promise<unknown>
+      // El precio se guarda (y la versión sube) mientras se leen los datos.
+      builder.range = (desde: number, hasta: number) => { rpcMock.mockResolvedValue({ data: 2, error: null }); return rangoOriginal(desde, hasta) }
+      return builder
+    })
+    await catalogo.asegurarCarga()
+    expect(cargasDeProducto()).toBe(1)
+    vi.setSystemTime(Date.now() + 31_000)
+    await catalogo.refrescarSiCambio()
+    expect(cargasDeProducto()).toBe(2)
+  })
+
   it('respeta la ventana de 30 segundos', async () => {
     const catalogo = await cargarModulo(catalogoChico(), 1)
     await catalogo.asegurarCarga()
