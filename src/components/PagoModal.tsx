@@ -302,7 +302,8 @@ export function PagoModal({ onClose, notify = () => undefined, initialCustomer, 
 
   return <Modal title="Registrar pago" subtitle={subtitle} className="payment-account-modal" onClose={close} escapeToClose={!submitting} wide>
     {pending && <div role="status" className="payment-account-pending"><strong>Pago pendiente de comprobar</strong><p>{pending.customer.name} · {formatMoney(money(pending.amountCents))} · {metodoLabels[pending.method]}</p><small>Reutiliza este intento para evitar cobrar dos veces.</small></div>}
-    <fieldset disabled={submitting || !!pending || identityLoading} className="modal-body pago-body">
+    <div className="modal-body pago-scroll">
+    <fieldset disabled={submitting || !!pending || identityLoading} className="pago-body">
       <section className="pago-section">
         <label className="pago-label" htmlFor="pago-cliente">Cliente</label>
         <div className="customer-search">
@@ -419,6 +420,7 @@ export function PagoModal({ onClose, notify = () => undefined, initialCustomer, 
         <label className="pago-campo"><span className="pago-label">Referencia (opcional)</span><input maxLength={200} value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="Número de depósito o comprobante" /></label>
       </section>
     </fieldset>
+    </div>
     <footer className="modal-actions pago-footer">
       <p className={`pago-resumen ${resumenEsError ? 'pago-msg-error-text' : ''}`} role={error ? 'alert' : 'status'}>{error || resumen}</p>
       <div className="pago-footer-botones">

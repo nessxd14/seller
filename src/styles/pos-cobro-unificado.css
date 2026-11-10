@@ -20,7 +20,7 @@
 .payment-account-modal textarea{min-height:76px;resize:vertical}
 .payment-account-modal input:focus-visible,.payment-account-modal select:focus-visible,.payment-account-modal textarea:focus-visible,.payment-account-modal button:focus-visible{outline:3px solid var(--orange);outline-offset:2px;border-color:var(--orange)}
 .payment-account-modal button{min-height:44px}
-.pago-body{display:grid;gap:20px;border:0;min-width:0;margin:0;align-content:start}
+.payment-account-modal>.pago-scroll{overflow-y:auto;overscroll-behavior:contain}.pago-body{display:grid;gap:20px;border:0;min-width:0;margin:0;padding:0;align-content:start}
 .pago-section{display:grid;gap:10px}
 .pago-heading{margin:0;font-size:15px;color:#24231f}
 .pago-label{font-size:13px;font-weight:600;color:#55524d}
