@@ -4,6 +4,7 @@
 // guardar detrás de featureFlags.supabase (mismo criterio que evaluarTope/evaluarCredito
 // en ContactoCliente.supabase.ts / hermes/client.ts).
 import { supabase } from './supabaseClient'
+import { porLotes } from './paginacion'
 import type { PrecioCategoria, PrecioFuente } from '../../domain/pricing/categoriaPrecio'
 
 const num = (value: number | string | null | undefined): number => (value == null ? 0 : Number(value))
@@ -158,6 +159,16 @@ interface PrecioSugeridoRaw {
   categoria: { categoria: string; mediana: number | string; lineas: number; dias: number } | null
 }
 
+const mapPrecioSugerido = (raw: PrecioSugeridoRaw): PrecioSugerido => ({
+  factor: num(raw.factor),
+  ultimoCliente: raw.ultimo_cliente
+    ? { precio: num(raw.ultimo_cliente.precio), fecha: raw.ultimo_cliente.fecha, numero: raw.ultimo_cliente.numero, fuente: raw.ultimo_cliente.fuente }
+    : null,
+  categoria: raw.categoria
+    ? { categoria: raw.categoria.categoria, mediana: num(raw.categoria.mediana), lineas: raw.categoria.lineas, dias: raw.categoria.dias }
+    : null,
+})
+
 export const precioSugerido = async (
   productoId: number,
   opts?: { clienteId?: number; categoria?: string; presentacionId?: number },
@@ -169,14 +180,49 @@ export const precioSugerido = async (
     p_presentacion_id: opts?.presentacionId ?? null,
   })
   if (error) throw error
-  const raw = data as PrecioSugeridoRaw
-  return {
-    factor: num(raw.factor),
-    ultimoCliente: raw.ultimo_cliente
-      ? { precio: num(raw.ultimo_cliente.precio), fecha: raw.ultimo_cliente.fecha, numero: raw.ultimo_cliente.numero, fuente: raw.ultimo_cliente.fuente }
-      : null,
-    categoria: raw.categoria
-      ? { categoria: raw.categoria.categoria, mediana: num(raw.categoria.mediana), lineas: raw.categoria.lineas, dias: raw.categoria.dias }
-      : null,
+  return mapPrecioSugerido(data as PrecioSugeridoRaw)
+}
+
+// precio_sugerido_lote acepta hasta 500 líneas; se envían a lo sumo 200 por llamada.
+const LINEAS_POR_LLAMADA = 200
+const PGRST_FUNCION_NO_ENCONTRADA = 'PGRST202'
+
+// Si la función aún no existe en la base, se recuerda durante la sesión de la página para ir
+// directo al respaldo línea por línea. Solo se exporta el reinicio para los tests.
+let loteNoDisponible = false
+export const reiniciarPrecioSugeridoLoteParaTests = () => { loteNoDisponible = false }
+
+export interface LineaPrecioSugerido { productId: number; presentacionId?: number }
+
+const precioSugeridoPorLinea = (
+  lineas: readonly LineaPrecioSugerido[],
+  opts?: { clienteId?: number; categoria?: string },
+): Promise<PrecioSugerido[]> =>
+  Promise.all(lineas.map((l) => precioSugerido(l.productId, { ...opts, presentacionId: l.presentacionId })))
+
+export const precioSugeridoLote = async (
+  lineas: LineaPrecioSugerido[],
+  opts?: { clienteId?: number; categoria?: string },
+): Promise<PrecioSugerido[]> => {
+  if (lineas.length === 0) return []
+  if (loteNoDisponible) return precioSugeridoPorLinea(lineas, opts)
+  try {
+    return await porLotes(lineas, LINEAS_POR_LLAMADA, async (lote) => {
+      const { data, error } = await supabase.rpc('precio_sugerido_lote', {
+        p_lineas: lote.map((l) => ({ producto_id: l.productId, presentacion_id: l.presentacionId ?? null })),
+        p_cliente_id: opts?.clienteId ?? null,
+        p_categoria: opts?.categoria ?? null,
+      })
+      if (error) throw error
+      const filas = (data ?? []) as PrecioSugeridoRaw[]
+      if (filas.length !== lote.length) {
+        throw new Error(`precio_sugerido_lote devolvió ${filas.length} resultados para ${lote.length} líneas`)
+      }
+      return filas.map(mapPrecioSugerido)
+    })
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code !== PGRST_FUNCION_NO_ENCONTRADA) throw error
+    loteNoDisponible = true
+    return precioSugeridoPorLinea(lineas, opts)
   }
 }

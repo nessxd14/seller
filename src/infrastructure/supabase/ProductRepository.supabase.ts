@@ -9,6 +9,7 @@ import {
 } from '../../domain/catalog/mapeoProducto'
 import { PRODUCT_COLUMNS } from './productoColumnas'
 import { catalogoLocal } from './CatalogoLocal.supabase'
+import { leerTodo, porLotes } from './paginacion'
 
 export { PRODUCT_COLUMNS, rowToProduct }
 export type { LineIdentifiers, Presentation, ScannedPresentation }
@@ -335,6 +336,40 @@ export const getStockByProduct = async (
   }))
   const saldoRow = (saldoRows as Array<{ producto_id: number; saldo_libre: number | string }> | null)?.[0]
   return { onHand, saldoDisponible: num(saldoRow?.saldo_libre) }
+}
+
+const STOCK_LOTE_IDS = 200
+
+/**
+ * Stock por ubicación de VARIOS productos en una sola lectura de stock_actual (sin
+ * saldo_disponible_pedido): lo que usa el editor de cotizaciones, que solo necesita los
+ * totales por sucursal. Cada id pedido queda en el mapa; sin filas → [].
+ * stock_actual tiene PK (producto_id, ubicacion_id): ese orden es total para paginar.
+ */
+export const getStockByProductsBatch = async (productIds: number[]): Promise<Map<number, StockByLocation[]>> => {
+  const ids = [...new Set(productIds)].filter((id) => Number.isFinite(id))
+  const result = new Map<number, StockByLocation[]>(ids.map((id) => [id, []]))
+  type Row = { producto_id: number; ubicacion_id: number; cantidad_base: number | string; ubicacion?: { sucursal_id: number | string | null; excluye_disponible: boolean | null } | null }
+  const rows = await porLotes(ids, STOCK_LOTE_IDS, (lote) =>
+    leerTodo<Row>((desde, hasta) =>
+      supabase
+        .from('stock_actual')
+        .select('producto_id,ubicacion_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id,excluye_disponible)')
+        .in('producto_id', lote)
+        .order('producto_id')
+        .order('ubicacion_id')
+        .range(desde, hasta) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>,
+    ),
+  )
+  for (const row of rows) {
+    result.get(row.producto_id)?.push({
+      ubicacionId: row.ubicacion_id,
+      sucursalId: row.ubicacion?.sucursal_id != null ? num(row.ubicacion.sucursal_id) : undefined,
+      cantidadBase: num(row.cantidad_base),
+      excluyeDisponible: row.ubicacion?.excluye_disponible === true ? true : undefined,
+    })
+  }
+  return result
 }
 
 export interface DisponibilidadPedido { stockFisico: number; reservado: number; disponible: number }

@@ -99,8 +99,10 @@ class CatalogoLocal {
       // RLS: sin sesión las lecturas volverían vacías y el índice quedaría mudo. No cuenta como fallo.
       if (!(await hayUsuarioAutenticado())) return
       // La versión se registra antes de leer: si cambia durante la carga, el próximo refresco recarga.
-      const [version, productos, presentaciones, identificadores] = await Promise.all([
-        leerVersion().catch(() => null),
+      // Se espera antes de arrancar las lecturas: si fuera en paralelo, un cambio guardado mientras
+      // se leen los datos podría registrar la versión nueva junto con datos viejos.
+      const version = await leerVersion().catch(() => null)
+      const [productos, presentaciones, identificadores] = await Promise.all([
         leerTodo<ProductoRow>((desde, hasta) => supabase.from('producto').select(PRODUCT_COLUMNS).eq('activo', true).order('id', { ascending: true }).range(desde, hasta) as unknown as PromiseLike<{ data: ProductoRow[] | null; error: unknown }>),
         leerTodo<FilaPresentacionCatalogo>((desde, hasta) => supabase.from('v_presentacion_precio').select(PRESENTACION_COLUMNS).order('presentacion_id', { ascending: true }).range(desde, hasta) as unknown as PromiseLike<{ data: FilaPresentacionCatalogo[] | null; error: unknown }>),
         leerTodo<FilaIdentificador>((desde, hasta) => supabase.from('identificador').select('id,presentacion_id,tipo,valor,es_principal').eq('activo', true).order('id', { ascending: true }).range(desde, hasta) as unknown as PromiseLike<{ data: FilaIdentificador[] | null; error: unknown }>),

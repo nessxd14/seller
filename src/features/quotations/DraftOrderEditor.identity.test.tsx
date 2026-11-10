@@ -14,7 +14,7 @@ vi.mock('../../config/featureFlags', () => ({featureFlags:{supabase:true}}))
 vi.mock('../../infrastructure/services', () => ({
   customerService:{list:vi.fn(async () => customers)},
   productRepository:{search:vi.fn().mockResolvedValue({items:[],total:0}),getById:vi.fn().mockResolvedValue(null)},
-  getStockByProduct:vi.fn().mockResolvedValue({}),getDisponibilidadPedido:vi.fn().mockResolvedValue({}),listPresentations:vi.fn().mockResolvedValue([]),
+  getStockByProduct:vi.fn().mockResolvedValue({}),getStockByProductsBatch:vi.fn().mockResolvedValue(new Map()),getDisponibilidadPedido:vi.fn().mockResolvedValue({}),listPresentations:vi.fn().mockResolvedValue([]),
   listLineIdentifiers:vi.fn().mockResolvedValue({}),authSessionProvider:{getSession:vi.fn().mockResolvedValue(null)},
 }))
 vi.mock('../../components/SaldoBadge', () => ({SaldoBadge:() => null}))
