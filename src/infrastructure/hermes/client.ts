@@ -16,6 +16,32 @@ export async function consultarPedidosCobro(clienteId: string): Promise<PedidoPa
   return (data ?? []).map((r: { id: number; numero: string; pendiente: number }) => ({ id: String(r.id), number: r.numero, pendienteBs: Number(r.pendiente) }))
 }
 
+export interface PartidaCobro { partidaId: number; pendiente: number }
+export interface PedidoCobro { pedidoId: number; numero: string; fecha: string; pendiente: number; enRevision: number; partidas: PartidaCobro[] }
+export interface PartidaSinPedidoCobro { partidaId: number; referencia: string; fecha: string; pendiente: number }
+export interface CuentaCobro {
+  sinCuenta: boolean
+  pedidos: PedidoCobro[]
+  partidasSinPedido: PartidaSinPedidoCobro[]
+  pendienteTotal: number
+  aFavorLibre: number
+  enRevision: number
+}
+/** Cuenta de cobro del cliente: pedidos abiertos (más antiguo primero) y dinero a favor sin aplicar. Lanza si falla. */
+export async function consultarCuentaCobro(clienteId: string): Promise<CuentaCobro> {
+  const { data, error } = await supabase.rpc('cuenta_cobro_cliente', { p_cliente_id: Number(clienteId) })
+  if (error) throw Object.assign(new Error(error.message), error)
+  const d = (data ?? {}) as Partial<CuentaCobro>
+  return {
+    sinCuenta: d.sinCuenta === true,
+    pedidos: (d.pedidos ?? []).map(p => ({ ...p, pendiente: Number(p.pendiente), enRevision: Number(p.enRevision ?? 0), partidas: (p.partidas ?? []).map(x => ({ partidaId: Number(x.partidaId), pendiente: Number(x.pendiente) })) })),
+    partidasSinPedido: (d.partidasSinPedido ?? []).map(p => ({ ...p, partidaId: Number(p.partidaId), pendiente: Number(p.pendiente) })),
+    pendienteTotal: Number(d.pendienteTotal ?? 0),
+    aFavorLibre: Number(d.aFavorLibre ?? 0),
+    enRevision: Number(d.enRevision ?? 0),
+  }
+}
+
 // Consulta la misma base del POS con su sesión y permisos, sin puente entre proyectos.
 async function consultarHermesLocal(url: string, options: RequestInit): Promise<Response> {
   const body = JSON.parse(String(options.body ?? '{}'))

@@ -289,11 +289,17 @@ export function OrdersPage({ notify, canDispatch = true, readOnly = false }: { n
   }
   const registerAdvance = async (amountCents: number, method: PosPaymentMethodExt, destino: CobroDestino | null) => {
     if (!selected || !sessionId) return
-    const resultado = await sensitiveOperations.ejecutarIdempotente('register_payment', advanceOperationId, JSON.stringify([selected.id, amountCents, method, sessionId]), key => cashService.registerAdvance(selected.id, amountCents, method, sessionId, key))
-    await aplicarDestinoCobro(destino, resultado?.movementId, notify)
-    setAdvanceOperationId(crypto.randomUUID())
-    setAdvanceOpen(false)
-    notify('Anticipo registrado')
+    try {
+      const resultado = await sensitiveOperations.ejecutarIdempotente('register_payment', advanceOperationId, JSON.stringify([selected.id, amountCents, method, sessionId]), key => cashService.registerAdvance(selected.id, amountCents, method, sessionId, key))
+      await aplicarDestinoCobro(destino, resultado?.movementId, notify)
+      setAdvanceOperationId(crypto.randomUUID())
+      setAdvanceOpen(false)
+      notify('Anticipo registrado')
+    } catch (error) {
+      // PT422: el servidor rechaza un anticipo mayor al pedido si el cliente tiene otros pedidos abiertos; se muestra su mensaje.
+      notify(error instanceof Error ? error.message : 'No se pudo registrar el anticipo')
+      return
+    }
     setAdvances(await cashService.getAdvancesForOrder(selected.id))
     refreshCobros()
   }

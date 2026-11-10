@@ -170,7 +170,7 @@ export const cashService = {
     const actorId = await currentActorId()
     return cashRepository.registerAdvance({ orderId, amountCents, method, sessionId }, { actorId, idempotencyKey })
   },
-  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string; idempotencyKey?: string; noImputar?: boolean; aplicaciones?: Array<{ partidaId: number; monto: number }>; referencia?: string }): Promise<{ movementId: string; pagoId?: string }> {
+  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: 'cash' | 'qr' | 'transfer' | 'deposit' | 'sigep' | 'check'; sessionId: string; idempotencyKey?: string; noImputar?: boolean; aplicaciones?: Array<{ partidaId: number; monto: number }>; referencia?: string; anticipoMotivo?: string; anticipoDetalle?: string }): Promise<{ movementId: string; pagoId?: string }> {
     const actorId = await currentActorId()
     // Brief S5: si el llamador (PagoModal, vía sensitiveOperations.ejecutarIdempotente) no
     // manda una clave estable, se genera una al vuelo — mismo comportamiento que antes de

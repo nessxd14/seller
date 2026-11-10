@@ -13,6 +13,8 @@ export interface PaymentAttempt {
   aplicaciones?: { partidaId: number; monto: number }[]
   destino: CobroDestino | null
   referencia: string
+  anticipoMotivo?: string | null
+  anticipoDetalle?: string | null
 }
 export const paymentAttemptKey = (actorId: string) => `cation-pago-pendiente:${actorId}`
 export function readPaymentAttempt(actorId: string): PaymentAttempt | null {
@@ -23,4 +25,4 @@ export function readPaymentAttempt(actorId: string): PaymentAttempt | null {
       && ['cash','qr','deposit','transfer','sigep','check'].includes(value.method) ? value : null
   } catch { return null }
 }
-export const paymentRejected = (error: unknown) => /^(P0001|42501|22\w{3}|23\w{3}|PGRST202)$/.test(String((error as { code?: string })?.code ?? ''))
+export const paymentRejected = (error: unknown) => /^(P0001|42501|22\w{3}|23\w{3}|PGRST202|PT422)$/.test(String((error as { code?: string })?.code ?? ''))
