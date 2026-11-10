@@ -29,18 +29,18 @@ import { useSaldoCliente } from '../hooks/useSaldoCliente'
 import { TrasladoTargetPicker } from './TrasladoTargetPicker'
 import { TrasladoQr } from './TrasladoQr'
 import { CartReview } from './CartReview'
-import type { QuoteDraft, TransferMotivo, TransferRecord, VentaDirectaRecord, VtdPorCobrar, WorkflowLine } from '../application/shared/models'
+import type { CustomerRecord, QuoteDraft, TransferMotivo, TransferRecord, VentaDirectaRecord, VtdPorCobrar, WorkflowLine } from '../application/shared/models'
 import type { SaleCheckoutPayment } from '../application/ports/repositories'
 import type { PendingTransferRequest } from '../features/transfers/TransfersPage'
 import { featureFlags } from '../config/featureFlags'
 import { useCashSession } from '../context/CashSessionContext'
-import { getStockBySucursalBatch } from '../infrastructure/services'
+import { customerService, getStockBySucursalBatch } from '../infrastructure/services'
 import { isLineUnpriced } from '../domain/sales/priceCheck'
 import { isLineBlocking, type StockControlInfo } from '../domain/sales/stockCheck'
 import { netUnitPriceCents } from '../domain/sales/ventaPricing'
 import { esErrorSoloRetail } from '../domain/sales/vtd'
 import { hoyLocal, sumarDiasIso } from '../domain/common/fechas'
-import { AnticipoModal } from './AnticipoModal'
+import { PagoModal } from './PagoModal'
 import { NumberField } from './NumberField'
 import { vendedoresCaja } from '../infrastructure/supabase/CajaCheckout.supabase'
 import { bloqueos, totalLineaCents } from '../domain/sales/pedidoCaja'
@@ -60,6 +60,20 @@ type CartBorradorEstado =
   | { mode: 'venta'; channel: SalesChannel; cart: CartItemType[]; discount: number; customer: CartCustomer | null }
   | { mode: 'traslado'; cart: CartItemType[]; trasladoMotivo: TransferMotivo; trasladoOrigenId: number; trasladoDestinoId: number }
   | { mode: 'ventaDirecta'; cart: CartItemType[]; vtdUbicacionId: number | null; vtdPrecobrado: boolean }
+
+/** Anticipo desde el carrito: usa el mismo formulario de Registrar pago (motivo obligatorio y lista de pedidos). */
+function AnticipoPago({ cliente, onClose, notify }: { cliente: CartCustomer | null; onClose: () => void; notify: (message: string) => void }) {
+  const clienteId = cliente?.id
+  const [record, setRecord] = useState<CustomerRecord | null | undefined>(clienteId ? undefined : null)
+  useEffect(() => {
+    if (!clienteId) return
+    let active = true
+    void customerService.getById(clienteId).then(found => { if (active) setRecord(found) }).catch(() => { if (active) setRecord(null) })
+    return () => { active = false }
+  }, [clienteId])
+  if (record === undefined) return null
+  return <PagoModal initialCustomer={record ?? undefined} initialTab="anticipo" onClose={onClose} notify={notify} />
+}
 
 export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, onRequestTransfer, pedidosVendedorEnEspera = 0, onOpenPedidosVendedor, onTrasladoCreado }: { notify: (message: string) => void; onOpenDraftOrder: (draft: QuoteDraft) => void; onGoToCash: () => void; sellerName?: string; onRequestTransfer?: (request: PendingTransferRequest) => void; pedidosVendedorEnEspera?: number; onOpenPedidosVendedor?: () => void; /** Solo la versión celular lo pasa: muestra su ticket térmico con QR en lugar de la ventana del QR. Sin él, todo igual que siempre. */ onTrasladoCreado?: (traslado: TransferRecord) => void }) {
   const { warehouseLocked, warehousePaid, pedidoEnCarrito, vtdsEnCarrito: vtdCobroSeleccionadas = [], setVtdsEnCarrito: setVtdCobroSeleccionadas, vendedorId, setVendedorId, channel, cart, subtotal, total, discount, setDiscount, operationNumber, operationId, clearOperation, loadSuspendedSale, updateItem, addCustomItem, customer, mode, setMode, trasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, notifyVentaSuspendida, setSelectedLineId, lastRemoved, undoLastRemove } = usePos()
@@ -585,7 +599,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     </Modal>}
     {vtdCobroPickerOpen && <CobrarVtdPickerModal yaSeleccionadas={vtdCobroSeleccionadas.map((v) => v.ventaId)} onClose={() => setVtdCobroPickerOpen(false)} onAdd={agregarVtdCobro} />}
     {guardarBorradorOpen && <GuardarBorradorModal submitting={guardandoBorrador} error={guardarBorradorError} onClose={() => setGuardarBorradorOpen(false)} onConfirm={(titulo) => void guardarBorrador(titulo)} />}
-    {anticipoOpen && <AnticipoModal onClose={() => setAnticipoOpen(false)} notify={notify} />}
+    {anticipoOpen && <AnticipoPago cliente={customer} onClose={() => setAnticipoOpen(false)} notify={notify} />}
     {reviewOpen && <CartReview items={cart} channel={channel} originStock={originStock} customer={customer} subtotal={subtotal} discount={discount} total={total} onClose={() => setReviewOpen(false)} onCheckout={() => { setReviewOpen(false); setPaymentOpen(true) }} />}
   </aside>
 }

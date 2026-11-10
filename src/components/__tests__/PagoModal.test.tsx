@@ -5,143 +5,162 @@ import { PagoModal } from '../../components/PagoModal'
 import { SensitiveOperationExecutor } from '../../application/idempotency/SensitiveOperationExecutor'
 import { LocalIdempotencyService } from '../../application/idempotency/IdempotencyService'
 
-const mocks = vi.hoisted(() => ({ customers: vi.fn(), orders: vi.fn(), saldo: vi.fn(), reparto: vi.fn(), register: vi.fn(), execute: vi.fn() }))
+const mocks = vi.hoisted(() => ({ customers: vi.fn(), cuenta: vi.fn(), reparto: vi.fn(), register: vi.fn(), execute: vi.fn() }))
 vi.mock('../../config/featureFlags', () => ({ featureFlags: { supabase: true } }))
 vi.mock('../../context/CashSessionContext', () => ({ useCashSession: () => ({ sessionId: '10' }) }))
-vi.mock('../../infrastructure/hermes/client', () => ({ consultarPedidosCobro: mocks.orders, consultarSaldo: mocks.saldo, calcularRepartoFifo: mocks.reparto, HermesHttpError: class extends Error {} }))
+vi.mock('../../infrastructure/hermes/client', () => ({ consultarCuentaCobro: mocks.cuenta, calcularRepartoFifo: mocks.reparto, HermesHttpError: class extends Error {} }))
 vi.mock('../../infrastructure/services', () => ({
-  customerService: { list: mocks.customers }, orderService: { list: mocks.orders },
+  customerService: { list: mocks.customers },
   cashService: { registerPayment: mocks.register }, sensitiveOperations: { ejecutarIdempotente: mocks.execute },
   authSessionProvider: { getSession: async () => ({ user: { id: 'test', role: 'cajero', active: true }, expiresAt: '2999-01-01' }) },
   turnoService: { marcarCobroFueraDeArqueo: vi.fn() },
 }))
 const a = { id: '101', name: 'Cliente A', type: 'wholesale', usualChannel: 'mayoreo', document: 'TEST-A' }
-const b = { id: '102', name: 'Cliente B', type: 'wholesale', usualChannel: 'mayoreo', document: 'TEST-B' }
+const retail = { id: '103', name: 'Cliente R', type: 'retail', usualChannel: 'mostrador', document: 'TEST-R' }
+// Caso real BNB: cuatro pedidos abiertos (4600, 4930, 3620, 70).
+const pedido = (pedidoId: number, numero: string, pendiente: number) => ({ pedidoId, numero, fecha: '2026-10-01', pendiente, enRevision: 0, partidas: [{ partidaId: pedidoId + 1000, pendiente }] })
+const cuentaBnb = {
+  sinCuenta: false, aFavorLibre: 0, enRevision: 0, pendienteTotal: 13220, partidasSinPedido: [],
+  pedidos: [pedido(1, 'PED-00597', 4600), pedido(2, 'PED-00600', 4930), pedido(3, 'PED-00802', 3620), pedido(4, 'PED-00805', 70)],
+}
+const cuentaLimpia = { ...cuentaBnb, pedidos: [], pendienteTotal: 0, aFavorLibre: 0 }
 async function choose(name = 'Cliente A') {
   if (document.activeElement instanceof HTMLElement) fireEvent.blur(document.activeElement)
   fireEvent.focus(screen.getByRole('textbox', { name: 'Buscar cliente para registrar pago' }))
   fireEvent.click(await screen.findByRole('button', { name: new RegExp(name) }))
-  await waitFor(() => expect(mocks.saldo).toHaveBeenCalled())
 }
-function method() { fireEvent.change(screen.getByRole('combobox', { name: /Método de pago/ }), { target: { value: 'qr' } }) }
-function confirm() { return screen.getByRole('button', { name: 'Confirmar pago' }) as HTMLButtonElement }
+const monto = () => screen.getByRole('spinbutton', { name: 'Monto recibido (Bs)' }) as HTMLInputElement
+function setMonto(value: number) { const input = monto(); fireEvent.focus(input); fireEvent.change(input, { target: { value: String(value) } }); fireEvent.blur(input) }
+const method = (name = 'QR') => fireEvent.click(screen.getByRole('button', { name }))
+const registrar = () => screen.getByRole('button', { name: /^Registrar Bs|^Registrar anticipo|Comprobar el mismo pago|Registrando/ }) as HTMLButtonElement
+const tab = (name: string) => fireEvent.click(screen.getByRole('tab', { name }))
+const marcar = (n: string) => fireEvent.click(screen.getByRole('checkbox', { name: `Marcar ${n}` }))
+async function listo() { await screen.findByText('Pendiente en pedidos') }
 beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear()
-  mocks.customers.mockResolvedValue([a, b]); mocks.orders.mockResolvedValue([])
-  mocks.saldo.mockResolvedValue({ estado: 'ok', saldoConfirmado: 100, saldoProvisional: 100, situacion: 'DEUDOR' })
+  mocks.customers.mockResolvedValue([a, retail]); mocks.cuenta.mockResolvedValue(cuentaBnb)
   mocks.reparto.mockResolvedValue([]); mocks.register.mockResolvedValue({ movementId: '77', pagoId: '88' })
   const executor = new SensitiveOperationExecutor(new LocalIdempotencyService(localStorage))
   mocks.execute.mockImplementation(executor.ejecutarIdempotente.bind(executor))
 })
 afterEach(cleanup)
-describe('Registrar pago: regresiones de caja y Hermes', () => {
-  it('no vuelve a sugerir un importe que ya está en revisión', async () => {
-    mocks.saldo.mockResolvedValue({ estado: 'ok', saldoConfirmado: 100, saldoProvisional: 0 })
-    render(<PagoModal onClose={() => {}} />); await choose(); method()
-    await screen.findByText(/en revisión en Hermes/)
-    await waitFor(() => expect((screen.getByRole('spinbutton', { name: 'Monto (Bs)' }) as HTMLInputElement).value).toBe('0'))
-    expect(confirm().disabled).toBe(true)
+describe('Registrar pago: pedidos marcados', () => {
+  it('la pestaña Pedidos es la predeterminada y muestra los tiles de la cuenta', async () => {
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo()
+    expect(screen.getByRole('tab', { name: 'Pedidos' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByText(/13\.220,00/)).toBeTruthy()
+    expect(screen.getByText('4 pedidos abiertos')).toBeTruthy()
+    expect(screen.getByText('A favor sin aplicar')).toBeTruthy()
   })
-  it('incluye pedidos entregados con deuda y precarga el pendiente', async () => {
-    mocks.orders.mockResolvedValue([{ id: '11', customerId: '101', number: 'PED-ENTREGADO', pendienteBs: 40 }])
-    render(<PagoModal onClose={() => {}} />); await choose()
-    fireEvent.click(screen.getByRole('button', { name: 'Sobre un pedido específico' }))
-    await waitFor(() => expect(mocks.orders).toHaveBeenCalled())
-    fireEvent.change(await screen.findByRole('combobox', {name: 'Pedido'}), {target:{value:'11'}})
-    expect(screen.getByRole('option', {name: /PED-ENTREGADO/})).toBeTruthy()
-    await waitFor(() => expect((screen.getByRole('spinbutton',{name:'Monto (Bs)'}) as HTMLInputElement).value).toBe('40'))
+  it('marcar pedidos suma el monto cubierto y el sobrante', async () => {
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo()
+    setMonto(5000); marcar('PED-00597')
+    expect(screen.getAllByText(/Sobran Bs 400,00/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/1 pedido marcado/)).toBeTruthy()
+    marcar('PED-00600')
+    expect(screen.getByText(/Monto cubierto Bs 5\.000,00/)).toBeTruthy()
+    expect(screen.getByText('Queda pagado')).toBeTruthy()
+    expect(screen.getByText('Pago parcial')).toBeTruthy()
   })
-  it('cambiar de cliente borra el pedido anterior y bloquea el envío', async () => {
-    mocks.orders.mockImplementation(async id => id === '101' ? [{id:'11',number:'PED-A',pendienteBs:100}] : [{id:'12',number:'PED-B',pendienteBs:100}])
-    render(<PagoModal onClose={() => {}} />); await choose()
-    fireEvent.click(screen.getByRole('button', { name: 'Sobre un pedido específico' }))
-    await screen.findByRole('option', { name: /PED-A/ })
-    fireEvent.change(screen.getByRole('combobox', { name: 'Pedido' }), { target: { value: '11' } })
-    await choose('Cliente B'); await screen.findByRole('option', { name: /PED-B/ }); method()
-    expect((screen.getByRole('combobox', { name: 'Pedido' }) as HTMLSelectElement).value).toBe('')
-    expect(confirm().disabled).toBe(true); fireEvent.click(confirm())
-    expect(mocks.register).not.toHaveBeenCalled()
+  it('sugiere la combinación exacta y "Marcar estos" marca ese conjunto (BNB)', async () => {
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo(); method()
+    setMonto(3690)
+    await screen.findByText('PED-00802 + PED-00805')
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar estos' }))
+    expect((screen.getByRole('checkbox', { name: 'Marcar PED-00802' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('checkbox', { name: 'Marcar PED-00805' }) as HTMLInputElement).checked).toBe(true)
+    expect(screen.getByText('Paga PED-00802 y PED-00805.')).toBeTruthy()
+    fireEvent.click(registrar())
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({
+      customerId: '101', amountCents: 369000, noImputar: false, aplicaciones: [{ partidaId: 1003, monto: 3620 }, { partidaId: 1004, monto: 70 }],
+    })))
+    expect(mocks.register.mock.calls[0][0].orderId).toBeUndefined()
   })
-  it('explica la actualización pendiente y bloquea el importe y el cobro', async () => {
-    mocks.orders.mockRejectedValue(Object.assign(new Error('Function not found'), { code: 'PGRST202' }))
-    render(<PagoModal onClose={() => {}} />); await choose(); method()
-    fireEvent.click(screen.getByRole('button', { name: 'Sobre un pedido específico' }))
-    await screen.findByText(/Falta activar la actualización de la base de datos/)
-    expect((screen.getByRole('combobox', { name: 'Pedido' }) as HTMLSelectElement).disabled).toBe(true)
-    expect((screen.getByRole('spinbutton', { name: 'Monto (Bs)' }) as HTMLInputElement).disabled).toBe(true)
-    expect(confirm().disabled).toBe(true)
-    fireEvent.click(confirm()); expect(mocks.register).not.toHaveBeenCalled()
+  it('bloquea el envío si sobra dinero y quedan pedidos sin marcar', async () => {
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo(); method()
+    setMonto(5000); marcar('PED-00802')
+    expect(registrar().disabled).toBe(true)
+    expect(screen.getAllByText(/Sobran Bs 1\.380,00/).length).toBeGreaterThan(0)
+    fireEvent.click(registrar()); expect(mocks.register).not.toHaveBeenCalled()
   })
-  it('permite reintentar la consulta sin cambiar de cliente', async () => {
-    mocks.orders.mockRejectedValueOnce(new Error('sin conexión')).mockResolvedValue([{ id: '11', number: 'PED-A', pendienteBs: 40 }])
-    render(<PagoModal onClose={() => {}} />); await choose()
-    fireEvent.click(screen.getByRole('button', { name: 'Sobre un pedido específico' }))
-    await screen.findByText('No se pudieron consultar los pedidos. Reintenta la consulta.')
-    fireEvent.click(screen.getByRole('button', { name: 'Reintentar pedidos' }))
-    await screen.findByRole('option', { name: /PED-A/ })
-    expect(mocks.orders.mock.calls.map(call => call[0])).toEqual(['101', '101'])
-    expect(screen.queryByRole('alert')).toBeNull()
+  it('un cliente retail ve el formulario simple, sin pestañas', async () => {
+    render(<PagoModal onClose={() => {}} />); await choose('Cliente R'); method()
+    expect(screen.queryByRole('tab')).toBeNull()
+    expect(mocks.cuenta).not.toHaveBeenCalled()
+    setMonto(25)
+    await waitFor(() => expect(registrar().disabled).toBe(false)); fireEvent.click(registrar())
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ customerId: '103', amountCents: 2500, noImputar: false, aplicaciones: undefined })))
   })
-  it('registra un abono únicamente al pedido elegido y diferencia su pendiente del saldo total', async () => {
-    mocks.orders.mockResolvedValue([{ id: '11', number: 'PED-A', pendienteBs: 40 }])
-    render(<PagoModal onClose={() => {}} />); await choose()
-    fireEvent.click(screen.getByRole('button', { name: 'Sobre un pedido específico' }))
-    await screen.findByRole('option', { name: /PED-A/ })
-    fireEvent.change(screen.getByRole('combobox', { name: 'Pedido' }), { target: { value: '11' } }); method()
-    expect(screen.getByText('Saldo total del cliente')).toBeTruthy()
-    expect(screen.getByText(/Pendiente de este pedido:.*40,00/)).toBeTruthy()
-    const input = screen.getByRole('spinbutton', { name: 'Monto (Bs)' })
-    fireEvent.focus(input); fireEvent.change(input, { target: { value: '25' } }); fireEvent.blur(input)
-    await waitFor(() => expect(confirm().disabled).toBe(false)); fireEvent.click(confirm())
-    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ customerId: '101', orderId: '11', amountCents: 2500, aplicaciones: undefined, noImputar: false })))
+})
+describe('Registrar pago: anticipo con motivo', () => {
+  it('con pedidos abiertos exige motivo y lo envía junto al pago', async () => {
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo(); method(); setMonto(9530)
+    tab('Anticipo')
+    expect(screen.getByRole('alert').textContent).toMatch(/4 pedidos pendientes por Bs 13\.220,00/)
+    expect(registrar().disabled).toBe(true)
+    fireEvent.change(screen.getByRole('combobox', { name: /Motivo del anticipo/ }), { target: { value: 'GARANTIA_RESERVA' } })
+    await waitFor(() => expect(registrar().disabled).toBe(false))
+    expect(registrar().textContent).toMatch(/^Registrar anticipo Bs 9\.530,00/)
+    fireEvent.click(registrar())
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ noImputar: true, anticipoMotivo: 'GARANTIA_RESERVA', aplicaciones: undefined })))
   })
-  it('avisa del excedente respecto al pedido aunque el cliente tenga una deuda total mayor', async () => {
-    mocks.orders.mockResolvedValue([{ id: '11', number: 'PED-A', pendienteBs: 40 }])
-    render(<PagoModal onClose={() => {}} />); await choose()
-    fireEvent.click(screen.getByRole('button', { name: 'Sobre un pedido específico' }))
-    await screen.findByRole('option', { name: /PED-A/ })
-    fireEvent.change(screen.getByRole('combobox', { name: 'Pedido' }), { target: { value: '11' } })
-    const input = screen.getByRole('spinbutton', { name: 'Monto (Bs)' })
-    fireEvent.focus(input); fireEvent.change(input, { target: { value: '50' } }); fireEvent.blur(input)
-    await screen.findByText(/Supera el pendiente del pedido en.*10,00/)
+  it('el motivo OTRO exige un detalle de al menos 10 caracteres', async () => {
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo(); method(); setMonto(100); tab('Anticipo')
+    fireEvent.change(screen.getByRole('combobox', { name: /Motivo del anticipo/ }), { target: { value: 'OTRO' } })
+    expect(registrar().disabled).toBe(true)
+    fireEvent.change(screen.getByRole('textbox', { name: /Detalle/ }), { target: { value: 'Pago de una obra futura' } })
+    await waitFor(() => expect(registrar().disabled).toBe(false))
   })
-  it('bloquea el cobro cuando falla el reparto y permite dejar anticipo explícito', async () => {
-    mocks.reparto.mockRejectedValue(new Error('sin conexión'))
-    render(<PagoModal onClose={() => {}} />); await choose(); method()
-    await screen.findByText('No se pudo calcular el reparto')
-    expect(confirm().disabled).toBe(true); fireEvent.click(confirm()); expect(mocks.register).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('checkbox'))
-    fireEvent.click(confirm())
-    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ aplicaciones: undefined, noImputar: true })))
+  it('"Pagar … en su lugar" cambia a Pedidos y marca ese pedido', async () => {
+    mocks.cuenta.mockResolvedValue({ ...cuentaBnb, pedidos: [pedido(3, 'PED-00802', 3620)], pendienteTotal: 3620 })
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo(); setMonto(3620); tab('Anticipo')
+    fireEvent.click(screen.getByRole('button', { name: 'Pagar PED-00802 en su lugar' }))
+    expect(screen.getByRole('tab', { name: 'Pedidos' }).getAttribute('aria-selected')).toBe('true')
+    expect((screen.getByRole('checkbox', { name: 'Marcar PED-00802' }) as HTMLInputElement).checked).toBe(true)
   })
-  it('poner el reparto en cero guarda un anticipo sin FIFO', async () => {
-    mocks.reparto.mockResolvedValue([{ partidaId: 7, referencia: 'PED-A', pendiente: 100, aplica: 100 }])
-    render(<PagoModal onClose={() => {}} />); await choose(); method()
-    const input = await screen.findByRole('spinbutton', { name: 'Monto a aplicar a PED-A' })
-    fireEvent.change(input, { target: { value: '0' } }); fireEvent.blur(input)
-    await screen.findByText(/quedarán como anticipo a favor del cliente/)
-    fireEvent.click(confirm())
-    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ aplicaciones: undefined, noImputar: true })))
+  it('sin pedidos abiertos no pide motivo ni lo envía', async () => {
+    mocks.cuenta.mockResolvedValue(cuentaLimpia)
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo(); method(); setMonto(50); tab('Anticipo')
+    expect(screen.queryByRole('combobox', { name: /Motivo/ })).toBeNull()
+    await waitFor(() => expect(registrar().disabled).toBe(false)); fireEvent.click(registrar())
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ noImputar: true, anticipoMotivo: undefined, anticipoDetalle: undefined })))
   })
+  it('abre directo en Anticipo con el cliente inicial (carrito)', async () => {
+    render(<PagoModal onClose={() => {}} initialCustomer={a as never} initialTab="anticipo" />); await listo()
+    expect(screen.getByRole('tab', { name: 'Anticipo' }).getAttribute('aria-selected')).toBe('true')
+    expect(mocks.cuenta).toHaveBeenCalledWith('101')
+  })
+  it('PT422 muestra el mensaje, cambia a Anticipo y limpia el intento pendiente', async () => {
+    mocks.register.mockRejectedValue(Object.assign(new Error('Un anticipo con pedidos abiertos requiere motivo'), { code: 'PT422', hint: 'anticipo_requiere_motivo' }))
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo(); method(); setMonto(3690)
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcar estos' }))
+    await waitFor(() => expect(registrar().disabled).toBe(false)); fireEvent.click(registrar())
+    await screen.findByText('Un anticipo con pedidos abiertos requiere motivo')
+    expect(screen.getByRole('tab', { name: 'Anticipo' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.queryByText('Pago pendiente de comprobar')).toBeNull()
+    expect(localStorage.getItem('cation-pago-pendiente:test')).toBeNull()
+  })
+})
+describe('Registrar pago: idempotencia', () => {
   it('mantiene la clave y el importe al reabrir después de una respuesta perdida', async () => {
     mocks.register.mockRejectedValue(new Error('Respuesta perdida después de guardar'))
-    let view = render(<PagoModal onClose={() => {}} />); await choose(); method(); await waitFor(() => expect(confirm().disabled).toBe(false)); fireEvent.click(confirm())
+    let view = render(<PagoModal onClose={() => {}} />); await choose('Cliente R'); method(); setMonto(40); await waitFor(() => expect(registrar().disabled).toBe(false)); fireEvent.click(registrar())
     await screen.findByText('Respuesta perdida después de guardar')
     const key1 = mocks.register.mock.calls[0][0].idempotencyKey
-    fireEvent.click(screen.getByRole('button',{name:'Comprobar el mismo pago'})); await waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(2))
+    fireEvent.click(screen.getByRole('button', { name: 'Comprobar el mismo pago' })); await waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(2))
     expect(mocks.register.mock.calls[1][0].idempotencyKey).toBe(key1)
     await screen.findByText('Respuesta perdida después de guardar'); view.unmount()
-    view = render(<PagoModal onClose={() => {}} />); fireEvent.click(await screen.findByRole('button',{name:'Comprobar el mismo pago'}))
+    view = render(<PagoModal onClose={() => {}} />); fireEvent.click(await screen.findByRole('button', { name: 'Comprobar el mismo pago' }))
     await waitFor(() => expect(mocks.register).toHaveBeenCalledTimes(3))
     expect(mocks.register.mock.calls[2][0].idempotencyKey).toBe(key1)
     await screen.findByText('Respuesta perdida después de guardar'); view.unmount()
   })
   it('impide cerrar o enviar de nuevo mientras el pago está en curso', async () => {
     mocks.register.mockImplementation(() => new Promise(() => {}))
-    const onClose = vi.fn(); render(<PagoModal onClose={onClose} />); await choose(); method(); await waitFor(() => expect(confirm().disabled).toBe(false)); fireEvent.click(confirm())
+    const onClose = vi.fn(); render(<PagoModal onClose={onClose} />); await choose('Cliente R'); method(); setMonto(40); await waitFor(() => expect(registrar().disabled).toBe(false)); fireEvent.click(registrar())
     await screen.findByRole('button', { name: 'Registrando…' })
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar' })); expect(onClose).not.toHaveBeenCalled()
-    fireEvent.keyDown(document, {key:'Escape'}); expect(onClose).not.toHaveBeenCalled()
+    fireEvent.keyDown(document, { key: 'Escape' }); expect(onClose).not.toHaveBeenCalled()
     expect(mocks.register).toHaveBeenCalledTimes(1)
   })
 })

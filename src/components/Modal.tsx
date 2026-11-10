@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom'
 // suppress its own Escape handler while the inner one is open — otherwise a single
 // Escape press would fire BOTH modals' window keydown listeners and close both at
 // once, when the intent is only to close the topmost one.
-export function Modal({ title, subtitle, onClose, children, wide = false, side = false, escapeToClose = true, className = '' }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode; wide?: boolean; side?: boolean; escapeToClose?: boolean; className?: string }) {
+export function Modal({ title, subtitle, onClose, children, wide = false, side = false, escapeToClose = true, className = '' }: { title: string; subtitle?: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean; side?: boolean; escapeToClose?: boolean; className?: string }) {
   const dialogRef = useRef<HTMLElement>(null)
   const returnFocusRef = useRef(typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null)
   const closeCurrent = useEffectEvent(() => { if (escapeToClose) onClose() })
