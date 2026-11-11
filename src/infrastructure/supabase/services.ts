@@ -307,6 +307,7 @@ export const pedidoVendedorService = {
   retirar: pedidoVendedorRepository.retirar,
   anular: pedidoVendedorRepository.anular,
   misPedidos: pedidoVendedorRepository.misPedidos,
+  misCuentaVendedor: pedidoVendedorRepository.misCuentaVendedor,
   clavesAbiertas: pedidoVendedorRepository.clavesAbiertas,
   cola: pedidoVendedorRepository.cola,
   tomar: pedidoVendedorRepository.tomar,

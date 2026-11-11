@@ -98,6 +98,18 @@ describe('Cola', () => {
   })
 })
 
+describe('Verificación — parte del vendedor y agregado en caja', () => {
+  it('separa la parte de Ana de lo agregado en caja y dice qué falta', async () => {
+    await entrarAVerificar()
+    expect(screen.getByText('Parte de Ana').nextSibling?.textContent).toBe('Bs 43,00')
+    expect(screen.getByText('Agregado en caja').nextSibling?.textContent).toBe('Bs 0,00')
+    expect(screen.getByText('Falta: 2 líneas sin revisar')).toBeTruthy()
+    expect(screen.getAllByText('Puso Ana').length).toBe(2)
+    verificar('Resma carta'); verificar('Marcador')
+    expect(screen.queryByText(/^Falta:/)).toBeNull()
+  })
+})
+
 describe('Verificación — el botón de cobrar', () => {
   it('queda deshabilitado hasta que cada línea esté verificada o quitada, con la primera razón como título', async () => {
     await entrarAVerificar()
@@ -279,10 +291,25 @@ describe('Salir sin cobrar', () => {
     const dialogo = screen.getByRole('dialog', { name: 'Salir del pedido' })
     const confirmar = within(dialogo).getByRole('button', { name: 'Anular pedido' }) as HTMLButtonElement
     expect(confirmar.disabled).toBe(true)
-    fireEvent.change(within(dialogo).getByLabelText(/Motivo/), { target: { value: 'El cliente se fue' } })
+    expect(within(dialogo).getByText('Ana la verá como «Anulada por caja» con tu motivo, y no suma a su parte.')).toBeTruthy()
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Otro (escribir)' }))
+    fireEvent.change(within(dialogo).getByLabelText('Otro motivo de anulación'), { target: { value: 'El cliente se fue' } })
     fireEvent.click(confirmar)
     await waitFor(() => expect(svc.anular).toHaveBeenCalledWith('9', 'El cliente se fue'))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+
+  it('anular con un motivo de la lista', async () => {
+    svc.anular.mockResolvedValue(pedido)
+    montar()
+    fireEvent.click(await screen.findByRole('button', { name: /Ana/ }))
+    await screen.findByText(/Nota del vendedor/)
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Anular pedido' }))
+    const dialogo = screen.getByRole('dialog', { name: 'Salir del pedido' })
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Venta duplicada' }))
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Anular pedido' }))
+    await waitFor(() => expect(svc.anular).toHaveBeenCalledWith('9', 'Venta duplicada'))
   })
 
   it('"Seguir cobrando" cierra el menú sin llamar a nada', async () => {

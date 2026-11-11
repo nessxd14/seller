@@ -13,7 +13,7 @@ const PRIORIDAD: Partial<Record<MockRole, Modulo[]>> = {
   gerente: ['Caja', 'Pedidos', 'Venta', 'Venta Directa'],
   supervisor: ['Caja', 'Pedidos', 'Venta', 'Venta Directa'],
   cajero: ['Venta', 'Venta Directa', 'Caja', 'Traslados'],
-  // Reponedor: traslados y pendientes. En la base usa un rol de almacén.
+  // El reponedor no llega acá: trabaja solo en /piso (PosPage lo redirige, igual que al vendedor).
   almacen: ['Traslados', 'Pedidos', 'Inventario', 'Productos'],
   almacenero: ['Traslados', 'Pedidos', 'Inventario', 'Productos'],
   vendedor_mayoreo: ['Cotizaciones', 'Pedidos', 'Clientes', 'Productos'],

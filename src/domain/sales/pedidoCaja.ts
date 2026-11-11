@@ -91,6 +91,25 @@ export const totalCents = (lineas: LineaCaja[]): number => lineas.filter((l) => 
 export const totalVendedorCents = (lineas: LineaCaja[]): number =>
   lineas.filter((l) => l.pedidoLineaId != null).reduce((sum, l) => sum + Math.round((l.precioVendedorCents ?? 0) * (l.cantidadVendedor ?? 0)), 0)
 
+/** Lo que sigue en pie de las líneas del vendedor, al precio y cantidad actuales de caja. */
+export const parteVendedorActualCents = (lineas: LineaCaja[]): number =>
+  lineas.filter((l) => !l.quitada && !l.agregada).reduce((sum, l) => sum + totalLineaCents(l), 0)
+/** Lo que caja sumó encima: líneas agregadas en caja que siguen en el pedido. */
+export const agregadoCajaCents = (lineas: LineaCaja[]): number =>
+  lineas.filter((l) => !l.quitada && l.agregada).reduce((sum, l) => sum + totalLineaCents(l), 0)
+
+/** Una sola línea que dice qué falta para poder cobrar ("Falta: 1 línea sin revisar y el motivo de un descuento"); null si no falta nada. */
+export const faltaParaCobrar = (lineas: LineaCaja[]): string | null => {
+  const vivas = lineas.filter((l) => !l.quitada)
+  const sinVerificar = vivas.filter((l) => !l.verificada).length
+  const sinMotivo = vivas.filter((l) => necesitaMotivo(l) && !(l.motivoDescuento ?? '').trim()).length
+  const partes: string[] = []
+  if (sinVerificar) partes.push(`${sinVerificar} línea${sinVerificar > 1 ? 's' : ''} sin revisar`)
+  if (sinMotivo) partes.push(sinMotivo > 1 ? `el motivo de ${sinMotivo} descuentos` : 'el motivo de un descuento')
+  if (!vivas.length) partes.push('al menos un producto')
+  return partes.length ? `Falta: ${partes.join(' y ')}` : null
+}
+
 /** Razones por las que todavía no se puede cobrar (la primera sirve de ayuda en el botón). */
 export const bloqueos = (lineas: LineaCaja[]): string[] => {
   const vivas = lineas.filter((l) => !l.quitada)

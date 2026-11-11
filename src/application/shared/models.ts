@@ -607,6 +607,35 @@ export interface PedidoVendedorRecord {
   lineas: PedidoVendedorLinea[]
 }
 
+/** Una venta en la cuenta del vendedor / reponedor (mi_cuenta_vendedor). Sin costos ni márgenes. */
+export interface MiCuentaPedido {
+  pedidoId: string
+  numeroDia: number
+  fecha: string
+  estado: PedidoVendedorEstado
+  totalEnviado: number
+  cobradoEn: string | null
+  /** Solo si está cobrada: lo que anotó el vendedor, al precio final de caja. */
+  parte: number | null
+  /** Solo si está cobrada: lo que caja sumó encima. */
+  agregadoCaja: number | null
+  preciosCorregidos: number
+  lineasQuitadas: number
+  anuladoOrigen: string | null
+  anuladoMotivo: string | null
+}
+
+export interface MiCuentaVendedor {
+  desde: string
+  hasta: string
+  parte: number
+  cobradas: number
+  porCobrar: number
+  guardadas: number
+  anuladas: number
+  pedidos: MiCuentaPedido[]
+}
+
 /** Línea tal como se envía a guardar_pedido_vendedor (p_lineas). */
 export type PedidoVendedorLineaInput =
   | { productoId: number; presentacionId?: number | null; cantidad: number; precioUnitario?: number }

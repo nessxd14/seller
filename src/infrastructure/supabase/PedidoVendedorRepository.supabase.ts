@@ -2,7 +2,7 @@
 // (guardar/retirar/anular/mis_pedidos_vendedor); aquí solo se mapea snake_case → camelCase.
 import { supabase } from './supabaseClient'
 import { toError } from './postgrestError'
-import type { PedidoVendedorCobroInput, PedidoVendedorCobroResultado, PedidoVendedorEnCola, PedidoVendedorEstado, PedidoVendedorLinea, PedidoVendedorLineaInput, PedidoVendedorRecord } from '../../application/shared/models'
+import type { MiCuentaVendedor, PedidoVendedorCobroInput, PedidoVendedorCobroResultado, PedidoVendedorEnCola, PedidoVendedorEstado, PedidoVendedorLinea, PedidoVendedorLineaInput, PedidoVendedorRecord } from '../../application/shared/models'
 import { centsToNumeric, methodToMetodoPago } from './mappers'
 
 const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
@@ -74,6 +74,32 @@ export async function misPedidos(): Promise<PedidoVendedorRecord[]> {
   const { data, error } = await supabase.rpc('mis_pedidos_vendedor')
   if (error) throw toError(error)
   return ((data ?? []) as PedidoRow[]).map(rowToPedido)
+}
+
+interface MiCuentaRow {
+  desde: string; hasta: string; parte: number | string | null; cobradas: number | string | null; por_cobrar: number | string | null
+  guardadas: number | string | null; anuladas: number | string | null
+  pedidos?: Array<{
+    pedido_id: number | string; numero_dia: number; fecha: string; estado: PedidoVendedorEstado; total_enviado: number | string | null
+    cobrado_en: string | null; parte: number | string | null; agregado_caja: number | string | null; precios_corregidos: number | string | null
+    lineas_quitadas: number | string | null; anulado_origen: string | null; anulado_motivo: string | null
+  }> | null
+}
+
+/** Cuenta del vendedor / reponedor en un rango (máx. 62 días). `desde` y `hasta` son fechas YYYY-MM-DD de La Paz. */
+export async function misCuentaVendedor(desde: string, hasta: string): Promise<MiCuentaVendedor> {
+  const { data, error } = await supabase.rpc('mi_cuenta_vendedor', { p_desde: desde, p_hasta: hasta })
+  if (error) throw toError(error)
+  const r = data as MiCuentaRow
+  return {
+    desde: r.desde, hasta: r.hasta, parte: num(r.parte), cobradas: num(r.cobradas), porCobrar: num(r.por_cobrar),
+    guardadas: num(r.guardadas), anuladas: num(r.anuladas),
+    pedidos: (r.pedidos ?? []).map((p) => ({
+      pedidoId: String(p.pedido_id), numeroDia: p.numero_dia, fecha: p.fecha, estado: p.estado, totalEnviado: num(p.total_enviado),
+      cobradoEn: p.cobrado_en, parte: numOrNull(p.parte), agregadoCaja: numOrNull(p.agregado_caja),
+      preciosCorregidos: num(p.precios_corregidos), lineasQuitadas: num(p.lineas_quitadas), anuladoOrigen: p.anulado_origen, anuladoMotivo: p.anulado_motivo,
+    })),
+  }
 }
 
 /**

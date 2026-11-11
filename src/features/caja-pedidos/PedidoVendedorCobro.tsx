@@ -10,7 +10,7 @@ import { VtdPaymentModal } from '../../components/VtdPaymentModal'
 import { createUuid } from '../../application/shared/createUuid'
 import {
   bloqueos, cambiarPresentacionCaja, construirCobro, editarCantidad, editarPrecio, lineaAgregada, lineasDesdePedido, minutosEsperando, necesitaMotivo,
-  quitarLinea, restaurarLinea, totalCents, totalLineaCents, totalVendedorCents, verificarLinea, verificarPorEscaneo, type LineaCaja,
+  agregadoCajaCents, faltaParaCobrar, parteVendedorActualCents, quitarLinea, restaurarLinea, totalCents, totalLineaCents, verificarLinea, verificarPorEscaneo, type LineaCaja,
 } from '../../domain/sales/pedidoCaja'
 import type { PresentacionPiso, ProductoPiso } from '../../domain/sales/pedidoPiso'
 import { presentacionAlAgregar } from '../../lib/presentacionAlAgregar'
@@ -24,6 +24,7 @@ import type { PedidoEnCarrito } from '../../application/shared/cajaCheckout'
 const bs = (cents: number) => (cents / 100).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const MOTIVOS_QUITAR = ['No lo lleva', 'Sin stock', 'Cambió por otro']
 const MOTIVOS_DESCUENTO = ['Producto dañado', 'Cliente frecuente', 'Autorizó gerente']
+const MOTIVOS_ANULAR = ['El cliente se fue sin pagar', 'Venta duplicada', 'Precios mal anotados, se rehace']
 const COLA_REFRESH_MS = 20_000
 const presentacionesCache = new Map<number, PresentacionPiso[]>()
 const aProducto = (p: Product): ProductoPiso => ({ id: p.id, nombre: p.nombre, sku: p.sku, precioRetail: p.precioRetail })
@@ -52,6 +53,7 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
   const [lineas, setLineas] = useState<LineaCaja[]>(initialCart?.lineas ?? [])
   const [saliendo, setSaliendo] = useState<'menu' | 'anular' | null>(null)
   const [motivoAnular, setMotivoAnular] = useState('')
+  const [anularOtro, setAnularOtro] = useState(false)
   const [accionError, setAccionError] = useState('')
   const [enAccion, setEnAccion] = useState(false)
   const [pagoError, setPagoError] = useState('')
@@ -193,7 +195,9 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
 
   if (paso === 'verificar' && pedido) {
     const minutos = minutosEsperando(pedido.enviadoEn)
-    const totalVendedor = totalVendedorCents(lineas)
+    const parteVendedor = parteVendedorActualCents(lineas)
+    const agregadoCaja = agregadoCajaCents(lineas)
+    const falta = faltaParaCobrar(lineas)
     return <Modal wide className="pedido-vendedor-modal" title={`Pedido ${pedido.numeroDia} · ${pedido.vendedor}${minutos != null ? ` · hace ${minutos} min` : ''}`} subtitle={pedido.nota ? `Nota del vendedor: ${pedido.nota}` : 'Verifica cada línea antes de cobrar'} onClose={pedirSalir} escapeToClose={saliendo === null}>
       <div className="modal-body pv-cuerpo">
         <div className="pv-progress"><div><span>REVISIÓN EN CAJA</span><strong>{verificadas} de {vivas.length} productos verificados</strong></div><progress max={Math.max(1, vivas.length)} value={verificadas} /><p>{onCartChange ? 'Los productos verificados aparecen en el carrito. Revisa cantidades y precios antes del cobro.' : 'Revisa cada producto antes de cobrar.'}</p></div>
@@ -217,7 +221,7 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
           notify={notify}
         />
         <div className="pv-lineas">
-          {lineas.map((l) => <FilaCaja key={l.key} linea={l}
+          {lineas.map((l) => <FilaCaja key={l.key} linea={l} vendedor={pedido.vendedor}
             onVerificar={() => cambiar(l.key, (x) => verificarLinea(x, !x.verificada))}
             onCantidad={(c) => cambiar(l.key, (x) => editarCantidad(x, c))}
             onPrecio={(cents) => cambiar(l.key, (x) => editarPrecio(x, cents))}
@@ -229,7 +233,15 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
         </div>
       </div>
       <footer className="modal-actions pv-pie">
-        <div className="pv-resumen"><strong>{verificadas} de {vivas.length} verificadas</strong>{totalVendedor !== total && <small>Vendedor Bs {bs(totalVendedor)} → ahora Bs {bs(total)}</small>}</div>
+        <div className="pv-resumen">
+          <strong>{verificadas} de {vivas.length} verificadas</strong>
+          <dl className="pv-montos">
+            <div><dt>Parte de {pedido.vendedor}</dt><dd>Bs {bs(parteVendedor)}</dd></div>
+            <div><dt>Agregado en caja</dt><dd>Bs {bs(agregadoCaja)}</dd></div>
+            <div className="total"><dt>Total</dt><dd>Bs {bs(total)}</dd></div>
+          </dl>
+          {falta && <small className="pv-falta" role="status">{falta}</small>}
+        </div>
         {onCartChange && <button type="button" className="secondary-button" onClick={() => setSaliendo('menu')}>Opciones del pedido</button>}
         <button type="button" className="primary-button pv-cobrar" disabled={razones.length > 0} title={razones[0]} onClick={() => { if (onCartChange) { onCartChange({ pedido, lineas }); onClose() } else { setPagoError(''); setPaso('pago') } }}>{onCartChange ? 'Continuar en carrito' : `Cobrar Bs ${bs(total)}`}</button>
       </footer>
@@ -238,12 +250,20 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
           ? <>
             <h3>¿Qué hacemos con el pedido {pedido.numeroDia}?</h3>
             <button type="button" className="primary-button" disabled={enAccion} onClick={() => void devolverACola()}>Devolver a la cola</button>
-            <button type="button" className="secondary-button" disabled={enAccion} onClick={() => { setAccionError(''); setSaliendo('anular') }}>Anular pedido</button>
+            <button type="button" className="secondary-button" disabled={enAccion} onClick={() => { setAccionError(''); setAnularOtro(false); setMotivoAnular(''); setSaliendo('anular') }}>Anular pedido</button>
             <button type="button" className="secondary-button" disabled={enAccion} onClick={() => setSaliendo(null)}>Seguir cobrando</button>
           </>
           : <>
             <h3>Anular pedido {pedido.numeroDia}</h3>
-            <label>Motivo (obligatorio)<input autoFocus type="text" maxLength={200} value={motivoAnular} onChange={(e) => setMotivoAnular(e.target.value)} placeholder="Por qué se anula" /></label>
+            <p className="pv-anular-aviso">{pedido.vendedor} la verá como «Anulada por caja» con tu motivo, y no suma a su parte.</p>
+            <div className="pv-motivo" role="group" aria-label="Motivo de la anulación">
+              <span className="pv-motivo-req">Motivo (obligatorio)</span>
+              <div className="pv-chips">
+                {MOTIVOS_ANULAR.map((m) => <button key={m} type="button" className={!anularOtro && motivoAnular === m ? 'activo' : ''} aria-pressed={!anularOtro && motivoAnular === m} onClick={() => { setAnularOtro(false); setMotivoAnular(m) }}>{m}</button>)}
+                <button type="button" className={anularOtro ? 'activo' : ''} aria-pressed={anularOtro} onClick={() => { setAnularOtro(true); if (MOTIVOS_ANULAR.includes(motivoAnular)) setMotivoAnular('') }}>Otro (escribir)</button>
+              </div>
+              {anularOtro && <input autoFocus type="text" aria-label="Otro motivo de anulación" maxLength={200} value={motivoAnular} onChange={(e) => setMotivoAnular(e.target.value)} placeholder="Por qué se anula" />}
+            </div>
             <button type="button" className="primary-button peligro" disabled={enAccion || motivoAnular.trim().length < 3} onClick={() => void anularPedido()}>Anular pedido</button>
             <button type="button" className="secondary-button" disabled={enAccion} onClick={() => setSaliendo('menu')}>Volver</button>
           </>}
@@ -331,8 +351,9 @@ function BuscadorCaja({ onVerificar, onAgregar, notify }: {
   </div>
 }
 
-function FilaCaja({ linea, onVerificar, onCantidad, onPrecio, onPresentacion, onQuitar, onRestaurar, onEliminar, onMotivoDescuento }: {
+function FilaCaja({ linea, vendedor, onVerificar, onCantidad, onPrecio, onPresentacion, onQuitar, onRestaurar, onEliminar, onMotivoDescuento }: {
   linea: LineaCaja
+  vendedor: string
   onVerificar: () => void
   onCantidad: (c: number) => void
   onPrecio: (cents: number) => void
@@ -371,11 +392,15 @@ function FilaCaja({ linea, onVerificar, onCantidad, onPrecio, onPresentacion, on
     <div className="pv-linea-nombre">
       <strong>{linea.nombre}</strong>
       <small>{linea.esPersonalizado ? `Fuera de catálogo · ${linea.unidadMedida ?? 'UNIDAD'}` : linea.presentacionNombre ?? 'Unidad'}{linea.agregada && <span className="pv-etiqueta">Agregado en caja</span>}</small>
+      {linea.precioVendedorCents != null && linea.precioListaCents != null && <dl className="pv-precios3" aria-label={`Precios de ${linea.nombre}`}>
+        <div><dt>Lista</dt><dd>Bs {bs(linea.precioListaCents)}</dd></div>
+        <div><dt>Puso {vendedor}</dt><dd>Bs {bs(linea.precioVendedorCents)}</dd></div>
+      </dl>}
       {dif && <small className="pv-dif">{dif}</small>}
       {linea.cantidadVendedor != null && linea.cantidadVendedor !== linea.cantidad && <small className="pv-dif">Vendedor: {linea.cantidadVendedor}</small>}
     </div>
     <label className="pv-campo">Cantidad<NumberField ariaLabel={`Cantidad de ${linea.nombre}`} min={0} step={1} value={linea.cantidad} onCommit={(v) => { if (v > 0 && v !== linea.cantidad) onCantidad(v) }} /></label>
-    <label className="pv-campo">Precio (Bs)<NumberField ariaLabel={`Precio de ${linea.nombre}`} min={0} step={0.01} value={linea.precioCents / 100} onCommit={(v) => { const cents = Math.round(v * 100); if (cents !== linea.precioCents) onPrecio(cents) }} /></label>
+    <label className="pv-campo">Precio final (Bs)<NumberField ariaLabel={`Precio de ${linea.nombre}`} min={0} step={0.01} value={linea.precioCents / 100} onCommit={(v) => { const cents = Math.round(v * 100); if (cents !== linea.precioCents) onPrecio(cents) }} /></label>
     <b className="pv-subtotal">Bs {bs(totalLineaCents(linea))}</b>
     <div className="pv-acciones">
       <button type="button" className={`pv-verificar ${linea.verificada ? 'activo' : ''}`} aria-pressed={linea.verificada} aria-label={`${linea.verificada ? 'Verificada' : 'Verificar'}: ${linea.nombre}`} onClick={onVerificar}><Check /> {linea.verificada ? 'Verificada' : 'Verificar'}</button>

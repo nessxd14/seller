@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import type { TransferLine } from '../../application/shared/models'
-import { cantidadDevolucion, puedeDespacharTraslado, recibibleTraslado, sucursalPermiteTraslado } from './transfers'
+import { cantidadDevolucion, puedeDespacharTraslado, puedeSolicitarTraslado, recibibleTraslado, sucursalPermiteTraslado } from './transfers'
 const base: TransferLine = { id: '1', productId: '1', name: 'QA', sku: 'QA', cantidadBase: 10, estado: 'DESPACHADA', cantidadDespachada: 6, cantidadRecibida: 0 }
 it('sólo devuelve lo recibido, respetando cero y excluyendo líneas rechazadas o movidas', () => {
   expect(cantidadDevolucion(base)).toBe(0)
@@ -15,4 +15,9 @@ it('el vendedor recibe en su sucursal y no puede despachar', () => {
   expect(puedeDespacharTraslado(session)).toBe(false)
   expect(sucursalPermiteTraslado(session, 2)).toBe(true)
   expect(sucursalPermiteTraslado(session, 1)).toBe(false)
+})
+it('el reponedor pide y recibe traslados, pero no despacha', () => {
+  const session = { user: { id: 'u', name: 'Josias', active: true, role: 'reponedor' as const, sucursalId: 2 }, expiresAt: '2999-01-01' }
+  expect(puedeSolicitarTraslado(session)).toBe(true)
+  expect(puedeDespacharTraslado(session)).toBe(false)
 })
