@@ -6,6 +6,7 @@ export const mockUsers:Array<AuthUser&{label:string}>=[
   {id:'supervisor',name:'Sergio Supervisor',role:'supervisor',active:true,label:'Supervisor'},
   {id:'cajero',name:'Natalia Cajera',role:'cajero',active:true,label:'Cajero'},
   {id:'vendedor',name:'Mario Mayorista',role:'vendedor_mayoreo',active:true,label:'Vendedor mayoreo'},
+  {id:'reponedor',name:'Josias (reponedor)',role:'reponedor',active:true,label:'Reponedor'},
   {id:'almacen',name:'Alma Almacén',role:'almacen',active:true,label:'Almacén'},
   {id:'auditor',name:'Alicia Auditoría',role:'auditor',active:true,label:'Auditor'},
   {id:'operario',name:'Oscar Operario',role:'operario',active:true,label:'Operario legado'},

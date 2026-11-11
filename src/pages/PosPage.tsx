@@ -97,8 +97,8 @@ function PosContent() {
   const [ambiguousIds, setAmbiguousIds] = useState<number[] | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const celular = useEsCelular()
-  // Un vendedor no usa el POS de escritorio: cualquier ruta que no sea un detalle (/pedidos/:id, …) lo lleva a /piso.
-  const esVendedor = session?.user.role === 'vendedor'
+  // Un vendedor o reponedor no usa el POS de escritorio: cualquier ruta que no sea un detalle (/pedidos/:id, …) lo lleva a /piso.
+  const esVendedor = session?.user.role === 'vendedor' || session?.user.role === 'reponedor'
   useEffect(() => { if (esVendedor && route.kind === 'none') navigateTo(pisoPath, { replace: true }) }, [esVendedor, route.kind])
   // Pedidos de vendedor (caja): el flujo vive acá; el carrito solo recibe el contador y un callback.
   const puedeCobrarPedidos = featureFlags.supabase && (hasPermission(session, 'cash_own') || hasPermission(session, 'cash_supervise'))

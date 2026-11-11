@@ -1,4 +1,4 @@
-export type MockRole='admin'|'gerente'|'supervisor'|'cajero'|'vendedor'|'vendedor_mayoreo'|'almacen'|'almacenero'|'auditor'|'operario'
+export type MockRole='admin'|'gerente'|'supervisor'|'cajero'|'vendedor'|'reponedor'|'vendedor_mayoreo'|'almacen'|'almacenero'|'auditor'|'operario'
 export type Permission='retail_sale'|'wholesale_sale'|'quotes_write'|'orders_view'|'orders_dispatch'|'cash_own'|'cash_supervise'|'price_override'|'cancel'|'return'|'customers_retail'|'admin'|'commissions_manage'|'floor_order'
 export interface AuthUser { id:string;name:string;role:MockRole;active:boolean;hasProfile?:boolean;email?:string;sucursalId?:number }
 export interface AuthSession { user:AuthUser;expiresAt:string }
@@ -10,6 +10,7 @@ export const permissionsByRole:Record<MockRole,readonly Permission[]>={
   supervisor:['retail_sale','wholesale_sale','quotes_write','orders_view','orders_dispatch','cash_own','cash_supervise','price_override','cancel','return','customers_retail'],
   cajero:['retail_sale','cash_own','customers_retail','floor_order'],
   vendedor:['quotes_write','orders_view','customers_retail','floor_order'],
+  reponedor:['orders_view','customers_retail','floor_order'],
   vendedor_mayoreo:['wholesale_sale','quotes_write','orders_view'],
   almacen:['orders_view','orders_dispatch'],
   almacenero:['orders_view','orders_dispatch'],

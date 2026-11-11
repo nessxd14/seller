@@ -63,6 +63,15 @@ describe('PosPage — /piso y permisos de módulo (Brief Piso B)', () => {
     expect(screen.queryByTestId('pos-sidebar')).toBeNull()
   })
 
+  it('un reponedor que abre la raíz va a /piso y nunca ve el POS ni el carrito', async () => {
+    mocks.getSession.mockResolvedValue(sessionOf('reponedor'))
+    render(<PosPage />)
+    await screen.findByTestId('piso-app')
+    expect(window.location.pathname).toBe('/piso')
+    expect(screen.queryByTestId('cart-panel')).toBeNull()
+    expect(screen.queryByTestId('pos-sidebar')).toBeNull()
+  })
+
   it('el piso se muestra sin app-shell (sin barra lateral, header ni carrito) para un cajero', async () => {
     mocks.getSession.mockResolvedValue(sessionOf('cajero'))
     navigate('/piso')

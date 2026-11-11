@@ -6,13 +6,17 @@ import { ConflictError, InactiveUserError, SessionExpiredError, TimeoutError, Un
 const session=(role:keyof typeof permissionsByRole,active=true):AuthSession=>({user:{id:role,name:role,role,active},expiresAt:'2099-01-01'})
 describe('roles y errores de aplicación',()=>{
   it('limita cajero, almacén y auditor',()=>{expect(hasPermission(session('cajero'),'orders_dispatch')).toBe(false);expect(hasPermission(session('almacen'),'orders_dispatch')).toBe(true);expect(hasPermission(session('auditor'),'quotes_write')).toBe(false)})
-  it('floor_order (pantalla Piso): admin, gerente, cajero y vendedor; nadie más',()=>{
-    for(const role of ['admin','gerente','cajero','vendedor'] as const) expect(hasPermission(session(role),'floor_order')).toBe(true)
+  it('floor_order (pantalla Piso): admin, gerente, cajero, vendedor y reponedor; nadie más',()=>{
+    for(const role of ['admin','gerente','cajero','vendedor','reponedor'] as const) expect(hasPermission(session(role),'floor_order')).toBe(true)
     for(const role of ['supervisor','vendedor_mayoreo','almacen','almacenero','auditor','operario'] as const) expect(hasPermission(session(role),'floor_order')).toBe(false)
     expect(hasPermission(session('vendedor',false),'floor_order')).toBe(false)
   })
   it('el vendedor no tiene permisos de venta de mostrador ni de caja',()=>{
     for(const permission of ['retail_sale','wholesale_sale','cash_own','cash_supervise'] as const) expect(hasPermission(session('vendedor'),permission)).toBe(false)
+  })
+  it('el reponedor solo tiene floor_order, pedidos y clientes: ni caja, ni anular, ni precio libre',()=>{
+    expect([...permissionsByRole.reponedor].sort()).toEqual(['customers_retail','floor_order','orders_view'])
+    for(const permission of ['retail_sale','cash_own','cash_supervise','price_override','cancel','return','admin'] as const) expect(hasPermission(session('reponedor'),permission)).toBe(false)
   })
   it('bloquea usuarios inactivos',()=>expect(hasPermission(session('admin',false),'admin')).toBe(false))
   it('bloquea usuarios sin perfil',()=>expect(hasPermission({...session('admin'),user:{...session('admin').user,hasProfile:false}},'admin')).toBe(false))
