@@ -84,7 +84,7 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
   const editable = activo.estado === 'ARMANDO'
   const lineaDe = (localId: string) => activo.lineas.find((l) => l.localId === localId)
   const { total, sinPrecio } = totalPedido(activo.lineas)
-  const titulo = activo.numeroDia != null ? `${palabra} ${activo.numeroDia}` : `${palabra} nueva`
+  const titulo = activo.numeroDia != null ? `${palabra} ${activo.numeroDia}` : esReponedor ? 'Venta nueva' : 'Pedido nuevo'
 
   // Lo que caja sumó encima de lo que anotó el vendedor: solo lo sabe mi_cuenta_vendedor (mejor esfuerzo; si falla, no se muestra).
   const cobradoId = activo.estado === 'COBRADO' ? activo.pedidoId : null
@@ -143,7 +143,7 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
     {hoja?.tipo === 'cantidad' && lineaDe(hoja.localId) && <HojaCantidad linea={lineaDe(hoja.localId)!} onClose={() => setHoja(null)} onCantidad={(c) => piso.cambiarCantidad(hoja.localId, c)} onPresentacion={(p) => piso.cambiarPresentacion(hoja.localId, p)} />}
     {hoja?.tipo === 'precio' && lineaDe(hoja.localId) && <HojaPrecio linea={lineaDe(hoja.localId)!} conPiso={conPiso} onClose={() => setHoja(null)} onPrecio={(p) => piso.cambiarPrecio(hoja.localId, p)} />}
     {hoja?.tipo === 'personalizado' && <HojaPersonalizado onClose={() => setHoja(null)} onAgregar={(i) => { piso.agregarPersonalizado(i); setHoja(null) }} />}
-    {hoja?.tipo === 'pedidos' && <HojaPedidos pedidos={piso.pedidos} activa={activo.clave} cargando={piso.cargando} onClose={() => setHoja(null)} onElegir={(c) => { piso.activar(c); setHoja(null) }} onNuevo={() => { piso.nuevo(); setHoja(null) }} />}
+    {hoja?.tipo === 'pedidos' && <HojaPedidos esReponedor={esReponedor} pedidos={piso.pedidos} activa={activo.clave} cargando={piso.cargando} onClose={() => setHoja(null)} onElegir={(c) => { piso.activar(c); setHoja(null) }} onNuevo={() => { piso.nuevo(); setHoja(null) }} />}
     {nav}
     {ambiguos && <AmbiguousScanPicker productIds={ambiguos} onPick={(p) => { setAmbiguos(null); void agregarSiSeVende(p) }} onClose={() => setAmbiguos(null)} />}
   </div>
@@ -259,14 +259,15 @@ function HojaPersonalizado({ onClose, onAgregar }: { onClose: () => void; onAgre
   </Hoja>
 }
 
-function HojaPedidos({ pedidos, activa, cargando, onClose, onElegir, onNuevo }: { pedidos: PedidoLocal[]; activa: string; cargando: boolean; onClose: () => void; onElegir: (clave: string) => void; onNuevo: () => void }) {
+function HojaPedidos({ esReponedor, pedidos, activa, cargando, onClose, onElegir, onNuevo }: { esReponedor: boolean; pedidos: PedidoLocal[]; activa: string; cargando: boolean; onClose: () => void; onElegir: (clave: string) => void; onNuevo: () => void }) {
+  const palabra = esReponedor ? 'Venta' : 'Pedido'
   return <Hoja titulo="Mis pedidos" onClose={onClose} acciones={<button type="button" className="piso-enviar" onClick={onNuevo}><Plus /> Nuevo pedido</button>}>
     {cargando && <p className="piso-hoja-sub" role="status">Actualizando…</p>}
     <ul className="piso-pedidos">
       {[...pedidos].reverse().map((p) => {
         const total = p.estado === 'ARMANDO' ? totalPedido(p.lineas).total : p.snapshot?.total ?? totalPedido(p.lineas).total
         return <li key={p.clave}><button type="button" aria-current={p.clave === activa} onClick={() => onElegir(p.clave)}>
-          <strong>{p.numeroDia != null ? `Pedido ${p.numeroDia}` : 'Pedido nuevo'}</strong><span className={`piso-estado ${p.estado.toLowerCase()}`}>{ETIQUETA_ESTADO[p.estado]}</span><b>Bs {bs(total)}</b>
+          <strong>{p.numeroDia != null ? `${palabra} ${p.numeroDia}` : esReponedor ? 'Venta nueva' : 'Pedido nuevo'}</strong><span className={`piso-estado ${p.estado.toLowerCase()}`}>{ETIQUETA_ESTADO[p.estado]}</span><b>Bs {bs(total)}</b>
         </button></li>
       })}
     </ul>

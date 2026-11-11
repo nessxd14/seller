@@ -60,4 +60,17 @@ describe('PedidoPisoApp — reponedor', () => {
     fireEvent.change(screen.getByLabelText('Precio unitario (Bs)'), { target: { value: '92' } })
     expect((screen.getByRole('button', { name: 'Listo' }) as HTMLButtonElement).disabled).toBe(false)
   })
+
+  it.each([['reponedor', 'Venta nueva', 'Venta 7'], ['vendedor', 'Pedido nuevo', 'Pedido 7']] as const)('%s: título y hoja de guardados dicen "%s"', (rol, nuevo, numerado) => {
+    estado.activo = pedido({ estado: 'ARMANDO', pedidoId: null, numeroDia: null, snapshot: null })
+    render(<PedidoPisoApp session={sesion(rol)} />)
+    expect(screen.getByRole('heading', { name: nuevo })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Mis pedidos/ }))
+    expect(screen.getByText(nuevo, { selector: 'strong' })).toBeTruthy()
+    cleanup()
+    estado.activo = pedido({ estado: 'ARMANDO', numeroDia: 7, snapshot: null })
+    render(<PedidoPisoApp session={sesion(rol)} />)
+    fireEvent.click(screen.getByRole('button', { name: /Mis pedidos/ }))
+    expect(screen.getByText(numerado, { selector: 'strong' })).toBeTruthy()
+  })
 })
