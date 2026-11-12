@@ -138,3 +138,36 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 .piso-venta-card { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 10px 12px; border-radius: 12px; background: #fff; color: #142033; text-align: left; border: 1px solid #dce5f1 !important; }
 .piso-venta-card > small { grid-column: 1 / -1; color: #526279; }
 .piso-venta-card > b { grid-row: 1 / span 2; grid-column: 2; align-self: center; }
+
+/* Anotar demanda ("Un cliente busca algo") */
+.piso-resultado-fila { display: flex; align-items: center; }
+.piso-resultado-fila > button:first-child { flex: 1; min-width: 0; }
+.piso-anotar-fila { flex: none; margin-right: 8px; padding: 0 12px; min-height: 44px; border-radius: 10px; background: #eaf1ff; color: var(--piso-primary); font-weight: 700; font-size: 13px; }
+.piso-anotar-vacio { display: flex; margin: 10px auto 0; align-items: center; justify-content: center; }
+.hoja-demanda .piso-hoja-cuerpo { overflow-y: auto; }
+.demanda-titulo { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--piso-muted); }
+.demanda-opciones .piso-resultados { margin-top: 6px; }
+.demanda-opciones .piso-resultados button { min-height: 44px; }
+.demanda-chip-sin-stock { grid-column: 2 !important; grid-row: 1 / span 2; align-self: center; padding: 2px 8px; border-radius: 999px; background: #fef3f2; color: var(--piso-danger); font-size: 11px !important; }
+.demanda-opcion-libre { color: var(--piso-primary) !important; font-weight: 700; display: block !important; }
+.demanda-previa { padding: 10px 12px; border-radius: 12px; background: #fff6dc; border: 1px solid #ead28c; color: #6b4a00; font-size: 14px; }
+.demanda-previa p { margin: 0; }
+.demanda-previa p + p { margin-top: 4px; font-weight: 700; }
+.demanda-fila { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: end; }
+.demanda-stepper { display: grid; grid-template-columns: 44px 1fr 44px; gap: 6px; }
+.demanda-stepper button { min-height: 44px; border-radius: 12px; background: #eaf1ff; color: var(--piso-primary); display: inline-flex; align-items: center; justify-content: center; }
+.demanda-stepper button:disabled { opacity: .45; }
+.demanda-stepper input { width: 100%; text-align: center; border: 1px solid var(--piso-line); border-radius: 12px; font-weight: 700; }
+.demanda-select { min-height: 44px; width: 100%; padding: 0 10px; border: 1px solid var(--piso-line); border-radius: 12px; background: #fff; font-size: 16px; color: var(--piso-ink); }
+.demanda-segmentado { flex-wrap: nowrap; }
+.demanda-segmentado button { flex: 1; min-height: 44px; border-radius: 12px; }
+.demanda-cliente { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; min-width: 0; }
+.demanda-cliente legend { padding: 0; margin-bottom: 8px; }
+.demanda-aviso { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; }
+.demanda-aviso input { width: 22px; height: 22px; min-height: 0; }
+.demanda-foto-boton { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border: 1px dashed #9db8f5; cursor: pointer; }
+.demanda-foto-input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+.demanda-miniatura { position: relative; width: 96px; }
+.demanda-miniatura img { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; border: 1px solid var(--piso-line); }
+.demanda-miniatura button { position: absolute; top: -8px; right: -8px; width: 44px; height: 44px; min-height: 44px; border-radius: 999px; background: transparent; display: inline-flex; align-items: center; justify-content: center; }
+.demanda-miniatura button svg { width: 26px; height: 26px; padding: 5px; border-radius: 999px; background: var(--piso-ink); color: #fff; }
