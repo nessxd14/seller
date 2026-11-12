@@ -8,6 +8,8 @@ import * as supabaseServices from './supabase/services'
 import { mockAuthSessionProvider } from './mock/MockAuthSessionProvider'
 import { supabaseAuthSessionProvider } from './supabase/SupabaseAuthSessionProvider'
 import { pedidoEdicionSupabase } from './supabase/PedidoEdicion.supabase'
+import { demandaRepository as demandaSupabase } from './supabase/DemandaRepository.supabase'
+import { demandaRepository as demandaMock } from './mock/DemandaRepository.mock'
 export { simularCambioDeAlmacen } from './mock/PedidoEdicion.mock'
 
 export const authSessionProvider = featureFlags.supabase ? supabaseAuthSessionProvider : mockAuthSessionProvider
@@ -18,7 +20,9 @@ export const orderService = featureFlags.supabase ? supabaseServices.orderServic
 export const pedidoEdicionService = featureFlags.supabase ? pedidoEdicionSupabase : mockServices.pedidoEdicionService
 export const customerService = featureFlags.supabase ? supabaseServices.customerService : mockServices.customerService
 export const productRepository = featureFlags.supabase ? supabaseServices.productRepository : mockServices.productRepository
-export const getStockByProduct = featureFlags.supabase ? supabaseServices.getStockByProduct : mockServices.getStockByProduct
+// "Un cliente busca algo": anota demanda no cubierta (RPC anotar_demanda / demanda_previa).
+export const demandaRepository = featureFlags.supabase ? demandaSupabase : demandaMock
+export const getStockByProduct =featureFlags.supabase ? supabaseServices.getStockByProduct : mockServices.getStockByProduct
 export const getStockByProductsBatch = featureFlags.supabase ? supabaseServices.getStockByProductsBatch : mockServices.getStockByProductsBatch
 export const getDisponibilidadPedido = featureFlags.supabase ? supabaseServices.getDisponibilidadPedido : mockServices.getDisponibilidadPedido
 export const getStockBySucursalBatch = featureFlags.supabase ? supabaseServices.getStockBySucursalBatch : mockServices.getStockBySucursalBatch

@@ -1,4 +1,4 @@
-import { Flashlight, FlashlightOff, ListOrdered, Plus, ScanLine, Search, Trash2 } from 'lucide-react'
+import { Flashlight, FlashlightOff, ListOrdered, MessageSquarePlus, Plus, ScanLine, Search, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
 import type { PedidoVendedorEstado } from '../../application/shared/models'
@@ -12,13 +12,14 @@ import { parteCobrada } from '../../domain/sales/cuentaVendedor'
 import { bajoElMinimo, round2, totalPedido, type LineaPiso, type PedidoLocal, type PresentacionPiso, type ProductoPiso } from '../../domain/sales/pedidoPiso'
 import { presentacionAlAgregar } from '../../lib/presentacionAlAgregar'
 import { opcionesDelLado } from '../../domain/pricing/presentacionesPorLado'
-import { listPresentations, pedidoVendedorService, productRepository } from '../../infrastructure/services'
+import { getStockBySucursalBatch, listPresentations, pedidoVendedorService, productRepository } from '../../infrastructure/services'
 import { supabaseAuthSessionProvider } from '../../infrastructure/supabase/SupabaseAuthSessionProvider'
 import type { Product } from '../../types'
 import { EscanerContinuo, useWakeLock, vibrarDesconocido } from './EscanerContinuo'
 import { usePedidosPiso } from './usePedidosPiso'
 import { TransfersPage } from '../transfers/TransfersPage'
 import { MisVentasPiso } from './MisVentasPiso'
+import { HojaDemanda } from './HojaDemanda'
 
 const bs = (v: number) => v.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const aProducto = (p: Product): ProductoPiso => ({ id: p.id, nombre: p.nombre, sku: p.sku, precioRetail: p.precioRetail })
@@ -34,6 +35,7 @@ type Hoja =
   | { tipo: 'precio'; localId: string }
   | { tipo: 'personalizado' }
   | { tipo: 'pedidos' }
+  | { tipo: 'demanda'; texto?: string; productoId?: number; productoNombre?: string }
   | null
 
 export function PedidoPisoApp({ session }: { session: AuthSession }) {
@@ -113,6 +115,7 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
     <header className="piso-header">
       <div><h1>{titulo}</h1><small>{activo.lineas.length} {activo.lineas.length === 1 ? 'línea' : 'líneas'} · {ETIQUETA_ESTADO[activo.estado]}</small></div>
       {linternaSoportada && editable && !plegado && <button type="button" className="piso-icono" aria-pressed={linterna} aria-label={linterna ? 'Apagar linterna' : 'Encender linterna'} onClick={() => setLinterna((v) => !v)}>{linterna ? <FlashlightOff /> : <Flashlight />}</button>}
+      <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'demanda' })}><MessageSquarePlus /> <span>Cliente busca algo</span></button>
       <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'pedidos' })}><ListOrdered /> <span>Mis pedidos</span>{piso.abiertos > 1 && <b>{piso.abiertos}</b>}</button>
       {!conNavegacion && <button type="button" className="piso-icono con-texto" onClick={() => setVista('traslados')}>Traslados</button>}
     </header>
@@ -125,7 +128,7 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
         <section className="piso-captura" aria-label="Agregar productos">
           <button type="button" className="piso-plegar" aria-expanded={!plegado} onClick={() => setPlegado((v) => !v)}><ScanLine /> {plegado ? 'Abrir cámara' : 'Ocultar cámara'}</button>
           <EscanerContinuo onCodigo={(c) => void alEscanear(c)} plegado={plegado} linterna={linterna} onSoporteLinterna={setLinternaSoportada} />
-          <Buscador onElegir={(p) => { void agregarSiSeVende(p) }} />
+          <Buscador onElegir={(p) => { void agregarSiSeVende(p) }} onAnotar={(texto, p) => setHoja({ tipo: 'demanda', texto, productoId: p?.id, productoNombre: p?.nombre })} />
         </section>
         <section className="piso-lineas" aria-label={`Productos de la ${palabra.toLowerCase()}`}>
           {!activo.lineas.length && <p className="piso-vacio">Escanea un código o busca un producto para empezar.</p>}
@@ -144,16 +147,19 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
     {hoja?.tipo === 'precio' && lineaDe(hoja.localId) && <HojaPrecio linea={lineaDe(hoja.localId)!} conPiso={conPiso} onClose={() => setHoja(null)} onPrecio={(p) => piso.cambiarPrecio(hoja.localId, p)} />}
     {hoja?.tipo === 'personalizado' && <HojaPersonalizado onClose={() => setHoja(null)} onAgregar={(i) => { piso.agregarPersonalizado(i); setHoja(null) }} />}
     {hoja?.tipo === 'pedidos' && <HojaPedidos esReponedor={esReponedor} pedidos={piso.pedidos} activa={activo.clave} cargando={piso.cargando} onClose={() => setHoja(null)} onElegir={(c) => { piso.activar(c); setHoja(null) }} onNuevo={() => { piso.nuevo(); setHoja(null) }} />}
+    {hoja?.tipo === 'demanda' && <HojaDemanda textoInicial={hoja.texto} productoInicial={hoja.productoId != null ? { id: hoja.productoId, nombre: hoja.productoNombre ?? '' } : undefined} onClose={() => setHoja(null)} onAnotado={(veces) => { setHoja(null); avisar(`Anotado. Van ${veces} pedidos de esto esta semana.`) }} />}
     {nav}
     {ambiguos && <AmbiguousScanPicker productIds={ambiguos} onPick={(p) => { setAmbiguos(null); void agregarSiSeVende(p) }} onClose={() => setAmbiguos(null)} />}
   </div>
 }
 
-function Buscador({ onElegir }: { onElegir: (p: Product) => void }) {
+function Buscador({ onElegir, onAnotar }: { onElegir: (p: Product) => void; onAnotar: (texto: string, producto?: Product) => void }) {
   const [texto, setTexto] = useState('')
   const [resultados, setResultados] = useState<Product[]>([])
   const [buscando, setBuscando] = useState(false)
   const [error, setError] = useState('')
+  const [sinStock, setSinStock] = useState<Set<number>>(new Set())
+  const [consulta, setConsulta] = useState('')
   useEffect(() => {
     const q = texto.trim()
     if (!q) return
@@ -161,7 +167,15 @@ function Buscador({ onElegir }: { onElegir: (p: Product) => void }) {
     const id = window.setTimeout(() => {
       setBuscando(true)
       productRepository.search({ query: q, active: true, page: { page: 1, pageSize: 20 } })
-        .then((page) => { if (!cancelado) { setResultados(page.items); setError('') } })
+        .then((page) => {
+          if (cancelado) return
+          setResultados(page.items); setConsulta(q); setError(''); setSinStock(new Set())
+          // Mejor esfuerzo: si el stock falla, simplemente no se ofrece "Anotar".
+          if (!page.items.length) return
+          getStockBySucursalBatch(page.items.map((p) => p.id))
+            .then((lote) => { if (!cancelado) setSinStock(new Set(page.items.filter((p) => { const s = lote.get(p.id); return s != null && s.tiendaVendible + s.almacenVendible === 0 }).map((p) => p.id))) })
+            .catch(() => {})
+        })
         .catch(() => { if (!cancelado) { setResultados([]); setError('No se pudo buscar. Reintenta.') } })
         .finally(() => { if (!cancelado) setBuscando(false) })
     }, 250)
@@ -171,8 +185,8 @@ function Buscador({ onElegir }: { onElegir: (p: Product) => void }) {
     <label><Search aria-hidden="true" /><input type="search" inputMode="search" enterKeyHint="search" autoComplete="off" placeholder="Buscar por nombre o código" aria-label="Buscar producto" value={texto} onChange={(e) => setTexto(e.target.value)} /></label>
     {error && <p className="piso-error" role="alert">{error}</p>}
     {texto.trim() && <ul className="piso-resultados" aria-busy={buscando}>
-      {resultados.map((p) => <li key={p.id}><button type="button" onClick={() => { onElegir(p); setTexto(''); setResultados([]) }}><strong>{p.nombre}</strong><small>{p.sku}</small><b>{p.precioRetail > 0 ? `Bs ${bs(p.precioRetail)}` : 'Sin precio'}</b></button></li>)}
-      {!buscando && !resultados.length && !error && <li className="piso-vacio">Sin resultados</li>}
+      {resultados.map((p) => <li key={p.id} className="piso-resultado-fila"><button type="button" onClick={() => { onElegir(p); setTexto(''); setResultados([]) }}><strong>{p.nombre}</strong><small>{p.sku}</small><b>{p.precioRetail > 0 ? `Bs ${bs(p.precioRetail)}` : 'Sin precio'}</b></button>{sinStock.has(p.id) && <button type="button" className="piso-anotar-fila" aria-label={`Anotar ${p.nombre}`} onClick={() => onAnotar(p.nombre, p)}>Anotar</button>}</li>)}
+      {!buscando && consulta === texto.trim() && !resultados.length && !error && <li className="piso-vacio">Sin resultados<button type="button" className="piso-secundario piso-anotar-vacio" onClick={() => onAnotar(texto.trim())}>Anotar que lo buscaron</button></li>}
     </ul>}
   </div>
 }
