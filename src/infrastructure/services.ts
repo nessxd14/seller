@@ -10,6 +10,8 @@ import { supabaseAuthSessionProvider } from './supabase/SupabaseAuthSessionProvi
 import { pedidoEdicionSupabase } from './supabase/PedidoEdicion.supabase'
 import { demandaRepository as demandaSupabase } from './supabase/DemandaRepository.supabase'
 import { demandaRepository as demandaMock } from './mock/DemandaRepository.mock'
+import { pisoRepository as pisoSupabase } from './supabase/PisoRepository.supabase'
+import { pisoRepository as pisoMock } from './mock/PisoRepository.mock'
 export { simularCambioDeAlmacen } from './mock/PedidoEdicion.mock'
 
 export const authSessionProvider = featureFlags.supabase ? supabaseAuthSessionProvider : mockAuthSessionProvider
@@ -22,6 +24,8 @@ export const customerService = featureFlags.supabase ? supabaseServices.customer
 export const productRepository = featureFlags.supabase ? supabaseServices.productRepository : mockServices.productRepository
 // "Un cliente busca algo": anota demanda no cubierta (RPC anotar_demanda / demanda_previa).
 export const demandaRepository = featureFlags.supabase ? demandaSupabase : demandaMock
+// Piso: turno, "Ventas de caja · Es mía" y "Venta no realizada" (RPC piso_turno_*, reclamar_venta, registrar_venta_no_realizada).
+export const pisoRepository = featureFlags.supabase ? pisoSupabase : pisoMock
 export const getStockByProduct =featureFlags.supabase ? supabaseServices.getStockByProduct : mockServices.getStockByProduct
 export const getStockByProductsBatch = featureFlags.supabase ? supabaseServices.getStockByProductsBatch : mockServices.getStockByProductsBatch
 export const getDisponibilidadPedido = featureFlags.supabase ? supabaseServices.getDisponibilidadPedido : mockServices.getDisponibilidadPedido

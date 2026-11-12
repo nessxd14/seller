@@ -1,7 +1,8 @@
 import { Paperclip, Printer, ReceiptText } from 'lucide-react'
-import { useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import type { TurnoMovimiento, TurnoTicket } from '../../application/shared/models'
 import { InfoHint } from '../../components/InfoHint'
+import { pisoRepository } from '../../infrastructure/services'
 
 const bs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const hora = (iso: string) => new Date(iso).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -65,6 +66,29 @@ export function ActividadTurno({ movimientos, tickets, puedeMoverArqueo, hints, 
   const qrPendiente = new Set(tickets.filter((t) => t.metodos.some((p) => p.estadoVerificacion === 'PENDIENTE')).map((t) => t.ventaId))
   const contadores = FILTROS.map((f) => ({ ...f, total: movimientos.filter(f.incluye).length })).filter((f) => f.id === 'TODOS' || f.total > 0 || f.id === filtro)
 
+  // De quién es cada venta visible (reclamo de piso o asignada por caja): un solo pedido por página.
+  const [duenos, setDuenos] = useState<ReadonlyMap<string, string>>(new Map())
+  const consultadas = useRef<{ fuente: TurnoMovimiento[]; ids: Set<string> }>({ fuente: movimientos, ids: new Set() })
+  const clavesVentas = visibles.filter((m) => m.tipo === 'VENTA' && m.ventaId).map((m) => m.ventaId as string).join(',')
+  useEffect(() => {
+    // Si el turno se recargó (p. ej. caja cambió un vendedor), se vuelve a preguntar.
+    if (consultadas.current.fuente !== movimientos) consultadas.current = { fuente: movimientos, ids: new Set() }
+    const nuevas = (clavesVentas ? clavesVentas.split(',') : []).filter((id) => Number.isFinite(Number(id)) && !consultadas.current.ids.has(id))
+    if (!nuevas.length) return
+    nuevas.forEach((id) => consultadas.current.ids.add(id))
+    void (async () => {
+      try {
+        const filas = await pisoRepository.cajaReclamos(nuevas.map(Number))
+        setDuenos((prev) => {
+          const siguiente = new Map(prev)
+          nuevas.forEach((id) => siguiente.delete(id))
+          filas.forEach((f) => siguiente.set(String(f.ventaId), f.nombre))
+          return siguiente
+        })
+      } catch { /* mejor esfuerzo: sin el dato, simplemente no se muestra el chip */ }
+    })()
+  }, [clavesVentas, movimientos])
+
   const elegir = (id: FiltroId) => { setFiltro(id); setLimite(PAGINA) }
   const alternar = (id: string) => setAbiertos((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
   const teclado = (id: string) => (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternar(id) } }
@@ -89,6 +113,7 @@ export function ActividadTurno({ movimientos, tickets, puedeMoverArqueo, hints, 
           <span className={`actividad-tipo tono-${tipo.tono}`}>{tipo.label}</span>
           <div className="actividad-detalle">
             <span className="actividad-texto" role="button" tabIndex={0} aria-expanded={abierto} title={abierto ? undefined : [titulo, extra].filter(Boolean).join(' · ')} onClick={() => alternar(m.id)} onKeyDown={teclado(m.id)}><strong>{titulo}</strong>{extra && <span> · {extra}</span>}</span>
+            {m.ventaId && duenos.get(m.ventaId) && <span className="venta-dueno-chip">Es de {duenos.get(m.ventaId)}</span>}
             {m.clienteAcreedor && <small className="credit-client-tag">Cliente con saldo a favor</small>}
             {m.ventaId && qrPendiente.has(m.ventaId) && <span className="qr-pendiente-chip">QR pendiente</span>}
             {m.fueraDeArqueo && <span className="fuera-arqueo-badge">Fuera del arqueo<InfoHint title={hints.fueraArqueo.title} text={hints.fueraArqueo.text} /></span>}

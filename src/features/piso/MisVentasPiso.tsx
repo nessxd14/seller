@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { MiCuentaPedido, MiCuentaVendedor } from '../../application/shared/models'
+import type { MiCuentaPedido, MiCuentaReclamo, MiCuentaVendedor } from '../../application/shared/models'
 import { hoyLocal } from '../../domain/common/fechas'
 import { etiquetaEstadoVenta, rangoPeriodo, rpcNoDisponible, type PeriodoCuenta } from '../../domain/sales/cuentaVendedor'
 import { pedidoVendedorService } from '../../infrastructure/services'
@@ -47,13 +47,20 @@ export function MisVentasPiso({ abribles, onAbrir }: Props) {
           <li><b>{cuenta.cobradas}</b> cobradas</li>
           <li><b>{cuenta.porCobrar}</b> por cobrar</li>
           <li><b>{cuenta.guardadas}</b> guardadas</li>
+          <li><b>{cuenta.reclamadas ?? 0}</b> reclamadas</li>
         </ul>
         <small>Cuenta solo lo que tú anotaste, al precio que cobró caja. Lo que caja agregó no suma para ti.</small>
       </div>
-      {!cuenta.pedidos.length && <p className="piso-vacio">Sin ventas en este periodo</p>}
+      {!cuenta.pedidos.length && !(cuenta.reclamos ?? []).length && <p className="piso-vacio">Sin ventas en este periodo</p>}
       <ul className="piso-pedidos piso-ventas-lista">
         {cuenta.pedidos.map((p) => <li key={p.pedidoId}><TarjetaVenta venta={p} abrible={p.fecha === hoy && abribles.has(p.pedidoId)} onAbrir={() => onAbrir(p.pedidoId)} /></li>)}
       </ul>
+      {(cuenta.reclamos ?? []).length > 0 && <>
+        <h2 className="piso-subtitulo">Ventas de caja que son tuyas</h2>
+        <ul className="piso-pedidos piso-ventas-lista">
+          {cuenta.reclamos.map((r) => <li key={r.ventaId}><TarjetaReclamo reclamo={r} /></li>)}
+        </ul>
+      </>}
     </>}
   </section>
 }
@@ -70,4 +77,16 @@ function TarjetaVenta({ venta, abrible, onAbrir }: { venta: MiCuentaPedido; abri
   return abrible
     ? <button type="button" className="piso-venta-card" onClick={onAbrir}>{cuerpo}</button>
     : <article className="piso-venta-card">{cuerpo}</article>
+}
+
+const horaCobro = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit', hour12: false }) : '')
+
+function TarjetaReclamo({ reclamo }: { reclamo: MiCuentaReclamo }) {
+  const etiqueta = reclamo.origen === 'CAJA' ? 'Asignada por caja' : `Reclamada en caja${reclamo.completadoEn ? ` · cobrada ${horaCobro(reclamo.completadoEn)}` : ''}`
+  return <article className="piso-venta-card">
+    <strong>{reclamo.numero}</strong>
+    <span className="piso-estado cobrado">{etiqueta}</span>
+    <b>Bs {bs(reclamo.total)}</b>
+    {reclamo.producto && <small>{reclamo.producto}{reclamo.nProductos > 1 ? ` y ${reclamo.nProductos - 1} más` : ''}</small>}
+  </article>
 }

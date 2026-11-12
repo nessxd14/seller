@@ -10,7 +10,7 @@ import { MisVentasPiso } from '../MisVentasPiso'
 
 const base = { totalEnviado: 50, cobradoEn: null, parte: null, agregadoCaja: null, preciosCorregidos: 0, lineasQuitadas: 0, anuladoOrigen: null, anuladoMotivo: null, fecha: '2026-11-11' }
 const cuenta: MiCuentaVendedor = {
-  desde: '2026-11-11', hasta: '2026-11-11', parte: 120, cobradas: 1, porCobrar: 1, guardadas: 1, anuladas: 2,
+  desde: '2026-11-11', hasta: '2026-11-11', parte: 120, cobradas: 1, porCobrar: 1, guardadas: 1, anuladas: 2, reclamadas: 0, reclamadoTotal: 0, reclamos: [],
   pedidos: [
     { ...base, pedidoId: '1', numeroDia: 14, estado: 'COBRADO', parte: 120, agregadoCaja: 30, preciosCorregidos: 2 },
     { ...base, pedidoId: '2', numeroDia: 13, estado: 'ENVIADO' },
@@ -63,5 +63,24 @@ describe('MisVentasPiso', () => {
     svc.misCuentaVendedor.mockRejectedValue(Object.assign(new Error('function public.mi_cuenta_vendedor(date, date) does not exist'), { code: '42883' }))
     render(<MisVentasPiso abribles={new Set()} onAbrir={vi.fn()} />)
     expect((await screen.findByRole('alert')).textContent).toBe('Todavía no está disponible')
+  })
+
+  it('lista las ventas reclamadas (de caja) con su total, cuenta reclamadas y no muestra nombres de cajero', async () => {
+    svc.misCuentaVendedor.mockResolvedValue({
+      ...cuenta, pedidos: [], reclamadas: 2, reclamadoTotal: 80,
+      reclamos: [
+        { ventaId: 10, numero: 'VTA-10', total: 50, estado: 'COMPLETADA', completadoEn: '2026-11-11T15:20:00Z', origen: 'RECLAMO', producto: 'Resma', nProductos: 2 },
+        { ventaId: 11, numero: 'VTA-11', total: 30, estado: 'COMPLETADA', completadoEn: '2026-11-11T16:00:00Z', origen: 'CAJA', producto: 'Lápiz', nProductos: 1 },
+      ],
+    } satisfies MiCuentaVendedor)
+    const { container } = render(<MisVentasPiso abribles={new Set()} onAbrir={vi.fn()} />)
+    await screen.findByText('Ventas de caja que son tuyas')
+    expect(screen.getByText('reclamadas').textContent).toBe('2 reclamadas')
+    expect(screen.getByText(/^Reclamada en caja · cobrada \d{2}:\d{2}$/)).toBeTruthy()
+    expect(screen.getByText('Asignada por caja')).toBeTruthy()
+    expect(screen.getByText('Bs 50,00')).toBeTruthy()
+    expect(screen.getByText('Bs 30,00')).toBeTruthy()
+    expect(screen.queryByText('Sin ventas en este periodo')).toBeNull()
+    expect(container.textContent).not.toMatch(/cajer/i)
   })
 })

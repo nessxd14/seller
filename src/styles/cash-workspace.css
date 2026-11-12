@@ -547,3 +547,11 @@ body:has(.remote-cash-app) { min-width:0; overflow:auto; margin:0; background:#f
 .anulacion-resueltas small, .mis-anulaciones small { color:var(--cash-muted); }
 .mis-anulaciones { padding:16px 18px; }
 .anulacion-vacia { color:var(--cash-muted); font-size:13px; }
+
+/* Vendedor de la venta (piso): chip en Actividad y fila en el detalle */
+.actividad-detalle .venta-dueno-chip { flex-shrink:0; white-space:nowrap; padding:3px 8px; border-radius:10px; background:#e8f1ff; color:#1d4fa8; font-size:11px; font-weight:700; }
+.venta-vendedor { margin:12px 0; display:grid; gap:8px; }
+.venta-vendedor p { margin:0; }
+.venta-vendedor-form { display:grid; gap:10px; }
+.venta-vendedor-form label { display:grid; gap:4px; font-size:13px; font-weight:600; }
+.venta-vendedor-acciones { display:flex; gap:8px; justify-content:flex-end; }

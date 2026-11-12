@@ -116,8 +116,8 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 @media (min-width: 641px) { .piso-app { box-shadow: 0 0 0 1px var(--piso-line); } }
 
 /* Reponedor / vendedor: navegación inferior y Mis ventas */
-.piso-nav { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); background: #fff; border-top: 1px solid #dce5f1; padding-bottom: env(safe-area-inset-bottom); }
-.piso-nav button { background: transparent; color: #526279; font-weight: 700; font-size: 13px; min-height: 56px; border: 0; cursor: pointer; font: inherit; }
+.piso-nav { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border-top: 1px solid #dce5f1; padding-bottom: env(safe-area-inset-bottom); }
+.piso-nav button { background: transparent; color: #526279; font-weight: 700; font-size: 12px; padding: 0 2px; min-height: 56px; border: 0; cursor: pointer; font: inherit; }
 .piso-nav button.activo { color: #2563eb; box-shadow: inset 0 3px 0 #2563eb; }
 .piso-app.con-nav { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
 .piso-app.con-nav .piso-pie { bottom: calc(56px + env(safe-area-inset-bottom)); padding-bottom: 10px; }
@@ -171,3 +171,28 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 .demanda-miniatura img { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; border: 1px solid var(--piso-line); }
 .demanda-miniatura button { position: absolute; top: -8px; right: -8px; width: 44px; height: 44px; min-height: 44px; border-radius: 999px; background: transparent; display: inline-flex; align-items: center; justify-content: center; }
 .demanda-miniatura button svg { width: 26px; height: 26px; padding: 5px; border-radius: 999px; background: var(--piso-ink); color: #fff; }
+
+/* Inicio, Ventas de caja y Venta no realizada */
+.piso-inicio, .piso-caja { display: grid; gap: 12px; padding: 12px 14px; }
+.piso-turno-card { display: grid; gap: 10px; padding: 14px; background: #fff; border: 1px solid #dce5f1; border-radius: 16px; }
+.piso-turno-card h2 { margin: 0; font-size: 18px; }
+.piso-turno-chip { margin: 0; display: flex; align-items: center; gap: 8px; color: var(--piso-muted); }
+.piso-acciones-inicio { display: grid; gap: 10px; }
+.piso-acciones-inicio .piso-enviar, .piso-acciones-inicio .piso-secundario { min-height: 52px; width: 100%; }
+.piso-acciones-inicio button:disabled { opacity: .45; cursor: not-allowed; }
+.piso-acciones-pequenas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.piso-acciones-pequenas .piso-secundario { min-height: 44px; }
+.piso-insignia { min-width: 24px; padding: 0 8px; border-radius: 999px; background: #fff; color: var(--piso-primary); font-size: 14px; }
+.piso-texto-boton { justify-self: center; min-height: 44px; padding: 0 12px; background: transparent; color: var(--piso-danger); font-weight: 700; }
+.piso-subtitulo { margin: 8px 0 0; font-size: 14px; color: var(--piso-muted); }
+.piso-volver { min-height: 44px; justify-self: start; }
+.piso-caja-lista .piso-venta-card { gap: 8px 10px; }
+.piso-caja-lista .piso-venta-card > button, .piso-caja-lista .piso-venta-card > .piso-error { grid-column: 1 / -1; }
+.piso-caja-lista .piso-venta-card.tuya { border-color: #8fd3ae !important; }
+.no-realizada-linea { position: relative; border: 1px solid var(--piso-line); border-radius: 14px; margin: 0; padding: 12px; display: grid; gap: 10px; min-width: 0; }
+.no-realizada-linea legend { padding: 0 6px; }
+.no-realizada-quitar { position: absolute; top: -8px; right: 4px; width: 44px; height: 44px; min-height: 44px; background: transparent; display: inline-flex; align-items: center; justify-content: center; }
+.no-realizada-agregar { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.no-realizada-aviso { display: grid; gap: 8px; }
+.no-realizada-aviso-titulo { min-height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-radius: 12px; background: #eaf1ff; color: var(--piso-primary); font-weight: 700; text-align: left; }
+.no-realizada-aviso-titulo:disabled { opacity: .45; cursor: not-allowed; }

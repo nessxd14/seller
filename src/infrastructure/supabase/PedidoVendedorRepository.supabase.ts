@@ -84,6 +84,11 @@ interface MiCuentaRow {
     cobrado_en: string | null; parte: number | string | null; agregado_caja: number | string | null; precios_corregidos: number | string | null
     lineas_quitadas: number | string | null; anulado_origen: string | null; anulado_motivo: string | null
   }> | null
+  reclamadas?: number | string | null; reclamado_total?: number | string | null
+  reclamos?: Array<{
+    venta_id: number | string; numero: string; total: number | string | null; estado: string; completado_en: string | null
+    origen: 'RECLAMO' | 'CAJA'; producto: string | null; n_productos: number | string | null
+  }> | null
 }
 
 /** Cuenta del vendedor / reponedor en un rango (máx. 62 días). `desde` y `hasta` son fechas YYYY-MM-DD de La Paz. */
@@ -98,6 +103,11 @@ export async function misCuentaVendedor(desde: string, hasta: string): Promise<M
       pedidoId: String(p.pedido_id), numeroDia: p.numero_dia, fecha: p.fecha, estado: p.estado, totalEnviado: num(p.total_enviado),
       cobradoEn: p.cobrado_en, parte: numOrNull(p.parte), agregadoCaja: numOrNull(p.agregado_caja),
       preciosCorregidos: num(p.precios_corregidos), lineasQuitadas: num(p.lineas_quitadas), anuladoOrigen: p.anulado_origen, anuladoMotivo: p.anulado_motivo,
+    })),
+    reclamadas: num(r.reclamadas), reclamadoTotal: num(r.reclamado_total),
+    reclamos: (r.reclamos ?? []).map((x) => ({
+      ventaId: Number(x.venta_id), numero: x.numero, total: num(x.total), estado: x.estado, completadoEn: x.completado_en,
+      origen: x.origen, producto: x.producto, nProductos: num(x.n_productos),
     })),
   }
 }
