@@ -11,6 +11,8 @@ import { SalesChannelTabs } from '../components/SalesChannelTabs'
 import { QuotationsPage } from '../features/quotations/QuotationsPage'
 import { OrdersPage } from '../features/orders/OrdersPage'
 import { CustomersPage } from '../features/customers/CustomersPage'
+import { PagosPage, type ClientePagos } from '../features/pagos/PagosPage'
+import { puedeVerPagos } from '../domain/pagos/historialPagos'
 import { CashPage } from '../features/cash/CashPage'
 import { SuspendedSalesPage, type SuspendedSale } from '../features/suspended-sales/SuspendedSalesPage'
 import { removeSuspendedSale } from '../infrastructure/local/suspendedSales'
@@ -70,6 +72,8 @@ const PERMISOS_MODULO: Record<string, (s: AuthSession | null) => boolean> = {
   // corporativo/mayorista) — mismo permiso que la venta de mostrador.
   'Venta Directa': (s) => hasPermission(s, 'retail_sale'),
   'Configuración': (s) => hasPermission(s, 'admin'),
+  // Solo lectura. El reponedor y el vendedor de piso viven en /piso y nunca llegan acá.
+  'Pagos': (s) => !!s?.user.active && puedeVerPagos(s.user.role),
 }
 
 function PosContent() {
@@ -94,6 +98,8 @@ function PosContent() {
   const [pendingDraft, setPendingDraft] = useState<QuoteDraft | null>(null)
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransferRequest | null>(null)
   const [pagoModalOpen, setPagoModalOpen] = useState(false)
+  // Cliente cuyo historial de pagos se abre al entrar en Pagos (desde la ficha del cliente).
+  const [pagosCliente, setPagosCliente] = useState<ClientePagos | null>(null)
   const [ambiguousIds, setAmbiguousIds] = useState<number[] | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const celular = useEsCelular()
@@ -336,8 +342,9 @@ function PosContent() {
     if (featureFlags.supabase && haySesion) void catalogoLocal.refrescarSiCambio()
   }, [operationId, haySesion])
   // Módulo encendido en esta fase (mismo criterio de siempre; extraído para que el celular arme su menú).
-  const moduloHabilitado = (name: string) => name === 'Venta' || name === 'Suspendidas' || name === 'Borradores' || (name === 'Cotizaciones' && featureFlags.quotations) || (name === 'Pedidos' && featureFlags.orders) || (name === 'Venta Directa' && featureFlags.ventaDirectaAlmacen) || name === 'Clientes' || (name === 'Caja' && featureFlags.cash) || name === 'Productos' || name === 'Inventario' || name === 'Traslados' || name === 'Reportes' || (name === 'Comisiones' && featureFlags.comisiones) || name === 'Configuración'
+  const moduloHabilitado = (name: string) => name === 'Venta' || name === 'Suspendidas' || name === 'Borradores' || (name === 'Cotizaciones' && featureFlags.quotations) || (name === 'Pedidos' && featureFlags.orders) || (name === 'Venta Directa' && featureFlags.ventaDirectaAlmacen) || name === 'Clientes' || name === 'Pagos' || (name === 'Caja' && featureFlags.cash) || name === 'Productos' || name === 'Inventario' || name === 'Traslados' || name === 'Reportes' || (name === 'Comisiones' && featureFlags.comisiones) || name === 'Configuración'
   const navigate = (name: string) => {
+    setPagosCliente(null)
     const enabled = moduloHabilitado(name)
     const permission = (PERMISOS_MODULO[name] ?? (() => true))(session)
     if (enabled && permission) setActiveModule(name)
@@ -356,7 +363,7 @@ function PosContent() {
     setActiveModule('Venta')
   }
   const readOnly=session?.user.role==='auditor'||session?.user.role==='operario'
-  const page = activeModule === 'Cotizaciones' ? <QuotationsPage notify={notify} readOnly={readOnly} onOrderCreated={() => setActiveModule('Pedidos')} initialDraft={pendingDraft} onInitialDraftConsumed={() => setPendingDraft(null)} /> : activeModule === 'Pedidos' ? <OrdersPage notify={notify} readOnly={readOnly} canDispatch={hasPermission(session,'orders_dispatch')} /> : activeModule === 'Venta Directa' ? <VentaDirectaPage notify={notify} /> : activeModule === 'Borradores' ? <BorradoresPage notify={notify} onRetomado={() => setActiveModule('Venta')} /> : activeModule === 'Clientes' ? <CustomersPage notify={notify} /> : activeModule === 'Caja' ? <CashPage notify={notify} canCloseCash={!featureFlags.supabase || hasPermission(session, 'admin')} /> : activeModule === 'Suspendidas' ? <SuspendedSalesPage hasCurrentCart={Boolean(cart.length)} onRestore={restoreSale} onOpenCotizaciones={() => setActiveModule('Cotizaciones')} notify={notify} /> : activeModule === 'Productos' ? <ProductsPage notify={notify} /> : activeModule === 'Inventario' ? <InventoryPage notify={notify} /> : activeModule === 'Traslados' ? <TransfersPage session={session} notify={notify} initialRequest={pendingTransfer} onInitialRequestConsumed={() => setPendingTransfer(null)} onRegistrarDevolucion={() => setActiveModule('Venta')} /> : activeModule === 'Reportes' ? <ReportsPage notify={notify} /> : activeModule === 'Comisiones' ? <ComisionesPage notify={notify} vendedorEmail={session?.user.email ?? ''} esGerente={!featureFlags.supabase || hasPermission(session, 'commissions_manage')} /> : activeModule === 'Configuración' ? <ConfigPage notify={notify} canEdit={!featureFlags.supabase || hasPermission(session, 'admin')} /> : <main className="catalog"><div className="catalog-title"><div><span className="eyebrow">PUNTO DE VENTA</span><h1>¿Qué vamos a vender hoy?</h1></div><p>{capitalize(new Date().toLocaleDateString('es-BO', { weekday: 'long', day: 'numeric', month: 'long' }))}</p></div><SalesChannelTabs /><ProductCatalog search={search} category={category} setCategory={setCategory} /></main>
+  const page = activeModule === 'Cotizaciones' ? <QuotationsPage notify={notify} readOnly={readOnly} onOrderCreated={() => setActiveModule('Pedidos')} initialDraft={pendingDraft} onInitialDraftConsumed={() => setPendingDraft(null)} /> : activeModule === 'Pedidos' ? <OrdersPage notify={notify} readOnly={readOnly} canDispatch={hasPermission(session,'orders_dispatch')} /> : activeModule === 'Venta Directa' ? <VentaDirectaPage notify={notify} /> : activeModule === 'Borradores' ? <BorradoresPage notify={notify} onRetomado={() => setActiveModule('Venta')} /> : activeModule === 'Clientes' ? <CustomersPage notify={notify} onVerHistorialPagos={puedeVerPagos(session?.user.role) ? (c) => { setPagosCliente({ id: Number(c.id), nombre: c.name }); setActiveModule('Pagos') } : undefined} /> : activeModule === 'Pagos' ? <PagosPage clienteInicial={pagosCliente} /> : activeModule === 'Caja' ? <CashPage notify={notify} canCloseCash={!featureFlags.supabase || hasPermission(session, 'admin')} /> : activeModule === 'Suspendidas' ? <SuspendedSalesPage hasCurrentCart={Boolean(cart.length)} onRestore={restoreSale} onOpenCotizaciones={() => setActiveModule('Cotizaciones')} notify={notify} /> : activeModule === 'Productos' ? <ProductsPage notify={notify} /> : activeModule === 'Inventario' ? <InventoryPage notify={notify} /> : activeModule === 'Traslados' ? <TransfersPage session={session} notify={notify} initialRequest={pendingTransfer} onInitialRequestConsumed={() => setPendingTransfer(null)} onRegistrarDevolucion={() => setActiveModule('Venta')} /> : activeModule === 'Reportes' ? <ReportsPage notify={notify} /> : activeModule === 'Comisiones' ? <ComisionesPage notify={notify} vendedorEmail={session?.user.email ?? ''} esGerente={!featureFlags.supabase || hasPermission(session, 'commissions_manage')} /> : activeModule === 'Configuración' ? <ConfigPage notify={notify} canEdit={!featureFlags.supabase || hasPermission(session, 'admin')} /> : <main className="catalog"><div className="catalog-title"><div><span className="eyebrow">PUNTO DE VENTA</span><h1>¿Qué vamos a vender hoy?</h1></div><p>{capitalize(new Date().toLocaleDateString('es-BO', { weekday: 'long', day: 'numeric', month: 'long' }))}</p></div><SalesChannelTabs /><ProductCatalog search={search} category={category} setCategory={setCategory} /></main>
   const blockKind = !session || session.user.hasProfile === false
     ? 'unauthorized'
     : !session.user.active

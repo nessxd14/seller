@@ -1,4 +1,4 @@
-import { Building2, Mail, MapPin, Pencil, Phone, Plus, Trash2, UserRound } from 'lucide-react'
+import { Building2, Mail, MapPin, Pencil, Phone, Plus, Receipt, Trash2, UserRound } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { CustomerRecord } from '../../application/shared/models'
 import { authSessionProvider, customerService } from '../../infrastructure/services'
@@ -69,7 +69,7 @@ function SaldoFooter({ customerId, saldos }: { customerId: string; saldos: { map
   return <><span className={debe ? 'saldo-deudor' : 'saldo-acreedor'}>{debe ? 'Debe' : 'Saldo a favor'}</span><strong>{formatMoney(money(Math.round(Math.abs(s.saldoConfirmado) * 100)))}</strong></>
 }
 
-export function CustomersPage({ notify }: { notify: (message: string) => void }) {
+export function CustomersPage({ notify, onVerHistorialPagos }: { notify: (message: string) => void; onVerHistorialPagos?: (customer: CustomerRecord) => void }) {
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
@@ -153,7 +153,7 @@ export function CustomersPage({ notify }: { notify: (message: string) => void })
         <div className="customer-metrics">{featureFlags.supabase ? selected.type === 'retail' ? <div><span>Seguimiento</span><strong>Solo en Seller</strong></div> : <>{selectedSaldo?.limiteCredito != null && <div><span>Límite de crédito</span><strong>{formatMoney(money(Math.round(selectedSaldo.limiteCredito * 100)))}</strong></div>}<div><span>{selectedSaldo && selectedSaldo.saldoConfirmado < 0 ? 'Saldo a favor' : 'Saldo pendiente'}</span><strong>{!saldos ? 'Consultando…' : !saldos.mapa ? 'No disponible' : !selectedSaldo ? 'Sin cuenta en Hermes' : formatMoney(money(Math.round(Math.abs(selectedSaldo.saldoConfirmado) * 100)))}</strong></div></> : <><div><span>Límite de crédito</span><strong>{formatMoney(money(selected.creditLimitCents ?? 0))}</strong></div><div><span>{(selected.pendingBalanceCents ?? 0) < 0 ? 'Saldo a favor' : 'Saldo pendiente'}</span><strong>{formatMoney(money(Math.abs(selected.pendingBalanceCents ?? 0)))}</strong></div></>}</div>
         {featureFlags.supabase && selected.type !== 'retail' && <SaldoBadge clienteId={selected.id} />}
       </div>
-      <footer className="modal-actions"><button className="secondary-button document-cancel" onClick={() => setSelected(null)}>Cerrar</button>{featureFlags.supabase && <button className="danger-button" onClick={() => void openDeleteCheck(selected)}><Trash2 /> Eliminar</button>}<button className="primary-button" onClick={() => { setEditingIsNew(false); setEditing(selected); setSelected(null) }}><Pencil /> Editar cliente</button></footer>
+      <footer className="modal-actions"><button className="secondary-button document-cancel" onClick={() => setSelected(null)}>Cerrar</button>{onVerHistorialPagos && selected.type !== 'retail' && <button className="secondary-button" onClick={() => onVerHistorialPagos(selected)}><Receipt /> Historial de pagos</button>}{featureFlags.supabase && <button className="danger-button" onClick={() => void openDeleteCheck(selected)}><Trash2 /> Eliminar</button>}<button className="primary-button" onClick={() => { setEditingIsNew(false); setEditing(selected); setSelected(null) }}><Pencil /> Editar cliente</button></footer>
     </Modal>}
     {editing && <CustomerEditor customer={editing} isNew={editingIsNew} onClose={() => setEditing(null)} onSave={save} onGoToCustomer={(c) => { setEditing(null); setSelected(c) }} />}
     {deleteModalOpen && selected && <DeleteClienteModal customerName={selected.name} decision={deleteDecision} onClose={() => setDeleteModalOpen(false)} onConfirm={confirmDeleteCustomer} />}

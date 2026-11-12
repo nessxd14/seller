@@ -1,7 +1,7 @@
 import type { MockRole } from '../application/auth/AuthSessionProvider'
 
 /** Los mismos módulos del menú lateral de escritorio, en el mismo orden. */
-export const MODULOS = ['Venta', 'Suspendidas', 'Borradores', 'Cotizaciones', 'Pedidos', 'Venta Directa', 'Clientes', 'Productos', 'Inventario', 'Traslados', 'Caja', 'Reportes', 'Comisiones', 'Configuración'] as const
+export const MODULOS = ['Venta', 'Suspendidas', 'Borradores', 'Cotizaciones', 'Pedidos', 'Venta Directa', 'Clientes', 'Pagos', 'Productos', 'Inventario', 'Traslados', 'Caja', 'Reportes', 'Comisiones', 'Configuración'] as const
 export type Modulo = typeof MODULOS[number]
 
 /** Cuántos módulos van fijos en la barra inferior; el resto queda en "Más". */
@@ -16,7 +16,7 @@ const PRIORIDAD: Partial<Record<MockRole, Modulo[]>> = {
   // El reponedor no llega acá: trabaja solo en /piso (PosPage lo redirige, igual que al vendedor).
   almacen: ['Traslados', 'Pedidos', 'Inventario', 'Productos'],
   almacenero: ['Traslados', 'Pedidos', 'Inventario', 'Productos'],
-  vendedor_mayoreo: ['Cotizaciones', 'Pedidos', 'Clientes', 'Productos'],
+  vendedor_mayoreo: ['Cotizaciones', 'Pedidos', 'Clientes', 'Pagos'],
 }
 // Relleno para roles sin prioridad propia, o cuando el rol no puede abrir alguno de su lista.
 const RELLENO: Modulo[] = ['Venta', 'Caja', 'Pedidos', 'Venta Directa', 'Traslados', 'Cotizaciones', 'Clientes', 'Productos', 'Inventario', 'Reportes']

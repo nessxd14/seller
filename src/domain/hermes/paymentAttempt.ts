@@ -2,6 +2,9 @@ import type { CustomerRecord } from '../../application/shared/models'
 import type { PosPaymentMethodExt } from '../../infrastructure/supabase/mappers'
 import type { CobroDestino } from '../../components/useCobroDestino'
 
+/** Pestaña con la que se registró el pago (`hermes.pago.modo_imputacion`). */
+export type ModoPago = 'PEDIDOS' | 'CUENTA' | 'ANTICIPO'
+
 export interface PaymentAttempt {
   operationId: string
   customer: CustomerRecord
@@ -15,6 +18,8 @@ export interface PaymentAttempt {
   referencia: string
   anticipoMotivo?: string | null
   anticipoDetalle?: string | null
+  /** Ausente en el modo simple (cliente retail). Entra en la huella de idempotencia. */
+  modo?: ModoPago
 }
 export const paymentAttemptKey = (actorId: string) => `cation-pago-pendiente:${actorId}`
 export function readPaymentAttempt(actorId: string): PaymentAttempt | null {

@@ -15,8 +15,10 @@ import { asignarMonto, combinacionExacta, mensajeSobrante, validarCobroPedidos, 
 import { createUuid } from '../application/shared/createUuid'
 import { CobroDestinoField } from './CobroDestinoField'
 import { aplicarDestinoCobro, destinoObligatorio, destinoPendiente, useCobroDestino } from './useCobroDestino'
-import { paymentAttemptKey, paymentRejected, readPaymentAttempt, type PaymentAttempt } from '../domain/hermes/paymentAttempt'
+import { paymentAttemptKey, paymentRejected, readPaymentAttempt, type ModoPago, type PaymentAttempt } from '../domain/hermes/paymentAttempt'
 import { aplicarSaldoPedido, avisarSaldoActualizado } from '../infrastructure/supabase/SaldoCliente.supabase'
+import { InfoHint } from './InfoHint'
+import { tipoPagoAyuda } from '../domain/pagos/historialPagos'
 
 const metodoLabels: Record<PosPaymentMethodExt, string> = { cash: 'Efectivo', qr: 'QR', deposit: 'Depósito', transfer: 'Transferencia', sigep: 'SIGEP', check: 'Cheque' }
 const metodoOrder: PosPaymentMethodExt[] = ['cash', 'qr', 'deposit', 'transfer', 'sigep', 'check']
@@ -24,7 +26,12 @@ const metodoIcons: Record<PosPaymentMethodExt, typeof Banknote> = { cash: Bankno
 const tipoLabels: Record<string, string> = { retail: 'Minorista', wholesale: 'Mayorista', institutional: 'Institucional', corporate: 'Corporativo' }
 
 export type PagoTab = 'pedidos' | 'antiguedad' | 'anticipo'
-const tabLabels: Record<PagoTab, string> = { pedidos: 'Pedidos', antiguedad: 'Por antigüedad', anticipo: 'Anticipo' }
+const tabLabels: Record<PagoTab, string> = { pedidos: 'Pedidos', antiguedad: 'Pago a cuenta', anticipo: 'Anticipo' }
+const tabAyuda: Record<PagoTab, string> = { pedidos: tipoPagoAyuda.PEDIDO, antiguedad: tipoPagoAyuda.CUENTA, anticipo: tipoPagoAyuda.ANTICIPO }
+// Pestaña → `modo_imputacion` que guarda Hermes. El modo simple (retail) no envía modo.
+const modoPorTab: Record<PagoTab, ModoPago> = { pedidos: 'PEDIDOS', antiguedad: 'CUENTA', anticipo: 'ANTICIPO' }
+/** Desde esta proporción entre lo recibido y lo marcado, el monto se señala como posible error de tecleo. */
+const FACTOR_REVISAR_MONTO = 5
 export const MOTIVOS_ANTICIPO = [
   { code: 'ADELANTO_PEDIDO_FUTURO', label: 'Paga por adelantado un pedido que aún no se crea' },
   { code: 'NO_ES_PARA_PENDIENTES', label: 'El cliente indicó que no es para los pedidos pendientes' },
@@ -80,6 +87,8 @@ export function PagoModal({ onClose, notify = () => undefined, initialCustomer, 
   const [detalle, setDetalle] = useState('')
   const [saldoPaso, setSaldoPaso] = useState<'cerrado' | 'confirmar' | 'aplicando'>('cerrado')
   const [saldoMensaje, setSaldoMensaje] = useState('')
+  // Huella de la combinación (cliente, pestaña, monto, pedidos) que el cajero confirmó como sobrante a favor.
+  const [sobranteConfirmado, setSobranteConfirmado] = useState('')
 
   useEffect(() => {
     let active = true
@@ -165,7 +174,13 @@ export function PagoModal({ onClose, notify = () => undefined, initialCustomer, 
       : motivo === 'OTRO' && detalleTrim.length < DETALLE_MIN ? `Explica el motivo (mínimo ${DETALLE_MIN} caracteres).`
         : null
 
-  const bloqueo: string | null = (() => {
+  // Dinero que quedaría a favor del cliente sin que nada más esté pendiente: pide confirmación explícita.
+  const sobranteAFavor = modoSimple ? 0 : efectivaTab === 'pedidos' ? asignacion.sobrante : efectivaTab === 'antiguedad' ? repartoSobrante : 0
+  const totalMarcado = efectivaTab === 'pedidos' ? asignacion.aplicado : repartoAplicado
+  const claveSobrante = `${customer?.id ?? ''}|${efectivaTab}|${amount}|${[...marcadasVigentes].join(',')}`
+  const factorMonto = totalMarcado > 0 ? amount / totalMarcado : 0
+  const revisarMonto = sobranteAFavor > 0 && factorMonto >= FACTOR_REVISAR_MONTO
+  const bloqueoBase: string | null = (() => {
     if (!customer) return 'Elige un cliente.'
     if (!(Math.round(amount * 100) > 0)) return 'Escribe el monto recibido.'
     if (modoSimple) return null
@@ -178,6 +193,8 @@ export function PagoModal({ onClose, notify = () => undefined, initialCustomer, 
     }
     return motivoError
   })()
+  const sobrantePendiente = !bloqueoBase && sobranteAFavor > 0 && sobranteConfirmado !== claveSobrante
+  const bloqueo = bloqueoBase ?? (sobrantePendiente ? 'Confirma que el cliente entregó ese monto para registrar el pago.' : null)
 
   const valid = !!customer && !!method && !!actorId && !identityLoading && !!sessionId && !bloqueo && !destinoPendiente(esEncargado, method, destino)
 
@@ -192,7 +209,7 @@ export function PagoModal({ onClose, notify = () => undefined, initialCustomer, 
     }
     if (efectivaTab === 'antiguedad') {
       const etiquetas = repartoFilas.filter(f => f.aplica > 0).map(f => f.referencia)
-      return etiquetas.length ? `Paga ${unir(etiquetas)} por antigüedad.` : ''
+      return etiquetas.length ? `Paga ${unir(etiquetas)} como pago a cuenta.` : ''
     }
     const primero = cuenta?.pedidos[0]?.numero
     const sigue = abiertos === 0 ? '' : abiertos === 1 && primero ? ` ${primero} sigue pendiente.` : ` ${abiertos} pedidos siguen pendientes.`
@@ -209,6 +226,7 @@ export function PagoModal({ onClose, notify = () => undefined, initialCustomer, 
       let noImputar = false
       let anticipoMotivo: string | null = null
       let anticipoDetalle: string | null = null
+      const modo = modoSimple ? undefined : modoPorTab[efectivaTab]
       if (!modoSimple && efectivaTab === 'pedidos') aplicaciones = asignacion.aplicaciones
       else if (!modoSimple && efectivaTab === 'antiguedad') {
         const lista = repartoFilas.filter(f => f.aplica > 0).map(f => ({ partidaId: f.partidaId, monto: f.aplica }))
@@ -218,7 +236,7 @@ export function PagoModal({ onClose, notify = () => undefined, initialCustomer, 
         noImputar = true
         if (requiereMotivo) { anticipoMotivo = motivo; anticipoDetalle = detalleTrim || null }
       }
-      const attempt: PaymentAttempt = pending ?? { operationId: pagoOperationId.current, customer: customer!, amountCents: moneyFromDecimal(amount).cents, method: method!, sessionId: sessionId!, noImputar, aplicaciones: aplicaciones?.length ? aplicaciones : undefined, destino: destinoObligatorio(esEncargado, method) ? destino : null, referencia: referencia.trim(), anticipoMotivo, anticipoDetalle }
+      const attempt: PaymentAttempt = pending ?? { operationId: pagoOperationId.current, customer: customer!, amountCents: moneyFromDecimal(amount).cents, method: method!, sessionId: sessionId!, noImputar, aplicaciones: aplicaciones?.length ? aplicaciones : undefined, destino: destinoObligatorio(esEncargado, method) ? destino : null, referencia: referencia.trim(), anticipoMotivo, anticipoDetalle, ...(modo ? { modo } : {}) }
       localStorage.setItem(paymentAttemptKey(actorId), JSON.stringify(attempt)); setPending(attempt)
       const { operationId: id, customer: client, destino: target, anticipoMotivo: motivoEnviado, anticipoDetalle: detalleEnviado, ...payment } = attempt
       const amountCents = attempt.amountCents
@@ -352,7 +370,10 @@ export function PagoModal({ onClose, notify = () => undefined, initialCustomer, 
       <section className="pago-section">
         <h3 className="pago-heading">¿Qué paga?</h3>
         {!modoSimple && <div className="pago-tabs" role="tablist" aria-label="¿Qué paga?">
-          {(Object.keys(tabLabels) as PagoTab[]).map(t => <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{tabLabels[t]}</button>)}
+          {(Object.keys(tabLabels) as PagoTab[]).map(t => <span key={t} className="pago-tab-item">
+            <button type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{tabLabels[t]}</button>
+            <InfoHint title={tabLabels[t]} text={tabAyuda[t]} />
+          </span>)}
         </div>}
         <label className="pago-monto">
           <span className="pago-label">Monto recibido (Bs)</span>
@@ -392,6 +413,14 @@ export function PagoModal({ onClose, notify = () => undefined, initialCustomer, 
           {repartoError && !repartoError.startsWith('Consultando') && <button type="button" className="secondary-button" onClick={() => { setRepartoContext(''); setRepartoRetry(n => n + 1) }}>Reintentar reparto</button>}
           {repartoBloqueo && <p role="alert" className="pago-msg pago-msg-error">{repartoBloqueo}</p>}
         </>}
+
+        {!modoSimple && sobranteAFavor > 0 && !bloqueoBase && <div className={`pago-msg ${revisarMonto ? 'pago-msg-error' : 'pago-msg-warning'}`}>
+          {revisarMonto && <strong role="alert">Revisa el monto: es {Math.round(factorMonto * 10) / 10} veces lo que se paga.</strong>}
+          <label className="pago-confirmar-sobrante">
+            <input type="checkbox" checked={sobranteConfirmado === claveSobrante} onChange={(e) => setSobranteConfirmado(e.target.checked ? claveSobrante : '')} />
+            <span>Confirmo que el cliente entregó {bs(amount)} y quedan {bs(sobranteAFavor)} a su favor.</span>
+          </label>
+        </div>}
 
         {!modoSimple && efectivaTab === 'anticipo' && cuentaLista && <>
           {tienePendientes && <div role="alert" className="pago-msg pago-msg-warning">

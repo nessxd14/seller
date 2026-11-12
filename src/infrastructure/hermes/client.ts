@@ -1,4 +1,7 @@
 import { supabase } from '../supabase/supabaseClient'
+import { featureFlags } from '../../config/featureFlags'
+import { puedeVerPagos, SinAccesoPagosError, type HistorialPagos, type ParamsHistorialPagos } from '../../domain/pagos/historialPagos'
+import { consultarHistorialPagosMock } from '../mock/historialPagos'
 
 // api/hermes/consultar-saldos* rechaza más de 200 ids por llamada (desde #148).
 export const LOTE_SALDOS = 200
@@ -452,5 +455,47 @@ export async function imputarPago(pagoId: string | number, aplicaciones: Array<{
     aplicaciones: Number(data?.aplicaciones ?? 0),
     imputado: Number(data?.imputado ?? 0),
     excedente: Number(data?.excedente ?? 0),
+  }
+}
+
+/**
+ * Vista "Pagos" (solo lectura): lista general, historial de un cliente e impresión.
+ * Lanza `SinAccesoPagosError` si el rol no puede consultar (42501). `resumen` llega `null`
+ * salvo para admin y gerente: no se calcula en el cliente para los demás roles.
+ */
+export async function consultarHistorialPagos(params: ParamsHistorialPagos): Promise<HistorialPagos> {
+  if (!featureFlags.supabase) {
+    const { authSessionProvider } = await import('../services')
+    const session = await authSessionProvider.getSession()
+    if (!puedeVerPagos(session?.user.role)) throw new SinAccesoPagosError()
+    return consultarHistorialPagosMock(params, session?.user.role)
+  }
+  const { data, error } = await supabase.rpc('historial_pagos', {
+    p_desde: params.desde,
+    p_hasta: params.hasta,
+    p_cliente_id: params.clienteId ?? null,
+    p_tipo: params.tipo ?? null,
+    p_estado: params.estado ?? null,
+    p_medio: params.medio ?? null,
+    p_buscar: params.buscar?.trim() || null,
+    p_solo_confirmados: params.soloConfirmados ?? false,
+    p_limite: params.limite ?? 100,
+    p_offset: params.offset ?? 0,
+  })
+  if (error) {
+    if (error.code === '42501') throw new SinAccesoPagosError(error.message)
+    throw Object.assign(new Error(error.message || 'No se pudo consultar los pagos'), error)
+  }
+  const d = (data ?? {}) as Partial<HistorialPagos>
+  const num = (v: unknown) => Number(v ?? 0)
+  return {
+    filas: (d.filas ?? []).map(f => ({
+      ...f,
+      monto: num(f.monto), usado: num(f.usado), aFavor: num(f.aFavor),
+      aplicaciones: (f.aplicaciones ?? []).map(a => ({ ...a, monto: num(a.monto) })),
+    })),
+    total: num(d.total),
+    resumen: d.resumen ? { recibido: num(d.resumen.recibido), porVerificar: num(d.resumen.porVerificar), aFavor: num(d.resumen.aFavor), conSaldo: num(d.resumen.conSaldo) } : null,
+    cliente: d.cliente,
   }
 }

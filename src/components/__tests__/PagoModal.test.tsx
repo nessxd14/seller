@@ -164,3 +164,45 @@ describe('Registrar pago: idempotencia', () => {
     expect(mocks.register).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('Registrar pago: modo y sobrepago', () => {
+  it('la pestaña se llama "Pago a cuenta" y cada pestaña tiene su (i) fuera del botón', async () => {
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo()
+    expect(screen.getByRole('tab', { name: 'Pago a cuenta' })).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: 'Por antigüedad' })).toBeNull()
+    for (const t of ['Pedidos', 'Pago a cuenta', 'Anticipo']) expect(screen.getByRole('button', { name: `Qué es ${t}` }).closest('[role="tab"]')).toBeNull()
+  })
+  it('pestaña Pedidos envía modo PEDIDOS', async () => {
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo(); method(); setMonto(70); marcar('PED-00805')
+    fireEvent.click(registrar())
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ modo: 'PEDIDOS' })))
+  })
+  it('pestaña Anticipo envía modo ANTICIPO', async () => {
+    mocks.cuenta.mockResolvedValue(cuentaLimpia)
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo(); method(); setMonto(500); tab('Anticipo')
+    fireEvent.click(registrar())
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ modo: 'ANTICIPO', noImputar: true })))
+  })
+  it('el modo simple (retail) no envía modo', async () => {
+    render(<PagoModal onClose={() => {}} />); await choose('Cliente R'); method(); setMonto(25)
+    fireEvent.click(registrar())
+    await waitFor(() => expect(mocks.register).toHaveBeenCalled())
+    expect(mocks.register.mock.calls[0][0].modo).toBeUndefined()
+  })
+  it('un sobrepago exige confirmar el sobrante y avisa si el monto es 5 veces o más lo pagado (caso JACOB)', async () => {
+    mocks.cuenta.mockResolvedValue({ ...cuentaBnb, pedidos: [pedido(9, 'PED-JACOB', 3400)], pendienteTotal: 3400 })
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo(); method(); marcar('PED-JACOB'); setMonto(34000)
+    expect(registrar().disabled).toBe(true)
+    expect(screen.getByText(/Revisa el monto: es 10 veces lo que se paga\./)).toBeTruthy()
+    fireEvent.click(screen.getByRole('checkbox', { name: /Confirmo que el cliente entregó Bs 34\.000,00 y quedan Bs 30\.600,00 a su favor\./ }))
+    await waitFor(() => expect(registrar().disabled).toBe(false))
+    fireEvent.click(registrar())
+    await waitFor(() => expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 3400000, modo: 'PEDIDOS' })))
+  })
+  it('un pago exacto no pide confirmación', async () => {
+    mocks.cuenta.mockResolvedValue({ ...cuentaBnb, pedidos: [pedido(9, 'PED-JACOB', 3400)], pendienteTotal: 3400 })
+    render(<PagoModal onClose={() => {}} />); await choose(); await listo(); method(); marcar('PED-JACOB'); setMonto(3400)
+    expect(screen.queryByRole('checkbox', { name: /Confirmo que el cliente entregó/ })).toBeNull()
+    await waitFor(() => expect(registrar().disabled).toBe(false))
+  })
+})

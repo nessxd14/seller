@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BarChart3, Boxes, ClipboardList, FileText, HandCoins, LayoutGrid, LogOut, MoreHorizontal, PauseCircle, Percent, Save, ScanLine, Settings, ShoppingBag, Users, WalletCards, Warehouse, X, type LucideIcon } from 'lucide-react'
+import { ArrowLeftRight, BarChart3, Boxes, ClipboardList, FileText, HandCoins, LayoutGrid, LogOut, MoreHorizontal, PauseCircle, Percent, Receipt, Save, ScanLine, Settings, ShoppingBag, Users, WalletCards, Warehouse, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AuthSession } from '../application/auth/AuthSessionProvider'
 import { useCashSession } from '../context/CashSessionContext'
@@ -10,7 +10,7 @@ export { VentaMovil } from './VentaMovil'
 
 const ICONOS: Record<Modulo, LucideIcon> = {
   'Venta': ShoppingBag, 'Suspendidas': PauseCircle, 'Borradores': Save, 'Cotizaciones': FileText, 'Pedidos': ClipboardList,
-  'Venta Directa': Warehouse, 'Clientes': Users, 'Productos': LayoutGrid, 'Inventario': Boxes, 'Traslados': ArrowLeftRight,
+  'Venta Directa': Warehouse, 'Clientes': Users, 'Pagos': Receipt, 'Productos': LayoutGrid, 'Inventario': Boxes, 'Traslados': ArrowLeftRight,
   'Caja': WalletCards, 'Reportes': BarChart3, 'Comisiones': Percent, 'Configuración': Settings,
 }
 // Nombres cortos para la barra inferior (el espacio es de ~80 px por botón).
