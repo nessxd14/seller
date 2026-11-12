@@ -1,4 +1,4 @@
-import { Flashlight, FlashlightOff, ListOrdered, MessageSquarePlus, Plus, ScanLine, Search, Trash2 } from 'lucide-react'
+import { Flashlight, FlashlightOff, ListOrdered, PackageX, Plus, ScanLine, Search, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
 import type { PedidoVendedorEstado } from '../../application/shared/models'
@@ -19,7 +19,8 @@ import { EscanerContinuo, useWakeLock, vibrarDesconocido } from './EscanerContin
 import { usePedidosPiso } from './usePedidosPiso'
 import { TransfersPage } from '../transfers/TransfersPage'
 import { MisVentasPiso } from './MisVentasPiso'
-import { HojaDemanda } from './HojaDemanda'
+import { HojaNoRealizada } from './HojaNoRealizada'
+import { InicioPiso } from './InicioPiso'
 
 const bs = (v: number) => v.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const aProducto = (p: Product): ProductoPiso => ({ id: p.id, nombre: p.nombre, sku: p.sku, precioRetail: p.precioRetail })
@@ -28,14 +29,14 @@ const ETIQUETA_ESTADO: Record<PedidoVendedorEstado, string> = { ARMANDO: 'Armand
 // Presentaciones por producto: se piden la primera vez que se abre la hoja y se reutilizan.
 const cachePresentaciones = new Map<number, PresentacionPiso[]>()
 
-type Vista = 'vender' | 'traslados' | 'ventas'
+type Vista = 'inicio' | 'vender' | 'traslados' | 'ventas'
 
 type Hoja =
   | { tipo: 'cantidad'; localId: string }
   | { tipo: 'precio'; localId: string }
   | { tipo: 'personalizado' }
   | { tipo: 'pedidos' }
-  | { tipo: 'demanda'; texto?: string; productoId?: number; productoNombre?: string }
+  | { tipo: 'noRealizada'; texto?: string; productoId?: number; productoNombre?: string }
   | null
 
 export function PedidoPisoApp({ session }: { session: AuthSession }) {
@@ -55,7 +56,9 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
   const [aviso, setAviso] = useState('')
   const [ambiguos, setAmbiguos] = useState<number[] | null>(null)
   const [enviando, setEnviando] = useState(false)
-  const [vista, setVista] = useState<Vista>('vender')
+  const [vista, setVista] = useState<Vista>(conNavegacion ? 'inicio' : 'vender')
+  // Sube al guardar una venta no realizada: Inicio relee los contadores del turno.
+  const [versionTurno, setVersionTurno] = useState(0)
   const [agregadoCaja, setAgregadoCaja] = useState<number | null>(null)
   const avisoTimer = useRef<number | undefined>(undefined)
 
@@ -102,20 +105,25 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
 
   const enviar = async () => { setEnviando(true); try { await piso.enviar() } finally { setEnviando(false) } }
 
-  const nav = conNavegacion ? <NavegacionPiso vista={vista} onElegir={setVista} /> : null
+  const textoArmar = `Armar ${esReponedor ? 'venta' : 'pedido'}`
+  const nav = conNavegacion ? <NavegacionPiso vista={vista} textoArmar={textoArmar} onElegir={setVista} /> : null
+  const hojaNoRealizada = hoja?.tipo === 'noRealizada'
+    ? <HojaNoRealizada textoInicial={hoja.texto} productoInicial={hoja.productoId != null ? { id: hoja.productoId, nombre: hoja.productoNombre ?? '' } : undefined} onClose={() => setHoja(null)} onGuardado={(veces) => { setHoja(null); setVersionTurno((v) => v + 1); avisar(veces > 0 ? `Guardado. Van ${veces} pedidos de esto esta semana.` : 'Guardado.') }} />
+    : null
   const abribles = new Set(piso.pedidos.flatMap((p) => (p.pedidoId ? [p.pedidoId] : [])))
   const abrirVenta = (pedidoId: string) => {
     const local = piso.pedidos.find((p) => p.pedidoId === pedidoId)
     if (local) { piso.activar(local.clave); setVista('vender') }
   }
 
+  if (vista === 'inicio') return <div className="piso-app con-nav"><InicioPiso session={session} textoArmar={textoArmar} version={versionTurno} onArmar={() => setVista('vender')} onTraslado={() => setVista('traslados')} onNoRealizada={() => setHoja({ tipo: 'noRealizada' })} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{hojaNoRealizada}{nav}</div>
   if (vista === 'traslados') return <div className="piso-traslados"><button type="button" className="secondary-button" onClick={() => setVista('vender')}>Volver a mi {palabra.toLowerCase()}</button><TransfersPage session={session} notify={avisar} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{nav}</div>
   if (vista === 'ventas') return <div className="piso-app con-nav"><header className="piso-header"><div><h1>Mis ventas</h1></div></header><MisVentasPiso abribles={abribles} onAbrir={abrirVenta} />{nav}</div>
   return <div className={`piso-app${conNavegacion ? ' con-nav' : ''}`}>
     <header className="piso-header">
       <div><h1>{titulo}</h1><small>{activo.lineas.length} {activo.lineas.length === 1 ? 'línea' : 'líneas'} · {ETIQUETA_ESTADO[activo.estado]}</small></div>
       {linternaSoportada && editable && !plegado && <button type="button" className="piso-icono" aria-pressed={linterna} aria-label={linterna ? 'Apagar linterna' : 'Encender linterna'} onClick={() => setLinterna((v) => !v)}>{linterna ? <FlashlightOff /> : <Flashlight />}</button>}
-      <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'demanda' })}><MessageSquarePlus /> <span>Cliente busca algo</span></button>
+      {!conNavegacion && <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'noRealizada' })}><PackageX /> <span>Venta no realizada</span></button>}
       <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'pedidos' })}><ListOrdered /> <span>Mis pedidos</span>{piso.abiertos > 1 && <b>{piso.abiertos}</b>}</button>
       {!conNavegacion && <button type="button" className="piso-icono con-texto" onClick={() => setVista('traslados')}>Traslados</button>}
     </header>
@@ -128,7 +136,7 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
         <section className="piso-captura" aria-label="Agregar productos">
           <button type="button" className="piso-plegar" aria-expanded={!plegado} onClick={() => setPlegado((v) => !v)}><ScanLine /> {plegado ? 'Abrir cámara' : 'Ocultar cámara'}</button>
           <EscanerContinuo onCodigo={(c) => void alEscanear(c)} plegado={plegado} linterna={linterna} onSoporteLinterna={setLinternaSoportada} />
-          <Buscador onElegir={(p) => { void agregarSiSeVende(p) }} onAnotar={(texto, p) => setHoja({ tipo: 'demanda', texto, productoId: p?.id, productoNombre: p?.nombre })} />
+          <Buscador onElegir={(p) => { void agregarSiSeVende(p) }} onAnotar={(texto, p) => setHoja({ tipo: 'noRealizada', texto, productoId: p?.id, productoNombre: p?.nombre })} />
         </section>
         <section className="piso-lineas" aria-label={`Productos de la ${palabra.toLowerCase()}`}>
           {!activo.lineas.length && <p className="piso-vacio">Escanea un código o busca un producto para empezar.</p>}
@@ -147,7 +155,7 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
     {hoja?.tipo === 'precio' && lineaDe(hoja.localId) && <HojaPrecio linea={lineaDe(hoja.localId)!} conPiso={conPiso} onClose={() => setHoja(null)} onPrecio={(p) => piso.cambiarPrecio(hoja.localId, p)} />}
     {hoja?.tipo === 'personalizado' && <HojaPersonalizado onClose={() => setHoja(null)} onAgregar={(i) => { piso.agregarPersonalizado(i); setHoja(null) }} />}
     {hoja?.tipo === 'pedidos' && <HojaPedidos esReponedor={esReponedor} pedidos={piso.pedidos} activa={activo.clave} cargando={piso.cargando} onClose={() => setHoja(null)} onElegir={(c) => { piso.activar(c); setHoja(null) }} onNuevo={() => { piso.nuevo(); setHoja(null) }} />}
-    {hoja?.tipo === 'demanda' && <HojaDemanda textoInicial={hoja.texto} productoInicial={hoja.productoId != null ? { id: hoja.productoId, nombre: hoja.productoNombre ?? '' } : undefined} onClose={() => setHoja(null)} onAnotado={(veces) => { setHoja(null); avisar(`Anotado. Van ${veces} pedidos de esto esta semana.`) }} />}
+    {hojaNoRealizada}
     {nav}
     {ambiguos && <AmbiguousScanPicker productIds={ambiguos} onPick={(p) => { setAmbiguos(null); void agregarSiSeVende(p) }} onClose={() => setAmbiguos(null)} />}
   </div>
@@ -289,11 +297,10 @@ function HojaPedidos({ esReponedor, pedidos, activa, cargando, onClose, onElegir
   </Hoja>
 }
 
-const NAV_PISO: Array<{ id: Vista; texto: string }> = [{ id: 'vender', texto: 'Vender' }, { id: 'traslados', texto: 'Traslados' }, { id: 'ventas', texto: 'Mis ventas' }]
-
-function NavegacionPiso({ vista, onElegir }: { vista: Vista; onElegir: (v: Vista) => void }) {
+function NavegacionPiso({ vista, textoArmar, onElegir }: { vista: Vista; textoArmar: string; onElegir: (v: Vista) => void }) {
+  const secciones: Array<{ id: Vista; texto: string }> = [{ id: 'inicio', texto: 'Inicio' }, { id: 'vender', texto: textoArmar }, { id: 'traslados', texto: 'Traslados' }, { id: 'ventas', texto: 'Mis ventas' }]
   return <nav className="piso-nav" aria-label="Secciones">
-    {NAV_PISO.map((n) => <button key={n.id} type="button" aria-current={vista === n.id ? 'page' : undefined} className={vista === n.id ? 'activo' : ''} onClick={() => onElegir(n.id)}>{n.texto}</button>)}
+    {secciones.map((n) => <button key={n.id} type="button" aria-current={vista === n.id ? 'page' : undefined} className={vista === n.id ? 'activo' : ''} onClick={() => onElegir(n.id)}>{n.texto}</button>)}
   </nav>
 }
 
@@ -313,7 +320,7 @@ function VistaEnviado({ pedido, esReponedor, agregadoCaja, error, onRetirar, onA
   const s = pedido.snapshot
   const estado = pedido.estado
   const texto = estado === 'ENVIADO' ? 'En espera de caja'
-    : estado === 'EN_CAJA' ? `En caja${s?.tomadoPor ? ` con ${s.tomadoPor}` : ''}`
+    : estado === 'EN_CAJA' ? 'En caja'
       : estado === 'COBRADO' ? `Cobrado${s?.ventaNumero ? ` · ${s.ventaNumero}` : ''}`
         : `Anulado${s?.anuladoMotivo ? `: ${s.anuladoMotivo}` : ''}`
   const parte = estado === 'COBRADO' ? parteCobrada(s?.lineas ?? []) : null

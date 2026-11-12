@@ -634,6 +634,22 @@ export interface MiCuentaVendedor {
   guardadas: number
   anuladas: number
   pedidos: MiCuentaPedido[]
+  /** Ventas de caja que son suyas («Es mía» o asignadas por caja). 0 / [] si la base aún no lo devuelve. */
+  reclamadas: number
+  reclamadoTotal: number
+  reclamos: MiCuentaReclamo[]
+}
+
+/** Venta de caja reclamada por quien llama (mi_cuenta_vendedor). Sin cajero ni cliente. */
+export interface MiCuentaReclamo {
+  ventaId: number
+  numero: string
+  total: number
+  estado: string
+  completadoEn: string | null
+  origen: 'RECLAMO' | 'CAJA'
+  producto: string | null
+  nProductos: number
 }
 
 /** Línea tal como se envía a guardar_pedido_vendedor (p_lineas). */

@@ -5,6 +5,7 @@ import { usePuedeAnular } from '../../components/usePuedeAnular'
 import { anulacionService, saleService } from '../../infrastructure/services'
 import type { AnulacionSolicitud, VentaTicketRecord } from '../../application/shared/models'
 import { mensajeAnulacion, type AnularVentaResultado } from '../../domain/sales/anulacion'
+import { VendedorDeVenta } from './VendedorDeVenta'
 
 const bs = (value: number) => value.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -81,6 +82,7 @@ export function VentaDetalleModal({ id, onClose, notify, onChanged }: { id: stri
             <div><span>{line.cantidad.toLocaleString('es-BO')} × Bs {bs(line.precioUnitarioBs)}</span><b>Bs {bs(line.subtotalBs)}</b></div>
           </li>)}
         </ul> : <p role="status">Esta venta no tiene líneas de productos disponibles.</p>}
+        {venta.estado === 'COMPLETADA' && <VendedorDeVenta ventaId={id} onChanged={onChanged} />}
         <dl className="cash-sale-totals">
           <div><dt>Subtotal</dt><dd>Bs {bs(venta.subtotalBs)}</dd></div>
           <div><dt>Descuento</dt><dd>Bs {bs(venta.descuentoBs)}</dd></div>

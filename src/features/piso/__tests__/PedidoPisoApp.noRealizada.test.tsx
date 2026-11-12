@@ -11,51 +11,61 @@ vi.mock('../../../infrastructure/services', () => ({
   productRepository: { search: mocks.search },
   getStockBySucursalBatch: mocks.stock,
   pedidoVendedorService: {},
+  pisoRepository: { registrarNoRealizada: vi.fn() },
   demandaRepository: { previa: vi.fn().mockResolvedValue({ ideaId: null, titulo: null, estado: null, via: null, vecesSemana: 0, vecesTotal: 0 }), anotar: vi.fn(), subirFoto: vi.fn() },
 }))
 vi.mock('../../../infrastructure/supabase/SupabaseAuthSessionProvider', () => ({ supabaseAuthSessionProvider: {} }))
 vi.mock('../../transfers/TransfersPage', () => ({ TransfersPage: () => null }))
 vi.mock('../MisVentasPiso', () => ({ MisVentasPiso: () => null }))
+vi.mock('../InicioPiso', () => ({ InicioPiso: () => <p>Pantalla Inicio</p> }))
 import { PedidoPisoApp } from '../PedidoPisoApp'
 
-const sesion = { user: { id: 'u', name: 'QA', role: 'vendedor' as const, active: true }, expiresAt: '2999-01-01' }
+const sesionDe = (role: 'vendedor' | 'cajero') => ({ user: { id: 'u', name: 'QA', role, active: true }, expiresAt: '2999-01-01' })
+const sesion = sesionDe('vendedor')
+const abrir = (s = sesion) => { render(<PedidoPisoApp session={s} />); if (s.user.role === 'vendedor') fireEvent.click(screen.getByRole('button', { name: 'Armar pedido' })) }
 const buscar = (q: string) => fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: q } })
 
 beforeEach(() => { mocks.search.mockReset(); mocks.stock.mockReset() })
 afterEach(cleanup)
 
-describe('PedidoPisoApp — anotar demanda', () => {
+describe('PedidoPisoApp — venta no realizada', () => {
   it('"Sin resultados" ofrece «Anotar que lo buscaron» y abre la hoja con el texto', async () => {
     mocks.search.mockResolvedValue({ items: [], total: 0 })
-    render(<PedidoPisoApp session={sesion} />)
+    abrir()
     buscar('papel kraft')
     fireEvent.click(await screen.findByRole('button', { name: 'Anotar que lo buscaron' }))
-    expect(screen.getByRole('dialog', { name: 'Un cliente busca algo' })).toBeTruthy()
-    expect((screen.getByLabelText('¿Qué buscó?') as HTMLInputElement).value).toBe('papel kraft')
+    expect(screen.getByRole('dialog', { name: 'Venta no realizada' })).toBeTruthy()
+    expect((screen.getByLabelText('Producto 1') as HTMLInputElement).value).toBe('papel kraft')
   })
 
   it('producto sin stock vendible: botón "Anotar" abre la hoja con el producto', async () => {
     mocks.search.mockResolvedValue({ items: [{ id: 7, nombre: 'Hoja bond', sku: 'HB', precioRetail: 1 }], total: 1 })
     mocks.stock.mockResolvedValue(new Map([[7, { tiendaVendible: 0, almacenVendible: 0 }]]))
-    render(<PedidoPisoApp session={sesion} />)
+    abrir()
     buscar('hoja')
     fireEvent.click(await screen.findByRole('button', { name: 'Anotar Hoja bond' }))
-    expect((screen.getByLabelText('¿Qué buscó?') as HTMLInputElement).value).toBe('Hoja bond')
+    expect((screen.getByLabelText('Producto 1') as HTMLInputElement).value).toBe('Hoja bond')
   })
 
   it('si el stock falla no aparece "Anotar" en la fila', async () => {
     mocks.search.mockResolvedValue({ items: [{ id: 7, nombre: 'Hoja bond', sku: 'HB', precioRetail: 1 }], total: 1 })
     mocks.stock.mockRejectedValue(new Error('x'))
-    render(<PedidoPisoApp session={sesion} />)
+    abrir()
     buscar('hoja')
     await screen.findByText('Hoja bond')
     await waitFor(() => expect(mocks.stock).toHaveBeenCalled())
     expect(screen.queryByRole('button', { name: 'Anotar Hoja bond' })).toBeNull()
   })
 
-  it('el encabezado tiene "Cliente busca algo"', () => {
-    render(<PedidoPisoApp session={sesion} />)
-    fireEvent.click(screen.getByRole('button', { name: /Cliente busca algo/ }))
-    expect(screen.getByRole('dialog', { name: 'Un cliente busca algo' })).toBeTruthy()
+  it('el reponedor/vendedor ya no tiene "Cliente busca algo" en el encabezado', () => {
+    abrir()
+    expect(screen.queryByRole('button', { name: /Cliente busca algo/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Venta no realizada' })).toBeNull()
+  })
+
+  it('el cajero en modo piso conserva su botón y abre la hoja nueva', () => {
+    abrir(sesionDe('cajero'))
+    fireEvent.click(screen.getByRole('button', { name: /Venta no realizada/ }))
+    expect(screen.getByRole('dialog', { name: 'Venta no realizada' })).toBeTruthy()
   })
 })

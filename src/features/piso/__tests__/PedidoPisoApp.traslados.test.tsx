@@ -6,6 +6,7 @@ vi.mock('../usePedidosPiso', () => ({ usePedidosPiso: () => ({ activo: { clave: 
 vi.mock('../../../infrastructure/services', () => ({ listPresentations: vi.fn(), productRepository: {} }))
 vi.mock('../../../infrastructure/supabase/SupabaseAuthSessionProvider', () => ({ supabaseAuthSessionProvider: {} }))
 vi.mock('../../transfers/TransfersPage', () => ({ TransfersPage: ({ session }: { session: { user: { role: string } } }) => <p>Traslados para {session.user.role}</p> }))
+vi.mock('../InicioPiso', () => ({ InicioPiso: () => <p>Pantalla Inicio</p> }))
 import { PedidoPisoApp } from '../PedidoPisoApp'
 afterEach(cleanup)
 it('el vendedor entra a traslados desde Piso y regresa a su pedido', () => {

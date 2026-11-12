@@ -14,9 +14,9 @@ describe('roles y errores de aplicación',()=>{
   it('el vendedor no tiene permisos de venta de mostrador ni de caja',()=>{
     for(const permission of ['retail_sale','wholesale_sale','cash_own','cash_supervise'] as const) expect(hasPermission(session('vendedor'),permission)).toBe(false)
   })
-  it('el reponedor solo tiene floor_order, pedidos y clientes: ni caja, ni anular, ni precio libre',()=>{
-    expect([...permissionsByRole.reponedor].sort()).toEqual(['customers_retail','floor_order','orders_view'])
-    for(const permission of ['retail_sale','cash_own','cash_supervise','price_override','cancel','return','admin'] as const) expect(hasPermission(session('reponedor'),permission)).toBe(false)
+  it('el reponedor solo tiene floor_order y clientes (sin orders_view): ni caja, ni anular, ni precio libre',()=>{
+    expect([...permissionsByRole.reponedor].sort()).toEqual(['customers_retail','floor_order'])
+    for(const permission of ['orders_view','retail_sale','cash_own','cash_supervise','price_override','cancel','return','admin'] as const) expect(hasPermission(session('reponedor'),permission)).toBe(false)
   })
   it('bloquea usuarios inactivos',()=>expect(hasPermission(session('admin',false),'admin')).toBe(false))
   it('bloquea usuarios sin perfil',()=>expect(hasPermission({...session('admin'),user:{...session('admin').user,hasProfile:false}},'admin')).toBe(false))

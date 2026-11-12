@@ -98,8 +98,13 @@ function PosContent() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const celular = useEsCelular()
   // Un vendedor o reponedor no usa el POS de escritorio: cualquier ruta que no sea un detalle (/pedidos/:id, …) lo lleva a /piso.
+  // El reponedor solo ve el piso: cualquier otra ruta (también un detalle por URL) lo devuelve a /piso.
   const esVendedor = session?.user.role === 'vendedor' || session?.user.role === 'reponedor'
-  useEffect(() => { if (esVendedor && route.kind === 'none') navigateTo(pisoPath, { replace: true }) }, [esVendedor, route.kind])
+  const esReponedor = session?.user.role === 'reponedor'
+  useEffect(() => {
+    if (esVendedor && route.kind === 'none') navigateTo(pisoPath, { replace: true })
+    else if (esReponedor && route.kind !== 'piso') navigateTo(pisoPath, { replace: true })
+  }, [esVendedor, esReponedor, route.kind])
   // Pedidos de vendedor (caja): el flujo vive acá; el carrito solo recibe el contador y un callback.
   const puedeCobrarPedidos = featureFlags.supabase && (hasPermission(session, 'cash_own') || hasPermission(session, 'cash_supervise'))
   const [pedidosVendedor, setPedidosVendedor] = useState<{ pedidoId?: string } | null>(null)
@@ -369,8 +374,8 @@ function PosContent() {
     if (!hasPermission(session, 'floor_order')) return <div className="piso-bloqueado" role="alert"><p>Tu rol no permite abrir esta pantalla</p></div>
     return <Suspense fallback={null}><PedidoPisoApp session={session as AuthSession} /></Suspense>
   }
-  // Un vendedor que aún no fue redirigido (primer render) no debe ver ni un instante el POS completo.
-  if (esVendedor && route.kind === 'none') return null
+  // Un vendedor o reponedor que aún no fue redirigido (primer render) no debe ver ni un instante el POS completo (aquí route.kind ya no es 'piso').
+  if ((esVendedor && route.kind === 'none') || esReponedor) return null
   if (celular) {
     const puedeAbrir = (m: Modulo) => moduloHabilitado(m) && (PERMISOS_MODULO[m] ?? (() => true))(session)
     const contenido = blockKind ? <IntegrationState kind={blockKind} /> : !moduloPermitido ? <div className="module-blocked" role="alert"><h2>Tu rol no permite abrir este módulo</h2></div> : page

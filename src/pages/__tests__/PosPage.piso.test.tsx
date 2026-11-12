@@ -103,6 +103,15 @@ describe('PosPage — /piso y permisos de módulo (Brief Piso B)', () => {
     expect(screen.getByTestId('catalog')).toBeTruthy()
   })
 
+  it.each(['/pedidos/123', '/ventas/123', '/cotizaciones/123'])('un reponedor que abre %s por URL termina en /piso', async (ruta) => {
+    mocks.getSession.mockResolvedValue(sessionOf('reponedor'))
+    navigate(ruta)
+    render(<PosPage />)
+    await screen.findByTestId('piso-app')
+    expect(window.location.pathname).toBe('/piso')
+    for (const id of ['orders', 'reports', 'quotations', 'cart-panel']) expect(screen.queryByTestId(id)).toBeNull()
+  })
+
   it('un vendedor en una ruta de detalle (/pedidos/:id) no es redirigido', async () => {
     mocks.getSession.mockResolvedValue(sessionOf('vendedor'))
     navigate('/pedidos/55')
