@@ -155,7 +155,7 @@ export class SupabaseCashRepository implements CashRepository {
     return this.registerPayment({ ...input, customerId: '' }, context)
   }
 
-  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: PosPaymentMethodExt; sessionId: string; noImputar?: boolean; aplicaciones?: Array<{ partidaId: number; monto: number }>; referencia?: string; anticipoMotivo?: string; anticipoDetalle?: string }, context: MutationContext & { idempotencyKey: string }): Promise<{ movementId: string; pagoId?: string; saldoProvisional?: number }> {
+  async registerPayment(input: { customerId: string; orderId?: string; amountCents: number; method: PosPaymentMethodExt; sessionId: string; noImputar?: boolean; aplicaciones?: Array<{ partidaId: number; monto: number }>; referencia?: string; anticipoMotivo?: string; anticipoDetalle?: string; modo?: 'PEDIDOS' | 'CUENTA' | 'ANTICIPO' }, context: MutationContext & { idempotencyKey: string }): Promise<{ movementId: string; pagoId?: string; saldoProvisional?: number }> {
     const { data, error } = await supabase.rpc('registrar_cobro_cation', {
       p_pedido_id: input.orderId ? Number(input.orderId) : null,
       p_cliente_id: input.customerId ? Number(input.customerId) : null,
@@ -168,6 +168,7 @@ export class SupabaseCashRepository implements CashRepository {
       p_referencia: input.referencia ?? null,
       p_anticipo_motivo: input.anticipoMotivo ?? null,
       p_anticipo_detalle: input.anticipoDetalle ?? null,
+      p_modo: input.modo ?? null,
     })
     if (error) throw Object.assign(new Error(error.message || 'No se pudo registrar el cobro conjunto'), error)
     if (!data?.movementId || (!data?.pagoId && data?.excluidoRetail !== true)) throw new Error('No se pudo verificar el registro conjunto del cobro')

@@ -109,7 +109,7 @@ function SafeImg({ src, alt, ...rest }: ImgHTMLAttributes<HTMLImageElement> & { 
 }
 
 /** Brand + logo, idéntico en los tres documentos. */
-function DocBrand() {
+export function DocBrand() {
   return (
     <div className="doc-brand">
       <SafeImg src={empresa.logoSrc} alt={empresa.razonSocial} />

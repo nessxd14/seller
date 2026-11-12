@@ -40,8 +40,8 @@
 .pago-link{border:0;background:none;color:var(--orange-dark);text-decoration:underline;padding:0 6px;font-size:13px}
 .pago-nota{margin:0;font-size:12px;color:#5f5c55}
 .pago-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:#ebe8e1;border-radius:12px;padding:4px}
-.pago-tabs button{border:0;background:transparent;border-radius:9px;font-size:14px;font-weight:600;color:#5f5c55;padding:0 8px}
-.pago-tabs button.active{background:#fff;color:#24231f;box-shadow:0 2px 8px #28251d1f}
+.pago-tabs [role=tab]{border:0;background:transparent;border-radius:9px;font-size:14px;font-weight:600;color:#5f5c55;padding:0 8px}
+.pago-tabs [role=tab].active{background:#fff;color:#24231f;box-shadow:0 2px 8px #28251d1f}
 .pago-monto{display:grid;gap:5px}
 .pago-monto input.pago-monto-input{font-size:22px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums;min-height:56px}
 .pago-sugerencia{background:#fff4ec;border-color:#f1c9a8;color:#6a3412}
@@ -65,3 +65,10 @@
 .pago-footer-botones{display:flex;gap:8px}
 .pago-footer .primary-button,.pago-footer .secondary-button{height:44px;font-size:14px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* Pestañas con (i) al lado: el botón de la pestaña ocupa el espacio y el hint queda fuera de él. */
+.pago-tab-item{display:flex;align-items:center;min-width:0}
+.pago-tab-item [role=tab]{flex:1;min-width:0;min-height:44px}
+.pago-tab-item .info-hint{margin:0 4px 0 0}
+.pago-confirmar-sobrante{display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-weight:600}
+.pago-confirmar-sobrante input{width:20px;height:20px;flex:none;margin-top:1px}

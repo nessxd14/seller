@@ -1,0 +1,101 @@
+/* Módulo «Pagos» (solo lectura): lista, detalle, historial del cliente e impresión.
+   Misma paleta que «Registrar pago»: naranja Seller, DM Sans, grises cálidos. */
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.pagos-page{--pagos-ok:#1c6b34;--pagos-ok-bg:#eef8f0;--pagos-warn:#a76a19;--pagos-warn-bg:#fff6e6;--pagos-bad:#ad4b3c}
+.pagos-page .num,.pagos-detalle .num{text-align:right;font-variant-numeric:tabular-nums}
+.es-cero{color:#9a968d}
+.pagos-filtros{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-bottom:14px}
+.pagos-filtros label{display:grid;gap:4px;font-size:12px;font-weight:600;color:#5f5c55}
+.pagos-filtros input,.pagos-filtros select{height:40px;border:1px solid #e0dbd2;border-radius:10px;padding:0 10px;background:#fff;font-size:13px;color:#24231f}
+.pagos-filtros input:focus,.pagos-filtros select:focus{outline:0;border-color:var(--orange);box-shadow:0 0 0 3px #f26b2b17}
+.pagos-buscar{position:relative;flex:1;min-width:220px}
+.pagos-buscar svg{position:absolute;left:11px;bottom:11px;width:17px;color:#9a968d}
+.pagos-buscar input{width:100%;padding-left:36px}
+.pagos-error{color:#7a2a13;background:#fff4ee;border:1px solid #ecb79d;border-radius:10px;padding:8px 12px;font-size:13px;margin:0 0 12px}
+.pagos-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:center}
+.pagos-chip-wrap{display:inline-flex;align-items:center}
+.pagos-chip{border:1px solid #e1ded6;background:#fff;border-radius:999px;height:36px;padding:0 14px;font-size:13px;font-weight:600;color:#5f5c55;display:inline-flex;gap:8px;align-items:center}
+.pagos-chip b{background:#f1eee8;border-radius:999px;padding:1px 8px;font-size:12px;color:#5f5c55}
+.pagos-chip.active{background:#24231f;border-color:#24231f;color:#fff}
+.pagos-chip.active b{background:#ffffff26;color:#fff}
+.pagos-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.pagos-tile{display:grid;gap:3px;align-content:start;border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fffefa}
+.pagos-tile span,.pagos-tile small{font-size:12px;color:#5f5c55}
+.pagos-tile strong{font-size:21px;font-variant-numeric:tabular-nums}
+.pagos-tile-favor{background:var(--pagos-ok-bg);border-color:#b9dcc1}.pagos-tile-favor strong{color:var(--pagos-ok)}
+.pagos-tabla-caja{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:14px}
+.pagos-tabla{width:100%;min-width:980px;border-collapse:collapse;font-size:13px}
+.pagos-tabla th{background:#f5f2ed;color:#77746d;font-size:11px;letter-spacing:.6px;text-transform:uppercase;text-align:left;padding:10px 12px;white-space:nowrap}
+.pagos-tabla th.num{text-align:right}
+.pagos-tabla td{padding:11px 12px;border-top:1px solid #eeeae3;vertical-align:top}
+.pagos-tabla td strong,.pagos-tabla td small{display:block}
+.pagos-tabla td small,.pagos-mov-nota{color:#77746d;font-size:12px;margin-top:2px}
+.pagos-tabla tr.por-verificar,.pagos-movimiento.por-verificar{background:#fffaf0}
+.pagos-tabla tr.anulado td,.pagos-movimiento.anulado{color:#9a968d}
+.pagos-link{border:0;background:none;padding:0;color:#24231f;font-weight:700;text-align:left;text-decoration:underline;text-decoration-color:#f1c9a8;text-underline-offset:3px}
+.pagos-link:hover{color:var(--orange-dark)}
+.pagos-ver{border:1px solid #ddd8cf;background:#fff;border-radius:8px;height:30px;padding:0 12px;font-size:12px;font-weight:700;color:#55524d}
+.pagos-tipo{display:inline-block;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;white-space:nowrap}
+.pagos-tipo-pedido{background:#e9f1fc;color:#3a5f96}
+.pagos-tipo-cuenta{background:#eee9fb;color:#6a4a9c}
+.pagos-tipo-anticipo{background:#fff0e8;color:#a33f0b}
+.pagos-tipo-saldo{background:#e7f6eb;color:var(--pagos-ok)}
+.pagos-tipo-wrap{display:inline-flex;align-items:center}
+.pagos-estado{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;white-space:nowrap}
+.pagos-estado i{width:8px;height:8px;border-radius:50%;background:#9a968d}
+.pagos-estado-confirmado i{background:#4fa763}
+.pagos-estado-por_verificar i{background:#e0a02f}.pagos-estado-por_verificar{color:var(--pagos-warn)}
+.pagos-estado-anulado i{background:var(--pagos-bad)}.pagos-estado-anulado{color:var(--pagos-bad)}
+.pagos-mas{margin:14px auto 0;display:block}
+.pagos-pie{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 4px 0;font-size:12px;color:#77746d}
+.pagos-volver{border:0;background:none;display:inline-flex;gap:6px;align-items:center;color:#5f5c55;font-weight:600;font-size:13px;padding:0;margin-bottom:8px}
+.pagos-volver svg{width:15px}
+.pagos-cliente-meta{display:flex;gap:10px;align-items:center}
+.pagos-categoria{background:#fff4ec;color:#a33f0b;border:1px solid #f1c9a8;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
+.pagos-historial-lista{list-style:none;margin:0;padding:0;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.pagos-movimiento{display:grid;grid-template-columns:96px minmax(0,1fr) auto auto;gap:14px;align-items:start;padding:14px 16px;border-top:1px solid #eeeae3;font-size:13px}
+.pagos-movimiento:first-child{border-top:0}
+.pagos-mov-fecha strong,.pagos-mov-fecha small{display:block}.pagos-mov-fecha small{color:#77746d;font-size:12px}
+.pagos-mov-linea{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.pagos-ref{color:#5f5c55;font-variant-numeric:tabular-nums}
+.pagos-mov-pedidos{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:3px;max-width:340px}
+.pagos-mov-pedidos li{display:flex;justify-content:space-between;gap:16px;font-size:12px;color:#5f5c55}
+.pagos-mov-monto{font-weight:700;font-size:15px;min-width:110px}
+.pagos-imprimir{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:18px;padding:14px 16px;background:#fffefa;border:1px solid var(--line);border-radius:14px}
+.pagos-imprimir p{margin:0;flex:1;min-width:220px;font-size:13px;color:#5f5c55}
+.pagos-formato{display:flex;background:#ebe8e1;border-radius:10px;padding:3px;gap:3px}
+.pagos-formato button{border:0;background:transparent;border-radius:8px;height:34px;padding:0 14px;font-size:13px;font-weight:600;color:#5f5c55}
+.pagos-formato button.active{background:#fff;color:#24231f;box-shadow:0 2px 8px #28251d1f}
+.pagos-detalle{display:grid;gap:14px}
+.pagos-detalle-cabecera{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.pagos-detalle-monto{font-size:28px;font-variant-numeric:tabular-nums}
+.pagos-detalle-datos{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin:0}
+.pagos-detalle-datos dt{font-size:12px;color:#77746d}.pagos-detalle-datos dd{margin:2px 0 0;font-weight:600;font-size:13px;overflow-wrap:anywhere}
+.pagos-subtitulo{font-size:13px;margin:0 0 8px}
+.pagos-recorrido{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.pagos-recorrido li{display:flex;gap:10px;align-items:flex-start}
+.pagos-recorrido i{width:10px;height:10px;border-radius:50%;margin-top:5px;border:2px solid #4fa763;background:#4fa763;flex:none}
+.pagos-recorrido li.pendiente i{background:#fff;border-color:#e0a02f}
+.pagos-recorrido li.tachado{text-decoration:line-through;color:#9a968d}.pagos-recorrido li.tachado i{border-color:#9a968d;background:#9a968d}
+.pagos-recorrido strong,.pagos-recorrido small{display:block}.pagos-recorrido small{font-size:12px;color:#77746d}
+.pagos-mini-tabla{width:100%;border-collapse:collapse;font-size:13px}
+.pagos-mini-tabla th{text-align:left;font-size:11px;color:#77746d;text-transform:uppercase;letter-spacing:.5px;padding:6px 8px;background:#f5f2ed}
+.pagos-mini-tabla th.num{text-align:right}
+.pagos-mini-tabla td{padding:7px 8px;border-top:1px solid #eeeae3}
+.pagos-mini-tabla tr.subtotal td{font-weight:600}
+.pagos-mini-tabla tr.total td{font-weight:700;background:var(--pagos-ok-bg);color:var(--pagos-ok)}
+.pagos-nota{margin:0;font-size:12px;color:#5f5c55}
+.pagos-solo-lectura{background:#f5f2ed;border-radius:10px;padding:9px 12px}
+@media(max-width:900px){.pagos-tiles{grid-template-columns:1fr 1fr}.pagos-movimiento{grid-template-columns:80px minmax(0,1fr) auto}.pagos-movimiento .pagos-ver{grid-column:2/-1;justify-self:start}.pagos-detalle-datos{grid-template-columns:1fr}}
+
+/* Impresión del historial: cuerpo ≥ 12 pt en carta. */
+.pagos-print-tabla .num{text-align:right}
+.pagos-print-leyenda{font-size:10pt;color:#555;margin-top:12px}
+.pagos-print-totales{margin-top:12px}
+@media print{
+  .print-document.documento-exportable.pagos-print{font-size:12pt;line-height:1.4}
+  .print-document.documento-exportable.pagos-print .doc-table{font-size:12pt}
+  .print-document.documento-exportable.pagos-print .doc-table th{font-size:10pt}
+  .print-document.documento-exportable.pagos-print .doc-kv .k{font-size:10pt}
+  .print-document.documento-exportable.pagos-print .doc-kv .v,.pagos-print .doc-total-row{font-size:12pt}
+}
