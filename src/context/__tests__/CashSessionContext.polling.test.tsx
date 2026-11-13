@@ -22,11 +22,11 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.useRealTimers(); setVisibility('visible') })
 
-it('sondea cada 60 s con la pestaña visible', async () => {
+it('sondea cada 120 s con la pestaña visible', async () => {
   render(<CashSessionProvider><div /></CashSessionProvider>)
   await act(async () => { await vi.advanceTimersByTimeAsync(0) })
   expect(h.getSesionAbierta).toHaveBeenCalledTimes(1)
-  await act(async () => { await vi.advanceTimersByTimeAsync(59_000) })
+  await act(async () => { await vi.advanceTimersByTimeAsync(119_000) })
   expect(h.getSesionAbierta).toHaveBeenCalledTimes(1)
   await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
   expect(h.getSesionAbierta).toHaveBeenCalledTimes(2)
@@ -42,4 +42,20 @@ it('no llama getSesionAbierta con la pestaña oculta y refresca al volver a verl
   setVisibility('visible')
   await act(async () => { document.dispatchEvent(new Event('visibilitychange')); await vi.advanceTimersByTimeAsync(0) })
   expect(h.getSesionAbierta).toHaveBeenCalledTimes(1)
+})
+
+it('focus y visibilitychange juntos, o repetidos dentro de 15 s, disparan un solo refresco', async () => {
+  render(<CashSessionProvider><div /></CashSessionProvider>)
+  await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+  h.getSesionAbierta.mockClear()
+  await act(async () => {
+    window.dispatchEvent(new Event('focus'))
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(10_000)
+    window.dispatchEvent(new Event('focus'))
+    await vi.advanceTimersByTimeAsync(0)
+  })
+  expect(h.getSesionAbierta).toHaveBeenCalledTimes(1)
+  await act(async () => { await vi.advanceTimersByTimeAsync(6_000); window.dispatchEvent(new Event('focus')); await vi.advanceTimersByTimeAsync(0) })
+  expect(h.getSesionAbierta).toHaveBeenCalledTimes(2)
 })

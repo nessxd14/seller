@@ -230,11 +230,19 @@ type StockBatchEntry = { tienda: number; almacen: number; tiendaLibre: boolean; 
 
 interface SaldoVendibleRow { producto_id: number; vendible: number | string | null; reservado: number | string | null; motivo: string | null }
 
+/** Respuesta de la RPC stock_vendible_lote. sucursal_id / excluye_disponible son null si la ubicación no es visible. */
+interface StockVendibleLotePayload {
+  stock: Array<{ producto_id: number; cantidad_base: number | string; sucursal_id: number | null; excluye_disponible: boolean | null }>
+  overrides: Array<{ producto_id: number; sucursal_id: number; control_stock: string | null }>
+  vendible_tienda: SaldoVendibleRow[]
+  vendible_almacen: SaldoVendibleRow[]
+}
+
 /**
  * Stock por sucursal para un LOTE de productos (una página de grilla, nunca el catálogo
  * entero). stock_actual tiene 1.284 filas totales y máx. 3 ubicaciones por producto, así
  * que una página de 60 productos son ~65 filas: muy lejos del tope de 1.000 de PostgREST.
- * Una sola ida y vuelta, no N+1.
+ * Una sola petición, no N+1.
  *
  * Brief S9: también trae si cada sucursal permite sobregiro (vender sin stock) para cada
  * producto — tiendaLibre/almacenLibre. Se calcula del lado del cliente con la MISMA
@@ -251,8 +259,14 @@ interface SaldoVendibleRow { producto_id: number; vendible: number | string | nu
  * físico, para isLineUnderstocked y los avisos informativos). tiendaVendible/almacenVendible/
  * *Reservado/*Motivo salen de saldo_vendible(producto_ids, sucursal_id) — la RPC que
  * calcula lo realmente disponible para vender, FIFO por antigüedad contra otros pedidos.
- * No se reimplementa ese cálculo acá (misma regla que W3): dos llamadas, una por sucursal,
- * porque saldo_vendible toma un solo sucursal_id a la vez.
+ * No se reimplementa ese cálculo acá (misma regla que W3).
+ *
+ * Todo viaja en UNA sola RPC, stock_vendible_lote(p_producto_ids) (SECURITY INVOKER, mismas
+ * RLS que las lecturas directas). Devuelve { stock, overrides, vendible_tienda,
+ * vendible_almacen }: stock_actual con su ubicación, producto_sucursal y los resultados de
+ * saldo_vendible para Tienda (2) y Almacén (1). Antes eran 4 peticiones (más preflights
+ * CORS) por llamada; la derivación de abajo no cambió. Requiere la migración
+ * 20261113120000_stock_vendible_lote.sql aplicada.
  */
 export const getStockBySucursalBatch = async (
   productIds: number[],
@@ -260,26 +274,21 @@ export const getStockBySucursalBatch = async (
   const ids = [...new Set(productIds)].filter((id) => Number.isFinite(id))
   const result = new Map<number, StockBatchEntry>()
   if (!ids.length) return result
-  const [{ data, error }, sucursalDefaults, { data: overridesData, error: overridesError }, { data: vendibleTiendaData, error: vendibleTiendaError }, { data: vendibleAlmacenData, error: vendibleAlmacenError }] = await Promise.all([
-    supabase.from('stock_actual').select('producto_id,cantidad_base,ubicacion:ubicacion_id(sucursal_id,excluye_disponible)').in('producto_id', ids),
+  const [{ data, error }, sucursalDefaults] = await Promise.all([
+    supabase.rpc('stock_vendible_lote', { p_producto_ids: ids }),
     getSucursalControlDefaults(),
-    supabase.from('producto_sucursal').select('producto_id,sucursal_id,control_stock').in('producto_id', ids),
-    supabase.rpc('saldo_vendible', { p_producto_ids: ids, p_sucursal_id: 2 }),
-    supabase.rpc('saldo_vendible', { p_producto_ids: ids, p_sucursal_id: 1 }),
   ])
   if (error) throw error
-  if (overridesError) throw overridesError
-  if (vendibleTiendaError) throw vendibleTiendaError
-  if (vendibleAlmacenError) throw vendibleAlmacenError
+  const payload = (data ?? {}) as Partial<StockVendibleLotePayload>
   const overrideByKey = new Map<string, string>()
-  for (const row of (overridesData ?? []) as Array<{ producto_id: number; sucursal_id: number; control_stock: string | null }>) {
+  for (const row of payload.overrides ?? []) {
     if (row.control_stock) overrideByKey.set(`${row.producto_id}:${row.sucursal_id}`, row.control_stock)
   }
   // Sucursal 1 = Almacén Central, 2 = Tienda, 3 = Shopify (virtual, se ignora).
   const esLibre = (productoId: number, sucursalId: number) =>
     (overrideByKey.get(`${productoId}:${sucursalId}`) ?? sucursalDefaults.get(sucursalId)) === 'LIBRE'
-  const vendibleTiendaByProduct = new Map(((vendibleTiendaData ?? []) as SaldoVendibleRow[]).map((row) => [row.producto_id, row]))
-  const vendibleAlmacenByProduct = new Map(((vendibleAlmacenData ?? []) as SaldoVendibleRow[]).map((row) => [row.producto_id, row]))
+  const vendibleTiendaByProduct = new Map((payload.vendible_tienda ?? []).map((row) => [row.producto_id, row]))
+  const vendibleAlmacenByProduct = new Map((payload.vendible_almacen ?? []).map((row) => [row.producto_id, row]))
   for (const id of ids) {
     const vt = vendibleTiendaByProduct.get(id)
     const va = vendibleAlmacenByProduct.get(id)
@@ -296,17 +305,12 @@ export const getStockBySucursalBatch = async (
       almacenMotivo: va?.motivo ?? null,
     })
   }
-  const rows = (data ?? []) as unknown as Array<{
-    producto_id: number
-    cantidad_base: number | string
-    ubicacion?: { sucursal_id: number | null; excluye_disponible: boolean | null } | null
-  }>
-  for (const row of rows) {
+  for (const row of payload.stock ?? []) {
     const entry = result.get(row.producto_id)
     if (!entry) continue
-    if (row.ubicacion?.excluye_disponible === true) continue
-    if (row.ubicacion?.sucursal_id === 2) entry.tienda += num(row.cantidad_base)
-    else if (row.ubicacion?.sucursal_id === 1) entry.almacen += num(row.cantidad_base)
+    if (row.excluye_disponible === true) continue
+    if (row.sucursal_id === 2) entry.tienda += num(row.cantidad_base)
+    else if (row.sucursal_id === 1) entry.almacen += num(row.cantidad_base)
   }
   return result
 }

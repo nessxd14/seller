@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { supabase } from '../../infrastructure/supabase/supabaseClient'
 import { createUuid } from '../../application/shared/createUuid'
+import { createRefreshGate } from '../../hooks/refreshGate'
 
 /** Realtime cuando está habilitado; el sondeo mantiene frescura sin depender de él. */
 export function useCashRefresh(refresh: () => Promise<void>, key: string) {
@@ -11,11 +12,12 @@ export function useCashRefresh(refresh: () => Promise<void>, key: string) {
       running = true
       void refresh().finally(() => { running = false })
     }
-    const visibility = () => { if (document.visibilityState === 'visible') update() }
+    const gate = createRefreshGate()
+    const onFocusOrVisible = () => gate(update)
     update()
     const interval = window.setInterval(update, 60_000)
-    window.addEventListener('focus', update)
-    document.addEventListener('visibilitychange', visibility)
+    window.addEventListener('focus', onFocusOrVisible)
+    document.addEventListener('visibilitychange', onFocusOrVisible)
     // La publicación supabase_realtime está vacía hoy: el sondeo es la única fuente de frescura.
     let channel: ReturnType<typeof supabase.channel> | undefined
     // Los adaptadores de pruebas pueden no implementar Realtime.
@@ -28,8 +30,8 @@ export function useCashRefresh(refresh: () => Promise<void>, key: string) {
     }
     return () => {
       clearInterval(interval)
-      window.removeEventListener('focus', update)
-      document.removeEventListener('visibilitychange', visibility)
+      window.removeEventListener('focus', onFocusOrVisible)
+      document.removeEventListener('visibilitychange', onFocusOrVisible)
       if (channel) void supabase.removeChannel(channel)
     }
   }, [refresh, key])

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { featureFlags } from '../config/featureFlags'
+import { createRefreshGate } from '../hooks/refreshGate'
 import { turnoService, authSessionProvider } from '../infrastructure/services'
 
 interface CashSessionState {
@@ -50,13 +51,15 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
     const update = () => { void refresh().catch(() => setSessionId(null)) }
     // Sondeo lento y solo con la pestaña visible; al volver a verla se actualiza al instante.
     const tick = () => { if (document.visibilityState !== 'hidden') update() }
-    const visibility = () => { if (document.visibilityState === 'visible') update() }
+    // focus + visibilitychange llegan juntos: el gate deja pasar solo uno cada 15 s.
+    const gate = createRefreshGate()
+    const onFocusOrVisible = () => gate(update)
     update()
     const unsubscribe = authSessionProvider.subscribe?.(update)
-    window.addEventListener('focus', update)
-    document.addEventListener('visibilitychange', visibility)
-    const timer = window.setInterval(tick, 60_000)
-    return () => { unsubscribe?.(); window.removeEventListener('focus', update); document.removeEventListener('visibilitychange', visibility); clearInterval(timer) }
+    window.addEventListener('focus', onFocusOrVisible)
+    document.addEventListener('visibilitychange', onFocusOrVisible)
+    const timer = window.setInterval(tick, 120_000)
+    return () => { unsubscribe?.(); window.removeEventListener('focus', onFocusOrVisible); document.removeEventListener('visibilitychange', onFocusOrVisible); clearInterval(timer) }
   }, [refresh])
 
   const value = useMemo(() => ({ sessionId, loading, refresh }), [sessionId, loading, refresh])
