@@ -374,6 +374,23 @@ export type TurnoEstado = 'ABIERTA' | 'CERRADA' | 'EN_REVISION'
 // nada, ya que _total_denominaciones tampoco los usa.
 export type Denominaciones = Record<string, number>
 
+// Arqueos periódicos (2026-11-13_caja_arqueos_periodicos.sql). Para el cajero la base
+// NUNCA manda contado/esperado/diferencia/denominaciones: son opcionales y solo existen
+// para gerente/admin (conteo ciego).
+export type ArqueoEstado = 'PROGRAMADO' | 'CUMPLIDO' | 'CUMPLIDO_TARDE' | 'VENCIDO' | 'CANCELADO'
+
+export interface ArqueoProgramado {
+  numero: number
+  programadoEn: string
+  venceEn: string
+  estado: ArqueoEstado
+  respondidoEn?: string
+  contadoBs?: number
+  esperadoBs?: number
+  diferenciaBs?: number
+  denominaciones?: Denominaciones
+}
+
 export interface TurnoSesion {
   id: string
   cajaId: number

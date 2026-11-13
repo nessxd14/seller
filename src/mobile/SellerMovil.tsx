@@ -1,6 +1,7 @@
 import { ArrowLeftRight, BarChart3, Boxes, ClipboardList, FileText, HandCoins, LayoutGrid, LogOut, MoreHorizontal, PauseCircle, Percent, Receipt, Save, ScanLine, Settings, ShoppingBag, Users, WalletCards, Warehouse, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AuthSession } from '../application/auth/AuthSessionProvider'
+import { ArqueoCampana } from '../features/cash/arqueos/ArqueoCampana'
 import { useCashSession } from '../context/CashSessionContext'
 import { useBotonAtras } from './useBotonAtras'
 import { modulosMas, pestanasPara, type Modulo } from './navegacionMovil'
@@ -34,9 +35,11 @@ export interface SellerMovilProps {
   onRegistrarPago?: () => void
   onPedidoPiso?: () => void
   onCerrarSesion?: () => void
+  /** Aviso flotante: lo usa la campana de arqueos. */
+  notify?: (message: string) => void
 }
 
-export function SellerMovil({ session, activo, onNavegar, puedeAbrir, rutaDetalle, contenido, venta, extras, onRegistrarPago, onPedidoPiso, onCerrarSesion }: SellerMovilProps) {
+export function SellerMovil({ session, activo, onNavegar, puedeAbrir, rutaDetalle, contenido, venta, extras, onRegistrarPago, onPedidoPiso, onCerrarSesion, notify }: SellerMovilProps) {
   const role = session?.user.role
   const pestanas = pestanasPara(role, puedeAbrir)
   const mas = modulosMas(pestanas, puedeAbrir)
@@ -77,6 +80,7 @@ export function SellerMovil({ session, activo, onNavegar, puedeAbrir, rutaDetall
     <header className="movil-barra">
       <div className="movil-barra-titulo"><h1>{activo}</h1>{session?.user.name && <small>{session.user.name}</small>}</div>
       {conCaja && activo !== 'Caja' && <button type="button" className={`movil-turno ${sessionId ? 'abierto' : ''}`} onClick={() => ir('Caja')}><i aria-hidden="true" />{sessionId ? 'Caja abierta' : 'Caja cerrada'}</button>}
+      {notify && <ArqueoCampana notify={notify} variante="movil" />}
       <button type="button" className="movil-avatar" aria-label="Cuenta y más opciones" onClick={() => setMasAbierto(true)}>{iniciales(session?.user.name ?? 'Usuario')}</button>
     </header>
 

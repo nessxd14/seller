@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
 import { hasPermission } from '../../application/auth/AuthSessionProvider'
 import type { VtdPendienteCierre } from '../../infrastructure/supabase/TurnoRepository.supabase'
-import type { CajaFaltanteRecord, CajaGastoRecord, CashSessionRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoResumen, TurnoSesion, TurnoTicket, TurnoMovimiento } from '../../application/shared/models'
+import type { ArqueoProgramado, CajaFaltanteRecord, CajaGastoRecord, CashSessionRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoResumen, TurnoSesion, TurnoTicket, TurnoMovimiento } from '../../application/shared/models'
 import { sugerirPagosQr, type SugerenciaQr } from '../../domain/cash/qrSuggestions'
 import { anulacionService, authSessionProvider, cashService, sensitiveOperations, turnoService, ventaDirectaService } from '../../infrastructure/services'
 import type { AnulacionSolicitud } from '../../application/shared/models'
@@ -16,6 +16,8 @@ import { DENOMINACIONES, DenominationCount, denominacionesLimpias, denominacione
 import { VentaTicket } from '../../components/VentaTicket'
 import { CajaComprobantes } from './CajaComprobantes'
 import { CajaAlmacenEnEspera } from '../../components/CajaAlmacenEnEspera'
+import { ArqueosDelTurno, ArqueosGerente, DesgloseCierre } from './arqueos/ArqueosTurnoVistas'
+import { CajonEnCeroCheck } from '../../components/CajonEnCeroCheck'
 import { InfoHint } from '../../components/InfoHint'
 import { useEsEncargado } from '../../components/useCobroDestino'
 import { featureFlags } from '../../config/featureFlags'
@@ -262,6 +264,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
           para cajero), nunca recalculado acá. */}
       {isManager && <footer><span>Efectivo esperado</span><strong>{resumen?.esperadoEfectivoBs != null ? formatMoney(money(Math.round(resumen.esperadoEfectivoBs * 100))) : '—'}</strong>{resumen?.diferenciaRelevoBs ? <small>Relevo: {resumen.diferenciaRelevoBs >= 0 ? '+' : ''}{bs(resumen.diferenciaRelevoBs)}</small> : null}</footer>}
     </section>
+    <ArqueosDelTurno sesionId={sesion.id} />
     {resumen && <section className="cash-breakdown" aria-label="Desglose del turno">
       <header><h3>Desglose del turno</h3><span>Ver métodos</span></header>
       <CashSummaryRow title="Mostrador (VTA)" methods={resumen.ventasRetailPorMetodo} note={resumen.ventasTotalBs != null ? `Total vendido: Bs ${bs(resumen.ventasTotalBs)}. Dinero nuevo por método.` : undefined} info={HINTS.vta} />
@@ -378,10 +381,6 @@ function CierreGerenteModal({ mensaje, contadoBs, onClose, onConfirm }: { mensaj
     </div>
     <footer className="modal-actions"><button className="secondary-button" disabled={busy} onClick={onClose}>Cancelar</button><button className="primary-button" disabled={!valido || busy} onClick={() => void confirmar()}>{busy ? 'Cerrando turno…' : 'Cerrar como gerente'}</button></footer>
   </Modal>
-}
-
-function CajonEnCeroCheck({ checked, onChange, disabled }: { checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
-  return <label className="cash-cero-check"><input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} /> El cajón está en cero</label>
 }
 
 /**
@@ -507,6 +506,7 @@ function CerrarTurnoModal({ onClose, onConfirm, entrega }: {
         {entregaPreviaBs > 0 && <div className="cierre-resumen-nota"><dt>Entrega ya registrada</dt><dd>Bs {bs(entregaPreviaBs)}</dd></div>}
         <div className="cierre-resumen-total"><dt>Queda en el cajón</dt><dd>Bs {bs(totalRestante)}</dd></div>
       </dl>
+      {sesionId && <ArqueosDelTurno sesionId={sesionId} />}
       {totalRestante > 0 && <p className="cierre-desglose">{DENOMINACIONES.filter((d) => restantes[String(d)]).map((d) => `${restantes[String(d)]} × Bs ${d}`).join(' · ')}</p>}
       {error && <p role="alert" className="cash-error">{error}</p>}
     </div>
@@ -529,6 +529,7 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
   const [enRevision, setEnRevision] = useState<TurnoSesion[]>([])
   const [faltantes, setFaltantes] = useState<CajaFaltanteRecord[]>([])
   const [detalleCierre, setDetalleCierre] = useState<Record<string, DetalleCierre>>({})
+  const [arqueosVivo, setArqueosVivo] = useState<{ arqueos: ArqueoProgramado[]; ahoraMs: number } | null>(null)
   const [arqueoOpen, setArqueoOpen] = useState(false)
   // Brief Caja-2 B2 — "Pagos por verificar".
   const [estadoBanco, setEstadoBanco] = useState<EstadoBancoQr | null>(null)
@@ -564,6 +565,9 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
       turnoService.pagosPorVerificar(),
       turnoService.movimientosBancoSinVincular(),
     ])
+    // Arqueos periódicos del turno en vivo: informativo, un fallo no tumba la supervisión.
+    const vivo = abierta ? await Promise.resolve().then(() => turnoService.arqueos(abierta.id)).catch(() => null) : null
+    setArqueosVivo(vivo ? { arqueos: vivo.arqueos, ahoraMs: Date.parse(vivo.ahoraServidor) || Date.now() } : null)
     setResumen(r); setGastos(g); setEnRevision(rev); setFaltantes(f)
     setEstadoBanco(banco); setPagosPorVerificar(pagos); setMovimientosSinVincular(movimientos)
     setLoadError('')
@@ -571,9 +575,13 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
     // contado del conteo de CIERRE. Si una falla, esa tarjeta muestra "—" sin tumbar el panel.
     const detalles = await Promise.all(rev.map(async (s): Promise<[string, DetalleCierre]> => {
       try {
-        const [res, contadoBs] = await Promise.all([turnoService.resumen(s.id), turnoService.conteoCierre(s.id)])
-        return [s.id, { esperadoBs: res.esperadoEfectivoBs, contadoBs, entregadoBs: res.remesasBs }]
-      } catch { return [s.id, { esperadoBs: null, contadoBs: null, entregadoBs: null }] }
+        const [res, contadoBs, arqueos] = await Promise.all([
+          turnoService.resumen(s.id),
+          turnoService.conteoCierre(s.id),
+          Promise.resolve().then(() => turnoService.arqueos(s.id)).then((r) => r.arqueos).catch((): null => null),
+        ])
+        return [s.id, { esperadoBs: res.esperadoEfectivoBs, contadoBs, entregadoBs: res.remesasBs, arqueos }]
+      } catch { return [s.id, { esperadoBs: null, contadoBs: null, entregadoBs: null, arqueos: null }] }
     }))
     setDetalleCierre(Object.fromEntries(detalles))
     } catch (error) { setLoadError(error instanceof Error ? error.message : 'No se pudo actualizar la supervisión') }
@@ -659,6 +667,7 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
       <WalletCards />
       {sesion && <footer><span>Efectivo esperado</span><strong>{resumen?.esperadoEfectivoBs != null ? formatMoney(money(Math.round(resumen.esperadoEfectivoBs * 100))) : '—'}</strong>{resumen?.diferenciaRelevoBs ? <small>Relevo: {resumen.diferenciaRelevoBs >= 0 ? '+' : ''}{bs(resumen.diferenciaRelevoBs)}</small> : null}</footer>}
     </section>
+    {sesion && arqueosVivo && <ArqueosGerente arqueos={arqueosVivo.arqueos} ahoraMs={arqueosVivo.ahoraMs} />}
     {resumen && <section className="cash-methods"><h3>Ventas por método</h3>{Object.keys(resumen.ventasPorMetodo).length ? Object.entries(resumen.ventasPorMetodo).map(([m, v]) => <div key={m}><span>{metodoLabel[m] ?? m}</span><strong>Bs {bs(v)}</strong></div>) : <FeatureState type="empty" text="Sin ventas todavía" />}</section>}
     {sesion && <button className="secondary-button" onClick={() => setArqueoOpen(true)}><Calculator /> Arqueo sorpresa</button>}
 
@@ -728,7 +737,7 @@ export function SupervisionPanel({ notify }: { notify: (message: string) => void
   </div>
 }
 
-interface DetalleCierre { esperadoBs: number | null; contadoBs: number | null; entregadoBs: number | null }
+interface DetalleCierre { esperadoBs: number | null; contadoBs: number | null; entregadoBs: number | null; arqueos?: ArqueoProgramado[] | null }
 
 const fechaCorta = (iso: string) => new Date(iso).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })
 const quienRegistro = (email?: string) => (email ? email.split('@')[0] : 'Cajero')
@@ -787,6 +796,7 @@ function CierreAprobacionRow({ sesion, detalle, onAprobar }: { sesion: TurnoSesi
       <div><dt>Remesas</dt><dd>{cifra(detalle?.entregadoBs)}</dd></div>
       <div><dt>Diferencia</dt><dd className={diferencia == null ? '' : diferencia < 0 ? 'negativa' : diferencia > 0 ? 'positiva' : ''}>{diferencia == null ? '—' : `${diferencia > 0 ? '+' : diferencia < 0 ? '−' : ''} Bs ${bs(Math.abs(diferencia))}`}</dd></div>
     </dl>
+    <DesgloseCierre aperturaBs={sesion.aperturaBs} diferenciaRelevoBs={sesion.diferenciaRelevoBs} arqueos={detalle?.arqueos} cierreContadoBs={detalle?.contadoBs} cierreEsperadoBs={detalle?.esperadoBs} />
     <div className="aprobacion-row-form inline">
       <label>Nota de revisión (obligatoria)<input type="text" maxLength={500} value={nota} disabled={busy} onChange={(e) => setNota(e.target.value)} placeholder="Qué revisaste y qué se decidió" /></label>
       <button type="button" className="aprobacion-aprobar" disabled={busy || !nota.trim()} onClick={() => void aprobar()}><Check aria-hidden="true" /> Aprobar cierre</button>
