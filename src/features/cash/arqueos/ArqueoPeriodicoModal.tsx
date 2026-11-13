@@ -46,19 +46,24 @@ export function ArqueoPeriodicoModal({ numero, total, fueraDeHora, registrar, re
   }
 
   return <Modal
+    className="cash-dialog cierre-dialog"
     title={`Arqueo ${numero} de ${total}`}
-    subtitle={<>Cuenta todo el efectivo del cajón, billete por billete.{fueraDeHora && <> <strong className="arqueo-tarde-nota">Fuera de hora — igual queda registrado.</strong></>}</>}
+    subtitle={<>Cuenta todo el efectivo del cajón, billete por billete.{fueraDeHora && <> <span className="arqueo-badge-tarde">Fuera de hora — igual queda registrado.</span></>}</>}
     onClose={onClose}
+    escapeToClose={!enviando}
     wide
   >
     <div className="modal-body arqueo-modal">
+      <header className="arqueo-conteo-cabecera"><h3>Cuenta todo el efectivo del cajón</h3><p>Ingresa la cantidad de cada denominación.</p></header>
       <DenominationCount value={contado} onChange={setContado} disabled={enviando} />
       {totalContado === 0 && <CajonEnCeroCheck checked={cajonEnCero} onChange={setCajonEnCero} disabled={enviando} />}
       {error && <p role="alert" className="cash-error">{error}</p>}
     </div>
-    <div className="modal-actions">
+    <footer className="modal-actions">
+      {/* Es el conteo del propio cajero, no el esperado: no rompe el conteo ciego. */}
+      <div className="arqueo-modal-total" aria-live="polite"><span>Total contado</span><strong>Bs {totalContado.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
       <button type="button" className="secondary-button" onClick={onClose}>Más tarde</button>
       <button type="button" className="primary-button" disabled={enviando || falta} onClick={() => void confirmar()}>{enviando ? 'Registrando…' : 'Registrar arqueo'}</button>
-    </div>
+    </footer>
   </Modal>
 }

@@ -41,6 +41,25 @@ describe('ArqueoPeriodicoModal', () => {
     expect(document.body.textContent ?? '').not.toContain('1280')
   })
 
+  it('usa el mismo aspecto que el conteo del cierre y muestra el total contado', () => {
+    montar()
+    const dialogo = screen.getByRole('dialog', { name: /Arqueo 2 de 3/ })
+    expect(dialogo.className).toContain('cash-dialog')
+    expect(dialogo.className).toContain('cierre-dialog')
+    expect(dialogo.querySelector('footer.modal-actions')).toBeTruthy()
+    const pie = dialogo.querySelector('footer.modal-actions') as HTMLElement
+    expect(pie.textContent).toContain('Total contado')
+    expect(pie.textContent).toContain('Bs 0,00')
+    contar100()
+    expect(pie.textContent).toContain('Bs 300,00')
+    expect(pie.querySelector('[aria-live="polite"]')).toBeTruthy()
+  })
+
+  it('la nota de fuera de hora es una insignia', () => {
+    montar({ fueraDeHora: true })
+    expect(screen.getByText('Fuera de hora — igual queda registrado.').className).toContain('arqueo-badge-tarde')
+  })
+
   it('registra el conteo sin ceros, avisa y cierra', async () => {
     const p = montar()
     contar100()
