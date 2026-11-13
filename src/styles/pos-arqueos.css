@@ -1,0 +1,71 @@
+/* Arqueos periódicos: campana → caja registradora. Acento propio (verde azulado); rojo solo si está tarde.
+   Ámbar queda para gastos. */
+.arqueo-campana { --arq-acento: #0f766e; --arq-acento-suave: #ccfbf1; --arq-tarde: #b42318; --arq-tarde-suave: #fee4e2; position: relative; display: inline-flex; flex: none; }
+.arqueo-campana--movil { --arq-acento: #0e7490; --arq-acento-suave: #e0f7fa; }
+
+.arqueo-campana__boton { position: relative; display: inline-flex; align-items: center; gap: 6px; min-width: 38px; height: 38px; padding: 0 9px; border: 1px solid var(--line, #e9e5dc); border-radius: 10px; background: #fff; color: #68665f; }
+.arqueo-campana--movil .arqueo-campana__boton { min-width: 40px; height: 40px; border-color: var(--m-line, #dce5f1); border-radius: 999px; color: var(--m-muted, #526279); }
+.arqueo-campana__boton:focus-visible { outline: 2px solid var(--arq-acento); outline-offset: 2px; }
+.arqueo-campana__boton.esta-pendiente { border-color: var(--arq-acento); background: var(--arq-acento-suave); color: var(--arq-acento); }
+.arqueo-campana__boton.esta-tarde { border-color: var(--arq-tarde); background: var(--arq-tarde-suave); color: var(--arq-tarde); }
+
+.arqueo-campana__iconos { position: relative; width: 20px; height: 20px; display: grid; place-items: center; }
+.arqueo-campana__iconos svg { grid-area: 1 / 1; width: 20px; height: 20px; transform-origin: 50% 12%; }
+.arqueo-campana__caja { opacity: 0; transform: scale(.6); }
+.esta-pendiente .arqueo-campana__campana { animation: arq-sonar 700ms ease-in-out 2, arq-salir 280ms ease 1400ms forwards; }
+.esta-pendiente .arqueo-campana__caja { animation: arq-entrar 280ms ease 1400ms forwards; }
+.esta-pendiente::after { content: ''; position: absolute; inset: -4px; border-radius: inherit; border: 2px solid var(--arq-acento); opacity: 0; animation: arq-pulso 1.8s ease-out 1.4s infinite; pointer-events: none; }
+.esta-tarde::after { border-color: var(--arq-tarde); }
+
+.arqueo-campana__chip { padding: 2px 7px; border-radius: 999px; background: #f59e0b22; color: #92400e; border: 1px solid #f59e0b66; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.arqueo-campana__chip.es-tarde { background: var(--arq-tarde); border-color: var(--arq-tarde); color: #fff; }
+
+.arqueo-campana__anuncio { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.arqueo-campana__lista { position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; width: 264px; padding: 12px; background: #fff; border: 1px solid var(--line, #e9e5dc); border-radius: 12px; box-shadow: 0 12px 30px #0002; font-size: 13px; color: #24231f; }
+.arqueo-campana__lista p { margin: 6px 0 0; color: #77746d; }
+.arqueo-campana__lista ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.arqueo-campana__lista li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; }
+
+.arqueo-estado { font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: #f1eee8; color: #68665f; }
+.arqueo-estado.es-ok { background: #d1fae5; color: #065f46; }
+.arqueo-estado.es-pendiente { background: #ccfbf1; color: #0f766e; }
+.arqueo-estado.es-tarde { background: #fef3c7; color: #92400e; }
+.arqueo-estado.es-vencido { background: #fee4e2; color: #b42318; }
+
+.arqueo-tarde-nota { color: #b42318; }
+
+/* Fila "Arqueos del turno" (panel del cajero y paso de confirmación del cierre): solo horas y estado. */
+.arqueos-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 10px 0; font-size: 13px; }
+.arqueos-fila > strong { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #77746d; }
+.arqueos-fila span { font-variant-numeric: tabular-nums; }
+.arqueos-fila .es-ok { color: #065f46; font-weight: 700; }
+.arqueos-fila .es-pendiente { color: #0f766e; font-weight: 700; }
+.arqueos-fila .es-tarde { color: #92400e; font-weight: 700; }
+.arqueos-fila .es-vencido { color: #b42318; font-weight: 700; }
+
+/* Vista del gerente: una línea por arqueo con dinero y semáforo. */
+.arqueos-gerente { display: grid; gap: 6px; margin: 10px 0; }
+.arqueos-gerente > strong { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #77746d; }
+.arqueo-gerente-linea { border: 1px solid var(--line, #e9e5dc); border-radius: 10px; background: #fff; font-size: 13px; }
+.arqueo-gerente-linea > summary { list-style: none; display: grid; grid-template-columns: auto 1fr auto auto auto auto; gap: 8px 12px; align-items: center; padding: 8px 10px; cursor: pointer; }
+.arqueo-gerente-linea > summary::-webkit-details-marker { display: none; }
+.arqueo-gerente-linea .num { font-variant-numeric: tabular-nums; }
+.arqueo-luz { width: 12px; height: 12px; border-radius: 50%; display: inline-block; background: #d6d3d1; }
+.arqueo-luz.verde { background: #16a34a; }
+.arqueo-luz.ambar { background: #f59e0b; }
+.arqueo-luz.rojo { background: #dc2626; }
+.arqueo-gerente-linea .detalle { padding: 0 10px 10px; color: #55524d; }
+.arqueo-desglose { display: grid; gap: 4px; margin: 8px 0; font-size: 13px; }
+.arqueo-desglose > div { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; }
+
+@keyframes arq-sonar { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(16deg); } 35% { transform: rotate(-14deg); } 55% { transform: rotate(10deg); } 75% { transform: rotate(-6deg); } }
+@keyframes arq-salir { to { opacity: 0; transform: scale(.5); } }
+@keyframes arq-entrar { to { opacity: 1; transform: scale(1); } }
+@keyframes arq-pulso { 0% { opacity: .55; transform: scale(1); } 100% { opacity: 0; transform: scale(1.25); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .esta-pendiente .arqueo-campana__campana { animation: none; opacity: 0; }
+  .esta-pendiente .arqueo-campana__caja { animation: none; opacity: 1; transform: none; }
+  .esta-pendiente::after { animation: none; display: none; }
+}

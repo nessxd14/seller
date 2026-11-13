@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { rpc, from } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }))
 vi.mock('./supabaseClient', () => ({ supabase: { rpc, from } }))
-import { cerrarTurno, cerrarTurnoGerente,getResumenTurno, listMovimientosTurno, marcarCobroFueraDeArqueo } from './TurnoRepository.supabase'
+import { cerrarTurno, cerrarTurnoGerente, getArqueosTurno, registrarArqueoPeriodico, getResumenTurno, listMovimientosTurno, marcarCobroFueraDeArqueo } from './TurnoRepository.supabase'
 
 const cierreOk = { data: { sesion_id: 4, estado: 'CERRADA' }, error: null }
 const den = { '100': 1 }
@@ -125,5 +125,53 @@ describe('detalle de productos del turno', () => {
     const rows = await listMovimientosTurno('4')
     expect(rows.map(row => row.ventaId)).toEqual(['21', '32', undefined, '43'])
     expect(selects.every(fields => fields.split(',').includes('venta_id'))).toBe(true)
+  })
+})
+
+describe('arqueos periódicos', () => {
+  it('getArqueosTurno mapea la vista del cajero sin campos de dinero', async () => {
+    rpc.mockResolvedValue({ data: { ahora: '2026-11-13T10:40:12-04:00', arqueos: [
+      { numero: 1, programado_en: '2026-11-13T10:00:00-04:00', vence_en: '2026-11-13T10:30:00-04:00', estado: 'CUMPLIDO', respondido_en: '2026-11-13T10:05:00-04:00' },
+      { numero: 2, programado_en: '2026-11-13T12:00:00-04:00', vence_en: '2026-11-13T12:30:00-04:00', estado: 'PROGRAMADO' },
+    ] }, error: null })
+    const r = await getArqueosTurno('9')
+    expect(rpc).toHaveBeenCalledWith('arqueos_turno', { p_sesion_id: 9 })
+    expect(r.ahoraServidor).toBe('2026-11-13T10:40:12-04:00')
+    expect(r.arqueos).toHaveLength(2)
+    expect(r.arqueos[0]).toMatchObject({ numero: 1, estado: 'CUMPLIDO', respondidoEn: '2026-11-13T10:05:00-04:00' })
+    for (const a of r.arqueos) {
+      expect(a.contadoBs).toBeUndefined(); expect(a.esperadoBs).toBeUndefined(); expect(a.diferenciaBs).toBeUndefined(); expect(a.denominaciones).toBeUndefined()
+    }
+    expect(r.arqueos[1].respondidoEn).toBeUndefined()
+  })
+
+  it('getArqueosTurno mapea dinero para gerente (numérico, aunque venga como texto)', async () => {
+    rpc.mockResolvedValue({ data: { ahora: 'x', arqueos: [{ numero: 1, programado_en: 'a', vence_en: 'b', estado: 'CUMPLIDO_TARDE', respondido_en: 'c', contado: '1180.50', esperado: 1280.5, diferencia: -100, denominaciones: { '200': 2, '100': '5' } }] }, error: null })
+    const [a] = (await getArqueosTurno('9')).arqueos
+    expect(a).toMatchObject({ contadoBs: 1180.5, esperadoBs: 1280.5, diferenciaBs: -100, denominaciones: { '200': 2, '100': 5 } })
+  })
+
+  it('getArqueosTurno tolera lista vacía o nula', async () => {
+    rpc.mockResolvedValue({ data: { ahora: 'x', arqueos: null }, error: null })
+    expect((await getArqueosTurno('9')).arqueos).toEqual([])
+    rpc.mockResolvedValue({ data: null, error: null })
+    expect((await getArqueosTurno('9')).arqueos).toEqual([])
+  })
+
+  it('getArqueosTurno propaga el error de la base', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'No es tu turno', code: 'P0001', details: null, hint: null } })
+    await expect(getArqueosTurno('9')).rejects.toThrow('No es tu turno')
+  })
+
+  it('registrarArqueoPeriodico manda denominaciones y devuelve solo número y estado', async () => {
+    rpc.mockResolvedValue({ data: { numero: 2, estado: 'CUMPLIDO_TARDE' }, error: null })
+    const r = await registrarArqueoPeriodico('9', den)
+    expect(rpc).toHaveBeenCalledWith('registrar_arqueo_periodico', { p_sesion_id: 9, p_denominaciones: den })
+    expect(r).toEqual({ numero: 2, estado: 'CUMPLIDO_TARDE' })
+  })
+
+  it('registrarArqueoPeriodico muestra el mensaje cuando no hay arqueo pendiente', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'No tienes un arqueo pendiente en este momento', code: 'P0001', details: null, hint: null } })
+    await expect(registrarArqueoPeriodico('9', den)).rejects.toThrow('No tienes un arqueo pendiente en este momento')
   })
 })

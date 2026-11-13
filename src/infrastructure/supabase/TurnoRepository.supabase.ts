@@ -6,7 +6,7 @@ import { supabase } from './supabaseClient'
 import { toError } from './postgrestError'
 import { leerTodo, porLotes } from './paginacion'
 import { createUuid } from '../../application/shared/createUuid'
-import type { CajaFaltanteRecord, CajaGastoRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoEstado, TurnoResumen, TurnoSesion, TurnoTicket, TurnoMovimiento } from '../../application/shared/models'
+import type { ArqueoEstado, ArqueoProgramado, CajaFaltanteRecord, CajaGastoRecord, Denominaciones, EstadoBancoQr, MovimientoBancoQr, PagoPorVerificar, TurnoEstado, TurnoResumen, TurnoSesion, TurnoTicket, TurnoMovimiento } from '../../application/shared/models'
 
 // Brief: "hoy solo hay una caja habilitada operando este POS" — mismo criterio que
 // CAJA_ID en CashRepository.supabase.ts (verificado contra la tabla `caja`: una sola
@@ -182,6 +182,51 @@ export async function registrarArqueoSorpresa(sesionId: string, denominaciones: 
   if (error) throw toError(error)
   const result = data as { esperado: number | string; contado: number | string; diferencia: number | string }
   return { esperadoBs: num(result.esperado), contadoBs: num(result.contado), diferenciaBs: num(result.diferencia) }
+}
+
+interface ArqueoRow {
+  numero: number
+  programado_en: string
+  vence_en: string
+  estado: ArqueoEstado
+  respondido_en?: string | null
+  contado?: number | string | null
+  esperado?: number | string | null
+  diferencia?: number | string | null
+  denominaciones?: Record<string, number | string> | null
+}
+
+const opcional = (v: number | string | null | undefined): number | undefined => (v != null ? num(v) : undefined)
+
+export function rowToArqueo(row: ArqueoRow): ArqueoProgramado {
+  return {
+    numero: Number(row.numero),
+    programadoEn: row.programado_en,
+    venceEn: row.vence_en,
+    estado: row.estado,
+    respondidoEn: row.respondido_en ?? undefined,
+    contadoBs: opcional(row.contado),
+    esperadoBs: opcional(row.esperado),
+    diferenciaBs: opcional(row.diferencia),
+    denominaciones: row.denominaciones ? Object.fromEntries(Object.entries(row.denominaciones).map(([k, v]) => [k, num(v)])) : undefined,
+  }
+}
+
+// Arqueos periódicos del turno. `ahoraServidor` permite corregir el reloj de la PC de caja.
+// Para el cajero solo vienen número, horas y estado (sin dinero).
+export async function getArqueosTurno(sesionId: string): Promise<{ ahoraServidor: string; arqueos: ArqueoProgramado[] }> {
+  const { data, error } = await supabase.rpc('arqueos_turno', { p_sesion_id: Number(sesionId) })
+  if (error) throw toError(error)
+  const result = (data ?? {}) as { ahora?: string; arqueos?: ArqueoRow[] | null }
+  return { ahoraServidor: result.ahora ?? new Date().toISOString(), arqueos: (result.arqueos ?? []).map(rowToArqueo) }
+}
+
+// Devuelve solo número y estado, por diseño: el cajero no recibe esperado ni diferencia.
+export async function registrarArqueoPeriodico(sesionId: string, denominaciones: Denominaciones): Promise<{ numero: number; estado: 'CUMPLIDO' | 'CUMPLIDO_TARDE' }> {
+  const { data, error } = await supabase.rpc('registrar_arqueo_periodico', { p_sesion_id: Number(sesionId), p_denominaciones: denominaciones })
+  if (error) throw toError(error)
+  const result = data as { numero: number | string; estado: 'CUMPLIDO' | 'CUMPLIDO_TARDE' }
+  return { numero: Number(result.numero), estado: result.estado }
 }
 
 export async function getResumenTurno(sesionId: string): Promise<TurnoResumen> {

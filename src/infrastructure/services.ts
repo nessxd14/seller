@@ -50,8 +50,16 @@ export const comisionesService = featureFlags.supabase ? supabaseServices.comisi
 // Brief Caja-1: solo tiene implementación Supabase — el modo mock sigue con el flujo
 // simple de abrir/cerrar caja de siempre (ver CashPage.tsx), así que nunca debería
 // llegar a llamar nada de acá; el throw es la señal clara si algún día lo hace.
+// Arqueos periódicos: en mock no hay nada programado, así que la lista viene vacía y registrar no hace nada.
+const turnoServiceMock: Pick<typeof supabaseServices.turnoService, 'arqueos' | 'arqueoPeriodico'> = {
+  arqueos: async () => ({ ahoraServidor: new Date().toISOString(), arqueos: [] }),
+  arqueoPeriodico: async () => ({ numero: 0, estado: 'CUMPLIDO' }),
+}
 export const turnoService = featureFlags.supabase ? supabaseServices.turnoService : new Proxy({} as typeof supabaseServices.turnoService, {
-  get() { return () => { throw new Error('turnoService no está disponible en modo mock — CashPage.tsx debe usar el flujo mock de siempre.') } },
+  get(_target, prop) {
+    if (prop === 'arqueos' || prop === 'arqueoPeriodico') return turnoServiceMock[prop]
+    return () => { throw new Error('turnoService no está disponible en modo mock — CashPage.tsx debe usar el flujo mock de siempre.') }
+  },
 })
 
 // Piso: solo tiene implementación Supabase (las RPC viven en la base); en modo mock la pantalla

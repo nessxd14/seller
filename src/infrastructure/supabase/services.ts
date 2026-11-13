@@ -329,6 +329,8 @@ export const turnoService = {
   marcarCobroFueraDeArqueo: (movimientoId: string, fuera: boolean = true) => turnoRepository.marcarCobroFueraDeArqueo(movimientoId, fuera),
   revisar: turnoRepository.revisarTurno,
   arqueoSorpresa: turnoRepository.registrarArqueoSorpresa,
+  arqueos: turnoRepository.getArqueosTurno,
+  arqueoPeriodico: turnoRepository.registrarArqueoPeriodico,
   resumen: turnoRepository.getResumenTurno,
   faltantesResolver: turnoRepository.faltantesResolver,
   misTickets: turnoRepository.misTickets,
