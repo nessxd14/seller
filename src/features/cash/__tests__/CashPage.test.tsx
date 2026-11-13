@@ -30,6 +30,7 @@ const { getSession, getResumenTurno, getSesionAbierta, abrirTurno, cerrarTurno, 
   return { getSession: vi.fn(), getResumenTurno: vi.fn(), getSesionAbierta: vi.fn(), abrirTurno: vi.fn(), cerrarTurno: vi.fn(), cerrarGerente: vi.fn(),registrarMovimiento: vi.fn(), listarMovimientos: vi.fn(), marcarFuera: vi.fn(), gastosPendientes: vi.fn(), turnosEnRevision: vi.fn(), resolverGasto: vi.fn(), revisarTurno: vi.fn(), conteoCierre: vi.fn(), sesionAbierta, cajeroSession, gerenteSession, resumenBase }
 })
 
+const arq = vi.hoisted(() => ({ arqueos: vi.fn() }))
 const anul = vi.hoisted(() => ({ puedeAnular: vi.fn(), listar: vi.fn(), aprobar: vi.fn(), rechazar: vi.fn(), retirar: vi.fn(), solicitar: vi.fn(), anular: vi.fn() }))
 
 vi.mock('../../../infrastructure/services', () => ({
@@ -38,6 +39,7 @@ vi.mock('../../../infrastructure/services', () => ({
   cashService: { getOpenSession: vi.fn().mockResolvedValue({ id: '1', register: 'Caja Tienda', openedAt: new Date().toISOString(), openingCents: 50000, status: 'open', movements: [] }) },
   turnoService: {
     getSesionAbierta: (...args: unknown[]) => getSesionAbierta(...args),
+    arqueos: (...args: unknown[]) => arq.arqueos(...args),
     abrir: (...args: unknown[]) => abrirTurno(...args),
     cerrar: (...args: unknown[]) => cerrarTurno(...args),
     cerrarGerente: (...args: unknown[]) => cerrarGerente(...args),
@@ -586,5 +588,29 @@ describe('Actividad del turno compacta (una línea por movimiento)', () => {
     fireEvent.click(texto)
     expect(texto.getAttribute('aria-expanded')).toBe('true')
     expect(texto.closest('.actividad-row')?.classList.contains('abierta')).toBe(true)
+  })
+})
+
+// ── Arqueos periódicos en "Mi turno": el cajero sigue ciego; el gerente ve el resultado ──────────
+describe('CashPage — arqueos en Mi turno', () => {
+  const programado = Date.now() - 60 * 60_000
+  const arqueoMenos7 = {
+    numero: 1, programadoEn: new Date(programado).toISOString(), venceEn: new Date(programado + 30 * 60_000).toISOString(),
+    estado: 'CUMPLIDO', respondidoEn: new Date(programado + 5 * 60_000).toISOString(),
+  }
+
+  it('gerente: ve "Faltó Bs 7,00" para un arqueo de −7', async () => {
+    arq.arqueos.mockResolvedValue({ ahoraServidor: new Date().toISOString(), arqueos: [{ ...arqueoMenos7, contadoBs: 993, esperadoBs: 1000, diferenciaBs: -7 }] })
+    await cargarCaja(gerenteSession)
+    expect(await screen.findByText('Faltó Bs 7,00')).toBeTruthy()
+    expect(document.body.textContent).toMatch(/Contado\s*Bs\s*993,00|Bs 993,00/)
+  })
+
+  it('cajero: con los mismos datos no ve dinero ni resultado', async () => {
+    arq.arqueos.mockResolvedValue({ ahoraServidor: new Date().toISOString(), arqueos: [{ ...arqueoMenos7, contadoBs: 993, esperadoBs: 1000, diferenciaBs: -7 }] })
+    await cargarCaja(cajeroSession)
+    const fila = await screen.findByLabelText('Arqueos del turno')
+    expect(fila.textContent).not.toMatch(/Bs|Faltó|Sobró|Cuadró|esperado|diferencia/i)
+    expect(screen.queryByText('Faltó Bs 7,00')).toBeNull()
   })
 })

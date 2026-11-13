@@ -44,20 +44,41 @@
 .arqueos-fila .es-tarde { color: #92400e; font-weight: 700; }
 .arqueos-fila .es-vencido { color: #b42318; font-weight: 700; }
 
-/* Vista del gerente: una línea por arqueo con dinero y semáforo. */
+/* Diálogo de conteo: mismo aspecto que el paso de conteo del cierre. */
+.arqueo-conteo-cabecera { margin-bottom: 16px; }
+.arqueo-conteo-cabecera h3 { font-size: 18px; letter-spacing: -.02em; margin: 0 0 6px; }
+.arqueo-conteo-cabecera p { margin: 0; color: #526279; font-size: 13px; }
+.arqueo-badge-tarde { display: inline-block; margin-left: 4px; padding: 2px 8px; border-radius: 999px; background: #fee4e2; border: 1px solid #fda29b; color: #b42318; font-size: 12px; font-weight: 700; }
+.arqueo-modal-total { margin-right: auto; }
+.arqueo-modal-total span { display: block; font-size: 12px; color: #526279; margin-bottom: 2px; }
+.arqueo-modal-total strong { font-size: 22px; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+
+/* Vista del gerente: columnas alineadas en escritorio, tarjeta apilada bajo 768 px. */
 .arqueos-gerente { display: grid; gap: 6px; margin: 10px 0; }
 .arqueos-gerente > strong { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #77746d; }
+.arqueo-gerente-cabecera, .arqueo-gerente-linea > summary { display: grid; grid-template-columns: 84px minmax(130px, 1.3fr) 110px minmax(90px, 1fr) minmax(90px, 1fr) minmax(130px, 1.1fr); gap: 8px 12px; align-items: center; }
+.arqueo-gerente-cabecera { padding: 0 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #77746d; }
+.arqueo-gerente-cabecera span:nth-child(4), .arqueo-gerente-cabecera span:nth-child(5) { text-align: right; }
 .arqueo-gerente-linea { border: 1px solid var(--line, #e9e5dc); border-radius: 10px; background: #fff; font-size: 13px; }
-.arqueo-gerente-linea > summary { list-style: none; display: grid; grid-template-columns: auto 1fr auto auto auto auto; gap: 8px 12px; align-items: center; padding: 8px 10px; cursor: pointer; }
+.arqueo-gerente-linea > summary { list-style: none; padding: 8px 10px; cursor: pointer; }
 .arqueo-gerente-linea > summary::-webkit-details-marker { display: none; }
-.arqueo-gerente-linea .num { font-variant-numeric: tabular-nums; }
-.arqueo-luz { width: 12px; height: 12px; border-radius: 50%; display: inline-block; background: #d6d3d1; }
-.arqueo-luz.verde { background: #16a34a; }
-.arqueo-luz.ambar { background: #f59e0b; }
-.arqueo-luz.rojo { background: #dc2626; }
+.arqueo-gerente-linea .num { text-align: right; font-variant-numeric: tabular-nums; }
 .arqueo-gerente-linea .detalle { padding: 0 10px 10px; color: #55524d; }
+.arqueo-resultado { display: inline-block; padding: 2px 9px; border-radius: 999px; font-weight: 700; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.arqueo-resultado.es-verde { background: #d1fae5; color: #065f46; }
+.arqueo-resultado.es-ambar { background: #fef3c7; color: #92400e; }
+.arqueo-resultado.es-rojo { background: #fee4e2; color: #b42318; }
 .arqueo-desglose { display: grid; gap: 4px; margin: 8px 0; font-size: 13px; }
-.arqueo-desglose > div { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; }
+.arqueo-desglose > div { display: grid; grid-template-columns: 1fr auto minmax(110px, auto); gap: 12px; align-items: center; }
+.arqueo-desglose > div b { text-align: right; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 767px) {
+  .arqueo-gerente-cabecera { display: none; }
+  .arqueo-gerente-linea > summary { grid-template-columns: 1fr 1fr; }
+  .arqueo-gerente-linea > summary > b { grid-column: 1 / -1; font-size: 14px; }
+  .arqueo-gerente-linea > summary > [data-etiqueta]:not(b)::before { content: attr(data-etiqueta); display: block; font-size: 11px; color: #77746d; font-weight: 600; }
+  .arqueo-gerente-linea .num { text-align: left; }
+}
 
 @keyframes arq-sonar { 0%, 100% { transform: rotate(0); } 15% { transform: rotate(16deg); } 35% { transform: rotate(-14deg); } 55% { transform: rotate(10deg); } 75% { transform: rotate(-6deg); } }
 @keyframes arq-salir { to { opacity: 0; transform: scale(.5); } }

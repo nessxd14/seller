@@ -16,7 +16,7 @@ import { DENOMINACIONES, DenominationCount, denominacionesLimpias, denominacione
 import { VentaTicket } from '../../components/VentaTicket'
 import { CajaComprobantes } from './CajaComprobantes'
 import { CajaAlmacenEnEspera } from '../../components/CajaAlmacenEnEspera'
-import { ArqueosDelTurno, ArqueosGerente, DesgloseCierre } from './arqueos/ArqueosTurnoVistas'
+import { ArqueosDelTurno, ArqueosGerente, ArqueosMiTurno, DesgloseCierre } from './arqueos/ArqueosTurnoVistas'
 import { CajonEnCeroCheck } from '../../components/CajonEnCeroCheck'
 import { InfoHint } from '../../components/InfoHint'
 import { useEsEncargado } from '../../components/useCobroDestino'
@@ -264,7 +264,7 @@ export function MiTurnoPanel({ sesion, isManager, notify, onClosed, readOnly = f
           para cajero), nunca recalculado acá. */}
       {isManager && <footer><span>Efectivo esperado</span><strong>{resumen?.esperadoEfectivoBs != null ? formatMoney(money(Math.round(resumen.esperadoEfectivoBs * 100))) : '—'}</strong>{resumen?.diferenciaRelevoBs ? <small>Relevo: {resumen.diferenciaRelevoBs >= 0 ? '+' : ''}{bs(resumen.diferenciaRelevoBs)}</small> : null}</footer>}
     </section>
-    <ArqueosDelTurno sesionId={sesion.id} />
+    <ArqueosMiTurno sesionId={sesion.id} esGerente={isManager} />
     {resumen && <section className="cash-breakdown" aria-label="Desglose del turno">
       <header><h3>Desglose del turno</h3><span>Ver métodos</span></header>
       <CashSummaryRow title="Mostrador (VTA)" methods={resumen.ventasRetailPorMetodo} note={resumen.ventasTotalBs != null ? `Total vendido: Bs ${bs(resumen.ventasTotalBs)}. Dinero nuevo por método.` : undefined} info={HINTS.vta} />

@@ -31,3 +31,12 @@ export const formatoCuentaRegresiva = (ms: number): string => {
   const seg = Math.max(0, Math.ceil(ms / 1000))
   return `${String(Math.floor(seg / 60)).padStart(2, '0')}:${String(seg % 60).padStart(2, '0')}`
 }
+
+export type TonoResultado = 'verde' | 'ambar' | 'rojo'
+
+/** Resultado en palabras para el gerente: "Cuadró", "Faltó Bs X" o "Sobró Bs X", con el color del semáforo. */
+export function resultadoArqueo(diferenciaBs: number, formato: (n: number) => string): { texto: string; tono: TonoResultado } {
+  const tono = semaforoDiferencia(diferenciaBs)
+  if (tono === 'verde') return { texto: 'Cuadró', tono }
+  return { texto: `${diferenciaBs < 0 ? 'Faltó' : 'Sobró'} Bs ${formato(Math.abs(diferenciaBs))}`, tono }
+}

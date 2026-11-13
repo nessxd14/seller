@@ -2,10 +2,14 @@ import { useEffect, useState } from 'react'
 import type { ArqueoProgramado, Denominaciones } from '../../../application/shared/models'
 import { DENOMINACIONES } from '../../../components/DenominationCount'
 import { turnoService } from '../../../infrastructure/services'
-import { estadoArqueoUi, horaCorta, semaforoDiferencia } from './arqueoUi'
+import { estadoArqueoUi, horaCorta, resultadoArqueo } from './arqueoUi'
 
 const bs = (n: number) => n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const conSigno = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''} Bs ${bs(Math.abs(n))}`
+function Resultado({ diferenciaBs }: { diferenciaBs?: number | null }) {
+  if (diferenciaBs == null) return <>—</>
+  const r = resultadoArqueo(diferenciaBs, bs)
+  return <span className={`arqueo-resultado es-${r.tono}`}>{r.texto}</span>
+}
 
 /** Lee los arqueos de un turno. Un fallo se traga: es informativo y nunca rompe la pantalla. */
 export function useArqueosDelTurno(sesionId: string): { arqueos: ArqueoProgramado[]; ahoraMs: number } | null {
@@ -40,28 +44,43 @@ export function ArqueosDelTurno({ sesionId }: { sesionId: string }) {
 
 const denominacionesTexto = (d?: Denominaciones) => d ? DENOMINACIONES.filter((x) => d[String(x)]).map((x) => `${d[String(x)]} × Bs ${x}`).join(' · ') : ''
 
-/** Turno en vivo del gerente: una línea por arqueo con tiempos, dinero, semáforo y desglose de billetes. */
+/**
+ * Arqueos con dinero (gerente/admin): una fila por arqueo en columnas alineadas; bajo 768 px
+ * cada fila se apila como tarjeta. El resultado va en palabras, no solo en color.
+ */
 export function ArqueosGerente({ arqueos, ahoraMs }: { arqueos: ArqueoProgramado[]; ahoraMs: number }) {
   if (arqueos.length === 0) return null
   return <section className="arqueos-gerente" aria-label="Arqueos del turno">
     <strong>Arqueos del turno</strong>
+    <div className="arqueo-gerente-cabecera" aria-hidden="true"><span>Arqueo</span><span>Programado / Respondido</span><span>Estado</span><span>Contado</span><span>Esperado</span><span>Resultado</span></div>
     {arqueos.map((a) => {
       const ui = estadoArqueoUi(a, ahoraMs)
-      const luz = a.diferenciaBs != null ? semaforoDiferencia(a.diferenciaBs) : undefined
       const billetes = denominacionesTexto(a.denominaciones)
       return <details key={a.numero} className="arqueo-gerente-linea">
         <summary>
-          <b>Arqueo {a.numero}</b>
-          <span>Programado {horaCorta(a.programadoEn)}{a.respondidoEn ? ` · respondido ${horaCorta(a.respondidoEn)}` : ''}</span>
-          <span className={`arqueo-estado es-${ui.tono}`}>{ui.texto}</span>
-          <span className="num">Contado {a.contadoBs != null ? `Bs ${bs(a.contadoBs)}` : '—'}</span>
-          <span className="num">Esperado {a.esperadoBs != null ? `Bs ${bs(a.esperadoBs)}` : '—'}</span>
-          <span className="num">{a.diferenciaBs != null ? <><i className={`arqueo-luz ${luz}`} role="img" aria-label={`Semáforo ${luz}`} /> {conSigno(a.diferenciaBs)}</> : '—'}</span>
+          <b data-etiqueta="Arqueo">Arqueo {a.numero}</b>
+          <span data-etiqueta="Programado / Respondido">{horaCorta(a.programadoEn)}{a.respondidoEn ? ` / ${horaCorta(a.respondidoEn)}` : ''}</span>
+          <span data-etiqueta="Estado"><span className={`arqueo-estado es-${ui.tono}`}>{ui.texto}</span></span>
+          <span className="num" data-etiqueta="Contado">{a.contadoBs != null ? `Bs ${bs(a.contadoBs)}` : '—'}</span>
+          <span className="num" data-etiqueta="Esperado">{a.esperadoBs != null ? `Bs ${bs(a.esperadoBs)}` : '—'}</span>
+          <span className="resultado" data-etiqueta="Resultado"><Resultado diferenciaBs={a.diferenciaBs} /></span>
         </summary>
         <div className="detalle">{billetes ? `Desglose: ${billetes}` : 'Sin desglose de billetes.'}</div>
       </details>
     })}
   </section>
+}
+
+/** "Mi turno": el cajero sigue ciego (solo horas y estado); gerente/admin ve el resultado con dinero. */
+export function ArqueosMiTurno({ sesionId, esGerente }: { sesionId: string; esGerente: boolean }) {
+  if (!esGerente) return <ArqueosDelTurno sesionId={sesionId} />
+  return <ArqueosGerenteDelTurno sesionId={sesionId} />
+}
+
+function ArqueosGerenteDelTurno({ sesionId }: { sesionId: string }) {
+  const data = useArqueosDelTurno(sesionId)
+  if (!data) return null
+  return <ArqueosGerente arqueos={data.arqueos} ahoraMs={data.ahoraMs} />
 }
 
 export interface EtapaCierre { etiqueta: string; declaradoBs: number | null; diferenciaBs: number | null }
@@ -83,7 +102,7 @@ export function DesgloseCierre({ aperturaBs, diferenciaRelevoBs, arqueos, cierre
     {etapas.map((e) => <div key={e.etiqueta}>
       <span>{e.etiqueta}</span>
       <b>{e.declaradoBs != null ? `Bs ${bs(e.declaradoBs)}` : '—'}</b>
-      <span>{e.diferenciaBs != null ? <><i className={`arqueo-luz ${semaforoDiferencia(e.diferenciaBs)}`} aria-hidden="true" /> {conSigno(e.diferenciaBs)}</> : '—'}</span>
+      <span><Resultado diferenciaBs={e.diferenciaBs} /></span>
     </div>)}
     {arqueos == null && <small>Los arqueos del turno no se pudieron leer.</small>}
   </div>
