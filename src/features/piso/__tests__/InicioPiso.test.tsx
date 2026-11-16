@@ -12,7 +12,7 @@ import { InicioPiso } from '../InicioPiso'
 const sesion = (sucursalId?: number): AuthSession => ({ user: { id: 'u', name: 'Josias', role: 'reponedor', active: true, sucursalId }, expiresAt: '2999-01-01' })
 const turno = { turnoId: 3, inicio: '2026-11-12T13:30:00Z', sucursalId: 2, cobradas: 4, porCobrar: 1, noRealizadas: 2, porReclamar: 5 }
 const abrir = (s = sesion(2), over: Partial<Parameters<typeof InicioPiso>[0]> = {}) =>
-  render(<InicioPiso session={s} textoArmar="Armar venta" version={0} onArmar={vi.fn()} onTraslado={vi.fn()} onNoRealizada={vi.fn()} {...over} />)
+  render(<InicioPiso session={s} textoArmar="Armar venta" version={0} onArmar={vi.fn()} onTraslado={vi.fn()} onSalir={vi.fn()} onNoRealizada={vi.fn()} {...over} />)
 
 beforeEach(() => { Object.values(mocks).forEach((m) => m.mockReset()) })
 afterEach(cleanup)
