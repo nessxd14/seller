@@ -9,6 +9,8 @@ import {
 
 const AUTOSAVE_MS = 1500
 const POLL_MS = 5000
+// Solo esperando que almacén entregue: no hace falta mirar cada 5 s.
+const POLL_ENTREGA_MS = 60_000
 const RETRY_MIN_MS = 2000
 const RETRY_MAX_MS = 30000
 const ESTADOS_ABIERTOS = ['ARMANDO', 'ENVIADO', 'EN_CAJA']
@@ -174,15 +176,16 @@ export function usePedidosPiso(userId: string) {
   }, [])
 
   // Avance de caja: mientras haya pedidos enviados o en caja y la página esté visible, cada 5 s.
-  // Una venta de almacén cobrada sigue hasta que almacén entregue (o la venta se anule).
+  // Una venta de almacén cobrada sigue hasta que almacén entregue (o la venta se anule), pero solo cada 60 s.
   const esperandoEntrega = (p: PedidoLocal) => p.estado === 'COBRADO' && p.canal === 'ALMACEN' && p.snapshot?.entregado !== true && p.snapshot?.ventaEstado !== 'ANULADA'
-  const siguiendo = estado.pedidos.some((p) => p.estado === 'ENVIADO' || p.estado === 'EN_CAJA' || esperandoEntrega(p))
+  const enCaja = estado.pedidos.some((p) => p.estado === 'ENVIADO' || p.estado === 'EN_CAJA')
+  const intervaloMs = enCaja ? POLL_MS : estado.pedidos.some(esperandoEntrega) ? POLL_ENTREGA_MS : null
   useEffect(() => {
-    if (!siguiendo) return
+    if (intervaloMs == null) return
     const tick = () => { if (document.visibilityState === 'visible') void reconciliar(false).then(() => setSinConexion(false)).catch((e) => { if (esErrorDeRed(e)) setSinConexion(true) }) }
-    const id = window.setInterval(tick, POLL_MS)
+    const id = window.setInterval(tick, intervaloMs)
     return () => window.clearInterval(id)
-  }, [siguiendo, reconciliar])
+  }, [intervaloMs, reconciliar])
 
   const activo = estado.pedidos.find((p) => p.clave === estado.activa) ?? estado.pedidos[0]
 

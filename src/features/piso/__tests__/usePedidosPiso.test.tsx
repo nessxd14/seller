@@ -205,3 +205,40 @@ describe('usePedidosPiso — venta de almacén', () => {
     expect(result.current.pedidos.find((p) => p.canal === 'ALMACEN')?.lineas).toHaveLength(2)
   })
 })
+
+describe('usePedidosPiso — intervalo de consulta', () => {
+  it('enviado o en caja consulta cada 5 s; con la venta de almacén cobrada y sin entregar, solo cada 60 s', async () => {
+    svc.misPedidos.mockResolvedValue([respuesta({ estado: 'ENVIADO', canal: 'ALMACEN' })])
+    svc.clavesAbiertas.mockResolvedValue([{ pedidoId: '9', clave: 'k9' }])
+    const { result } = await montar()
+    let llamadas = svc.misPedidos.mock.calls.length
+    await ms(5000)
+    expect(svc.misPedidos.mock.calls.length).toBe(llamadas + 1)
+
+    // Cobrada, esperando que almacén entregue: ya no cada 5 s.
+    svc.misPedidos.mockResolvedValue([respuesta({ estado: 'COBRADO', canal: 'ALMACEN', ventaNumero: 'VTD-2026-00012', entregado: false })])
+    await ms(5000)
+    expect(result.current.pedidos.find((p) => p.clave === 'k9')).toMatchObject({ estado: 'COBRADO' })
+    llamadas = svc.misPedidos.mock.calls.length
+    await ms(55_000)
+    expect(svc.misPedidos.mock.calls.length).toBe(llamadas)
+    await ms(5000)
+    expect(svc.misPedidos.mock.calls.length).toBe(llamadas + 1)
+
+    // Entregada: deja de consultar.
+    svc.misPedidos.mockResolvedValue([respuesta({ estado: 'COBRADO', canal: 'ALMACEN', ventaNumero: 'VTD-2026-00012', entregado: true })])
+    await ms(60_000)
+    llamadas = svc.misPedidos.mock.calls.length
+    await ms(120_000)
+    expect(svc.misPedidos.mock.calls.length).toBe(llamadas)
+  })
+
+  it('un pedido de tienda cobrado no se sigue consultando', async () => {
+    svc.misPedidos.mockResolvedValue([respuesta({ estado: 'COBRADO', canal: 'TIENDA' })])
+    svc.clavesAbiertas.mockResolvedValue([{ pedidoId: '9', clave: 'k9' }])
+    await montar()
+    const llamadas = svc.misPedidos.mock.calls.length
+    await ms(120_000)
+    expect(svc.misPedidos.mock.calls.length).toBe(llamadas)
+  })
+})
