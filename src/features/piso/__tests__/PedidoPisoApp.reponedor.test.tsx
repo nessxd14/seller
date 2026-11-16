@@ -7,7 +7,7 @@ vi.mock('../EscanerContinuo', () => ({ EscanerContinuo: () => null, useWakeLock:
 vi.mock('../usePedidosPiso', () => ({ usePedidosPiso: () => ({ activo: estado.activo, pedidos: [estado.activo], abiertos: 1, errorPedido: {}, agregar: vi.fn(), cambiarPrecio: vi.fn(), activar: vi.fn() }) }))
 vi.mock('../../../infrastructure/services', () => ({ listPresentations: vi.fn(), productRepository: {}, pedidoVendedorService: { misCuentaVendedor: vi.fn().mockRejectedValue(new Error('no')) } }))
 vi.mock('../../../infrastructure/supabase/SupabaseAuthSessionProvider', () => ({ supabaseAuthSessionProvider: {} }))
-vi.mock('../../transfers/TransfersPage', () => ({ TransfersPage: () => <p>Traslados</p> }))
+vi.mock('../TrasladosPiso', () => ({ TrasladosPiso: () => <p>Traslados</p> }))
 vi.mock('../MisVentasPiso', () => ({ MisVentasPiso: () => <p>Pantalla Mis ventas</p> }))
 vi.mock('../InicioPiso', () => ({ InicioPiso: () => <p>Pantalla Inicio</p> }))
 import { PedidoPisoApp } from '../PedidoPisoApp'

@@ -6,18 +6,17 @@ import { AmbiguousScanPicker } from '../../components/AmbiguousScanPicker'
 import { DocQr } from '../../components/DocQr'
 import { Modal } from '../../components/Modal'
 import { UnitOfMeasureField } from '../../components/UnitOfMeasureField'
-import { featureFlags } from '../../config/featureFlags'
 import { hoyLocal } from '../../domain/common/fechas'
 import { parteCobrada } from '../../domain/sales/cuentaVendedor'
 import { bajoElMinimo, round2, totalPedido, type LineaPiso, type PedidoLocal, type PresentacionPiso, type ProductoPiso } from '../../domain/sales/pedidoPiso'
 import { presentacionAlAgregar } from '../../lib/presentacionAlAgregar'
 import { opcionesDelLado } from '../../domain/pricing/presentacionesPorLado'
 import { getStockBySucursalBatch, listPresentations, pedidoVendedorService, productRepository } from '../../infrastructure/services'
-import { supabaseAuthSessionProvider } from '../../infrastructure/supabase/SupabaseAuthSessionProvider'
 import type { Product } from '../../types'
 import { EscanerContinuo, useWakeLock, vibrarDesconocido } from './EscanerContinuo'
 import { usePedidosPiso } from './usePedidosPiso'
-import { TransfersPage } from '../transfers/TransfersPage'
+import { TrasladosPiso } from './TrasladosPiso'
+import { BotonSalir, SalirPiso } from './SalirPiso'
 import { MisVentasPiso } from './MisVentasPiso'
 import { HojaNoRealizada } from './HojaNoRealizada'
 import { InicioPiso } from './InicioPiso'
@@ -59,6 +58,9 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
   const [vista, setVista] = useState<Vista>(conNavegacion ? 'inicio' : 'vender')
   // Sube al guardar una venta no realizada: Inicio relee los contadores del turno.
   const [versionTurno, setVersionTurno] = useState(0)
+  const [saliendo, setSaliendo] = useState(false)
+  // Inicio abre «Pedir traslado» directo en la pantalla de pedir.
+  const [pedirDirecto, setPedirDirecto] = useState(false)
   const [agregadoCaja, setAgregadoCaja] = useState<number | null>(null)
   const avisoTimer = useRef<number | undefined>(undefined)
 
@@ -106,18 +108,19 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
   const enviar = async () => { setEnviando(true); try { await piso.enviar() } finally { setEnviando(false) } }
 
   const textoArmar = `Armar ${esReponedor ? 'venta' : 'pedido'}`
-  const nav = conNavegacion ? <NavegacionPiso vista={vista} textoArmar={textoArmar} onElegir={setVista} /> : null
+  const nav = conNavegacion ? <NavegacionPiso vista={vista} textoArmar={textoArmar} onElegir={(v) => { setPedirDirecto(false); setVista(v) }} /> : null
   const hojaNoRealizada = hoja?.tipo === 'noRealizada'
     ? <HojaNoRealizada textoInicial={hoja.texto} productoInicial={hoja.productoId != null ? { id: hoja.productoId, nombre: hoja.productoNombre ?? '' } : undefined} onClose={() => setHoja(null)} onGuardado={(veces) => { setHoja(null); setVersionTurno((v) => v + 1); avisar(veces > 0 ? `Guardado. Van ${veces} pedidos de esto esta semana.` : 'Guardado.') }} />
     : null
+  const salirHoja = saliendo ? <SalirPiso nombre={session.user.name} palabra={palabra} guardados={piso.pedidos.filter((p) => p.estado === 'ARMANDO' && p.lineas.length > 0)} onClose={() => setSaliendo(false)} /> : null
   const abribles = new Set(piso.pedidos.flatMap((p) => (p.pedidoId ? [p.pedidoId] : [])))
   const abrirVenta = (pedidoId: string) => {
     const local = piso.pedidos.find((p) => p.pedidoId === pedidoId)
     if (local) { piso.activar(local.clave); setVista('vender') }
   }
 
-  if (vista === 'inicio') return <div className="piso-app con-nav"><InicioPiso session={session} textoArmar={textoArmar} version={versionTurno} onArmar={() => setVista('vender')} onTraslado={() => setVista('traslados')} onNoRealizada={() => setHoja({ tipo: 'noRealizada' })} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{hojaNoRealizada}{nav}</div>
-  if (vista === 'traslados') return <div className="piso-traslados"><button type="button" className="secondary-button" onClick={() => setVista('vender')}>Volver a mi {palabra.toLowerCase()}</button><TransfersPage session={session} notify={avisar} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{nav}</div>
+  if (vista === 'inicio') return <div className="piso-app con-nav"><InicioPiso session={session} textoArmar={textoArmar} version={versionTurno} onArmar={() => setVista('vender')} onTraslado={() => { setPedirDirecto(true); setVista('traslados') }} onSalir={() => setSaliendo(true)} onNoRealizada={() => setHoja({ tipo: 'noRealizada' })} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{hojaNoRealizada}{salirHoja}{nav}</div>
+  if (vista === 'traslados') return <div className={`piso-app${conNavegacion ? ' con-nav' : ''}`}><TrasladosPiso key={pedirDirecto ? 'pedir' : 'lista'} session={session} aviso={avisar} iniciarPedido={pedirDirecto} onVolver={conNavegacion ? undefined : () => setVista('vender')} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{nav}</div>
   if (vista === 'ventas') return <div className="piso-app con-nav"><header className="piso-header"><div><h1>Mis ventas</h1></div></header><MisVentasPiso abribles={abribles} onAbrir={abrirVenta} />{nav}</div>
   return <div className={`piso-app${conNavegacion ? ' con-nav' : ''}`}>
     <header className="piso-header">
@@ -125,7 +128,8 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
       {linternaSoportada && editable && !plegado && <button type="button" className="piso-icono" aria-pressed={linterna} aria-label={linterna ? 'Apagar linterna' : 'Encender linterna'} onClick={() => setLinterna((v) => !v)}>{linterna ? <FlashlightOff /> : <Flashlight />}</button>}
       {!conNavegacion && <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'noRealizada' })}><PackageX /> <span>Venta no realizada</span></button>}
       <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'pedidos' })}><ListOrdered /> <span>Mis pedidos</span>{piso.abiertos > 1 && <b>{piso.abiertos}</b>}</button>
-      {!conNavegacion && <button type="button" className="piso-icono con-texto" onClick={() => setVista('traslados')}>Traslados</button>}
+      {!conNavegacion && <button type="button" className="piso-icono con-texto" onClick={() => { setPedirDirecto(false); setVista('traslados') }}>Traslados</button>}
+      {!conNavegacion && <BotonSalir onClick={() => setSaliendo(true)} />}
     </header>
 
     {piso.sinConexion && <p className="piso-banner" role="status">Sin conexión. Guardado en este teléfono</p>}
@@ -156,6 +160,7 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
     {hoja?.tipo === 'personalizado' && <HojaPersonalizado onClose={() => setHoja(null)} onAgregar={(i) => { piso.agregarPersonalizado(i); setHoja(null) }} />}
     {hoja?.tipo === 'pedidos' && <HojaPedidos esReponedor={esReponedor} pedidos={piso.pedidos} activa={activo.clave} cargando={piso.cargando} onClose={() => setHoja(null)} onElegir={(c) => { piso.activar(c); setHoja(null) }} onNuevo={() => { piso.nuevo(); setHoja(null) }} />}
     {hojaNoRealizada}
+    {salirHoja}
     {nav}
     {ambiguos && <AmbiguousScanPicker productIds={ambiguos} onPick={(p) => { setAmbiguos(null); void agregarSiSeVende(p) }} onClose={() => setAmbiguos(null)} />}
   </div>
@@ -293,7 +298,6 @@ function HojaPedidos({ esReponedor, pedidos, activa, cargando, onClose, onElegir
         </button></li>
       })}
     </ul>
-    {featureFlags.supabase && <button type="button" className="piso-salir" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión</button>}
   </Hoja>
 }
 

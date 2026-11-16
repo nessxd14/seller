@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
 import type { PisoTurno } from '../../application/ports/pisoRepository'
 import { pisoRepository } from '../../infrastructure/services'
+import { BotonSalir } from './SalirPiso'
 import { sucursalLabel } from '../transfers/TransfersPage'
 import { VentasCajaPiso } from './VentasCajaPiso'
 
@@ -19,10 +20,11 @@ interface Props {
   version: number
   onArmar: () => void
   onTraslado: () => void
+  onSalir: () => void
   onNoRealizada: () => void
 }
 
-export function InicioPiso({ session, textoArmar, version, onArmar, onTraslado, onNoRealizada }: Props) {
+export function InicioPiso({ session, textoArmar, version, onArmar, onTraslado, onSalir, onNoRealizada }: Props) {
   // undefined = todavía no se sabe; null = sin turno.
   const [turno, setTurno] = useState<PisoTurno | null | undefined>(undefined)
   const [error, setError] = useState('')
@@ -71,7 +73,7 @@ export function InicioPiso({ session, textoArmar, version, onArmar, onTraslado, 
 
   if (turno && pantalla === 'caja') return <><header className="piso-header"><div><h1>Ventas de caja</h1></div></header><VentasCajaPiso onVolver={() => { setPantalla('inicio'); cargar() }} /></>
 
-  return <><header className="piso-header"><div><h1>Inicio</h1><small>{session.user.name}</small></div></header><section className="piso-inicio" aria-label="Inicio">
+  return <><header className="piso-header"><div><h1>Inicio</h1><small>{session.user.name}</small></div><BotonSalir onClick={onSalir} /></header><section className="piso-inicio" aria-label="Inicio">
     {error && <p className="piso-error" role="alert">{error}</p>}
     {turno === undefined && !error && <p className="piso-vacio" role="status">Cargando…</p>}
 

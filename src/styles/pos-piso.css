@@ -196,3 +196,38 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 .no-realizada-aviso { display: grid; gap: 8px; }
 .no-realizada-aviso-titulo { min-height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-radius: 12px; background: #eaf1ff; color: var(--piso-primary); font-weight: 700; text-align: left; }
 .no-realizada-aviso-titulo:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Traslados en el celular (lista, recibir, pedir) y Salir */
+.traslado-cuerpo { display: grid; gap: 10px; padding: 12px 14px calc(24px + env(safe-area-inset-bottom)); align-content: start; }
+.traslado-cuerpo-pie { padding-bottom: calc(190px + env(safe-area-inset-bottom)); }
+.traslado-seccion { margin: 6px 0 0; display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.traslado-seccion b { min-width: 24px; padding: 0 8px; border-radius: 999px; background: var(--piso-primary); color: #fff; font-size: 13px; text-align: center; }
+.traslado-card { display: grid; gap: 8px; padding: 12px; background: var(--piso-surface); border: 1px solid var(--piso-line); border-radius: 14px; color: var(--piso-ink); text-align: left; }
+.traslado-card small { color: var(--piso-muted); font-size: 13px; }
+.traslado-card-boton { width: 100%; }
+.traslado-card-fila { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.traslado-pildora { flex: none; padding: 2px 10px; border-radius: 999px; background: #eaf1ff; color: var(--piso-primary); font-size: 12px; font-weight: 800; }
+.traslado-pildora.recibido { background: #ecfdf3; color: var(--piso-ok); }
+.traslado-pildora.con_faltante { background: #fff4e5; color: #8a4b00; }
+.traslado-pildora.cancelado { background: #f2f4f7; color: var(--piso-muted); }
+.traslado-linea { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; background: var(--piso-surface); border: 1px solid var(--piso-line); border-radius: 14px; }
+.traslado-linea.faltante { background: #fff8eb; border-color: #f5c77e; }
+.traslado-linea > :nth-child(n+3) { grid-column: 1 / -1; }
+.traslado-llegaron { display: flex; align-items: center; gap: 10px; }
+.traslado-llegaron > span { font-weight: 700; font-size: 14px; }
+.traslado-falta { margin: 0; color: #8a4b00; font-size: 14px; font-weight: 600; }
+.traslado-stepper { display: grid; grid-template-columns: 44px minmax(56px, 88px) 44px; gap: 6px; }
+.traslado-stepper button { min-height: 44px; border-radius: 12px; background: #eaf1ff; color: var(--piso-primary); display: inline-flex; align-items: center; justify-content: center; }
+.traslado-stepper button:disabled { opacity: .45; }
+.traslado-stepper input { width: 100%; text-align: center; border: 1px solid var(--piso-line); border-radius: 12px; font-weight: 700; }
+.traslado-escanear { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; }
+.traslado-escaner, .traslado-captura { padding: 0; }
+.traslado-pie { flex-direction: column; align-items: stretch; }
+.traslado-check { display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 700; font-size: 15px; }
+.traslado-check input { width: 22px; height: 22px; min-height: 0; }
+.traslado-detalle { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.traslado-detalle li { display: grid; gap: 2px; font-size: 14px; }
+.traslado-detalle span { color: var(--piso-muted); }
+.piso-aviso-azul { margin: 0; padding: 10px 12px; border-radius: 12px; background: #eaf1ff; color: #1d4ed8; font-size: 14px; }
+.piso-salir-acciones { display: grid; gap: 8px; }
+.piso-salir-acciones button { width: 100%; }
