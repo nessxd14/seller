@@ -139,7 +139,7 @@ describe('aceptarLectura (de-duplicación 1500 ms)', () => {
 })
 
 const server = (over: Partial<PedidoVendedorRecord> = {}): PedidoVendedorRecord => ({
-  pedidoId: '9', codigo: 'PDV-9', numeroDia: 12, fecha: '2026-10-06', estado: 'ARMANDO', vendedor: 'Ana', nota: null, total: 0, enviadoEn: null, tomadoPor: null,
+  pedidoId: '9', codigo: 'PDV-9', numeroDia: 12, fecha: '2026-10-06', estado: 'ARMANDO', canal: 'TIENDA', vendedor: 'Ana', nota: null, total: 0, enviadoEn: null, tomadoPor: null,
   ventaNumero: null, anuladoOrigen: null, anuladoMotivo: null, reintento: false,
   lineas: [
     { lineaId: '31', orden: 1, productoId: 49, nombre: 'Resma', sku: 'RC', presentacionId: 47, presentacion: 'Unidad', esBase: true, factor: 1, esPersonalizado: false, unidadMedida: null, cantidad: 2, precioLista: 25, precioMinimo: 22.5, precioUnitario: 24, subtotal: 48, resultado: null, cantidadFinal: null, precioFinal: null, motivoCaja: null },
@@ -148,7 +148,7 @@ const server = (over: Partial<PedidoVendedorRecord> = {}): PedidoVendedorRecord 
   ...over,
 })
 const local = (): PedidoLocal => ({
-  clave: 'k', pedidoId: null, codigo: null, numeroDia: null, estado: 'ARMANDO', nota: null, revision: 3, guardadoRevision: 0, creadoEn: 'x', snapshot: null,
+  clave: 'k', pedidoId: null, codigo: null, numeroDia: null, estado: 'ARMANDO', canal: 'TIENDA', nota: null, revision: 3, guardadoRevision: 0, creadoEn: 'x', snapshot: null,
   lineas: [{ ...agregarProducto([], prod, undefined, 'a')[0], precioUnitario: 24 }, { ...agregarProducto([], { ...prod, id: 7 }, caja, 'b')[0], error: 'viejo' }],
 })
 

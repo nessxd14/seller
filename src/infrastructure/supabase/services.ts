@@ -313,6 +313,7 @@ export const pedidoVendedorService = {
   tomar: pedidoVendedorRepository.tomar,
   devolver: pedidoVendedorRepository.devolver,
   cobrar: pedidoVendedorRepository.cobrar,
+  cobrarVtd: pedidoVendedorRepository.cobrarVtd,
 }
 
 export const turnoService = {

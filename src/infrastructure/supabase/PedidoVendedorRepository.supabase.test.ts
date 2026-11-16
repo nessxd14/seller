@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { rpc, from } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }))
 vi.mock('./supabaseClient', () => ({ supabase: { rpc, from } }))
-import { anular, clavesAbiertas, cobrar, cola, devolver, guardar, misPedidos, retirar, tomar } from './PedidoVendedorRepository.supabase'
+import { anular, clavesAbiertas, cobrar, cobrarVtd, cola, devolver, guardar, misPedidos, retirar, tomar } from './PedidoVendedorRepository.supabase'
 
 const linea = { linea_id: 31, orden: 1, producto_id: 49, nombre: 'Resma', sku: 'RC', presentacion_id: 47, presentacion: 'Unidad', es_base: true, factor: 1, es_personalizado: false, unidad_medida: null, cantidad: 2, precio_lista: 15, precio_minimo: 13.5, precio_unitario: 15, subtotal: 30, resultado: null, cantidad_final: null, precio_final: null, motivo_caja: null }
 const pedido = { pedido_id: 9, codigo: 'PDV-9', numero_dia: 1, fecha: '2026-10-06', estado: 'ARMANDO', vendedor: 'Ana', nota: null, total: 67.5, enviado_en: null, tomado_por: null, venta_numero: null, anulado_origen: null, anulado_motivo: null, reintento: false, lineas: [linea] }
@@ -112,7 +112,7 @@ describe('caja: cola, tomar, devolver', () => {
     rpc.mockResolvedValue({ data: [{ pedido_id: 9, codigo: 'PDV-9', numero_dia: 3, estado: 'ENVIADO', vendedor: 'Ana', enviado_en: '2026-10-06T22:41:00Z', total: '105', lineas: 4, tomado_por: null, sesion_caja_id: null }, { pedido_id: 10, codigo: 'PDV-10', numero_dia: 4, estado: 'EN_CAJA', vendedor: 'Luis', enviado_en: null, total: 20, lineas: 1, tomado_por: 'Rony', sesion_caja_id: 7 }], error: null })
     const r = await cola()
     expect(rpc).toHaveBeenCalledWith('pedidos_vendedor_cola')
-    expect(r[0]).toEqual({ pedidoId: '9', codigo: 'PDV-9', numeroDia: 3, estado: 'ENVIADO', vendedor: 'Ana', enviadoEn: '2026-10-06T22:41:00Z', total: 105, lineas: 4, tomadoPor: null, sesionCajaId: null })
+    expect(r[0]).toEqual({ pedidoId: '9', codigo: 'PDV-9', numeroDia: 3, estado: 'ENVIADO', canal: 'TIENDA', vendedor: 'Ana', enviadoEn: '2026-10-06T22:41:00Z', total: 105, lineas: 4, tomadoPor: null, sesionCajaId: null })
     expect(r[1]).toMatchObject({ estado: 'EN_CAJA', tomadoPor: 'Rony', sesionCajaId: '7' })
   })
 
@@ -201,5 +201,43 @@ describe('cobrar_pedido_vendedor', () => {
     expect(((await cobrar(input).catch((e: unknown) => e)) as { code?: string }).code).toBe('42501')
     rpc.mockResolvedValueOnce({ data: null, error: { message: 'Producto 49 está reservado para otro pedido', code: 'P0001' } })
     await expect(cobrar(input)).rejects.toThrow('Producto 49 está reservado para otro pedido')
+  })
+})
+
+describe('canal de almacén', () => {
+  it('guardar manda p_canal solo cuando se indica y mapea canal y entrega del pedido', async () => {
+    rpc.mockResolvedValue({ data: { ...pedido, canal: 'ALMACEN', estado: 'COBRADO', venta_numero: 'VTD-2026-00012', venta_estado: 'COMPLETADA', entregado: true, entregado_en: '2026-11-16T15:30:00Z' }, error: null })
+    const r = await guardar({ clave: 'k', lineas: [{ productoId: 49, cantidad: 1 }], nota: 'Doña Rosa', canal: 'ALMACEN', enviar: true })
+    expect(rpc).toHaveBeenCalledWith('guardar_pedido_vendedor', expect.objectContaining({ p_canal: 'ALMACEN', p_nota: 'Doña Rosa', p_enviar: true }))
+    expect(r).toMatchObject({ canal: 'ALMACEN', ventaNumero: 'VTD-2026-00012', ventaEstado: 'COMPLETADA', entregado: true, entregadoEn: '2026-11-16T15:30:00Z' })
+    rpc.mockResolvedValue({ data: pedido, error: null })
+    await guardar({ clave: 'k', lineas: [{ productoId: 49, cantidad: 1 }] })
+    expect(rpc.mock.lastCall?.[1]).not.toHaveProperty('p_canal')
+  })
+
+  it('un pedido sin canal (servidor viejo) es de tienda', async () => {
+    rpc.mockResolvedValue({ data: pedido, error: null })
+    expect((await guardar({ clave: 'k', lineas: [] })).canal).toBe('TIENDA')
+  })
+
+  it('la cola trae el canal', async () => {
+    rpc.mockResolvedValue({ data: [{ pedido_id: 9, codigo: 'PDV-9', numero_dia: 1, estado: 'ENVIADO', canal: 'ALMACEN', vendedor: 'Josias', enviado_en: null, total: 10, lineas: 1, tomado_por: null, sesion_caja_id: null }], error: null })
+    expect((await cola())[0].canal).toBe('ALMACEN')
+  })
+
+  it('cobrarVtd llama cobrar_pedido_vendedor_vtd con ubicación, pagos y clave fija por pedido', async () => {
+    rpc.mockResolvedValue({ data: { venta_id: 1301, numero: 'VTD-2026-00012', subtotal: 28, descuento_total: 0, total: 28, reintento: false }, error: null })
+    const lineas = [{ producto_id: 49, cantidad_base: 2, precio_unitario: 14, pedido_linea_id: 31, verificada: true as const }]
+    const r = await cobrarVtd({ pedidoId: '9', sesionCajaId: '4', ubicacionId: 7, lineas, quitadas: [], pagos: [{ method: 'cash', amountCents: 2800 }] })
+    expect(rpc).toHaveBeenCalledWith('cobrar_pedido_vendedor_vtd', {
+      p_pedido_id: 9, p_lineas: lineas, p_pagos: [{ metodo: 'EFECTIVO', monto: 28 }], p_sesion_caja_id: 4, p_ubicacion_id: 7,
+      p_idempotencia: 'pedido-vendedor-vtd:9', p_quitadas: [], p_cliente_id: null,
+    })
+    expect(r).toEqual({ ventaId: '1301', numero: 'VTD-2026-00012', subtotal: 28, descuentoTotal: 0, total: 28, reintento: false, pedidos: ['9'] })
+  })
+
+  it('cobrarVtd propaga el error del servidor', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'La venta de almacén se cobra en el momento: falta el pago', code: 'P0001' } })
+    await expect(cobrarVtd({ pedidoId: '9', sesionCajaId: '4', ubicacionId: 7, lineas: [], quitadas: [], pagos: [] })).rejects.toThrow('falta el pago')
   })
 })

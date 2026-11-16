@@ -9,7 +9,7 @@ import { usePedidosPiso } from '../usePedidosPiso'
 
 const producto = { id: 49, nombre: 'Resma carta', sku: 'RC', precioRetail: 25 }
 const respuesta = (over: Partial<PedidoVendedorRecord> = {}): PedidoVendedorRecord => ({
-  pedidoId: '9', codigo: 'PDV-9', numeroDia: 12, fecha: '2026-10-06', estado: 'ARMANDO', vendedor: 'Ana', nota: null, total: 25, enviadoEn: null, tomadoPor: null,
+  pedidoId: '9', codigo: 'PDV-9', numeroDia: 12, fecha: '2026-10-06', estado: 'ARMANDO', canal: 'TIENDA', vendedor: 'Ana', nota: null, total: 25, enviadoEn: null, tomadoPor: null,
   ventaNumero: null, anuladoOrigen: null, anuladoMotivo: null, reintento: false,
   lineas: [{ lineaId: '77', orden: 1, productoId: 49, nombre: 'Resma carta', sku: 'RC', presentacionId: 47, presentacion: 'Unidad', esBase: true, factor: 1, esPersonalizado: false, unidadMedida: null, cantidad: 1, precioLista: 25, precioMinimo: 22.5, precioUnitario: 25, subtotal: 25, resultado: null, cantidadFinal: null, precioFinal: null, motivoCaja: null }],
   ...over,
@@ -129,5 +129,79 @@ describe('usePedidosPiso', () => {
     expect(svc.misPedidos.mock.calls.length).toBe(llamadas + 1)
     expect(result.current.pedidos.find((p) => p.clave === 'k9')).toMatchObject({ estado: 'EN_CAJA' })
     expect(result.current.pedidos.find((p) => p.clave === 'k9')?.snapshot?.tomadoPor).toBe('Rony')
+  })
+})
+
+describe('usePedidosPiso — venta de almacén', () => {
+  it('guarda con canal ALMACEN y exige la referencia del cliente para enviar', async () => {
+    svc.guardar.mockImplementation(async (input: { canal?: 'TIENDA' | 'ALMACEN'; nota?: string | null; enviar?: boolean }) => respuesta({ canal: input.canal, nota: input.nota ?? null, estado: input.enviar ? 'ENVIADO' : 'ARMANDO' }))
+    const { result } = await montar()
+    act(() => result.current.agregar(producto))
+    act(() => { result.current.setCanal('ALMACEN') })
+    await ms(1600)
+    expect(svc.guardar).toHaveBeenCalledOnce()
+    expect(svc.guardar.mock.calls[0][0]).toMatchObject({ canal: 'ALMACEN', nota: null })
+
+    // Sin cliente no se envía: ni siquiera llega al servidor.
+    let ok = true
+    await act(async () => { ok = await result.current.enviar() })
+    expect(ok).toBe(false)
+    expect(svc.guardar).toHaveBeenCalledOnce()
+    expect(result.current.errorPedido[result.current.activo.clave]).toMatch(/quién es el cliente/)
+
+    act(() => result.current.setNota('Doña Rosa'))
+    await act(async () => { ok = await result.current.enviar() })
+    expect(ok).toBe(true)
+    expect(svc.guardar.mock.lastCall?.[0]).toMatchObject({ canal: 'ALMACEN', nota: 'Doña Rosa', enviar: true })
+  })
+
+  it('un pedido de tienda manda canal TIENDA', async () => {
+    svc.guardar.mockResolvedValue(respuesta())
+    const { result } = await montar()
+    act(() => result.current.agregar(producto))
+    await ms(1600)
+    expect(svc.guardar.mock.calls[0][0]).toMatchObject({ canal: 'TIENDA' })
+  })
+
+  it('no pasa a ALMACEN si hay un producto fuera de catálogo', async () => {
+    const { result } = await montar()
+    act(() => result.current.agregarPersonalizado({ descripcion: 'Cartulina', unidadMedida: 'UNIDAD', cantidad: 1, precio: 3 }))
+    let ok = true
+    act(() => { ok = result.current.setCanal('ALMACEN') })
+    expect(ok).toBe(false)
+    expect(result.current.activo.canal).toBe('TIENDA')
+  })
+
+  it('«Mover» crea una segunda venta de almacén guardada (sin enviar) con esa línea y la quita de la primera', async () => {
+    svc.guardar.mockImplementation(async (input: { clave: string; canal?: 'TIENDA' | 'ALMACEN' }) => respuesta({ pedidoId: input.clave, canal: input.canal }))
+    const { result } = await montar()
+    act(() => result.current.agregar(producto))
+    act(() => result.current.agregar({ ...producto, id: 50, nombre: 'Lapicero', sku: 'LP' }))
+    const origen = result.current.activo.clave
+    const mover = result.current.activo.lineas[0].localId
+    act(() => { result.current.mover(mover) })
+
+    expect(result.current.pedidos).toHaveLength(2)
+    const nueva = result.current.pedidos.find((p) => p.clave !== origen)!
+    expect(nueva).toMatchObject({ canal: 'ALMACEN', estado: 'ARMANDO' })
+    expect(nueva.lineas.map((l) => l.nombre)).toEqual(['Resma carta'])
+    expect(result.current.activo.clave).toBe(origen)
+    expect(result.current.activo.lineas.map((l) => l.nombre)).toEqual(['Lapicero'])
+
+    await ms(1600)
+    const guardados = svc.guardar.mock.calls.map((c) => c[0] as { clave: string; canal?: string; enviar?: boolean })
+    expect(guardados.find((g) => g.clave === nueva.clave)).toMatchObject({ canal: 'ALMACEN' })
+    expect(guardados.every((g) => !g.enviar)).toBe(true)
+  })
+
+  it('un segundo «Mover» suma a la venta de almacén que ya está en armado', async () => {
+    svc.guardar.mockResolvedValue(respuesta())
+    const { result } = await montar()
+    act(() => result.current.agregar(producto))
+    act(() => result.current.agregar({ ...producto, id: 50, nombre: 'Lapicero', sku: 'LP' }))
+    act(() => { result.current.mover(result.current.activo.lineas[0].localId) })
+    act(() => { result.current.mover(result.current.activo.lineas[0].localId) })
+    expect(result.current.pedidos).toHaveLength(2)
+    expect(result.current.pedidos.find((p) => p.canal === 'ALMACEN')?.lineas).toHaveLength(2)
   })
 })

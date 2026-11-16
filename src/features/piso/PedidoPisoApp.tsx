@@ -1,14 +1,14 @@
 import { Flashlight, FlashlightOff, ListOrdered, PackageX, Plus, ScanLine, Search, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
-import type { PedidoVendedorEstado } from '../../application/shared/models'
+import type { PedidoCanal, PedidoVendedorEstado } from '../../application/shared/models'
 import { AmbiguousScanPicker } from '../../components/AmbiguousScanPicker'
 import { DocQr } from '../../components/DocQr'
 import { Modal } from '../../components/Modal'
 import { UnitOfMeasureField } from '../../components/UnitOfMeasureField'
 import { hoyLocal } from '../../domain/common/fechas'
 import { parteCobrada } from '../../domain/sales/cuentaVendedor'
-import { bajoElMinimo, round2, totalPedido, type LineaPiso, type PedidoLocal, type PresentacionPiso, type ProductoPiso } from '../../domain/sales/pedidoPiso'
+import { bajoElMinimo, motivoNoEnviar, round2, sePuedeMoverAAlmacen, totalPedido, type LineaPiso, type PedidoLocal, type PresentacionPiso, type ProductoPiso } from '../../domain/sales/pedidoPiso'
 import { presentacionAlAgregar } from '../../lib/presentacionAlAgregar'
 import { opcionesDelLado } from '../../domain/pricing/presentacionesPorLado'
 import { getStockBySucursalBatch, listPresentations, pedidoVendedorService, productRepository } from '../../infrastructure/services'
@@ -22,6 +22,9 @@ import { HojaNoRealizada } from './HojaNoRealizada'
 import { InicioPiso } from './InicioPiso'
 
 const bs = (v: number) => v.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+interface StockLinea { tienda: number; almacen: number }
+const fmtQty = (n: number) => n.toLocaleString('es-BO', { maximumFractionDigits: 2 })
+const horaCorta = (iso?: string | null) => (iso ? new Date(iso).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit', hour12: false }) : '')
 const aProducto = (p: Product): ProductoPiso => ({ id: p.id, nombre: p.nombre, sku: p.sku, precioRetail: p.precioRetail })
 const ETIQUETA_ESTADO: Record<PedidoVendedorEstado, string> = { ARMANDO: 'Armando', ENVIADO: 'En espera de caja', EN_CAJA: 'En caja', COBRADO: 'Cobrado', ANULADO: 'Anulado' }
 
@@ -62,6 +65,8 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
   // Inicio abre «Pedir traslado» directo en la pantalla de pedir.
   const [pedirDirecto, setPedirDirecto] = useState(false)
   const [agregadoCaja, setAgregadoCaja] = useState<number | null>(null)
+  // Stock por producto de las líneas del pedido activo: sirve para mostrarlo y para ofrecer «Mover» a almacén.
+  const [stock, setStock] = useState<Record<number, StockLinea>>({})
   const avisoTimer = useRef<number | undefined>(undefined)
 
   const avisar = useCallback((mensaje: string) => {
@@ -91,6 +96,25 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
   const editable = activo.estado === 'ARMANDO'
   const lineaDe = (localId: string) => activo.lineas.find((l) => l.localId === localId)
   const { total, sinPrecio } = totalPedido(activo.lineas)
+  const esAlmacen = activo.canal === 'ALMACEN'
+  const clavesStock = [...new Set(activo.lineas.flatMap((l) => (!l.esPersonalizado && l.productoId != null ? [l.productoId] : [])))].sort((a, b) => a - b).join(',')
+  useEffect(() => {
+    if (!clavesStock) return
+    let cancelado = false
+    const ids = clavesStock.split(',').map(Number)
+    // Mejor esfuerzo: sin stock simplemente no se muestra ni se ofrece «Mover».
+    void Promise.resolve().then(() => getStockBySucursalBatch(ids)).then((lote) => {
+      if (cancelado) return
+      setStock((prev) => {
+        const siguiente = { ...prev }
+        for (const id of ids) { const e = lote.get(id); if (e) siguiente[id] = { tienda: e.tiendaVendible, almacen: e.almacenVendible } }
+        return siguiente
+      })
+    }).catch(() => {})
+    return () => { cancelado = true }
+  }, [clavesStock])
+  const cambiarCanal = (canal: PedidoCanal) => { if (!piso.setCanal(canal)) avisar('Quita los productos fuera de catálogo: la venta de almacén no los admite.') }
+  const moverAAlmacen = (localId: string) => { if (piso.mover(localId)) avisar('Pasó a una venta de almacén guardada. En caja se pueden cobrar las dos juntas.') }
   const titulo = activo.numeroDia != null ? `${palabra} ${activo.numeroDia}` : esReponedor ? 'Venta nueva' : 'Pedido nuevo'
 
   // Lo que caja sumó encima de lo que anotó el vendedor: solo lo sabe mi_cuenta_vendedor (mejor esfuerzo; si falla, no se muestra).
@@ -122,9 +146,9 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
   if (vista === 'inicio') return <div className="piso-app con-nav"><InicioPiso session={session} textoArmar={textoArmar} version={versionTurno} onArmar={() => setVista('vender')} onTraslado={() => { setPedirDirecto(true); setVista('traslados') }} onSalir={() => setSaliendo(true)} onNoRealizada={() => setHoja({ tipo: 'noRealizada' })} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{hojaNoRealizada}{salirHoja}{nav}</div>
   if (vista === 'traslados') return <div className={`piso-app${conNavegacion ? ' con-nav' : ''}`}><TrasladosPiso key={pedirDirecto ? 'pedir' : 'lista'} session={session} aviso={avisar} iniciarPedido={pedirDirecto} onVolver={conNavegacion ? undefined : () => setVista('vender')} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{nav}</div>
   if (vista === 'ventas') return <div className="piso-app con-nav"><header className="piso-header"><div><h1>Mis ventas</h1></div></header><MisVentasPiso abribles={abribles} onAbrir={abrirVenta} />{nav}</div>
-  return <div className={`piso-app${conNavegacion ? ' con-nav' : ''}`}>
+  return <div className={`piso-app${conNavegacion ? ' con-nav' : ''}${esAlmacen ? ' modo-almacen' : ''}`}>
     <header className="piso-header">
-      <div><h1>{titulo}</h1><small>{activo.lineas.length} {activo.lineas.length === 1 ? 'línea' : 'líneas'} · {ETIQUETA_ESTADO[activo.estado]}</small></div>
+      <div><h1>{titulo}</h1><small>{activo.lineas.length} {activo.lineas.length === 1 ? 'línea' : 'líneas'} · {ETIQUETA_ESTADO[activo.estado]}{esAlmacen ? ' · De almacén' : ''}</small></div>
       {linternaSoportada && editable && !plegado && <button type="button" className="piso-icono" aria-pressed={linterna} aria-label={linterna ? 'Apagar linterna' : 'Encender linterna'} onClick={() => setLinterna((v) => !v)}>{linterna ? <FlashlightOff /> : <Flashlight />}</button>}
       {!conNavegacion && <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'noRealizada' })}><PackageX /> <span>Venta no realizada</span></button>}
       <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'pedidos' })}><ListOrdered /> <span>Mis pedidos</span>{piso.abiertos > 1 && <b>{piso.abiertos}</b>}</button>
@@ -132,9 +156,17 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
       {!conNavegacion && <BotonSalir onClick={() => setSaliendo(true)} />}
     </header>
 
+    {editable && conNavegacion && <div className="piso-canal" role="group" aria-label="Canal de la venta">
+      <button type="button" aria-pressed={!esAlmacen} className={!esAlmacen ? 'activo' : ''} onClick={() => cambiarCanal('TIENDA')}>De tienda</button>
+      <button type="button" aria-pressed={esAlmacen} className={esAlmacen ? 'activo' : ''} onClick={() => cambiarCanal('ALMACEN')}>De almacén (VTD)</button>
+    </div>}
     {piso.sinConexion && <p className="piso-banner" role="status">Sin conexión. Guardado en este teléfono</p>}
     {aviso && <p className="piso-toast" role="status">{aviso}</p>}
 
+    {editable && esAlmacen && <section className="piso-almacen-info" aria-label="Venta de almacén">
+      <p>Sale del almacén: caja cobra al cliente y almacén se lo entrega con el ticket.</p>
+      <label className="piso-campo">Cliente (para que almacén lo reconozca)<input className="piso-input" type="text" value={activo.nota ?? ''} maxLength={120} placeholder="Obligatorio para enviar a caja" onChange={(e) => piso.setNota(e.target.value)} /></label>
+    </section>}
     {editable
       ? <>
         <section className="piso-captura" aria-label="Agregar productos">
@@ -144,13 +176,13 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
         </section>
         <section className="piso-lineas" aria-label={`Productos de la ${palabra.toLowerCase()}`}>
           {!activo.lineas.length && <p className="piso-vacio">Escanea un código o busca un producto para empezar.</p>}
-          {[...activo.lineas].reverse().map((l) => <FilaLinea key={l.localId} linea={l} onCantidad={() => setHoja({ tipo: 'cantidad', localId: l.localId })} onPrecio={() => setHoja({ tipo: 'precio', localId: l.localId })} onQuitar={() => piso.quitar(l.localId)} />)}
-          <button type="button" className="piso-fuera-catalogo" onClick={() => setHoja({ tipo: 'personalizado' })}><Plus /> Producto fuera de catálogo</button>
+          {[...activo.lineas].reverse().map((l) => <FilaLinea key={l.localId} linea={l} stock={l.productoId != null ? stock[l.productoId] : undefined} esAlmacen={esAlmacen} onMover={() => moverAAlmacen(l.localId)} onCantidad={() => setHoja({ tipo: 'cantidad', localId: l.localId })} onPrecio={() => setHoja({ tipo: 'precio', localId: l.localId })} onQuitar={() => piso.quitar(l.localId)} />)}
+          {!esAlmacen && <button type="button" className="piso-fuera-catalogo" onClick={() => setHoja({ tipo: 'personalizado' })}><Plus /> Producto fuera de catálogo</button>}
         </section>
         {piso.errorPedido[activo.clave] && <p className="piso-error" role="alert">{piso.errorPedido[activo.clave]}</p>}
         <footer className="piso-pie">
           <div><span>Total</span><strong>Bs {bs(total)}</strong>{sinPrecio > 0 && <small>{sinPrecio} sin precio</small>}</div>
-          <button type="button" className="piso-enviar" disabled={enviando || !activo.lineas.length || sinPrecio > 0} onClick={() => void enviar()}>{enviando ? 'Enviando…' : 'Enviar a caja'}</button>
+          <button type="button" className="piso-enviar" disabled={enviando || !activo.lineas.length || sinPrecio > 0 || motivoNoEnviar(activo) != null} onClick={() => void enviar()}>{enviando ? 'Enviando…' : 'Enviar a caja'}</button>
         </footer>
       </>
       : <VistaEnviado pedido={activo} esReponedor={esReponedor} agregadoCaja={agregadoCaja} error={piso.errorPedido[activo.clave]} onRetirar={() => void piso.retirar()} onAnular={() => { if (window.confirm('¿Anular este pedido?')) void piso.anular() }} onNuevo={piso.nuevo} />}
@@ -204,16 +236,17 @@ function Buscador({ onElegir, onAnotar }: { onElegir: (p: Product) => void; onAn
   </div>
 }
 
-function FilaLinea({ linea, onCantidad, onPrecio, onQuitar }: { linea: LineaPiso; onCantidad: () => void; onPrecio: () => void; onQuitar: () => void }) {
+function FilaLinea({ linea, stock, esAlmacen, onMover, onCantidad, onPrecio, onQuitar }: { linea: LineaPiso; stock?: StockLinea; esAlmacen: boolean; onMover: () => void; onCantidad: () => void; onPrecio: () => void; onQuitar: () => void }) {
   const sinPrecio = linea.precioUnitario == null || linea.precioUnitario <= 0
   const subtotal = sinPrecio ? 0 : round2((linea.precioUnitario as number) * linea.cantidad)
   return <article className="piso-linea">
-    <div className="piso-linea-nombre"><strong>{linea.nombre}</strong><small>{linea.esPersonalizado ? `Fuera de catálogo · ${linea.unidadMedida ?? 'UNIDAD'}` : linea.presentacionNombre ?? 'Unidad'}</small></div>
+    <div className="piso-linea-nombre"><strong>{linea.nombre}</strong><small>{linea.esPersonalizado ? `Fuera de catálogo · ${linea.unidadMedida ?? 'UNIDAD'}` : linea.presentacionNombre ?? 'Unidad'}</small>{stock && <small className="piso-stock">{esAlmacen ? `En almacén: ${fmtQty(stock.almacen)}` : `En tienda: ${fmtQty(stock.tienda)}`}</small>}</div>
     <button type="button" className="piso-quitar" aria-label={`Quitar ${linea.nombre}`} onClick={onQuitar}><Trash2 /></button>
     <button type="button" className="piso-chip" onClick={onCantidad} aria-label={`Cantidad de ${linea.nombre}`}>× {linea.cantidad}</button>
     <button type="button" className={`piso-chip ${sinPrecio ? 'alerta' : ''}`} onClick={onPrecio} aria-label={`Precio de ${linea.nombre}`}>{sinPrecio ? 'Poner precio' : `Bs ${bs(linea.precioUnitario as number)}`}</button>
     <b className="piso-subtotal">Bs {bs(subtotal)}</b>
     {linea.error && <p className="piso-error" role="alert">{linea.error}</p>}
+    {!esAlmacen && sePuedeMoverAAlmacen(linea, stock) && <div className="piso-mover"><p>En tienda no hay, en almacén sí ({fmtQty(stock?.almacen ?? 0)}). Pásalo a una venta de almacén.</p><button type="button" onClick={onMover}>Mover</button></div>}
   </article>
 }
 
@@ -294,7 +327,7 @@ function HojaPedidos({ esReponedor, pedidos, activa, cargando, onClose, onElegir
       {[...pedidos].reverse().map((p) => {
         const total = p.estado === 'ARMANDO' ? totalPedido(p.lineas).total : p.snapshot?.total ?? totalPedido(p.lineas).total
         return <li key={p.clave}><button type="button" aria-current={p.clave === activa} onClick={() => onElegir(p.clave)}>
-          <strong>{p.numeroDia != null ? `${palabra} ${p.numeroDia}` : esReponedor ? 'Venta nueva' : 'Pedido nuevo'}</strong><span className={`piso-estado ${p.estado.toLowerCase()}`}>{ETIQUETA_ESTADO[p.estado]}</span><b>Bs {bs(total)}</b>
+          <strong>{p.numeroDia != null ? `${palabra} ${p.numeroDia}` : esReponedor ? 'Venta nueva' : 'Pedido nuevo'}{p.canal === 'ALMACEN' && <em className="piso-etiqueta-almacen">De almacén</em>}</strong><span className={`piso-estado ${p.estado.toLowerCase()}`}>{ETIQUETA_ESTADO[p.estado]}</span><b>Bs {bs(total)}</b>
         </button></li>
       })}
     </ul>
@@ -327,13 +360,20 @@ function VistaEnviado({ pedido, esReponedor, agregadoCaja, error, onRetirar, onA
     : estado === 'EN_CAJA' ? 'En caja'
       : estado === 'COBRADO' ? `Cobrado${s?.ventaNumero ? ` · ${s.ventaNumero}` : ''}`
         : `Anulado${s?.anuladoMotivo ? `: ${s.anuladoMotivo}` : ''}`
-  const parte = estado === 'COBRADO' ? parteCobrada(s?.lineas ?? []) : null
+  const esAlmacen = pedido.canal === 'ALMACEN'
+  const ventaAnulada = s?.ventaEstado === 'ANULADA'
+  const parte = estado === 'COBRADO' && !ventaAnulada ? parteCobrada(s?.lineas ?? []) : null
   const totalVenta = parte != null && agregadoCaja != null ? round2(parte + agregadoCaja) : s?.total ?? 0
   const palabra = esReponedor ? 'venta' : 'pedido'
   return <section className="piso-enviado" aria-live="polite">
     <p className="piso-numero-dia" aria-label={`Número de la ${palabra} ${pedido.numeroDia ?? ''}`}>{pedido.numeroDia ?? '—'}</p>
     <p className={`piso-estado-grande ${estado.toLowerCase()}`}>{texto}</p>
-    {pedido.codigo && estado !== 'ANULADO' && <div className="piso-qr"><DocQr content={pedido.codigo} size={240} /><small>{pedido.codigo}</small></div>}
+    {esAlmacen && estado !== 'ANULADO' && <PasosAlmacen estado={estado} entregado={s?.entregado === true} />}
+    {esAlmacen && estado === 'COBRADO' && <section className="piso-ticket-almacen" aria-label="Entrega en almacén">
+      {s?.ventaNumero && <p><strong>Ticket de caja {s.ventaNumero}</strong></p>}
+      {ventaAnulada ? <p>Caja anuló esta venta: ya no cuenta para ti.</p> : s?.entregado ? <p>Almacén entregó {horaCorta(s.entregadoEn)}</p> : <p>El cliente ya pagó. Almacén le entrega con este ticket.</p>}
+    </section>}
+    {pedido.codigo && estado !== 'ANULADO' && !(esAlmacen && estado === 'COBRADO') && <div className="piso-qr"><DocQr content={pedido.codigo} size={240} /><small>{pedido.codigo}</small></div>}
     <ul className="piso-resumen">
       {(s?.lineas ?? []).map((l) => <li key={l.orden}><span>{l.cantidadFinal ?? l.cantidad} × {l.nombre}</span><b>Bs {bs(l.precioFinal != null ? round2(l.precioFinal * (l.cantidadFinal ?? l.cantidad)) : l.subtotal)}</b></li>)}
     </ul>
@@ -347,4 +387,15 @@ function VistaEnviado({ pedido, esReponedor, agregadoCaja, error, onRetirar, onA
       <button type="button" className="piso-enviar" onClick={onNuevo}>{esReponedor ? 'Venta nueva' : 'Nuevo pedido'}</button>
     </div>
   </section>
+}
+
+const PASOS_ALMACEN = ['Enviada a caja', 'Caja cobra', 'Almacén entrega']
+
+/** Avance de una venta de almacén: enviada → cobrada en caja → entregada por almacén. */
+function PasosAlmacen({ estado, entregado }: { estado: PedidoVendedorEstado; entregado: boolean }) {
+  const hechos = [estado === 'ENVIADO' || estado === 'EN_CAJA' || estado === 'COBRADO', estado === 'COBRADO', entregado]
+  const actual = hechos.findIndex((h) => !h)
+  return <ol className="piso-pasos" aria-label="Avance de la venta de almacén">
+    {PASOS_ALMACEN.map((texto, i) => <li key={texto} className={hechos[i] ? 'hecho' : i === actual ? 'actual' : ''} aria-current={i === actual ? 'step' : undefined}>{texto}</li>)}
+  </ol>
 }

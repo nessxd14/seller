@@ -6,7 +6,7 @@ import { CajaAlmacenPanel } from './CajaAlmacenPanel'
 import type { CartItem as CartItemType, SalesChannel } from '../types'
 import { useBorrador, borradorKey } from '../hooks/useBorrador'
 import { BorradorBanner } from './BorradorBanner'
-import { authSessionProvider, transferService, ventaDirectaService, borradorOperacionService } from '../infrastructure/services'
+import { authSessionProvider, pedidoVendedorService, transferService, ventaDirectaService, borradorOperacionService } from '../infrastructure/services'
 import { hasPermission } from '../application/auth/AuthSessionProvider'
 import { CartItem } from './CartItem'
 import { Modal } from './Modal'
@@ -43,7 +43,7 @@ import { hoyLocal, sumarDiasIso } from '../domain/common/fechas'
 import { PagoModal } from './PagoModal'
 import { NumberField } from './NumberField'
 import { vendedoresCaja } from '../infrastructure/supabase/CajaCheckout.supabase'
-import { bloqueos, totalLineaCents } from '../domain/sales/pedidoCaja'
+import { bloqueos, construirCobro, totalLineaCents } from '../domain/sales/pedidoCaja'
 import { addSuspendedSale, readSuspendedSales, removeSuspendedSale } from '../infrastructure/local/suspendedSales'
 
 import { useEsCelular } from '../mobile/useEsCelular'
@@ -80,6 +80,9 @@ function AnticipoPago({ cliente, onClose, notify }: { cliente: CartCustomer | nu
 export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, onRequestTransfer, pedidosVendedorEnEspera = 0, onOpenPedidosVendedor, onTrasladoCreado }: { notify: (message: string) => void; onOpenDraftOrder: (draft: QuoteDraft) => void; onGoToCash: () => void; sellerName?: string; onRequestTransfer?: (request: PendingTransferRequest) => void; pedidosVendedorEnEspera?: number; onOpenPedidosVendedor?: () => void; /** Solo la versión celular lo pasa: muestra su ticket térmico con QR en lugar de la ventana del QR. Sin él, todo igual que siempre. */ onTrasladoCreado?: (traslado: TransferRecord) => void }) {
   const { warehouseLocked, warehousePaid, pedidoEnCarrito, vtdsEnCarrito: vtdCobroSeleccionadas = [], setVtdsEnCarrito: setVtdCobroSeleccionadas, vendedorId, setVendedorId, channel, cart, subtotal, total, discount, setDiscount, operationNumber, operationId, clearOperation, loadSuspendedSale, updateItem, addCustomItem, customer, mode, setMode, trasladoMotivo, trasladoOrigenId, trasladoDestinoId, setTrasladoDireccion, loadTrasladoDraft, vtdUbicacionId, setVtdUbicacionId, vtdPrecobrado, setVtdPrecobrado, loadVtdDraft, notifyVentaSuspendida, setSelectedLineId, lastRemoved, undoLastRemove } = usePos()
   const { sessionId } = useCashSession()
+  // Pedido de vendedor de canal ALMACEN: se cobra como venta directa (cobrar_pedido_vendedor_vtd), nunca en el carrito de venta.
+  const pedidoAlmacen = pedidoEnCarrito?.pedido.canal === 'ALMACEN' ? pedidoEnCarrito : null
+  useEffect(() => { if (pedidoAlmacen && mode !== 'ventaDirecta') setMode('ventaDirecta') }, [pedidoAlmacen, mode, setMode])
   const { saldo: customerBalance } = useSaldoCliente(mode === 'venta' ? customer?.id : undefined)
   const creditorCustomer = customerBalance?.esAcreedor === true
   const cashClosed = channel === 'retail' && featureFlags.supabase && !sessionId
@@ -382,7 +385,35 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   const [vtdPaymentOpen, setVtdPaymentOpen] = useState(false)
   const [vtdResult, setVtdResult] = useState<VentaDirectaRecord | null>(null)
   const vtdCashClosed = featureFlags.supabase && !sessionId
+  const cobrarPedidoAlmacen = async (payments: SaleCheckoutPayment[]) => {
+    if (!pedidoAlmacen || vtdUbicacionId == null || cart.length > 0 || vtdSubmitting || vtdSubmittingRef.current) return
+    const razon = bloqueos(pedidoAlmacen.lineas)[0]
+    if (razon) { setVtdError(razon); return }
+    vtdSubmittingRef.current = true
+    setVtdSubmitting(true)
+    setVtdError('')
+    try {
+      const cobro = construirCobro(pedidoAlmacen.lineas)
+      const r = await pedidoVendedorService.cobrarVtd({
+        pedidoId: pedidoAlmacen.pedido.pedidoId, lineas: cobro.lineas, quitadas: cobro.quitadas, pagos: payments,
+        sesionCajaId: sessionId ?? '', ubicacionId: vtdUbicacionId, clienteId: customer?.id,
+      })
+      const created = await ventaDirectaService.getById(r.ventaId)
+      setVtdPaymentOpen(false)
+      if (created) setVtdResult(created)
+      clearOperation()
+      limpiarBorrador()
+      notify(r.reintento ? 'Este cobro ya estaba registrado. No se cobró dos veces.' : `${r.numero ?? 'VTD'} cobrada — envíala a Almacén Central`)
+      if (payments.some((p) => p.method !== 'cash')) notify('Pago QR/transferencia pendiente de verificación del gerente')
+    } catch (error) {
+      setVtdError(error instanceof Error ? error.message : 'No se pudo cobrar la venta de almacén')
+    } finally {
+      vtdSubmittingRef.current = false
+      setVtdSubmitting(false)
+    }
+  }
   const abrirVentaDirecta = async (payments?: SaleCheckoutPayment[]) => {
+    if (pedidoAlmacen) { if (payments) await cobrarPedidoAlmacen(payments); return }
     // vtdSubmitting es estado de React: un doble clic/toque muy rápido invoca esta función
     // dos veces con el mismo valor de estado (no hay repintado entre medio), así que no
     // alcanza para bloquear la segunda llamada. El ref sí es síncrono entre llamadas.
@@ -491,7 +522,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
   // Escritorio: control visible bajo el encabezado (con su atajo en el title). Celular: el menú «⋯» de siempre.
   const esCelular = useEsCelular()
   const modeButtons = (conAtajo: boolean) => {
-    const venta = <button type="button" data-pos-action="mode-venta" className={mode === 'venta' ? 'active' : ''} onClick={() => setMode('venta')} title={conAtajo ? 'Venta (Alt+V)' : 'Venta'}><ShoppingCart /><span>Venta</span></button>
+    const venta = <button type="button" data-pos-action="mode-venta" className={mode === 'venta' ? 'active' : ''} disabled={!!pedidoAlmacen} onClick={() => setMode('venta')} title={conAtajo ? 'Venta (Alt+V)' : 'Venta'}><ShoppingCart /><span>Venta</span></button>
     const traslado = <button type="button" data-pos-action="mode-traslado" className={mode === 'traslado' ? 'active' : ''} disabled={hasDocuments} onClick={() => setMode('traslado')} title={conAtajo ? 'Traslado (Alt+T)' : 'Traslado'}><Truck /><span>Traslado</span></button>
     const ventaDirecta = featureFlags.ventaDirectaAlmacen && <button type="button" data-pos-action="mode-venta-directa" className={mode === 'ventaDirecta' ? 'active' : ''} disabled={hasDocuments} onClick={() => setMode('ventaDirecta')} aria-label="Venta directa de almacén" title={conAtajo ? 'Venta directa (Alt+R)' : 'Venta directa de almacén'}><Warehouse /><span>Venta directa</span></button>
     // Escritorio: Venta · Venta directa · Traslado. Celular: el orden del menú de siempre.
@@ -520,7 +551,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
     {mode === 'traslado'
       ? <TrasladoTargetPicker origenId={trasladoOrigenId} destinoId={trasladoDestinoId} isAdmin={isAdmin} onInvertir={() => setTrasladoDireccion(trasladoDestinoId, trasladoOrigenId)} />
       : mode === 'ventaDirecta'
-        ? <><VtdUbicacionPicker value={vtdUbicacionId} onChange={setVtdUbicacionId} />{almacen.managed ? <p className="cash-closed-notice">Solicita el material y continúa con la VTA en esta misma operación. Cobrarás todo junto.</p> : <div className="vtd-modo-cobro" role="group" aria-label="Modo de cobro"><button type="button" className={vtdPrecobrado ? 'active' : ''} onClick={() => setVtdPrecobrado(true)}>Cobrar ahora</button><button type="button" className={!vtdPrecobrado ? 'active' : ''} onClick={() => setVtdPrecobrado(false)}>Cobrar después en caja</button></div>}</>
+        ? <><VtdUbicacionPicker value={vtdUbicacionId} onChange={setVtdUbicacionId} />{pedidoAlmacen ? <p className="cash-closed-notice">Venta de almacén de {pedidoAlmacen.pedido.vendedor}: se cobra ahora y sale como VTD para que almacén entregue.</p> : almacen.managed ? <p className="cash-closed-notice">Solicita el material y continúa con la VTA en esta misma operación. Cobrarás todo junto.</p> : <div className="vtd-modo-cobro" role="group" aria-label="Modo de cobro"><button type="button" className={vtdPrecobrado ? 'active' : ''} onClick={() => setVtdPrecobrado(true)}>Cobrar ahora</button><button type="button" className={!vtdPrecobrado ? 'active' : ''} onClick={() => setVtdPrecobrado(false)}>Cobrar después en caja</button></div>}</>
         : <div className="cart-toolbar">
             <CustomerPicker channel={channel} notify={notify} />
             <details className="cart-add-menu">
@@ -538,7 +569,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       {sellerError && <small className="cart-seller-error" role="alert">{sellerError} <button type="button" onClick={() => setSellerRetry(n => n+1)}>Reintentar</button></small>}
     </>}
     {mode !== 'venta' && <div className="cart-list-heading"><span>{mode === 'traslado' ? 'Detalle del traslado' : 'Detalle de la venta directa'}</span><b>{cart.reduce((sum, item) => sum + item.cantidad, 0)} artículos</b></div>}<div className="cart-list">{cart.length ? cart.map((item) => <CartItem item={item} key={item.id} onEdit={(viaKeyboard) => { editViaKeyboard.current = viaKeyboard; setEditing(item) }} originStock={mode === 'venta' ? originStock[item.id] : undefined} onSetOrigin={mode === 'venta' ? (loc) => updateItem(item.id, { ubicacion: loc, origenManual: true }) : undefined} onRequestTransfer={mode === 'venta' && onRequestTransfer ? (shortfall) => onRequestTransfer({ productId: String(item.id), productName: item.nombre, productSku: item.sku, quantity: shortfall }) : undefined} trasladoDisponible={mode === 'traslado' ? trasladoDisponibleFor(item.id) : undefined} almacenDisponible={mode === 'ventaDirecta' && originStock[item.id] ? { vendible: originStock[item.id].almacenVendible, reservado: originStock[item.id].almacenReservado } : undefined} />) : !hasDocuments ? <div className="empty-cart"><div><ShoppingCart /></div><h3>Tu carrito está vacío</h3><p>Agrega productos del catálogo para comenzar {mode === 'traslado' ? 'un traslado' : mode === 'ventaDirecta' ? 'una venta directa' : 'una venta'}.</p></div> : null}
-      {mode === 'venta' && pedidoEnCarrito && <section className="cart-pedido-group"><header><i className="cart-add-square cart-add-square-pedido" aria-hidden="true" /><strong>{pedidoEnCarrito.pedido.codigo}</strong><span>· {pedidoEnCarrito.pedido.vendedor} · {verified.length} de {pedidoEnCarrito.lineas.filter(l => !l.quitada).length} verificadas</span><button type="button" onClick={onOpenPedidosVendedor}>Revisar</button></header>{verified.map(l => <div className="checkout-pedido-line" key={l.key}><span><strong>{l.nombre}</strong><small>✓ Verificado · {l.cantidad} {l.presentacionNombre ?? l.unidadMedida ?? 'unidades'}</small></span><b>Bs {money(totalLineaCents(l)/100)}</b></div>)}{pedidoBloqueo && <p role="status">{pedidoBloqueo}</p>}</section>}
+      {(mode === 'venta' || pedidoAlmacen) && pedidoEnCarrito && <section className="cart-pedido-group"><header><i className="cart-add-square cart-add-square-pedido" aria-hidden="true" /><strong>{pedidoEnCarrito.pedido.codigo}</strong><span>· {pedidoEnCarrito.pedido.vendedor} · {verified.length} de {pedidoEnCarrito.lineas.filter(l => !l.quitada).length} verificadas</span><button type="button" onClick={onOpenPedidosVendedor}>Revisar</button></header>{verified.map(l => <div className="checkout-pedido-line" key={l.key}><span><strong>{l.nombre}</strong><small>✓ Verificado · {l.cantidad} {l.presentacionNombre ?? l.unidadMedida ?? 'unidades'}</small></span><b>Bs {money(totalLineaCents(l)/100)}</b></div>)}{pedidoBloqueo && <p role="status">{pedidoBloqueo}</p>}</section>}
       {mode === 'venta' && vtdCobroSeleccionadas.map((v) => (
         <div className="cart-line vtd-cobro-line" key={v.ventaId}>
           <i className="cart-add-square cart-add-square-vtd" aria-hidden="true" />
@@ -574,7 +605,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
         </div>
         <div className="grand-total">
           <span>Total</span>
-          <strong>Bs {money(mode === 'venta' ? checkoutTotal : total)}</strong>
+          <strong>Bs {money(mode === 'venta' || pedidoAlmacen ? checkoutTotal : total)}</strong>
         </div>
       </div>
     )}
@@ -586,7 +617,9 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       {vtdUbicacionId == null && <p className="cash-closed-notice">Elegí la ubicación de origen en Almacén Central.</p>}
       {vtdRetailError && <p className="cash-closed-notice">{vtdRetailError} <button type="button" className="vtd-retail-error-link" onClick={openDraft}>Crear cotización</button></p>}
       {vtdError && <p className="cash-closed-notice">{vtdError}</p>}
-      <button data-pos-action="abrir-venta-directa" className="pay-button" disabled={!cart.length || vtdCashClosed || vtdUbicacionId == null || vtdSubmitting || almacen.busy} onClick={() => almacen.managed ? void solicitarAlmacen() : vtdPrecobrado ? setVtdPaymentOpen(true) : void abrirVentaDirecta()}><Warehouse /> {almacen.managed ? (almacen.busy ? 'Solicitando…' : 'Solicitar a Almacén') : vtdSubmitting ? 'Abriendo…' : vtdPrecobrado ? 'Cobrar y abrir' : 'Abrir venta directa'} <span>Bs {money(total)}</span></button>
+      {pedidoAlmacen && cart.length > 0 && <p className="cash-closed-notice">Quita los productos sueltos del carrito: la venta de almacén se cobra sola. Si falta algo, agrégalo en la revisión del pedido.</p>}
+      {pedidoAlmacen && pedidoBloqueo && <p className="cash-closed-notice">{pedidoBloqueo}</p>}
+      {pedidoAlmacen ? <button data-pos-action="cobrar-pedido-almacen" className="pay-button" disabled={vtdCashClosed || vtdUbicacionId == null || vtdSubmitting || !!pedidoBloqueo || cart.length > 0} onClick={() => setVtdPaymentOpen(true)}><Warehouse /> {vtdSubmitting ? 'Cobrando…' : 'Cobrar y mandar a almacén'} <span>Bs {money(pedidoBs)}</span></button> : <button data-pos-action="abrir-venta-directa" className="pay-button" disabled={!cart.length || vtdCashClosed || vtdUbicacionId == null || vtdSubmitting || almacen.busy} onClick={() => almacen.managed ? void solicitarAlmacen() : vtdPrecobrado ? setVtdPaymentOpen(true) : void abrirVentaDirecta()}><Warehouse /> {almacen.managed ? (almacen.busy ? 'Solicitando…' : 'Solicitar a Almacén') : vtdSubmitting ? 'Abriendo…' : vtdPrecobrado ? 'Cobrar y abrir' : 'Abrir venta directa'} <span>Bs {money(total)}</span></button>}
     </>) : (channel === 'retail' || hasDocuments) ? <>
       {cashClosed && <button className="cash-closed-notice" onClick={onGoToCash}>Caja cerrada — abrí la caja para poder cobrar</button>}
       {customerMismatch && <p className="cash-closed-notice">Selecciona el mismo cliente de la VTD para cobrar todo junto.</p>}
@@ -611,7 +644,7 @@ export function CartPanel({ notify, onOpenDraftOrder, onGoToCash, sellerName, on
       </div>}
     </div>
     {editing && <EditCartItemModal item={editing} onClose={() => { setEditing(null); if (editViaKeyboard.current) { editViaKeyboard.current = false; requestAnimationFrame(focusPosSearch) } }} />}{paymentOpen && <PaymentModal onClose={() => setPaymentOpen(false)} onCheckoutSuccess={() => invalidateOriginStock()} />}{ticketOpen && <TicketPreviewModal onClose={() => setTicketOpen(false)} />}
-    {vtdPaymentOpen && <VtdPaymentModal total={total} submitting={vtdSubmitting} error={vtdError} onClose={() => setVtdPaymentOpen(false)} onConfirm={(payments) => void abrirVentaDirecta(payments)} />}
+    {vtdPaymentOpen && <VtdPaymentModal total={pedidoAlmacen ? pedidoBs : total} submitting={vtdSubmitting} error={vtdError} onClose={() => setVtdPaymentOpen(false)} onConfirm={(payments) => void abrirVentaDirecta(payments)} />}
     {vtdResult && <VtdTicketPreviewModal venta={vtdResult} onClose={() => setVtdResult(null)} />}
     {trasladoCreado && <Modal title="Solicitud de traslado creada" subtitle={trasladoCreado.numero} onClose={() => setTrasladoCreado(null)}>
       <div className="modal-body"><TrasladoQr id={trasladoCreado.id} numero={trasladoCreado.numero} /></div>

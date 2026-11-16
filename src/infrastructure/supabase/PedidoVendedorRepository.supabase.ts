@@ -2,7 +2,7 @@
 // (guardar/retirar/anular/mis_pedidos_vendedor); aquí solo se mapea snake_case → camelCase.
 import { supabase } from './supabaseClient'
 import { toError } from './postgrestError'
-import type { MiCuentaVendedor, PedidoVendedorCobroInput, PedidoVendedorCobroResultado, PedidoVendedorEnCola, PedidoVendedorEstado, PedidoVendedorLinea, PedidoVendedorLineaInput, PedidoVendedorRecord } from '../../application/shared/models'
+import type { MiCuentaVendedor, PedidoCanal, PedidoVendedorCobroInput, PedidoVendedorCobroVtdInput, PedidoVendedorCobroResultado, PedidoVendedorEnCola, PedidoVendedorEstado, PedidoVendedorLinea, PedidoVendedorLineaInput, PedidoVendedorRecord } from '../../application/shared/models'
 import { centsToNumeric, methodToMetodoPago } from './mappers'
 
 const num = (v: number | string | null | undefined): number => (v == null ? 0 : Number(v))
@@ -16,8 +16,9 @@ interface LineaRow {
   resultado: string | null; cantidad_final: number | string | null; precio_final: number | string | null; motivo_caja: string | null
 }
 interface PedidoRow {
-  pedido_id: number | string; codigo: string; numero_dia: number; fecha: string; estado: PedidoVendedorEstado; vendedor: string | null
+  pedido_id: number | string; codigo: string; numero_dia: number; fecha: string; estado: PedidoVendedorEstado; canal?: PedidoCanal | null; vendedor: string | null
   nota: string | null; total: number | string; enviado_en: string | null; tomado_por: string | null; venta_numero: string | null
+  venta_estado?: string | null; entregado?: boolean | null; entregado_en?: string | null
   anulado_origen: string | null; anulado_motivo: string | null; reintento?: boolean; lineas?: LineaRow[] | null
 }
 
@@ -30,8 +31,9 @@ const rowToLinea = (r: LineaRow): PedidoVendedorLinea => ({
 })
 
 export const rowToPedido = (r: PedidoRow): PedidoVendedorRecord => ({
-  pedidoId: String(r.pedido_id), codigo: r.codigo, numeroDia: r.numero_dia, fecha: r.fecha, estado: r.estado, vendedor: r.vendedor ?? '',
+  pedidoId: String(r.pedido_id), codigo: r.codigo, numeroDia: r.numero_dia, fecha: r.fecha, estado: r.estado, canal: r.canal ?? 'TIENDA', vendedor: r.vendedor ?? '',
   nota: r.nota, total: num(r.total), enviadoEn: r.enviado_en, tomadoPor: r.tomado_por, ventaNumero: r.venta_numero,
+  ventaEstado: r.venta_estado ?? null, entregado: r.entregado ?? null, entregadoEn: r.entregado_en ?? null,
   anuladoOrigen: r.anulado_origen, anuladoMotivo: r.anulado_motivo, reintento: r.reintento === true,
   lineas: (r.lineas ?? []).map(rowToLinea),
 })
@@ -47,12 +49,13 @@ export const lineaToPayload = (l: PedidoVendedorLineaInput): Record<string, unkn
       }
 
 /** Reemplaza TODAS las líneas del pedido. `clave` (UUID generado una vez por pedido) hace seguros los reintentos. */
-export async function guardar(input: { clave: string; lineas: PedidoVendedorLineaInput[]; enviar?: boolean; nota?: string | null }): Promise<PedidoVendedorRecord> {
+export async function guardar(input: { clave: string; lineas: PedidoVendedorLineaInput[]; enviar?: boolean; nota?: string | null; canal?: PedidoCanal }): Promise<PedidoVendedorRecord> {
   const { data, error } = await supabase.rpc('guardar_pedido_vendedor', {
     p_clave: input.clave,
     p_lineas: input.lineas.map(lineaToPayload),
     p_enviar: input.enviar === true,
     p_nota: input.nota ?? null,
+    ...(input.canal ? { p_canal: input.canal } : {}),
   })
   if (error) throw toError(error)
   return rowToPedido(data as PedidoRow)
@@ -80,7 +83,7 @@ interface MiCuentaRow {
   desde: string; hasta: string; parte: number | string | null; cobradas: number | string | null; por_cobrar: number | string | null
   guardadas: number | string | null; anuladas: number | string | null
   pedidos?: Array<{
-    pedido_id: number | string; numero_dia: number; fecha: string; estado: PedidoVendedorEstado; total_enviado: number | string | null
+    pedido_id: number | string; numero_dia: number; fecha: string; estado: PedidoVendedorEstado; canal?: PedidoCanal | null; venta_anulada?: boolean | null; total_enviado: number | string | null
     cobrado_en: string | null; parte: number | string | null; agregado_caja: number | string | null; precios_corregidos: number | string | null
     lineas_quitadas: number | string | null; anulado_origen: string | null; anulado_motivo: string | null
   }> | null
@@ -100,7 +103,7 @@ export async function misCuentaVendedor(desde: string, hasta: string): Promise<M
     desde: r.desde, hasta: r.hasta, parte: num(r.parte), cobradas: num(r.cobradas), porCobrar: num(r.por_cobrar),
     guardadas: num(r.guardadas), anuladas: num(r.anuladas),
     pedidos: (r.pedidos ?? []).map((p) => ({
-      pedidoId: String(p.pedido_id), numeroDia: p.numero_dia, fecha: p.fecha, estado: p.estado, totalEnviado: num(p.total_enviado),
+      pedidoId: String(p.pedido_id), numeroDia: p.numero_dia, fecha: p.fecha, estado: p.estado, canal: p.canal ?? 'TIENDA', ventaAnulada: p.venta_anulada === true, totalEnviado: num(p.total_enviado),
       cobradoEn: p.cobrado_en, parte: numOrNull(p.parte), agregadoCaja: numOrNull(p.agregado_caja),
       preciosCorregidos: num(p.precios_corregidos), lineasQuitadas: num(p.lineas_quitadas), anuladoOrigen: p.anulado_origen, anuladoMotivo: p.anulado_motivo,
     })),
@@ -127,7 +130,7 @@ export async function clavesAbiertas(userId: string): Promise<Array<{ pedidoId: 
 // ── Caja: cola, tomar, devolver y cobrar ───────────────────────────────────────────────
 
 interface ColaRow {
-  pedido_id: number | string; codigo: string; numero_dia: number; estado: 'ENVIADO' | 'EN_CAJA'; vendedor: string | null
+  pedido_id: number | string; codigo: string; numero_dia: number; estado: 'ENVIADO' | 'EN_CAJA'; canal?: PedidoCanal | null; vendedor: string | null
   enviado_en: string | null; total: number | string; lineas: number | string; tomado_por: string | null; sesion_caja_id: number | string | null
 }
 
@@ -136,7 +139,7 @@ export async function cola(): Promise<PedidoVendedorEnCola[]> {
   const { data, error } = await supabase.rpc('pedidos_vendedor_cola')
   if (error) throw toError(error)
   return ((data ?? []) as ColaRow[]).map((r) => ({
-    pedidoId: String(r.pedido_id), codigo: r.codigo, numeroDia: r.numero_dia, estado: r.estado, vendedor: r.vendedor ?? '', enviadoEn: r.enviado_en,
+    pedidoId: String(r.pedido_id), codigo: r.codigo, numeroDia: r.numero_dia, estado: r.estado, canal: r.canal ?? 'TIENDA', vendedor: r.vendedor ?? '', enviadoEn: r.enviado_en,
     total: num(r.total), lineas: num(r.lineas), tomadoPor: r.tomado_por, sesionCajaId: r.sesion_caja_id != null ? String(r.sesion_caja_id) : null,
   }))
 }
@@ -174,4 +177,24 @@ export async function cobrar(input: PedidoVendedorCobroInput): Promise<PedidoVen
   if (error) throw toError(error)
   const r = data as { venta_id: number | string; numero?: string | null; subtotal: number | string; descuento_total: number | string; total: number | string; reintento?: boolean; pedidos?: Array<number | string> }
   return { ventaId: String(r.venta_id), numero: r.numero ?? null, subtotal: num(r.subtotal), descuentoTotal: num(r.descuento_total), total: num(r.total), reintento: r.reintento === true, pedidos: (r.pedidos ?? []).map(String) }
+}
+
+/**
+ * Cobra un pedido de canal ALMACEN: abre la VTD pagada en la misma transacción (cobrar_pedido_vendedor_vtd).
+ * La clave de idempotencia es fija por pedido: reintentar tras una respuesta perdida devuelve la misma venta.
+ */
+export async function cobrarVtd(input: PedidoVendedorCobroVtdInput): Promise<PedidoVendedorCobroResultado> {
+  const { data, error } = await supabase.rpc('cobrar_pedido_vendedor_vtd', {
+    p_pedido_id: Number(input.pedidoId),
+    p_lineas: input.lineas,
+    p_pagos: input.pagos.map((p) => ({ metodo: methodToMetodoPago(p.method), monto: centsToNumeric(p.amountCents) })),
+    p_sesion_caja_id: Number(input.sesionCajaId),
+    p_ubicacion_id: input.ubicacionId,
+    p_idempotencia: `pedido-vendedor-vtd:${input.pedidoId}`,
+    p_quitadas: input.quitadas,
+    p_cliente_id: input.clienteId ? Number(input.clienteId) : null,
+  })
+  if (error) throw toError(error)
+  const r = data as { venta_id: number | string; numero?: string | null; subtotal: number | string; descuento_total: number | string; total: number | string; reintento?: boolean }
+  return { ventaId: String(r.venta_id), numero: r.numero ?? null, subtotal: num(r.subtotal), descuentoTotal: num(r.descuento_total), total: num(r.total), reintento: r.reintento === true, pedidos: [input.pedidoId] }
 }

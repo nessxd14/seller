@@ -1,6 +1,6 @@
 // Piso — lógica pura del pedido que el vendedor arma en su teléfono. Sin React ni red:
 // todo lo que decide precios, totales y qué se manda al servidor vive acá y se prueba aparte.
-import type { PedidoVendedorEstado, PedidoVendedorLineaInput, PedidoVendedorRecord } from '../../application/shared/models'
+import type { PedidoCanal, PedidoVendedorEstado, PedidoVendedorLineaInput, PedidoVendedorRecord } from '../../application/shared/models'
 import type { PreciosPresentacion } from '../pricing/precioPresentacion'
 
 export const round2 = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100
@@ -44,6 +44,8 @@ export interface PedidoLocal {
   codigo: string | null
   numeroDia: number | null
   estado: PedidoVendedorEstado
+  /** ALMACEN: sale del almacén; caja la cobra como venta directa (VTD). */
+  canal: PedidoCanal
   lineas: LineaPiso[]
   nota: string | null
   /** Se incrementa en cada cambio local; sirve para descartar respuestas viejas. */
@@ -169,7 +171,7 @@ export const fusionarRespuesta = (local: PedidoLocal, server: PedidoVendedorReco
 
 /** Reconstruye un pedido local desde el servidor (otro teléfono o storage borrado). */
 export const pedidoDesdeServidor = (server: PedidoVendedorRecord, clave: string, nuevoId: () => string): PedidoLocal => ({
-  clave, pedidoId: server.pedidoId, codigo: server.codigo, numeroDia: server.numeroDia, estado: server.estado, nota: server.nota,
+  clave, pedidoId: server.pedidoId, codigo: server.codigo, numeroDia: server.numeroDia, estado: server.estado, canal: server.canal ?? 'TIENDA', nota: server.nota,
   revision: 0, guardadoRevision: 0, creadoEn: server.enviadoEn ?? new Date().toISOString(), snapshot: server,
   lineas: [...server.lineas].sort((a, b) => a.orden - b.orden).map((l): LineaPiso => ({
     localId: nuevoId(), productoId: l.productoId, nombre: l.nombre, sku: l.sku, presentacionId: l.esBase ? null : l.presentacionId,
@@ -182,6 +184,30 @@ export const pedidoDesdeServidor = (server: PedidoVendedorRecord, clave: string,
 
 /** ¿Se puede enviar? Al menos una línea y todas con precio > 0. */
 export const puedeEnviar = (lineas: LineaPiso[]): boolean => lineas.length > 0 && lineas.every((l) => l.precioUnitario != null && l.precioUnitario > 0 && l.cantidad > 0)
+
+export const MENSAJE_CLIENTE_ALMACEN = 'Escribe quién es el cliente: almacén lo necesita para entregar.'
+export const MENSAJE_FUERA_DE_CATALOGO_ALMACEN = 'Un producto fuera de catálogo solo se vende de tienda.'
+
+/** Por qué todavía no se puede enviar el pedido (null = se puede). La venta de almacén exige la referencia del cliente y solo productos de catálogo. */
+export const motivoNoEnviar = (p: Pick<PedidoLocal, 'canal' | 'lineas' | 'nota'>): string | null => {
+  if (!puedeEnviar(p.lineas)) return 'Agrega al menos un producto y ponle precio a todas las líneas.'
+  if (p.canal === 'ALMACEN') {
+    if (p.lineas.some((l) => l.esPersonalizado)) return MENSAJE_FUERA_DE_CATALOGO_ALMACEN
+    if (!(p.nota ?? '').trim()) return MENSAJE_CLIENTE_ALMACEN
+  }
+  return null
+}
+
+/** Suma la línea a la lista: mismo producto y presentación junta cantidades; si no, queda al final. */
+export const fusionarLinea = (lineas: LineaPiso[], linea: LineaPiso): LineaPiso[] => {
+  const i = lineas.findIndex((l) => !l.esPersonalizado && !linea.esPersonalizado && claveLinea(l) === claveLinea(linea))
+  if (i < 0) return [...lineas, { ...linea, error: undefined }]
+  return lineas.map((l, idx) => (idx === i ? { ...l, cantidad: round2(l.cantidad + linea.cantidad) } : l))
+}
+
+/** «En tienda no hay, en almacén sí»: la línea se puede mover a una venta de almacén. */
+export const sePuedeMoverAAlmacen = (linea: LineaPiso, stock: { tienda: number; almacen: number } | undefined): boolean =>
+  !linea.esPersonalizado && stock != null && stock.tienda <= 0 && stock.almacen > 0
 
 export const hayCambiosSinGuardar = (p: PedidoLocal): boolean => p.revision !== p.guardadoRevision
 

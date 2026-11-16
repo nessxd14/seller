@@ -580,6 +580,8 @@ export interface MovimientoBancoQr {
 
 // ── Piso: pedido armado en el teléfono del vendedor (guardar_pedido_vendedor) ───────────
 export type PedidoVendedorEstado = 'ARMANDO' | 'ENVIADO' | 'EN_CAJA' | 'COBRADO' | 'ANULADO'
+/** TIENDA: caja cobra en el carrito normal. ALMACEN: caja la cobra como venta directa (VTD) y almacén entrega. */
+export type PedidoCanal = 'TIENDA' | 'ALMACEN'
 
 export interface PedidoVendedorLinea {
   /** Cambia en CADA guardado: nunca usarlo como key de React ni para rastrear líneas locales (usar `orden`). */
@@ -612,12 +614,18 @@ export interface PedidoVendedorRecord {
   numeroDia: number
   fecha: string
   estado: PedidoVendedorEstado
+  canal: PedidoCanal
   vendedor: string
   nota: string | null
   total: number
   enviadoEn: string | null
   tomadoPor: string | null
   ventaNumero: string | null
+  /** Estado de la venta (VTD) ya cobrada; null mientras no se cobra. */
+  ventaEstado?: string | null
+  /** Solo canal ALMACEN: la VTD ya se completó (almacén entregó). null si todavía no hay venta o es de tienda. */
+  entregado?: boolean | null
+  entregadoEn?: string | null
   anuladoOrigen: string | null
   anuladoMotivo: string | null
   reintento: boolean
@@ -630,6 +638,9 @@ export interface MiCuentaPedido {
   numeroDia: number
   fecha: string
   estado: PedidoVendedorEstado
+  canal: PedidoCanal
+  /** La VTD cobrada se anuló: ya no suma a la parte. */
+  ventaAnulada?: boolean
   totalEnviado: number
   cobradoEn: string | null
   /** Solo si está cobrada: lo que anotó el vendedor, al precio final de caja. */
@@ -680,6 +691,7 @@ export interface PedidoVendedorEnCola {
   codigo: string
   numeroDia: number
   estado: 'ENVIADO' | 'EN_CAJA'
+  canal: PedidoCanal
   vendedor: string
   enviadoEn: string | null
   total: number
@@ -711,6 +723,18 @@ export interface PedidoVendedorCobroInput {
   quitadas: PedidoCobroQuitadaPayload[]
   pagos: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number; receivedCents?: number }>
   sesionCajaId: string
+}
+
+/** cobrar_pedido_vendedor_vtd: cobra el pedido de canal ALMACEN y abre la VTD en la misma transacción. */
+export interface PedidoVendedorCobroVtdInput {
+  pedidoId: string
+  lineas: PedidoCobroLineaPayload[]
+  quitadas: PedidoCobroQuitadaPayload[]
+  /** Obligatorio: la venta de almacén se paga en el momento. */
+  pagos: Array<{ method: 'cash' | 'qr' | 'transfer'; amountCents: number }>
+  sesionCajaId: string
+  ubicacionId: number
+  clienteId?: string | null
 }
 
 export interface PedidoVendedorCobroResultado {
