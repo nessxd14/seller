@@ -52,3 +52,36 @@ describe('resolveScannedCode — presentación del código (Piso)', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 })
+
+describe('getStockBySucursalBatch — una sola RPC stock_vendible_lote', () => {
+  it('deriva las mismas cantidades: excluye_disponible, override LIBRE y fallback al default', async () => {
+    const { getStockBySucursalBatch } = await import('./ProductRepository.supabase')
+    const payload = {
+      stock: [
+        { producto_id: 1, cantidad_base: '10', sucursal_id: 2, excluye_disponible: false },
+        { producto_id: 1, cantidad_base: 3, sucursal_id: 2, excluye_disponible: true },
+        { producto_id: 1, cantidad_base: 5, sucursal_id: 1, excluye_disponible: false },
+        { producto_id: 1, cantidad_base: 7, sucursal_id: null, excluye_disponible: null },
+        { producto_id: 2, cantidad_base: 4, sucursal_id: 1, excluye_disponible: false },
+      ],
+      overrides: [{ producto_id: 1, sucursal_id: 1, control_stock: 'LIBRE' }],
+      vendible_tienda: [{ producto_id: 1, vendible: 8, reservado: '2', motivo: null }],
+      vendible_almacen: [{ producto_id: 1, vendible: 5, reservado: 0, motivo: 'FIFO' }],
+    }
+    rpc.mockResolvedValue({ data: payload, error: null })
+    from.mockReturnValue({ select: vi.fn().mockResolvedValue({ data: [{ id: 1, control_stock_default: 'ESTRICTO' }, { id: 2, control_stock_default: 'LIBRE' }], error: null }) })
+    const result = await getStockBySucursalBatch([1, 2, 1])
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledWith('stock_vendible_lote', { p_producto_ids: [1, 2] })
+    expect(result.get(1)).toEqual({
+      tienda: 10, almacen: 5, tiendaLibre: true, almacenLibre: true,
+      tiendaVendible: 8, almacenVendible: 5, tiendaReservado: 2, almacenReservado: 0,
+      tiendaMotivo: null, almacenMotivo: 'FIFO',
+    })
+    expect(result.get(2)).toEqual({
+      tienda: 0, almacen: 4, tiendaLibre: true, almacenLibre: false,
+      tiendaVendible: 0, almacenVendible: 0, tiendaReservado: 0, almacenReservado: 0,
+      tiendaMotivo: null, almacenMotivo: null,
+    })
+  })
+})

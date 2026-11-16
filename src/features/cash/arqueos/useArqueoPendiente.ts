@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ArqueoProgramado, Denominaciones } from '../../../application/shared/models'
 import { featureFlags } from '../../../config/featureFlags'
 import { useCashSession } from '../../../context/CashSessionContext'
+import { createRefreshGate } from '../../../hooks/refreshGate'
 import { authSessionProvider, turnoService } from '../../../infrastructure/services'
 
 export const ARQUEOS_POR_TURNO = 3
@@ -99,12 +100,13 @@ export function useArqueoPendiente(): ArqueoPendiente {
     if (!activo) return
     const actualizar = () => { void refrescar() }
     const tick = () => { if (document.visibilityState !== 'hidden') actualizar() }
-    const visibilidad = () => { if (document.visibilityState === 'visible') actualizar() }
+    const gate = createRefreshGate()
+    const alVolver = () => gate(actualizar)
     actualizar()
-    window.addEventListener('focus', actualizar)
-    document.addEventListener('visibilitychange', visibilidad)
+    window.addEventListener('focus', alVolver)
+    document.addEventListener('visibilitychange', alVolver)
     const timer = window.setInterval(tick, POLL_MS)
-    return () => { window.removeEventListener('focus', actualizar); document.removeEventListener('visibilitychange', visibilidad); clearInterval(timer) }
+    return () => { window.removeEventListener('focus', alVolver); document.removeEventListener('visibilitychange', alVolver); clearInterval(timer) }
   }, [activo, refrescar])
 
   const derivado = useMemo(() => derivarArqueoPendiente(arqueos, ahoraMs), [arqueos, ahoraMs])

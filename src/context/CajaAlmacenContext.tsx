@@ -6,6 +6,7 @@ import { authSessionProvider } from '../infrastructure/services'
 import { listarCajaAlmacenEnEspera, operarCajaAlmacen } from '../infrastructure/supabase/CajaAlmacen.supabase'
 import { draftFingerprint, vtdVigente, type CajaAlmacenDraft, type CajaAlmacenRecord } from '../application/shared/cajaAlmacen'
 import type { VtdPorCobrar } from '../application/shared/models'
+import { createRefreshGate } from '../hooks/refreshGate'
 
 interface WarehouseContext {
   managed: boolean
@@ -130,12 +131,15 @@ export function CajaAlmacenProvider({ children }: { children: ReactNode }) {
     }
     if (featureFlags.supabase) void update()
     const tick = () => { void update() }
-    const onFocus = () => { contar = true; tick() }
+    // focus + visibilitychange llegan juntos: el gate deja pasar solo uno cada 15 s.
+    const gate = createRefreshGate()
+    const onFocus = () => gate(() => { contar = true; tick() })
+    const onVisibility = () => gate(tick)
     const unsubscribe = featureFlags.supabase ? authSessionProvider.subscribe?.(tick) : undefined
     window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', tick)
-    const timer = window.setInterval(tick, hasOperation ? 15_000 : 60_000)
-    return () => { disposed = true; unsubscribe?.(); clearInterval(timer); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', tick) }
+    document.addEventListener('visibilitychange', onVisibility)
+    const timer = window.setInterval(tick, hasOperation ? 30_000 : 120_000)
+    return () => { disposed = true; unsubscribe?.(); clearInterval(timer); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisibility) }
   }, [refresh, hasOperation, contarEnEspera])
 
   useEffect(() => {
