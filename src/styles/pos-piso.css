@@ -231,3 +231,25 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 .piso-aviso-azul { margin: 0; padding: 10px 12px; border-radius: 12px; background: #eaf1ff; color: #1d4ed8; font-size: 14px; }
 .piso-salir-acciones { display: grid; gap: 8px; }
 .piso-salir-acciones button { width: 100%; }
+
+/* Venta de almacén (VTD) del reponedor */
+.piso-app { --piso-almacen: #067647; --piso-almacen-fondo: #ecfdf3; }
+.piso-canal { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 14px 0; }
+.piso-canal button { min-height: 44px; border-radius: 12px; background: #eaf1ff; color: var(--piso-ink); font-weight: 700; font-size: 14px; }
+.piso-canal button.activo { background: var(--piso-primary); color: #fff; }
+.modo-almacen .piso-canal button.activo { background: var(--piso-almacen); }
+.modo-almacen .piso-header { border-bottom-color: var(--piso-almacen); }
+.modo-almacen .piso-enviar { background: var(--piso-almacen); }
+.piso-almacen-info { display: grid; gap: 10px; margin: 10px 14px 0; padding: 12px; border-radius: 14px; background: var(--piso-almacen-fondo); border: 1px solid #a6e0c0; }
+.piso-almacen-info p { margin: 0; font-size: 14px; color: #05603a; }
+.piso-stock { display: block; color: var(--piso-muted); font-size: 13px; }
+.piso-mover { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: #fff4e5; color: #8a4b00; }
+.piso-mover p { margin: 0; flex: 1; font-size: 13px; font-weight: 600; }
+.piso-mover button { flex: none; padding: 0 16px; border-radius: 10px; background: #8a4b00; color: #fff; font-weight: 800; }
+.piso-etiqueta-almacen { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--piso-almacen-fondo); color: var(--piso-almacen); font-size: 11px; font-style: normal; font-weight: 800; vertical-align: middle; }
+.piso-pasos { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.piso-pasos li { padding: 8px 4px; border-radius: 10px; background: #f2f4f7; color: var(--piso-muted); font-size: 12px; font-weight: 700; text-align: center; }
+.piso-pasos li.hecho { background: var(--piso-almacen-fondo); color: var(--piso-almacen); }
+.piso-pasos li.actual { background: #eaf1ff; color: var(--piso-primary); box-shadow: inset 0 0 0 2px var(--piso-primary); }
+.piso-ticket-almacen { width: 100%; display: grid; gap: 4px; padding: 12px; border-radius: 14px; background: var(--piso-almacen-fondo); color: #05603a; }
+.piso-ticket-almacen p { margin: 0; }

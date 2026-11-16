@@ -24,7 +24,7 @@ const lin = (over: Partial<PedidoVendedorLinea>): PedidoVendedorLinea => ({
   unidadMedida: null, cantidad: 2, precioLista: 15, precioMinimo: 13.5, precioUnitario: 14, subtotal: 28, resultado: null, cantidadFinal: null, precioFinal: null, motivoCaja: null, ...over,
 })
 const pedido: PedidoVendedorRecord = {
-  pedidoId: '9', codigo: 'PDV-9', numeroDia: 3, fecha: '2026-10-06', estado: 'EN_CAJA', vendedor: 'Ana', nota: 'Para el cumple', total: 43, enviadoEn: new Date().toISOString(), tomadoPor: 'Rony',
+  pedidoId: '9', codigo: 'PDV-9', numeroDia: 3, fecha: '2026-10-06', estado: 'EN_CAJA', canal: 'TIENDA', vendedor: 'Ana', nota: 'Para el cumple', total: 43, enviadoEn: new Date().toISOString(), tomadoPor: 'Rony',
   ventaNumero: null, anuladoOrigen: null, anuladoMotivo: null, reintento: false,
   lineas: [lin({}), lin({ lineaId: '32', orden: 2, productoId: 51, nombre: 'Marcador', cantidad: 1, precioLista: 15, precioMinimo: 13.5, precioUnitario: 15, subtotal: 15 })],
 }

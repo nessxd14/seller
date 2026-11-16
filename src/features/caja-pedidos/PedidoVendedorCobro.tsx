@@ -1,12 +1,14 @@
 import { Check, RotateCcw, Search, Trash2, Undo2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { PedidoVendedorCobroResultado, PedidoVendedorEnCola, PedidoVendedorRecord } from '../../application/shared/models'
+import type { PedidoVendedorCobroResultado, PedidoVendedorEnCola, PedidoVendedorRecord, VentaDirectaRecord } from '../../application/shared/models'
 import type { SaleCheckoutPayment } from '../../application/ports/repositories'
 import { AmbiguousScanPicker } from '../../components/AmbiguousScanPicker'
 import { Modal } from '../../components/Modal'
 import { NumberField } from '../../components/NumberField'
 import { VentaTicket } from '../../components/VentaTicket'
 import { VtdPaymentModal } from '../../components/VtdPaymentModal'
+import { VtdTicketPreviewModal } from '../../components/VtdTicketPreviewModal'
+import { VtdUbicacionPicker } from '../../components/VtdUbicacionPicker'
 import { createUuid } from '../../application/shared/createUuid'
 import {
   bloqueos, cambiarPresentacionCaja, construirCobro, editarCantidad, editarPrecio, lineaAgregada, lineasDesdePedido, minutosEsperando, necesitaMotivo,
@@ -17,7 +19,7 @@ import { presentacionAlAgregar } from '../../lib/presentacionAlAgregar'
 import { opcionesDelLado } from '../../domain/pricing/presentacionesPorLado'
 import { useQrHold } from '../../hooks/useQrHold'
 import { auditEnd, auditStart } from '../../lib/auditoriaDvr'
-import { authSessionProvider, listPresentations, pedidoVendedorService, productRepository } from '../../infrastructure/services'
+import { authSessionProvider, getStockBySucursalBatch, listPresentations, pedidoVendedorService, productRepository, ventaDirectaService } from '../../infrastructure/services'
 import type { Product } from '../../types'
 import type { PedidoEnCarrito } from '../../application/shared/cajaCheckout'
 
@@ -26,6 +28,7 @@ const MOTIVOS_QUITAR = ['No lo lleva', 'Sin stock', 'Cambió por otro']
 const MOTIVOS_DESCUENTO = ['Producto dañado', 'Cliente frecuente', 'Autorizó gerente']
 const MOTIVOS_ANULAR = ['El cliente se fue sin pagar', 'Venta duplicada', 'Precios mal anotados, se rehace']
 const COLA_REFRESH_MS = 20_000
+const TEXTO_VTD_COLA = 'Al cobrar sale el ticket VTD y la venta pasa a almacén para entregar. Si el mismo cliente también lleva cosas de tienda, usa «VTD por cobrar» para cobrar las dos juntas.'
 const presentacionesCache = new Map<number, PresentacionPiso[]>()
 const aProducto = (p: Product): ProductoPiso => ({ id: p.id, nombre: p.nombre, sku: p.sku, precioRetail: p.precioRetail })
 
@@ -59,6 +62,27 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
   const [pagoError, setPagoError] = useState('')
   const [cobrando, setCobrando] = useState(false)
   const [resultado, setResultado] = useState<PedidoVendedorCobroResultado | null>(null)
+  // Venta de almacén (VTD): de dónde sale la mercadería, el ticket que queda en la bandeja y el stock de almacén por producto.
+  const [ubicacionId, setUbicacionId] = useState<number | null>(null)
+  const [vtd, setVtd] = useState<VentaDirectaRecord | null>(null)
+  const [stockAlmacen, setStockAlmacen] = useState<Record<number, number>>({})
+  const esAlmacen = pedido?.canal === 'ALMACEN'
+  const clavesStock = esAlmacen ? [...new Set(lineas.flatMap((l) => (l.productoId != null ? [l.productoId] : [])))].sort((a, b) => a - b).join(',') : ''
+  useEffect(() => {
+    if (!clavesStock) return
+    let cancelado = false
+    const ids = clavesStock.split(',').map(Number)
+    // Mejor esfuerzo: sin stock la columna queda vacía.
+    void Promise.resolve().then(() => getStockBySucursalBatch(ids)).then((lote) => {
+      if (cancelado) return
+      setStockAlmacen((prev) => {
+        const siguiente = { ...prev }
+        for (const id of ids) { const e = lote.get(id); if (e) siguiente[id] = e.almacenVendible }
+        return siguiente
+      })
+    }).catch(() => {})
+    return () => { cancelado = true }
+  }, [clavesStock])
   const cajeroId = useRef<string | undefined>(undefined)
   const inicioAutomatico = useRef(false)
 
@@ -146,6 +170,21 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
     setCobrando(true); setPagoError('')
     try {
       const cobro = construirCobro(lineas)
+      if (esAlmacen) {
+        // Venta de almacén: se cobra en el momento y abre la VTD en la misma transacción (nunca cobrar_pedido_vendedor).
+        if (ubicacionId == null) { setPagoError('Elige de qué ubicación sale la mercadería.'); return }
+        const r = await pedidoVendedorService.cobrarVtd({ pedidoId: pedido.pedidoId, lineas: cobro.lineas, quitadas: cobro.quitadas, pagos, sesionCajaId: sessionId, ubicacionId })
+        setResultado(r)
+        auditEnd({ transactionId: `pdv-${pedido.pedidoId}`, reason: 'completada', numero: r.numero ?? undefined, totalBs: r.total })
+        onChanged?.()
+        notify(r.reintento ? 'Este cobro ya estaba registrado. No se cobró dos veces.' : `Pedido ${pedido.numeroDia} cobrado${r.numero ? ` — ${r.numero}` : ''}: envíalo a Almacén Central`)
+        if (pagos.some((p) => p.method !== 'cash')) notify('Pago QR/transferencia pendiente de verificación del gerente')
+        const creada = await ventaDirectaService.getById(r.ventaId)
+        if (!creada) { onClose(); return }
+        setVtd(creada)
+        setPaso('ticket')
+        return
+      }
       const r = await pedidoVendedorService.cobrar({ pedidoId: pedido.pedidoId, lineas: cobro.lineas, quitadas: cobro.quitadas, pagos, sesionCajaId: sessionId })
       setResultado(r)
       auditEnd({ transactionId: `pdv-${pedido.pedidoId}`, reason: 'completada', numero: r.numero ?? undefined, totalBs: r.total })
@@ -167,6 +206,8 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
   }
 
   // ── Render ────────────────────────────────────────────────────────────────────────
+  if (paso === 'ticket' && vtd) return <VtdTicketPreviewModal venta={vtd} onClose={onClose} />
+
   if (paso === 'ticket' && resultado) {
     return <VentaTicket id={resultado.ventaId} onClose={onClose} />
   }
@@ -201,6 +242,8 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
     return <Modal wide className="pedido-vendedor-modal" title={`Pedido ${pedido.numeroDia} · ${pedido.vendedor}${minutos != null ? ` · hace ${minutos} min` : ''}`} subtitle={pedido.nota ? `Nota del vendedor: ${pedido.nota}` : 'Verifica cada línea antes de cobrar'} onClose={pedirSalir} escapeToClose={saliendo === null}>
       <div className="modal-body pv-cuerpo">
         <div className="pv-progress"><div><span>REVISIÓN EN CAJA</span><strong>{verificadas} de {vivas.length} productos verificados</strong></div><progress max={Math.max(1, vivas.length)} value={verificadas} /><p>{onCartChange ? 'Los productos verificados aparecen en el carrito. Revisa cantidades y precios antes del cobro.' : 'Revisa cada producto antes de cobrar.'}</p></div>
+        {esAlmacen && <p className="pv-aviso-vtd" role="status">Venta de almacén: se cobra ahora y sale como VTD para que almacén entregue.</p>}
+        {esAlmacen && !onCartChange && <VtdUbicacionPicker value={ubicacionId} onChange={setUbicacionId} />}
         <BuscadorCaja
           onVerificar={(producto, presentacionId) => {
             const r = verificarPorEscaneo(lineas, producto.id, presentacionId)
@@ -221,7 +264,7 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
           notify={notify}
         />
         <div className="pv-lineas">
-          {lineas.map((l) => <FilaCaja key={l.key} linea={l} vendedor={pedido.vendedor}
+          {lineas.map((l) => <FilaCaja key={l.key} linea={l} vendedor={pedido.vendedor} stockAlmacen={esAlmacen && l.productoId != null ? stockAlmacen[l.productoId] : undefined}
             onVerificar={() => cambiar(l.key, (x) => verificarLinea(x, !x.verificada))}
             onCantidad={(c) => cambiar(l.key, (x) => editarCantidad(x, c))}
             onPrecio={(cents) => cambiar(l.key, (x) => editarPrecio(x, cents))}
@@ -243,7 +286,7 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
           {falta && <small className="pv-falta" role="status">{falta}</small>}
         </div>
         {onCartChange && <button type="button" className="secondary-button" onClick={() => setSaliendo('menu')}>Opciones del pedido</button>}
-        <button type="button" className="primary-button pv-cobrar" disabled={razones.length > 0} title={razones[0]} onClick={() => { if (onCartChange) { onCartChange({ pedido, lineas }); onClose() } else { setPagoError(''); setPaso('pago') } }}>{onCartChange ? 'Continuar en carrito' : `Cobrar Bs ${bs(total)}`}</button>
+        <button type="button" className="primary-button pv-cobrar" disabled={razones.length > 0 || (esAlmacen && !onCartChange && ubicacionId == null)} title={razones[0]} onClick={() => { if (onCartChange) { onCartChange({ pedido, lineas }); onClose() } else { setPagoError(''); setPaso('pago') } }}>{onCartChange ? 'Continuar en carrito' : esAlmacen ? 'Cobrar y mandar a almacén' : `Cobrar Bs ${bs(total)}`}</button>
       </footer>
       {saliendo && <div className="pv-salir" role="dialog" aria-label="Salir del pedido">
         {saliendo === 'menu'
@@ -288,12 +331,13 @@ export function PedidoVendedorCobro({ sessionId, initialPedidoId, onClose, onCha
           const minutos = minutosEsperando(p.enviadoEn)
           return <li key={p.pedidoId}><button type="button" disabled={ajeno || tomando !== null} onClick={() => void tomar(p.pedidoId)}>
             <b className="pv-numero">{p.numeroDia}</b>
-            <span className="pv-quien"><strong>{p.vendedor}</strong><small>{minutos != null ? `hace ${minutos} min · ` : ''}{p.lineas} línea{p.lineas === 1 ? '' : 's'}</small></span>
+            <span className="pv-quien"><strong>{p.vendedor}</strong><small>{minutos != null ? `hace ${minutos} min · ` : ''}{p.lineas} línea{p.lineas === 1 ? '' : 's'}</small><span className={`pv-canal${p.canal === 'ALMACEN' ? ' almacen' : ''}`}>{p.canal === 'ALMACEN' ? 'Almacén VTD' : 'Tienda'}</span></span>
             <span className="pv-estado">{propio ? 'En tu caja' : ajeno ? `En caja con ${p.tomadoPor ?? 'otro cajero'}` : tomando === p.pedidoId ? 'Tomando…' : ''}</span>
             <b className="pv-total">Bs {(p.total).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
           </button></li>
         })}
       </ul>
+      <p className="pv-nota-vtd">{TEXTO_VTD_COLA}</p>
     </div>
   </Modal>
 }
@@ -351,9 +395,11 @@ function BuscadorCaja({ onVerificar, onAgregar, notify }: {
   </div>
 }
 
-function FilaCaja({ linea, vendedor, onVerificar, onCantidad, onPrecio, onPresentacion, onQuitar, onRestaurar, onEliminar, onMotivoDescuento }: {
+function FilaCaja({ linea, vendedor, stockAlmacen, onVerificar, onCantidad, onPrecio, onPresentacion, onQuitar, onRestaurar, onEliminar, onMotivoDescuento }: {
   linea: LineaCaja
   vendedor: string
+  /** Solo en ventas de almacén: stock vendible en Almacén Central. */
+  stockAlmacen?: number
   onVerificar: () => void
   onCantidad: (c: number) => void
   onPrecio: (cents: number) => void
@@ -397,6 +443,7 @@ function FilaCaja({ linea, vendedor, onVerificar, onCantidad, onPrecio, onPresen
         <div><dt>Puso {vendedor}</dt><dd>Bs {bs(linea.precioVendedorCents)}</dd></div>
       </dl>}
       {dif && <small className="pv-dif">{dif}</small>}
+      {stockAlmacen != null && <small className={`pv-stock${stockAlmacen < linea.cantidad ? ' bajo' : ''}`}>Stock en almacén: {stockAlmacen.toLocaleString('es-BO', { maximumFractionDigits: 2 })}</small>}
       {linea.cantidadVendedor != null && linea.cantidadVendedor !== linea.cantidad && <small className="pv-dif">Vendedor: {linea.cantidadVendedor}</small>}
     </div>
     <label className="pv-campo">Cantidad<NumberField ariaLabel={`Cantidad de ${linea.nombre}`} min={0} step={1} value={linea.cantidad} onCommit={(v) => { if (v > 0 && v !== linea.cantidad) onCantidad(v) }} /></label>

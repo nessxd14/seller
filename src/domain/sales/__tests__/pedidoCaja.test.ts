@@ -10,7 +10,7 @@ const lin = (over: Partial<PedidoVendedorLinea>): PedidoVendedorLinea => ({
   unidadMedida: null, cantidad: 3, precioLista: 15, precioMinimo: 13.5, precioUnitario: 15, subtotal: 45, resultado: null, cantidadFinal: null, precioFinal: null, motivoCaja: null, ...over,
 })
 const pedido = (lineas: PedidoVendedorLinea[]): PedidoVendedorRecord => ({
-  pedidoId: '9', codigo: 'PDV-9', numeroDia: 3, fecha: '2026-10-06', estado: 'EN_CAJA', vendedor: 'Ana', nota: null, total: 0, enviadoEn: '2026-10-06T22:00:00Z',
+  pedidoId: '9', codigo: 'PDV-9', numeroDia: 3, fecha: '2026-10-06', estado: 'EN_CAJA', canal: 'TIENDA', vendedor: 'Ana', nota: null, total: 0, enviadoEn: '2026-10-06T22:00:00Z',
   tomadoPor: 'Rony', ventaNumero: null, anuladoOrigen: null, anuladoMotivo: null, reintento: false, lineas,
 })
 const caja = (lineas: PedidoVendedorLinea[]): LineaCaja[] => lineasDesdePedido(pedido(lineas))

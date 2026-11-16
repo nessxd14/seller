@@ -67,9 +67,9 @@ export function MisVentasPiso({ abribles, onAbrir }: Props) {
 
 function TarjetaVenta({ venta, abrible, onAbrir }: { venta: MiCuentaPedido; abrible: boolean; onAbrir: () => void }) {
   const cuerpo = <>
-    <strong>Venta {venta.numeroDia}</strong>
+    <strong>Venta {venta.numeroDia}{venta.canal === 'ALMACEN' && <em className="piso-etiqueta-almacen">De almacén</em>}</strong>
     <span className={`piso-estado ${venta.estado.toLowerCase()}`}>{etiquetaEstadoVenta(venta)}</span>
-    <b>Bs {bs(venta.estado === 'COBRADO' && venta.parte != null ? venta.parte : venta.totalEnviado)}</b>
+    <b>Bs {bs(venta.estado === 'COBRADO' && venta.parte != null && !venta.ventaAnulada ? venta.parte : venta.totalEnviado)}</b>
     {venta.estado === 'COBRADO' && (venta.agregadoCaja ?? 0) > 0 && <small>Caja agregó productos (Bs {bs(venta.agregadoCaja as number)}). No cuentan para ti.</small>}
     {venta.estado === 'COBRADO' && venta.preciosCorregidos > 0 && <small>Caja corrigió {venta.preciosCorregidos} precio{venta.preciosCorregidos === 1 ? '' : 's'}. Tu parte usa el precio de caja.</small>}
     {venta.estado === 'ANULADO' && venta.anuladoMotivo && <small>Motivo: {venta.anuladoMotivo}</small>}

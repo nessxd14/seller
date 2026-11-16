@@ -8,7 +8,7 @@ vi.mock('../../../infrastructure/services', () => ({ pedidoVendedorService: svc 
 vi.mock('../../../domain/common/fechas', async (orig) => ({ ...(await orig<typeof import('../../../domain/common/fechas')>()), hoyLocal: () => '2026-11-11' }))
 import { MisVentasPiso } from '../MisVentasPiso'
 
-const base = { totalEnviado: 50, cobradoEn: null, parte: null, agregadoCaja: null, preciosCorregidos: 0, lineasQuitadas: 0, anuladoOrigen: null, anuladoMotivo: null, fecha: '2026-11-11' }
+const base = { canal: 'TIENDA' as const, totalEnviado: 50, cobradoEn: null, parte: null, agregadoCaja: null, preciosCorregidos: 0, lineasQuitadas: 0, anuladoOrigen: null, anuladoMotivo: null, fecha: '2026-11-11' }
 const cuenta: MiCuentaVendedor = {
   desde: '2026-11-11', hasta: '2026-11-11', parte: 120, cobradas: 1, porCobrar: 1, guardadas: 1, anuladas: 2, reclamadas: 0, reclamadoTotal: 0, reclamos: [],
   pedidos: [

@@ -13,7 +13,8 @@ export const rangoPeriodo = (periodo: PeriodoCuenta, hoy: string): { desde: stri
 
 export const CIERRE_DIA = 'CIERRE_DIA'
 
-export const etiquetaEstadoVenta = (p: Pick<MiCuentaPedido, 'estado' | 'anuladoOrigen'>): string => {
+export const etiquetaEstadoVenta = (p: Pick<MiCuentaPedido, 'estado' | 'anuladoOrigen' | 'ventaAnulada'>): string => {
+  if (p.estado === 'COBRADO' && p.ventaAnulada) return 'Venta anulada'
   switch (p.estado) {
     case 'ARMANDO': return 'Guardada'
     case 'ENVIADO':

@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createUuid } from '../../application/shared/createUuid'
-import type { PedidoVendedorRecord } from '../../application/shared/models'
+import type { PedidoCanal, PedidoVendedorRecord } from '../../application/shared/models'
 import { pedidoVendedorService } from '../../infrastructure/services'
 import {
-  CODIGO_PRECIO_MINIMO, aLineasPayload, agregarPersonalizado, agregarProducto, cambiarPresentacion, esErrorDeRed, fusionarRespuesta, hayCambiosSinGuardar,
-  pedidoDesdeServidor, precioSugerido, puedeEnviar, round2, type PedidoLocal, type PresentacionPiso, type ProductoPiso,
+  CODIGO_PRECIO_MINIMO, aLineasPayload, agregarPersonalizado, agregarProducto, cambiarPresentacion, esErrorDeRed, fusionarLinea, fusionarRespuesta, hayCambiosSinGuardar,
+  motivoNoEnviar, pedidoDesdeServidor, precioSugerido, round2, type PedidoLocal, type PresentacionPiso, type ProductoPiso,
 } from '../../domain/sales/pedidoPiso'
 
 const AUTOSAVE_MS = 1500
 const POLL_MS = 5000
+// Solo esperando que almacén entregue: no hace falta mirar cada 5 s.
+const POLL_ENTREGA_MS = 60_000
 const RETRY_MIN_MS = 2000
 const RETRY_MAX_MS = 30000
 const ESTADOS_ABIERTOS = ['ARMANDO', 'ENVIADO', 'EN_CAJA']
@@ -20,7 +22,8 @@ interface Guardado { pedidos: PedidoLocal[]; activa: string | null }
 const leer = (userId: string): Guardado => {
   try {
     const parsed = JSON.parse(localStorage.getItem(storageKey(userId)) || 'null') as Guardado | null
-    if (parsed && Array.isArray(parsed.pedidos)) return { pedidos: parsed.pedidos, activa: parsed.activa ?? null }
+    // Los pedidos guardados antes de existir el canal son de tienda.
+    if (parsed && Array.isArray(parsed.pedidos)) return { pedidos: parsed.pedidos.map((p) => ({ ...p, canal: p.canal ?? 'TIENDA' })), activa: parsed.activa ?? null }
   } catch { /* storage corrupto o bloqueado: se arranca vacío */ }
   return { pedidos: [], activa: null }
 }
@@ -29,7 +32,7 @@ const escribir = (userId: string, valor: Guardado) => {
 }
 
 export const pedidoVacio = (): PedidoLocal => ({
-  clave: createUuid(), pedidoId: null, codigo: null, numeroDia: null, estado: 'ARMANDO', lineas: [], nota: null,
+  clave: createUuid(), pedidoId: null, codigo: null, numeroDia: null, estado: 'ARMANDO', canal: 'TIENDA', lineas: [], nota: null,
   revision: 0, guardadoRevision: 0, creadoEn: new Date().toISOString(), snapshot: null,
 })
 
@@ -83,7 +86,7 @@ export function usePedidosPiso(userId: string) {
     const revision = actual.revision
     const tarea = (async () => {
       try {
-        const respuesta = await pedidoVendedorService.guardar({ clave, lineas: aLineasPayload(actual.lineas), nota: actual.nota })
+        const respuesta = await pedidoVendedorService.guardar({ clave, lineas: aLineasPayload(actual.lineas), nota: actual.nota, canal: actual.canal })
         reintentos.current.delete(clave)
         setSinConexion(false)
         setErrorPedido((e) => sinClave(e, clave))
@@ -173,13 +176,16 @@ export function usePedidosPiso(userId: string) {
   }, [])
 
   // Avance de caja: mientras haya pedidos enviados o en caja y la página esté visible, cada 5 s.
-  const siguiendo = estado.pedidos.some((p) => p.estado === 'ENVIADO' || p.estado === 'EN_CAJA')
+  // Una venta de almacén cobrada sigue hasta que almacén entregue (o la venta se anule), pero solo cada 60 s.
+  const esperandoEntrega = (p: PedidoLocal) => p.estado === 'COBRADO' && p.canal === 'ALMACEN' && p.snapshot?.entregado !== true && p.snapshot?.ventaEstado !== 'ANULADA'
+  const enCaja = estado.pedidos.some((p) => p.estado === 'ENVIADO' || p.estado === 'EN_CAJA')
+  const intervaloMs = enCaja ? POLL_MS : estado.pedidos.some(esperandoEntrega) ? POLL_ENTREGA_MS : null
   useEffect(() => {
-    if (!siguiendo) return
+    if (intervaloMs == null) return
     const tick = () => { if (document.visibilityState === 'visible') void reconciliar(false).then(() => setSinConexion(false)).catch((e) => { if (esErrorDeRed(e)) setSinConexion(true) }) }
-    const id = window.setInterval(tick, POLL_MS)
+    const id = window.setInterval(tick, intervaloMs)
     return () => window.clearInterval(id)
-  }, [siguiendo, reconciliar])
+  }, [intervaloMs, reconciliar])
 
   const activo = estado.pedidos.find((p) => p.clave === estado.activa) ?? estado.pedidos[0]
 
@@ -212,20 +218,49 @@ export function usePedidosPiso(userId: string) {
     cambiarPresentacion: (localId: string, presentation: PresentacionPiso) => editar(activo.clave, (p) => tocar(p, { lineas: p.lineas.map((l) => (l.localId === localId ? cambiarPresentacion(l, presentation) : l)) })),
     quitar: (localId: string) => editar(activo.clave, (p) => tocar(p, { lineas: p.lineas.filter((l) => l.localId !== localId) })),
     setNota: (nota: string) => editar(activo.clave, (p) => tocar(p, { nota: nota || null })),
+    /** Cambia el canal del pedido activo (solo en ARMANDO). Devuelve false si no se puede: la venta de almacén no admite productos fuera de catálogo. */
+    setCanal: (canal: PedidoCanal): boolean => {
+      const p = ref.current.pedidos.find((x) => x.clave === activo.clave)
+      if (!p || p.estado !== 'ARMANDO' || p.canal === canal) return true
+      if (canal === 'ALMACEN' && p.lineas.some((l) => l.esPersonalizado)) return false
+      editar(p.clave, (x) => tocar(x, { canal }))
+      return true
+    },
+    /**
+     * «En tienda no hay, en almacén sí»: pasa la línea del pedido activo (de tienda) a una venta de
+     * almacén guardada, sin enviar. Si ya hay una venta de almacén en armado, la línea se suma ahí.
+     */
+    mover: (localId: string): boolean => {
+      const prev = ref.current
+      const origen = prev.pedidos.find((p) => p.clave === activo.clave)
+      const linea = origen?.lineas.find((l) => l.localId === localId)
+      if (!origen || !linea || origen.estado !== 'ARMANDO' || origen.canal !== 'TIENDA' || linea.esPersonalizado) return false
+      const existente = prev.pedidos.find((p) => p.estado === 'ARMANDO' && p.canal === 'ALMACEN')
+      const destino = tocar(existente ?? { ...pedidoVacio(), canal: 'ALMACEN' }, { lineas: fusionarLinea(existente?.lineas ?? [], linea) })
+      const sinLinea = tocar(origen, { lineas: origen.lineas.filter((l) => l.localId !== localId) })
+      aplicar((s) => {
+        const pedidos = s.pedidos.map((p) => (p.clave === origen.clave ? sinLinea : p.clave === destino.clave ? destino : p))
+        return { ...s, pedidos: existente ? pedidos : [...pedidos, destino] }
+      })
+      programar(origen.clave, AUTOSAVE_MS)
+      programar(destino.clave, AUTOSAVE_MS)
+      return true
+    },
     guardarAhora: () => flush(activo.clave),
 
     /** Guarda con p_enviar = true (reemplaza todas las líneas) y deja de autoguardar este pedido. */
     enviar: async (): Promise<boolean> => {
       const p = ref.current.pedidos.find((x) => x.clave === activo.clave)
       if (!p || p.estado !== 'ARMANDO') return false
-      if (!puedeEnviar(p.lineas)) { setErrorPedido((e) => ({ ...e, [p.clave]: 'Agrega al menos un producto y ponle precio a todas las líneas.' })); return false }
+      const motivo = motivoNoEnviar(p)
+      if (motivo) { setErrorPedido((e) => ({ ...e, [p.clave]: motivo })); return false }
       const t = timers.current.get(p.clave)
       if (t) { window.clearTimeout(t); timers.current.delete(p.clave) }
       reintentos.current.delete(p.clave)
       await vuelos.current.get(p.clave)
       const revision = ref.current.pedidos.find((x) => x.clave === p.clave)!.revision
       const lineas = ref.current.pedidos.find((x) => x.clave === p.clave)!.lineas
-      const ok = await accion(p.clave, () => pedidoVendedorService.guardar({ clave: p.clave, lineas: aLineasPayload(lineas), enviar: true, nota: p.nota }), 'No se pudo enviar el pedido')
+      const ok = await accion(p.clave, () => pedidoVendedorService.guardar({ clave: p.clave, lineas: aLineasPayload(lineas), enviar: true, nota: p.nota, canal: p.canal }), 'No se pudo enviar el pedido')
       if (ok) mapPedido(p.clave, (x) => ({ ...fusionarRespuesta(x, x.snapshot as PedidoVendedorRecord, revision) }))
       return ok
     },
