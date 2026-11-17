@@ -8,7 +8,7 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 }
 .piso-app {
   font-family: 'Manrope Variable', 'DM Sans', system-ui, sans-serif; color: var(--piso-ink); background: var(--piso-page);
-  min-height: 100dvh; display: flex; flex-direction: column; width: 100%; max-width: 640px; margin: 0 auto; overflow-x: hidden;
+  min-height: 100dvh; display: flex; flex-direction: column; width: 100%; max-width: 640px; margin: 0 auto; overflow-x: hidden; position: relative;
   -webkit-text-size-adjust: 100%;
 }
 .piso-app *, .piso-app *::before, .piso-app *::after { box-sizing: border-box; }
@@ -27,16 +27,23 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 .piso-banner { margin: 0; padding: 8px 14px; background: #fff4e5; color: #8a4b00; font-size: 13px; font-weight: 600; }
 .piso-toast { position: fixed; z-index: 30; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: 90vw; margin: 0; padding: 10px 16px; border-radius: 10px; background: var(--piso-ink); color: #fff; font-size: 14px; }
 
-.piso-captura { padding: 10px 14px 0; display: grid; gap: 10px; }
+.piso-captura { padding: 0; }
 .piso-plegar { display: inline-flex; align-items: center; gap: 8px; justify-self: start; padding: 0 14px; border-radius: 10px; background: #eaf1ff; color: var(--piso-primary); font-weight: 700; font-size: 14px; }
-.piso-visor { position: relative; height: 32dvh; min-height: 180px; border-radius: 14px; overflow: hidden; background: #0b1220; }
-.piso-visor:has(.piso-visor-error) { height: auto; min-height: 0; }
-.piso-visor video { width: 100%; height: 100%; object-fit: cover; display: block; }
-.piso-visor::after { content: ''; position: absolute; inset: 0; border: 3px solid transparent; border-radius: 14px; pointer-events: none; transition: border-color .12s; }
-.piso-visor.destello::after { border-color: #34d399; }
-.piso-visor-error { margin: 0; padding: 20px; color: #fff; font-size: 14px; text-align: center; }
-.piso-visor-aviso { position: absolute; left: 8px; right: 8px; bottom: 8px; margin: 0; padding: 6px 10px; border-radius: 8px; background: rgb(0 0 0 / 60%); color: #fff; font-size: 12px; }
+/* Cámara compacta: alto fijo (no dvh) para que el buscador y la lista siempre tengan sitio. */
+.piso-camara { position: relative; height: 168px; margin: 10px 16px 0; border-radius: 14px; overflow: hidden; background: #0b1220; }
+.piso-camara video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.piso-camara::after { content: ''; position: absolute; inset: 0; border: 3px solid transparent; border-radius: 14px; pointer-events: none; transition: border-color .12s; }
+.piso-camara.destello::after { border-color: #34d399; }
+.piso-camara-mira { position: absolute; left: 50%; top: 50%; width: 62%; height: 46%; transform: translate(-50%, -50%); border: 2px solid rgb(255 255 255 / 85%); border-radius: 12px; pointer-events: none; }
+.piso-camara-error { height: 100%; margin: 0; padding: 20px 64px 20px 20px; display: grid; place-items: center; color: #fff; font-size: 14px; text-align: center; }
+.piso-camara-controles { position: absolute; top: 8px; right: 8px; z-index: 1; display: flex; gap: 8px; }
+.piso-app .piso-camara-controles button { width: 44px; height: 44px; padding: 0; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+.piso-app .piso-camara-controles button[aria-pressed='true'] { background: var(--piso-primary); }
+.piso-camara-aviso { position: absolute; left: 8px; right: 8px; bottom: 8px; margin: 0; padding: 6px 10px; border-radius: 8px; background: rgb(0 0 0 / 60%); color: #fff; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.piso-buscador-fila { display: flex; align-items: center; gap: 8px; margin: 10px 16px 8px; }
+.piso-buscador-fila label { flex: 1; min-width: 0; }
+.piso-app .piso-escanear { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 12px; background: var(--piso-primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
 .piso-buscador label { display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--piso-surface); border: 1px solid var(--piso-line); border-radius: 12px; }
 .piso-buscador label:focus-within { border-color: var(--piso-primary); box-shadow: 0 0 0 3px #2563eb26; }
 .piso-buscador input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--piso-ink); }
@@ -47,7 +54,12 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 .piso-resultados small { color: var(--piso-muted); font-size: 12px; grid-column: 1; }
 .piso-resultados b { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 14px; white-space: nowrap; }
 
-.piso-lineas { flex: 1; display: grid; align-content: start; gap: 8px; padding: 12px 14px calc(110px + env(safe-area-inset-bottom)); }
+.piso-cuerpo { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.piso-lineas { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 8px; padding: 6px 14px 12px; }
+/* Resultados: panel sobre la lista, con su propio scroll; nunca baja del pie ni del teclado. */
+.piso-panel-resultados { position: absolute; z-index: 5; top: 6px; left: 16px; right: 16px; max-height: calc(100% - 12px); overflow-y: auto; display: grid; gap: 8px; background: var(--piso-surface); border: 1px solid var(--piso-line); border-radius: 12px; box-shadow: 0 8px 24px rgb(20 32 51 / 18%); overscroll-behavior: contain; }
+.piso-panel-resultados > .piso-error { margin: 8px 8px 0; }
+.piso-panel-resultados .piso-resultados { margin: 0; max-height: none; overflow: visible; border: 0; border-radius: 0; }
 .piso-vacio { margin: 18px 0; text-align: center; color: var(--piso-muted); font-size: 14px; }
 .piso-linea { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; background: var(--piso-surface); border: 1px solid var(--piso-line); border-radius: 14px; }
 .piso-linea-nombre { min-width: 0; }
@@ -62,7 +74,7 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 .piso-fuera-catalogo { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; border-radius: 12px; background: transparent; color: var(--piso-primary); border: 1px dashed #9db8f5 !important; font-weight: 700; }
 .piso-error { margin: 0; padding: 8px 12px; border-radius: 10px; background: #fef3f2; color: var(--piso-danger); font-size: 14px; }
 
-.piso-pie { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; display: flex; align-items: center; gap: 12px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: var(--piso-surface); border-top: 1px solid var(--piso-line); box-shadow: 0 -8px 24px rgb(20 32 51 / 8%); }
+.piso-pie { flex: none; z-index: 20; display: flex; align-items: center; gap: 12px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: var(--piso-surface); border-top: 1px solid var(--piso-line); box-shadow: 0 -8px 24px rgb(20 32 51 / 8%); }
 .piso-pie > div { flex: 1; min-width: 0; display: grid; }
 .piso-pie span { font-size: 12px; color: var(--piso-muted); }
 .piso-pie strong { font-size: 22px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
@@ -71,6 +83,18 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 .piso-enviar:disabled { opacity: .45; cursor: not-allowed; }
 .piso-secundario { padding: 0 18px; border-radius: 12px; background: #eaf1ff; color: var(--piso-primary); font-weight: 700; }
 .piso-secundario.peligro { background: #fef3f2; color: var(--piso-danger); }
+
+/* Marco fijo (Armar venta, Pedir y Recibir traslado): encabezado, captura y pie ocupan su alto y solo la lista se desplaza.
+   Pie y menú van en flujo, no superpuestos; así nada queda tapado. */
+.piso-app.en-marco, .piso-app:has(.piso-marco-traslado) { height: 100dvh; min-height: 0; overflow: hidden; padding-bottom: 0; }
+.piso-app.en-marco > *, .piso-app:has(.piso-marco-traslado) > * { flex: none; }
+.piso-app.en-marco > .piso-cuerpo, .piso-app.en-marco > .piso-enviado, .piso-app:has(.piso-marco-traslado) > .piso-marco-traslado { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.piso-app.en-marco > .piso-enviado { align-content: start; }
+.piso-app.en-marco .piso-nav, .piso-app:has(.piso-marco-traslado) .piso-nav { position: static; flex: none; }
+.piso-app.en-marco .piso-toast, .piso-app:has(.piso-marco-traslado) .piso-toast { position: absolute; bottom: 12px; }
+.piso-app.en-marco .piso-cuerpo .piso-toast { z-index: 6; }
+.piso-app:has(.piso-marco-traslado) .piso-toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
+.traslado-cuerpo .piso-camara { margin: 0; }
 
 /* Hojas (Modal reutilizado, anclado abajo) */
 .modal-backdrop:has(.piso-hoja) { align-items: end; padding: 0; }
@@ -119,7 +143,7 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 .piso-nav { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border-top: 1px solid #dce5f1; padding-bottom: env(safe-area-inset-bottom); }
 .piso-nav button { background: transparent; color: #526279; font-weight: 700; font-size: 12px; padding: 0 2px; min-height: 56px; border: 0; cursor: pointer; font: inherit; }
 .piso-nav button.activo { color: #2563eb; box-shadow: inset 0 3px 0 #2563eb; }
-.piso-app.con-nav { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
+.piso-app.con-nav:not(.en-marco):not(:has(.piso-marco-traslado)) { padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
 .piso-app.con-nav .piso-pie { bottom: calc(56px + env(safe-area-inset-bottom)); padding-bottom: 10px; }
 .piso-traslados { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
 .piso-nota-rol { margin: 0; font-size: 13px; color: #526279; max-width: 34ch; }
@@ -200,7 +224,6 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 
 /* Traslados en el celular (lista, recibir, pedir) y Salir */
 .traslado-cuerpo { display: grid; gap: 10px; padding: 12px 14px calc(24px + env(safe-area-inset-bottom)); align-content: start; }
-.traslado-cuerpo-pie { padding-bottom: calc(190px + env(safe-area-inset-bottom)); }
 .traslado-seccion { margin: 6px 0 0; display: flex; align-items: center; gap: 8px; font-size: 15px; }
 .traslado-seccion b { min-width: 24px; padding: 0 8px; border-radius: 999px; background: var(--piso-primary); color: #fff; font-size: 13px; text-align: center; }
 .traslado-card { display: grid; gap: 8px; padding: 12px; background: var(--piso-surface); border: 1px solid var(--piso-line); border-radius: 14px; color: var(--piso-ink); text-align: left; }

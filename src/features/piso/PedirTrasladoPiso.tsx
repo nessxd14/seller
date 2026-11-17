@@ -32,6 +32,7 @@ export function PedirTrasladoPiso({ sucursalId, onVolver, onCreado, aviso }: Pro
   const [texto, setTexto] = useState('')
   const [resultados, setResultados] = useState<Product[]>([])
   const [escaneando, setEscaneando] = useState(false)
+  const [linterna, setLinterna] = useState(false)
   const [ambiguos, setAmbiguos] = useState<number[] | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
@@ -100,10 +101,11 @@ export function PedirTrasladoPiso({ sucursalId, onVolver, onCreado, aviso }: Pro
       <button type="button" className="piso-icono" aria-label="Volver a Traslados" onClick={onVolver}><ArrowLeft /></button>
       <div><h1>Pedir a almacén</h1><small>{nombreSucursalPiso(ALMACEN_CENTRAL_ID)} → {nombreSucursalPiso(sucursalId)}</small></div>
     </header>
-    <section className="traslado-cuerpo traslado-cuerpo-pie" aria-label="Productos a pedir">
+    <section className="traslado-cuerpo piso-marco-traslado" aria-label="Productos a pedir">
       <div className="piso-captura traslado-captura">
-        <button type="button" className="piso-plegar" aria-expanded={escaneando} onClick={() => setEscaneando((v) => !v)}><ScanLine /> {escaneando ? 'Ocultar cámara' : 'Escanear'}</button>
-        {escaneando && <EscanerContinuo onCodigo={(c) => void alEscanear(c)} plegado={false} linterna={false} onSoporteLinterna={() => {}} />}
+        {escaneando
+          ? <EscanerContinuo onCodigo={(c) => void alEscanear(c)} plegado={false} linterna={linterna} onLinterna={setLinterna} onCerrar={() => { setEscaneando(false); setLinterna(false) }} />
+          : <button type="button" className="piso-plegar" onClick={() => setEscaneando(true)}><ScanLine /> Escanear</button>}
         <div className="piso-buscador">
           <label><Search aria-hidden="true" /><input type="search" inputMode="search" enterKeyHint="search" autoComplete="off" placeholder="Buscar por nombre o código" aria-label="Buscar producto" value={texto} onChange={(e) => setTexto(e.target.value)} /></label>
           {texto.trim() && <ul className="piso-resultados">
