@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
-import type { PisoTurno } from '../../application/ports/pisoRepository'
+import type { PisoTurno, PisoTurnoUltimo } from '../../application/ports/pisoRepository'
+import { horaCorta, proximoCorte, turnoTerminoSolo } from '../../domain/piso/turnoPiso'
 import { pisoRepository } from '../../infrastructure/services'
 import { BotonSalir } from './SalirPiso'
 import { sucursalLabel } from '../transfers/TransfersPage'
 import { VentasCajaPiso } from './VentasCajaPiso'
 
 const REFRESCO_MS = 60_000
-const hora = (iso: string) => new Date(iso).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit', hour12: false })
+const hora = horaCorta
 const mensaje = (e: unknown, porDefecto: string) => (e instanceof Error && e.message ? e.message : porDefecto)
 // Sucursales físicas donde se puede atender, en el orden en que se ofrecen.
 const SUCURSALES_FISICAS = [2, 1]
@@ -27,14 +28,16 @@ interface Props {
 export function InicioPiso({ session, textoArmar, version, onArmar, onTraslado, onSalir, onNoRealizada }: Props) {
   // undefined = todavía no se sabe; null = sin turno.
   const [turno, setTurno] = useState<PisoTurno | null | undefined>(undefined)
+  const [ultimo, setUltimo] = useState<PisoTurnoUltimo | null>(null)
   const [error, setError] = useState('')
   const [trabajando, setTrabajando] = useState(false)
   const [eligiendoSucursal, setEligiendoSucursal] = useState(false)
+  const nombreSucursal = session.user.sucursalId != null ? (sucursalLabel[session.user.sucursalId] ?? `Sucursal ${session.user.sucursalId}`) : 'tu sucursal'
   const [pantalla, setPantalla] = useState<'inicio' | 'caja'>('inicio')
 
   const cargar = useCallback(() => {
-    pisoRepository.turnoActual()
-      .then((t) => { setTurno(t); setError('') })
+    pisoRepository.estadoTurno()
+      .then((e) => { setTurno(e.turno); setUltimo(e.turno ? null : e.ultimo); setError('') })
       .catch((e: unknown) => setError(mensaje(e, 'No se pudo leer tu turno.')))
   }, [])
 
@@ -52,6 +55,7 @@ export function InicioPiso({ session, textoArmar, version, onArmar, onTraslado, 
     setError('')
     try {
       setTurno(await pisoRepository.iniciarTurno(sucursalId))
+      setUltimo(null)
       setEligiendoSucursal(false)
     } catch (e) { setError(mensaje(e, 'No se pudo iniciar el turno.')) } finally { setTrabajando(false) }
   }
@@ -67,6 +71,7 @@ export function InicioPiso({ session, textoArmar, version, onArmar, onTraslado, 
     try {
       await pisoRepository.finalizarTurno()
       setTurno(null)
+      setUltimo(null)
       setPantalla('inicio')
     } catch (e) { setError(mensaje(e, 'No se pudo finalizar el turno.')) } finally { setTrabajando(false) }
   }
@@ -78,9 +83,16 @@ export function InicioPiso({ session, textoArmar, version, onArmar, onTraslado, 
     {turno === undefined && !error && <p className="piso-vacio" role="status">Cargando…</p>}
 
     {turno === null && <>
+      {turnoTerminoSolo(ultimo) && <section className="piso-turno-termino" role="status" aria-label="Tu turno terminó">
+        <h2>Tu turno terminó a las {hora(ultimo.fin)}</h2>
+        <p>{ultimo.cierre === 'CAJA'
+          ? `Caja cerró su turno a las ${hora(ultimo.fin)} y con eso se cierran los turnos de piso de ${nombreSucursal}.`
+          : 'Los turnos de piso se cierran solos a las 14:00 y a las 21:30, o antes si caja cierra su turno.'}</p>
+      </section>}
       <div className="piso-turno-card">
         <h2>Empieza tu turno</h2>
         <p className="piso-hoja-sub">Tu turno también queda como asistencia.</p>
+        {turnoTerminoSolo(ultimo) && <p className="piso-hoja-sub">Si sigues atendiendo, inicia otro turno. Se cerrará a las {proximoCorte(new Date()) ?? 'el próximo corte'} o cuando caja cierre.</p>}
         {eligiendoSucursal
           ? <div className="piso-campo" role="group" aria-label="¿Dónde atiendes?">¿Dónde atiendes hoy?
             <div className="piso-chips">
@@ -98,7 +110,7 @@ export function InicioPiso({ session, textoArmar, version, onArmar, onTraslado, 
     </>}
 
     {turno && <>
-      <p className="piso-turno-chip"><span className="piso-estado cobrado">En turno</span> <small>desde {hora(turno.inicio)}</small></p>
+      <p className="piso-turno-chip"><span className="piso-estado cobrado">En turno</span> <small>desde {hora(turno.inicio)} · cierra {turno.cierraA ? `a las ${hora(turno.cierraA)}` : 'en el próximo corte'} o al cerrar caja</small></p>
       <div className="piso-acciones-inicio">
         <button type="button" className="piso-enviar" onClick={() => setPantalla('caja')}>Ventas de caja{turno.porReclamar > 0 && <b className="piso-insignia" aria-label={`${turno.porReclamar} por reclamar`}>{turno.porReclamar}</b>}</button>
         <button type="button" className="piso-secundario" onClick={onNoRealizada}>Venta no realizada</button>

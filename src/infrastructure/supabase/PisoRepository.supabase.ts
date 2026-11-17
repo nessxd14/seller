@@ -1,17 +1,32 @@
 // Piso — turno, "Ventas de caja · Es mía" y "Venta no realizada". Llama directo a las RPC de
 // 20261112110000_piso_turno_reclamos.sql; aquí solo se mapea snake_case → camelCase.
-import type { CajaReclamo, CajaVendedorPiso, MotivoNoRealizada, NoRealizadaInput, NoRealizadaResultado, PisoRepository, PisoTurno, ReclamoResultado, VentaPorReclamar } from '../../application/ports/pisoRepository'
+import type { EstadoTurnoPiso, PisoTurnoCierre, PisoTurnoUltimo, TareaTrasladoEstado, TrasladoPiso, TrasladosPisoResultado, CajaReclamo, CajaVendedorPiso, MotivoNoRealizada, NoRealizadaInput, NoRealizadaResultado, PisoRepository, PisoTurno, ReclamoResultado, VentaPorReclamar } from '../../application/ports/pisoRepository'
 import { toError } from './postgrestError'
 import { supabase } from './supabaseClient'
 
 type Num = number | string | null | undefined
 const num = (v: Num): number => (v == null ? 0 : Number(v))
 
-interface TurnoRow { turno_id: Num; inicio?: string; sucursal_id?: Num; cobradas?: Num; por_cobrar?: Num; no_realizadas?: Num; por_reclamar?: Num }
-const aTurno = (r: TurnoRow | null): PisoTurno | null => {
+interface TurnoRow { turno_id: Num; inicio?: string; sucursal_id?: Num; cobradas?: Num; por_cobrar?: Num; no_realizadas?: Num; por_reclamar?: Num; cierra_a?: string | null }
+export const aTurno = (r: TurnoRow | null): PisoTurno | null => {
   if (!r || r.turno_id == null) return null
-  return { turnoId: num(r.turno_id), inicio: r.inicio ?? '', sucursalId: num(r.sucursal_id), cobradas: num(r.cobradas), porCobrar: num(r.por_cobrar), noRealizadas: num(r.no_realizadas), porReclamar: num(r.por_reclamar) }
+  return { turnoId: num(r.turno_id), inicio: r.inicio ?? '', sucursalId: num(r.sucursal_id), cobradas: num(r.cobradas), porCobrar: num(r.por_cobrar), noRealizadas: num(r.no_realizadas), porReclamar: num(r.por_reclamar), ...(r.cierra_a ? { cierraA: r.cierra_a } : {}) }
 }
+
+interface UltimoRow { turno_id: Num; inicio: string; fin: string; cierre: PisoTurnoCierre }
+interface EstadoRow extends TurnoRow { ultimo?: UltimoRow | null }
+const aUltimo = (r: UltimoRow | null | undefined): PisoTurnoUltimo | null => (r && r.turno_id != null ? { turnoId: num(r.turno_id), inicio: r.inicio, fin: r.fin, cierre: r.cierre } : null)
+
+interface TrasladoRow {
+  id: Num; numero: string; estado: string; motivo: string; origen_id: Num; destino_id: Num; solicitado_en: string; mio?: boolean | null; nota?: string | null
+  tarea_estado?: TareaTrasladoEstado | null; alista?: string | null; alistado_en?: string | null; retira?: string | null; retiro_mio?: boolean | null
+  recibido_en?: string | null; lineas?: Num; con_faltante?: boolean | null
+}
+const aTraslado = (r: TrasladoRow): TrasladoPiso => ({
+  id: String(r.id), numero: r.numero, estado: r.estado, motivo: r.motivo, origenId: num(r.origen_id), destinoId: num(r.destino_id), solicitadoEn: r.solicitado_en,
+  mio: !!r.mio, nota: r.nota ?? null, tareaEstado: r.tarea_estado ?? null, alista: r.alista ?? null, alistadoEn: r.alistado_en ?? null,
+  retira: r.retira ?? null, retiroMio: !!r.retiro_mio, recibidoEn: r.recibido_en ?? null, lineas: num(r.lineas), conFaltante: !!r.con_faltante,
+})
 
 interface VentaRow { venta_id: Num; numero: string; total: Num; completado_en: string; producto: string | null; n_productos: Num }
 interface ReclamoRow { reclamo_id: Num; venta_id: Num; deshacer_hasta: string }
@@ -24,6 +39,21 @@ export const pisoRepository: PisoRepository = {
     const { data, error } = await supabase.rpc('piso_turno_actual')
     if (error) throw toError(error)
     return aTurno(data as TurnoRow | null)
+  },
+
+  async estadoTurno(): Promise<EstadoTurnoPiso> {
+    const { data, error } = await supabase.rpc('piso_turno_actual')
+    if (error) throw toError(error)
+    const fila = data as EstadoRow | null
+    const turno = aTurno(fila)
+    return { turno, ultimo: turno ? null : aUltimo(fila?.ultimo) }
+  },
+
+  async traslados(dias = 14): Promise<TrasladosPisoResultado> {
+    const { data, error } = await supabase.rpc('traslados_piso', { p_dias: dias })
+    if (error) throw toError(error)
+    const r = (data ?? { sucursal_id: null, traslados: [] }) as { sucursal_id: Num; traslados?: TrasladoRow[] | null }
+    return { sucursalId: num(r.sucursal_id), traslados: (r.traslados ?? []).map(aTraslado) }
   },
 
   async iniciarTurno(sucursalId) {

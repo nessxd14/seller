@@ -5,6 +5,7 @@ import type { MotivoNoRealizada, NoRealizadaLineaInput } from '../../application
 import { Modal } from '../../components/Modal'
 import { demandaRepository, pisoRepository } from '../../infrastructure/services'
 import type { Product } from '../../types'
+import { FotoProductoPiso } from './FotoProductoPiso'
 import { BannerPrevio, CANALES, esSinConexion, lineaStock, MIN_CARACTERES, UNIDADES, useCoincidencias } from './demandaComun'
 
 const MAX_LINEAS = 20
@@ -182,9 +183,12 @@ function LineaEditor({ n, linea, puedeQuitar, onCambio, onQuitar }: LineaEditorP
   return <fieldset className="no-realizada-linea">
     <legend className="demanda-titulo">PRODUCTO {n}</legend>
     {puedeQuitar && <button type="button" className="no-realizada-quitar" aria-label={`Quitar producto ${n}`} onClick={onQuitar}><X /></button>}
-    <label className="piso-campo">Producto
-      <input className="piso-input" type="text" autoComplete="off" aria-label={`Producto ${n}`} value={linea.entrada} maxLength={160} onChange={(e) => onCambio({ entrada: e.target.value, elegido: null })} />
-    </label>
+    <div className="piso-con-foto">
+      {productoId != null && <FotoProductoPiso nombre={linea.entrada} productoId={productoId} />}
+      <label className="piso-campo">Producto
+        <input className="piso-input" type="text" autoComplete="off" aria-label={`Producto ${n}`} value={linea.entrada} maxLength={160} onChange={(e) => onCambio({ entrada: e.target.value, elegido: null })} />
+      </label>
+    </div>
     {mostrarOpciones && <div className="demanda-opciones">
       {productos.length > 0 && <p className="demanda-titulo">EN EL CATÁLOGO</p>}
       <ul className="piso-resultados">
@@ -192,7 +196,7 @@ function LineaEditor({ n, linea, puedeQuitar, onCambio, onQuitar }: LineaEditorP
           const s = stock.get(p.id)
           const detalle = lineaStock(s)
           const sinStock = s != null && s.tienda <= 0 && s.almacen <= 0
-          return <li key={p.id}><button type="button" onClick={() => elegirProducto(p)}>
+          return <li key={p.id} className="piso-resultado-fila"><FotoProductoPiso nombre={p.nombre} sku={p.sku} precio={p.precioRetail} miniaturaUrl={p.imagenMiniaturaUrl} imagenUrl={p.imagenUrl} /><button type="button" className="piso-resultado-principal" onClick={() => elegirProducto(p)}>
             <strong>{p.nombre}</strong>
             {detalle && <small>{detalle}</small>}
             {sinStock && <b className="demanda-chip-sin-stock">Sin stock</b>}

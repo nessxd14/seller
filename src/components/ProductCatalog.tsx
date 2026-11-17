@@ -183,7 +183,7 @@ export function ProductCatalog({ search, category, setCategory }: { search: stri
       <div className="product-grid" aria-busy={featureFlags.supabase && category !== 'Frecuentes' && searchStatus === 'loading'}>{grupo.productos.map((product) => {
         const enCarrito = cart.find((item) => item.id === product.id && !item.isCustomItem)
         return <article className="product-card" key={product.id}>
-          <ProductVisual type={product.imagen} color={product.color} imagenUrl={product.imagenUrl} expandable name={product.nombre} />
+          <ProductVisual type={product.imagen} color={product.color} imagenUrl={product.imagenUrl} miniaturaUrl={product.imagenMiniaturaUrl} expandable name={product.nombre} />
           <div className="product-info"><div className="stock-pill"><span /> {
             mode === 'ventaDirecta'
               // Venta directa sale de Almacén Central: ese es el número que importa (solo informativo).

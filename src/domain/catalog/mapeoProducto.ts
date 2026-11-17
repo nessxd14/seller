@@ -16,6 +16,7 @@ export interface ProductoRow {
   precio_corporativo: number | string | null
   activo: boolean
   imagen_url: string | null
+  imagen_miniatura_url?: string | null
   stock_min: number | string | null
   punto_reorden: number | string | null
   familia_id: number | null
@@ -54,6 +55,7 @@ export const rowToProduct = (row: ProductoRow, codes?: { barra?: string; fabrica
     categoria: row.marca ?? 'General',
     imagen: '',
     imagenUrl: row.imagen_url ?? undefined,
+    imagenMiniaturaUrl: row.imagen_miniatura_url ?? undefined,
     color: '#585b63',
     precioRetail: retail,
     precioMayoreo: mayoreo.precio,

@@ -141,7 +141,8 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 
 /* Anotar demanda ("Un cliente busca algo") */
 .piso-resultado-fila { display: flex; align-items: center; }
-.piso-resultado-fila > button:first-child { flex: 1; min-width: 0; }
+.piso-resultado-fila > .piso-resultado-principal { flex: 1; min-width: 0; }
+.piso-resultados .piso-foto { width: 52px; min-height: 52px; display: inline-flex; padding: 0; margin: 0 0 0 8px; }
 .piso-anotar-fila { flex: none; margin-right: 8px; padding: 0 12px; min-height: 44px; border-radius: 10px; background: #eaf1ff; color: var(--piso-primary); font-weight: 700; font-size: 13px; }
 .piso-anotar-vacio { display: flex; margin: 10px auto 0; align-items: center; justify-content: center; }
 .hoja-demanda .piso-hoja-cuerpo { overflow-y: auto; }
@@ -209,7 +210,17 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 .traslado-pildora { flex: none; padding: 2px 10px; border-radius: 999px; background: #eaf1ff; color: var(--piso-primary); font-size: 12px; font-weight: 800; }
 .traslado-pildora.recibido { background: #ecfdf3; color: var(--piso-ok); }
 .traslado-pildora.con_faltante { background: #fff4e5; color: #8a4b00; }
-.traslado-pildora.cancelado { background: #f2f4f7; color: var(--piso-muted); }
+.traslado-pildora.cancelado, .traslado-pildora.gris { background: #f2f4f7; color: var(--piso-muted); }
+.traslado-pildora.azul { background: #eaf1ff; color: var(--piso-primary); }
+.traslado-pildora.ambar { background: #fff4e5; color: #8a4b00; }
+.traslado-pildora.verde { background: #ecfdf3; color: var(--piso-ok); }
+.traslado-pildora.rojo { background: #fdecec; color: #b42318; }
+.traslado-card-acciones { display: inline-flex; align-items: center; gap: 6px; }
+.traslado-qr-icono { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; background: #eaf1ff; color: var(--piso-primary); }
+.traslado-card-botones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.traslado-card-botones > * { min-height: 48px; }
+.traslado-enlace { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; text-decoration: none; text-align: center; }
+.traslado-qr-hoja { justify-items: center; text-align: center; }
 .traslado-linea { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; background: var(--piso-surface); border: 1px solid var(--piso-line); border-radius: 14px; }
 .traslado-linea.faltante { background: #fff8eb; border-color: #f5c77e; }
 .traslado-linea > :nth-child(n+3) { grid-column: 1 / -1; }
@@ -253,3 +264,29 @@ body:has(.piso-app) { min-width: 0; background: #f3f6fa; }
 .piso-pasos li.actual { background: #eaf1ff; color: var(--piso-primary); box-shadow: inset 0 0 0 2px var(--piso-primary); }
 .piso-ticket-almacen { width: 100%; display: grid; gap: 4px; padding: 12px; border-radius: 14px; background: var(--piso-almacen-fondo); color: #05603a; }
 .piso-ticket-almacen p { margin: 0; }
+
+/* Modo tienda, corte de turno y fotos de producto */
+.piso-turno-termino { display: grid; gap: 4px; padding: 12px 14px; border-radius: 14px; background: #fff4e5; border: 1px solid #f5c77e; color: #8a4b00; }
+.piso-turno-termino h2 { margin: 0; font-size: 16px; }
+.piso-turno-termino p { margin: 0; font-size: 14px; }
+.piso-salir-acciones .traslado-enlace { width: 100%; }
+.piso-banda-modo { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 14px; background: #142033; color: #fff; font-size: 13px; font-weight: 600; }
+.piso-banda-modo span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.piso-banda-modo button { min-height: 44px; padding: 0 14px; border-radius: 999px; background: #fff; color: #142033; font-weight: 800; font-size: 13px; }
+.piso-foto { position: relative; flex: none; width: 52px; height: 52px; padding: 0; border-radius: 10px; overflow: hidden; background: #eaf1ff; color: var(--piso-primary); display: inline-flex; align-items: center; justify-content: center; }
+.piso-foto::before { content: ''; position: absolute; inset: -4px; } /* área tocable ≥ 44 px con margen */
+.piso-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.piso-foto-lupa { position: absolute; right: 2px; bottom: 2px; width: 18px; height: 18px; border-radius: 999px; background: rgba(20, 32, 51, .78); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+.piso-foto-lupa svg { width: 11px; height: 11px; }
+.piso-foto-vacia { cursor: default; }
+.piso-visor { position: fixed; inset: 0; z-index: 60; display: grid; grid-template-rows: auto 1fr auto; background: rgba(8, 14, 24, .96); color: #fff; font-family: 'Manrope Variable', 'DM Sans', system-ui, sans-serif; touch-action: pinch-zoom; }
+.piso-visor header { display: flex; align-items: flex-start; gap: 10px; padding: 14px 14px 8px; }
+.piso-visor header div { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.piso-visor header small { color: #b6c2d4; }
+.piso-visor header button { min-width: 44px; min-height: 44px; border-radius: 999px; background: rgba(255, 255, 255, .14); color: #fff; font-size: 22px; }
+.piso-visor-foto { display: grid; place-items: center; min-height: 0; padding: 8px; }
+.piso-visor-foto img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 12px; }
+.piso-visor footer { padding: 10px 14px calc(14px + env(safe-area-inset-bottom)); }
+.piso-visor footer button { width: 100%; min-height: 48px; border-radius: 12px; background: var(--piso-primary, #2563eb); color: #fff; font-weight: 800; }
+.piso-con-foto { display: flex; align-items: center; gap: 10px; }
+.piso-con-foto > :last-child { flex: 1; min-width: 0; }

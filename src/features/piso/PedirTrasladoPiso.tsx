@@ -8,6 +8,7 @@ import { getStockBySucursalBatch, listPresentations, productRepository, transfer
 import type { Product } from '../../types'
 import { EscanerContinuo, vibrarDesconocido } from './EscanerContinuo'
 import { StepperPiso } from './StepperPiso'
+import { FotoProductoPiso } from './FotoProductoPiso'
 
 interface Presentacion { id: number; nombre: string; esBase: boolean }
 interface LineaPedido { productId: string; name: string; sku: string; cantidad: number; presentacionId?: number; presentacionNombre?: string }
@@ -106,7 +107,7 @@ export function PedirTrasladoPiso({ sucursalId, onVolver, onCreado, aviso }: Pro
         <div className="piso-buscador">
           <label><Search aria-hidden="true" /><input type="search" inputMode="search" enterKeyHint="search" autoComplete="off" placeholder="Buscar por nombre o código" aria-label="Buscar producto" value={texto} onChange={(e) => setTexto(e.target.value)} /></label>
           {texto.trim() && <ul className="piso-resultados">
-            {resultados.map((p) => <li key={p.id}><button type="button" onClick={() => agregar(p)}><strong>{p.nombre}</strong><small>{p.sku}</small></button></li>)}
+            {resultados.map((p) => <li key={p.id} className="piso-resultado-fila"><FotoProductoPiso nombre={p.nombre} sku={p.sku} precio={p.precioRetail} miniaturaUrl={p.imagenMiniaturaUrl} imagenUrl={p.imagenUrl} textoAccion="Agregar al pedido" onAccion={() => agregar(p)} /><button type="button" className="piso-resultado-principal" onClick={() => agregar(p)}><strong>{p.nombre}</strong><small>{p.sku}</small></button></li>)}
           </ul>}
         </div>
       </div>
@@ -115,7 +116,7 @@ export function PedirTrasladoPiso({ sucursalId, onVolver, onCreado, aviso }: Pro
         const lista = presentaciones[l.productId] ?? []
         const s = stock[l.productId]
         return <article key={l.productId} className="traslado-linea">
-          <div className="piso-linea-nombre"><strong>{l.name}</strong><small>{s ? `En tienda: ${fmt(s.tienda)} · En almacén: ${fmt(s.almacen)}` : l.sku}</small></div>
+          <div className="piso-linea-nombre piso-con-foto"><FotoProductoPiso nombre={l.name} sku={l.sku} productoId={l.productId} /><div><strong>{l.name}</strong><small>{s ? `En tienda: ${fmt(s.tienda)} · En almacén: ${fmt(s.almacen)}` : l.sku}</small></div></div>
           <button type="button" className="piso-quitar" aria-label={`Quitar ${l.name}`} onClick={() => setLineas((prev) => prev.filter((x) => x.productId !== l.productId))}><Trash2 /></button>
           <StepperPiso etiqueta={`Cantidad ${l.name}`} valor={l.cantidad} min={1} onCambio={(n) => cambiar(l.productId, { cantidad: n })} />
           {lista.length > 1 && <select className="demanda-select" aria-label={`Presentación ${l.name}`} value={l.presentacionId ?? lista.find((p) => p.esBase)?.id ?? lista[0].id}

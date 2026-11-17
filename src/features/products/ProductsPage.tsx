@@ -72,7 +72,7 @@ export function ProductsPage({ notify }: { notify: (message: string) => void }) 
     {status === 'loading' ? <FeatureState type="skeleton" text="Cargando productos" /> : status === 'error' ? <FeatureState type="error" text="No se pudieron cargar" /> : !filtered.length ? <FeatureState type={query ? 'no-results' : 'empty'} text="No hay productos" /> : <div className="feature-table products-table sticky-head">
       <div className="table-head"><span>Producto</span><span>Marca</span><span>Retail</span><span>Mayoreo</span><span>Institucional</span><span>Corporativo</span></div>
       {filtered.map((product) => <article key={product.id} className="clickable-row" onClick={() => openProduct(product)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') openProduct(product) }}>
-        <div className="product-row-name"><ProductVisual type={product.imagen} color={product.color} small imagenUrl={product.imagenUrl} /><div><strong>{product.nombre}</strong><small>{product.sku}</small></div></div>
+        <div className="product-row-name"><ProductVisual type={product.imagen} color={product.color} small imagenUrl={product.imagenUrl} miniaturaUrl={product.imagenMiniaturaUrl} /><div><strong>{product.nombre}</strong><small>{product.sku}</small></div></div>
         <span>{product.categoria || '—'}</span>
         <span>{bs(product.precioRetail)}</span>
         <span>{bs(product.precioMayoreo)}</span>
@@ -92,7 +92,7 @@ export function ProductsPage({ notify }: { notify: (message: string) => void }) 
         </Suspense>
       </div> : <div className="modal-body">
         <div className="product-detail-hero">
-          <ProductVisual type={selected.imagen} color={selected.color} imagenUrl={selected.imagenUrl} />
+          <ProductVisual type={selected.imagen} color={selected.color} imagenUrl={selected.imagenUrl} miniaturaUrl={selected.imagenMiniaturaUrl} />
           <div><p>{selected.categoria || 'Catálogo de productos'}</p><h3>{selected.nombre}</h3><div className="product-identity-tags"><span>SKU {selected.sku}</span>{selected.codigoBarra && <span>{selected.codigoBarra}</span>}</div></div>
         </div>
         <div className="commercial-section-heading"><span className="section-icon"><TrendingUp /></span><div><h3>Precios por canal</h3><p>Importes en bolivianos por unidad base.</p></div></div>

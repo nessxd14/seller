@@ -7,6 +7,8 @@ import { DocQr } from '../../components/DocQr'
 import { Modal } from '../../components/Modal'
 import { UnitOfMeasureField } from '../../components/UnitOfMeasureField'
 import { hoyLocal } from '../../domain/common/fechas'
+import { desactivarModoTienda, veBandaModoTienda } from '../../domain/piso/modoTienda'
+import { navigate } from '../../router/history'
 import { parteCobrada } from '../../domain/sales/cuentaVendedor'
 import { bajoElMinimo, motivoNoEnviar, round2, sePuedeMoverAAlmacen, totalPedido, type LineaPiso, type PedidoLocal, type PresentacionPiso, type ProductoPiso } from '../../domain/sales/pedidoPiso'
 import { presentacionAlAgregar } from '../../lib/presentacionAlAgregar'
@@ -20,6 +22,7 @@ import { BotonSalir, SalirPiso } from './SalirPiso'
 import { MisVentasPiso } from './MisVentasPiso'
 import { HojaNoRealizada } from './HojaNoRealizada'
 import { InicioPiso } from './InicioPiso'
+import { FotoProductoPiso } from './FotoProductoPiso'
 
 const bs = (v: number) => v.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 interface StockLinea { tienda: number; almacen: number }
@@ -41,12 +44,13 @@ type Hoja =
   | { tipo: 'noRealizada'; texto?: string; productoId?: number; productoNombre?: string }
   | null
 
-export function PedidoPisoApp({ session }: { session: AuthSession }) {
+export function PedidoPisoApp({ session, modoTienda = false }: { session: AuthSession; modoTienda?: boolean }) {
   useWakeLock()
   const piso = usePedidosPiso(session.user.id)
   const { activo } = piso
   // Vendedor, reponedor y cajero no pueden bajar del mínimo (lista − 10 %); gerente y admin sí.
-  const esReponedor = session.user.role === 'reponedor'
+  // «Modo tienda»: cualquier rol con piso atiende como reponedor (lo vendido queda a su nombre). El vendedor conserva su texto de siempre.
+  const esReponedor = session.user.role === 'reponedor' || (modoTienda && session.user.role !== 'vendedor')
   const conNavegacion = session.user.role === 'vendedor' || esReponedor
   const conPiso = conNavegacion || session.user.role === 'cajero'
   // El reponedor habla de "venta"; el resto de "pedido".
@@ -132,6 +136,9 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
   const enviar = async () => { setEnviando(true); try { await piso.enviar() } finally { setEnviando(false) } }
 
   const textoArmar = `Armar ${esReponedor ? 'venta' : 'pedido'}`
+  const banda = modoTienda && veBandaModoTienda(session.user.role)
+    ? <div className="piso-banda-modo"><span>Modo tienda · {session.user.name} ({session.user.role})</span><button type="button" onClick={() => { desactivarModoTienda(session.user.id); navigate('/') }}>‹ Volver al Seller</button></div>
+    : null
   const nav = conNavegacion ? <NavegacionPiso vista={vista} textoArmar={textoArmar} onElegir={(v) => { setPedirDirecto(false); setVista(v) }} /> : null
   const hojaNoRealizada = hoja?.tipo === 'noRealizada'
     ? <HojaNoRealizada textoInicial={hoja.texto} productoInicial={hoja.productoId != null ? { id: hoja.productoId, nombre: hoja.productoNombre ?? '' } : undefined} onClose={() => setHoja(null)} onGuardado={(veces) => { setHoja(null); setVersionTurno((v) => v + 1); avisar(veces > 0 ? `Guardado. Van ${veces} pedidos de esto esta semana.` : 'Guardado.') }} />
@@ -143,10 +150,11 @@ export function PedidoPisoApp({ session }: { session: AuthSession }) {
     if (local) { piso.activar(local.clave); setVista('vender') }
   }
 
-  if (vista === 'inicio') return <div className="piso-app con-nav"><InicioPiso session={session} textoArmar={textoArmar} version={versionTurno} onArmar={() => setVista('vender')} onTraslado={() => { setPedirDirecto(true); setVista('traslados') }} onSalir={() => setSaliendo(true)} onNoRealizada={() => setHoja({ tipo: 'noRealizada' })} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{hojaNoRealizada}{salirHoja}{nav}</div>
-  if (vista === 'traslados') return <div className={`piso-app${conNavegacion ? ' con-nav' : ''}`}><TrasladosPiso key={pedirDirecto ? 'pedir' : 'lista'} session={session} aviso={avisar} iniciarPedido={pedirDirecto} onVolver={conNavegacion ? undefined : () => setVista('vender')} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{nav}</div>
-  if (vista === 'ventas') return <div className="piso-app con-nav"><header className="piso-header"><div><h1>Mis ventas</h1></div></header><MisVentasPiso abribles={abribles} onAbrir={abrirVenta} />{nav}</div>
+  if (vista === 'inicio') return <div className="piso-app con-nav">{banda}<InicioPiso session={session} textoArmar={textoArmar} version={versionTurno} onArmar={() => setVista('vender')} onTraslado={() => { setPedirDirecto(true); setVista('traslados') }} onSalir={() => setSaliendo(true)} onNoRealizada={() => setHoja({ tipo: 'noRealizada' })} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{hojaNoRealizada}{salirHoja}{nav}</div>
+  if (vista === 'traslados') return <div className={`piso-app${conNavegacion ? ' con-nav' : ''}`}>{banda}<TrasladosPiso key={pedirDirecto ? 'pedir' : 'lista'} session={session} aviso={avisar} iniciarPedido={pedirDirecto} onVolver={conNavegacion ? undefined : () => setVista('vender')} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{nav}</div>
+  if (vista === 'ventas') return <div className="piso-app con-nav">{banda}<header className="piso-header"><div><h1>Mis ventas</h1></div></header><MisVentasPiso abribles={abribles} onAbrir={abrirVenta} />{nav}</div>
   return <div className={`piso-app${conNavegacion ? ' con-nav' : ''}${esAlmacen ? ' modo-almacen' : ''}`}>
+    {banda}
     <header className="piso-header">
       <div><h1>{titulo}</h1><small>{activo.lineas.length} {activo.lineas.length === 1 ? 'línea' : 'líneas'} · {ETIQUETA_ESTADO[activo.estado]}{esAlmacen ? ' · De almacén' : ''}</small></div>
       {linternaSoportada && editable && !plegado && <button type="button" className="piso-icono" aria-pressed={linterna} aria-label={linterna ? 'Apagar linterna' : 'Encender linterna'} onClick={() => setLinterna((v) => !v)}>{linterna ? <FlashlightOff /> : <Flashlight />}</button>}
@@ -230,7 +238,7 @@ function Buscador({ onElegir, onAnotar }: { onElegir: (p: Product) => void; onAn
     <label><Search aria-hidden="true" /><input type="search" inputMode="search" enterKeyHint="search" autoComplete="off" placeholder="Buscar por nombre o código" aria-label="Buscar producto" value={texto} onChange={(e) => setTexto(e.target.value)} /></label>
     {error && <p className="piso-error" role="alert">{error}</p>}
     {texto.trim() && <ul className="piso-resultados" aria-busy={buscando}>
-      {resultados.map((p) => <li key={p.id} className="piso-resultado-fila"><button type="button" onClick={() => { onElegir(p); setTexto(''); setResultados([]) }}><strong>{p.nombre}</strong><small>{p.sku}</small><b>{p.precioRetail > 0 ? `Bs ${bs(p.precioRetail)}` : 'Sin precio'}</b></button>{sinStock.has(p.id) && <button type="button" className="piso-anotar-fila" aria-label={`Anotar ${p.nombre}`} onClick={() => onAnotar(p.nombre, p)}>Anotar</button>}</li>)}
+      {resultados.map((p) => <li key={p.id} className="piso-resultado-fila"><FotoProductoPiso nombre={p.nombre} sku={p.sku} precio={p.precioRetail} miniaturaUrl={p.imagenMiniaturaUrl} imagenUrl={p.imagenUrl} textoAccion="Agregar a la venta" onAccion={() => { onElegir(p); setTexto(''); setResultados([]) }} /><button type="button" className="piso-resultado-principal" onClick={() => { onElegir(p); setTexto(''); setResultados([]) }}><strong>{p.nombre}</strong><small>{p.sku}</small><b>{p.precioRetail > 0 ? `Bs ${bs(p.precioRetail)}` : 'Sin precio'}</b></button>{sinStock.has(p.id) && <button type="button" className="piso-anotar-fila" aria-label={`Anotar ${p.nombre}`} onClick={() => onAnotar(p.nombre, p)}>Anotar</button>}</li>)}
       {!buscando && consulta === texto.trim() && !resultados.length && !error && <li className="piso-vacio">Sin resultados<button type="button" className="piso-secundario piso-anotar-vacio" onClick={() => onAnotar(texto.trim())}>Anotar que lo buscaron</button></li>}
     </ul>}
   </div>
@@ -240,7 +248,7 @@ function FilaLinea({ linea, stock, esAlmacen, onMover, onCantidad, onPrecio, onQ
   const sinPrecio = linea.precioUnitario == null || linea.precioUnitario <= 0
   const subtotal = sinPrecio ? 0 : round2((linea.precioUnitario as number) * linea.cantidad)
   return <article className="piso-linea">
-    <div className="piso-linea-nombre"><strong>{linea.nombre}</strong><small>{linea.esPersonalizado ? `Fuera de catálogo · ${linea.unidadMedida ?? 'UNIDAD'}` : linea.presentacionNombre ?? 'Unidad'}</small>{stock && <small className="piso-stock">{esAlmacen ? `En almacén: ${fmtQty(stock.almacen)}` : `En tienda: ${fmtQty(stock.tienda)}`}</small>}</div>
+    <div className="piso-linea-nombre piso-con-foto">{!linea.esPersonalizado && <FotoProductoPiso nombre={linea.nombre} sku={linea.sku} precio={linea.precioLista} productoId={linea.productoId} />}<div><strong>{linea.nombre}</strong><small>{linea.esPersonalizado ? `Fuera de catálogo · ${linea.unidadMedida ?? 'UNIDAD'}` : linea.presentacionNombre ?? 'Unidad'}</small>{stock && <small className="piso-stock">{esAlmacen ? `En almacén: ${fmtQty(stock.almacen)}` : `En tienda: ${fmtQty(stock.tienda)}`}</small>}</div></div>
     <button type="button" className="piso-quitar" aria-label={`Quitar ${linea.nombre}`} onClick={onQuitar}><Trash2 /></button>
     <button type="button" className="piso-chip" onClick={onCantidad} aria-label={`Cantidad de ${linea.nombre}`}>× {linea.cantidad}</button>
     <button type="button" className={`piso-chip ${sinPrecio ? 'alerta' : ''}`} onClick={onPrecio} aria-label={`Precio de ${linea.nombre}`}>{sinPrecio ? 'Poner precio' : `Bs ${bs(linea.precioUnitario as number)}`}</button>
