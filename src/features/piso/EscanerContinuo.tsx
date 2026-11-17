@@ -1,3 +1,4 @@
+import { Flashlight, FlashlightOff, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { aceptarLectura, type LecturasRecientes } from '../../domain/sales/pedidoPiso'
 
@@ -50,11 +51,17 @@ export function useWakeLock() {
  * Visor de cámara que se queda abierto y sigue leyendo: nunca se cierra tras una lectura.
  * Se pausa (y suelta la cámara) con la página oculta, con el visor plegado y al desmontar.
  */
-export function EscanerContinuo({ onCodigo, plegado, linterna, onSoporteLinterna }: {
+export function EscanerContinuo({ onCodigo, plegado, linterna, onSoporteLinterna, onLinterna, onCerrar, retro }: {
   onCodigo: (codigo: string) => void
   plegado: boolean
   linterna: boolean
   onSoporteLinterna?: (soportada: boolean) => void
+  /** Si se pasa, la linterna se enciende con un botón dentro de la cámara (arriba a la derecha). */
+  onLinterna?: (encendida: boolean) => void
+  /** Si se pasa, aparece un botón × dentro de la cámara que la cierra. */
+  onCerrar?: () => void
+  /** Última lectura: tira inferior dentro de la cámara (ej. «✓ Pegamento UHU · ahora 2»). */
+  retro?: string
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const trackRef = useRef<MediaStreamTrack | null>(null)
@@ -63,6 +70,7 @@ export function EscanerContinuo({ onCodigo, plegado, linterna, onSoporteLinterna
   const [error, setError] = useState('')
   const [aviso, setAviso] = useState('')
   const [destello, setDestello] = useState(false)
+  const [conLinterna, setConLinterna] = useState(false)
   const visible = useVisible()
   const activo = visible && !plegado
 
@@ -94,7 +102,9 @@ export function EscanerContinuo({ onCodigo, plegado, linterna, onSoporteLinterna
       setError('')
       const track = stream.getVideoTracks()[0]
       trackRef.current = track ?? null
-      onSoporteLinterna?.(Boolean(track?.getCapabilities?.().torch))
+      const torch = Boolean(track?.getCapabilities?.().torch)
+      setConLinterna(torch)
+      onSoporteLinterna?.(torch)
       const video = videoRef.current
       if (!video) { stream.getTracks().forEach((t) => t.stop()); return }
       video.srcObject = stream
@@ -140,10 +150,15 @@ export function EscanerContinuo({ onCodigo, plegado, linterna, onSoporteLinterna
   }, [linterna, activo])
 
   if (plegado) return null
-  return <div className={`piso-visor ${destello ? 'destello' : ''}`}>
+  return <div className={`piso-camara ${destello ? 'destello' : ''}`}>
     {error
-      ? <p className="piso-visor-error" role="alert">{error}</p>
+      ? <p className="piso-camara-error" role="alert">{error}</p>
       : <video ref={videoRef} playsInline muted aria-label="Cámara para escanear códigos de barras" />}
-    {!error && aviso && <p className="piso-visor-aviso">{aviso}</p>}
+    {!error && <span className="piso-camara-mira" aria-hidden="true" />}
+    <div className="piso-camara-controles">
+      {conLinterna && onLinterna && !error && <button type="button" aria-pressed={linterna} aria-label={linterna ? 'Apagar linterna' : 'Encender linterna'} onClick={() => onLinterna(!linterna)}>{linterna ? <FlashlightOff /> : <Flashlight />}</button>}
+      {onCerrar && <button type="button" aria-label="Cerrar cámara" onClick={onCerrar}><X /></button>}
+    </div>
+    {!error && (retro || aviso) && <p className="piso-camara-aviso" role="status">{retro || aviso}</p>}
   </div>
 }

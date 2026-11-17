@@ -22,6 +22,7 @@ export function RecibirTrasladoPiso({ traslado, onVolver, onRecibido, aviso }: P
   const lineas = traslado.lines.filter(recibibleTraslado)
   const [llegaron, setLlegaron] = useState<Record<string, number>>(() => Object.fromEntries(lineas.map((l) => [l.id, despachadaEnPresentacion(l)])))
   const [contando, setContando] = useState(false)
+  const [linterna, setLinterna] = useState(false)
   const [conte, setConte] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
@@ -67,9 +68,9 @@ export function RecibirTrasladoPiso({ traslado, onVolver, onRecibido, aviso }: P
       <button type="button" className="piso-icono" aria-label="Volver a Traslados" onClick={onVolver}><ArrowLeft /></button>
       <div><h1>Recibir traslado {numeroCorto(traslado.numero)}</h1><small>De {nombreSucursalPiso(traslado.sucursalOrigenId)} · salió {hora} · {lineas.length} {lineas.length === 1 ? 'producto' : 'productos'}</small></div>
     </header>
-    <section className="traslado-cuerpo traslado-cuerpo-pie" aria-label="Conteo">
+    <section className="traslado-cuerpo piso-marco-traslado" aria-label="Conteo">
       {contando
-        ? <div className="piso-captura traslado-escaner"><EscanerContinuo onCodigo={(c) => void alEscanear(c)} plegado={false} linterna={false} onSoporteLinterna={() => {}} /><button type="button" className="piso-plegar" onClick={() => setContando(false)}>Terminar de escanear</button></div>
+        ? <div className="piso-captura traslado-escaner"><EscanerContinuo onCodigo={(c) => void alEscanear(c)} plegado={false} linterna={linterna} onLinterna={setLinterna} onCerrar={() => { setContando(false); setLinterna(false) }} /></div>
         : <button type="button" className="piso-secundario traslado-escanear" onClick={empezarConteo}><ScanLine /> Contar escaneando</button>}
       {lineas.map((l) => {
         const salieron = despachadaEnPresentacion(l)

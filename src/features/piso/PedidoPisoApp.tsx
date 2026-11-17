@@ -1,4 +1,4 @@
-import { Flashlight, FlashlightOff, ListOrdered, PackageX, Plus, ScanLine, Search, Trash2 } from 'lucide-react'
+import { ListOrdered, PackageX, Plus, ScanLine, Search, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
 import type { PedidoCanal, PedidoVendedorEstado } from '../../application/shared/models'
@@ -16,6 +16,7 @@ import { opcionesDelLado } from '../../domain/pricing/presentacionesPorLado'
 import { getStockBySucursalBatch, listPresentations, pedidoVendedorService, productRepository } from '../../infrastructure/services'
 import type { Product } from '../../types'
 import { EscanerContinuo, useWakeLock, vibrarDesconocido } from './EscanerContinuo'
+import { guardarCamaraAbierta, leerCamaraAbierta } from './camaraPreferencia'
 import { usePedidosPiso } from './usePedidosPiso'
 import { TrasladosPiso } from './TrasladosPiso'
 import { BotonSalir, SalirPiso } from './SalirPiso'
@@ -56,9 +57,12 @@ export function PedidoPisoApp({ session, modoTienda = false }: { session: AuthSe
   // El reponedor habla de "venta"; el resto de "pedido".
   const palabra = esReponedor ? 'Venta' : 'Pedido'
   const [hoja, setHoja] = useState<Hoja>(null)
-  const [plegado, setPlegado] = useState(false)
+  // Preferencia de este dispositivo; la cámara además se oculta mientras se busca por texto.
+  const [camaraAbierta, setCamaraAbierta] = useState(leerCamaraAbierta)
+  const [textoBusqueda, setTextoBusqueda] = useState('')
+  const [buscadorEnfocado, setBuscadorEnfocado] = useState(false)
+  const [ultimoEscaneo, setUltimoEscaneo] = useState<{ id: number; nombre: string } | null>(null)
   const [linterna, setLinterna] = useState(false)
-  const [linternaSoportada, setLinternaSoportada] = useState(false)
   const [aviso, setAviso] = useState('')
   const [ambiguos, setAmbiguos] = useState<number[] | null>(null)
   const [enviando, setEnviando] = useState(false)
@@ -72,26 +76,35 @@ export function PedidoPisoApp({ session, modoTienda = false }: { session: AuthSe
   // Stock por producto de las líneas del pedido activo: sirve para mostrarlo y para ofrecer «Mover» a almacén.
   const [stock, setStock] = useState<Record<number, StockLinea>>({})
   const avisoTimer = useRef<number | undefined>(undefined)
+  const escaneoTimer = useRef<number | undefined>(undefined)
+  const buscando = buscadorEnfocado || textoBusqueda.trim() !== ''
+  const camaraVisible = camaraAbierta && !buscando
 
   const avisar = useCallback((mensaje: string) => {
     setAviso(mensaje)
     window.clearTimeout(avisoTimer.current)
     avisoTimer.current = window.setTimeout(() => setAviso(''), 2600)
   }, [])
-  useEffect(() => () => window.clearTimeout(avisoTimer.current), [])
+  useEffect(() => () => { window.clearTimeout(avisoTimer.current); window.clearTimeout(escaneoTimer.current) }, [])
+  const elegirCamara = useCallback((abierta: boolean) => { setCamaraAbierta(abierta); setLinterna(false); guardarCamaraAbierta(abierta) }, [])
+  const enfocarBuscador = useCallback((enfocado: boolean) => { setBuscadorEnfocado(enfocado); if (enfocado) setLinterna(false) }, [])
 
   const { agregar } = piso
   // Celular del piso = tienda: solo productos y presentaciones habilitados para vender en tienda.
-  const agregarSiSeVende = useCallback(async (producto: Product, escaneada?: PresentacionPiso) => {
+  const agregarSiSeVende = useCallback(async (producto: Product, escaneada?: PresentacionPiso, desdeCamara = false) => {
     const permiso = await presentacionAlAgregar(producto.id, 'tienda', escaneada)
     if (!permiso.ok) { avisar(permiso.mensaje); return }
     agregar(aProducto(producto), escaneada ?? (permiso.inicial && !permiso.inicial.esBase && permiso.inicial.factorUnidadBase !== 1 ? permiso.inicial : undefined))
-    avisar(`Agregado: ${producto.nombre}`)
+    if (!desdeCamara) { avisar(`Agregado: ${producto.nombre}`); return }
+    // La cámara muestra su propia tira («✓ nombre · ahora N»), no el aviso flotante.
+    setUltimoEscaneo({ id: producto.id, nombre: producto.nombre })
+    window.clearTimeout(escaneoTimer.current)
+    escaneoTimer.current = window.setTimeout(() => setUltimoEscaneo(null), 2600)
   }, [agregar, avisar])
   const alEscanear = useCallback(async (codigo: string) => {
     try {
       const r = await productRepository.resolveScannedCode(codigo)
-      if (r.kind === 'found') await agregarSiSeVende(r.product, r.presentation)
+      if (r.kind === 'found') await agregarSiSeVende(r.product, r.presentation, true)
       else if (r.kind === 'ambiguous') setAmbiguos(r.productIds)
       else { vibrarDesconocido(); avisar('Código no reconocido') }
     } catch (e) { avisar(e instanceof Error ? e.message : 'No se pudo leer el código') }
@@ -153,11 +166,12 @@ export function PedidoPisoApp({ session, modoTienda = false }: { session: AuthSe
   if (vista === 'inicio') return <div className="piso-app con-nav">{banda}<InicioPiso session={session} textoArmar={textoArmar} version={versionTurno} onArmar={() => setVista('vender')} onTraslado={() => { setPedirDirecto(true); setVista('traslados') }} onSalir={() => setSaliendo(true)} onNoRealizada={() => setHoja({ tipo: 'noRealizada' })} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{hojaNoRealizada}{salirHoja}{nav}</div>
   if (vista === 'traslados') return <div className={`piso-app${conNavegacion ? ' con-nav' : ''}`}>{banda}<TrasladosPiso key={pedirDirecto ? 'pedir' : 'lista'} session={session} aviso={avisar} iniciarPedido={pedirDirecto} onVolver={conNavegacion ? undefined : () => setVista('vender')} />{aviso && <p role="status" className="piso-toast">{aviso}</p>}{nav}</div>
   if (vista === 'ventas') return <div className="piso-app con-nav">{banda}<header className="piso-header"><div><h1>Mis ventas</h1></div></header><MisVentasPiso abribles={abribles} onAbrir={abrirVenta} />{nav}</div>
-  return <div className={`piso-app${conNavegacion ? ' con-nav' : ''}${esAlmacen ? ' modo-almacen' : ''}`}>
+  const cantidadEscaneada = ultimoEscaneo ? activo.lineas.filter((l) => l.productoId === ultimoEscaneo.id).reduce((n, l) => n + l.cantidad, 0) : 0
+  const retro = ultimoEscaneo ? `✓ ${ultimoEscaneo.nombre}${cantidadEscaneada > 0 ? ` · ahora ${fmtQty(cantidadEscaneada)}` : ''}` : undefined
+  return <div className={`piso-app en-marco${conNavegacion ? ' con-nav' : ''}${esAlmacen ? ' modo-almacen' : ''}`}>
     {banda}
     <header className="piso-header">
       <div><h1>{titulo}</h1><small>{activo.lineas.length} {activo.lineas.length === 1 ? 'línea' : 'líneas'} · {ETIQUETA_ESTADO[activo.estado]}{esAlmacen ? ' · De almacén' : ''}</small></div>
-      {linternaSoportada && editable && !plegado && <button type="button" className="piso-icono" aria-pressed={linterna} aria-label={linterna ? 'Apagar linterna' : 'Encender linterna'} onClick={() => setLinterna((v) => !v)}>{linterna ? <FlashlightOff /> : <Flashlight />}</button>}
       {!conNavegacion && <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'noRealizada' })}><PackageX /> <span>Venta no realizada</span></button>}
       <button type="button" className="piso-icono con-texto" onClick={() => setHoja({ tipo: 'pedidos' })}><ListOrdered /> <span>Mis pedidos</span>{piso.abiertos > 1 && <b>{piso.abiertos}</b>}</button>
       {!conNavegacion && <button type="button" className="piso-icono con-texto" onClick={() => { setPedirDirecto(false); setVista('traslados') }}>Traslados</button>}
@@ -169,7 +183,6 @@ export function PedidoPisoApp({ session, modoTienda = false }: { session: AuthSe
       <button type="button" aria-pressed={esAlmacen} className={esAlmacen ? 'activo' : ''} onClick={() => cambiarCanal('ALMACEN')}>De almacén (VTD)</button>
     </div>}
     {piso.sinConexion && <p className="piso-banner" role="status">Sin conexión. Guardado en este teléfono</p>}
-    {aviso && <p className="piso-toast" role="status">{aviso}</p>}
 
     {editable && esAlmacen && <section className="piso-almacen-info" aria-label="Venta de almacén">
       <p>Sale del almacén: caja cobra al cliente y almacén se lo entrega con el ticket.</p>
@@ -178,15 +191,18 @@ export function PedidoPisoApp({ session, modoTienda = false }: { session: AuthSe
     {editable
       ? <>
         <section className="piso-captura" aria-label="Agregar productos">
-          <button type="button" className="piso-plegar" aria-expanded={!plegado} onClick={() => setPlegado((v) => !v)}><ScanLine /> {plegado ? 'Abrir cámara' : 'Ocultar cámara'}</button>
-          <EscanerContinuo onCodigo={(c) => void alEscanear(c)} plegado={plegado} linterna={linterna} onSoporteLinterna={setLinternaSoportada} />
-          <Buscador onElegir={(p) => { void agregarSiSeVende(p) }} onAnotar={(texto, p) => setHoja({ tipo: 'noRealizada', texto, productoId: p?.id, productoNombre: p?.nombre })} />
+          <EscanerContinuo onCodigo={(c) => void alEscanear(c)} plegado={!camaraVisible} linterna={linterna} onLinterna={setLinterna} onCerrar={() => elegirCamara(false)} retro={retro} />
+          <Buscador texto={textoBusqueda} onTexto={setTextoBusqueda} onEnfocado={enfocarBuscador} camaraCerrada={!camaraAbierta} onAbrirCamara={() => { setTextoBusqueda(''); elegirCamara(true) }} />
         </section>
-        <section className="piso-lineas" aria-label={`Productos de la ${palabra.toLowerCase()}`}>
-          {!activo.lineas.length && <p className="piso-vacio">Escanea un código o busca un producto para empezar.</p>}
-          {[...activo.lineas].reverse().map((l) => <FilaLinea key={l.localId} linea={l} stock={l.productoId != null ? stock[l.productoId] : undefined} esAlmacen={esAlmacen} onMover={() => moverAAlmacen(l.localId)} onCantidad={() => setHoja({ tipo: 'cantidad', localId: l.localId })} onPrecio={() => setHoja({ tipo: 'precio', localId: l.localId })} onQuitar={() => piso.quitar(l.localId)} />)}
-          {!esAlmacen && <button type="button" className="piso-fuera-catalogo" onClick={() => setHoja({ tipo: 'personalizado' })}><Plus /> Producto fuera de catálogo</button>}
-        </section>
+        <div className="piso-cuerpo">
+          <section className="piso-lineas" aria-label={`Productos de la ${palabra.toLowerCase()}`}>
+            {!activo.lineas.length && <p className="piso-vacio">Escanea un código o busca un producto para empezar.</p>}
+            {[...activo.lineas].reverse().map((l) => <FilaLinea key={l.localId} linea={l} stock={l.productoId != null ? stock[l.productoId] : undefined} esAlmacen={esAlmacen} onMover={() => moverAAlmacen(l.localId)} onCantidad={() => setHoja({ tipo: 'cantidad', localId: l.localId })} onPrecio={() => setHoja({ tipo: 'precio', localId: l.localId })} onQuitar={() => piso.quitar(l.localId)} />)}
+            {!esAlmacen && <button type="button" className="piso-fuera-catalogo" onClick={() => setHoja({ tipo: 'personalizado' })}><Plus /> Producto fuera de catálogo</button>}
+          </section>
+          {textoBusqueda.trim() && <ResultadosBusqueda texto={textoBusqueda} onElegir={(p) => { setTextoBusqueda(''); setBuscadorEnfocado(false); void agregarSiSeVende(p) }} onAnotar={(texto, p) => setHoja({ tipo: 'noRealizada', texto, productoId: p?.id, productoNombre: p?.nombre })} />}
+          {aviso && <p className="piso-toast" role="status">{aviso}</p>}
+        </div>
         {piso.errorPedido[activo.clave] && <p className="piso-error" role="alert">{piso.errorPedido[activo.clave]}</p>}
         <footer className="piso-pie">
           <div><span>Total</span><strong>Bs {bs(total)}</strong>{sinPrecio > 0 && <small>{sinPrecio} sin precio</small>}</div>
@@ -206,8 +222,29 @@ export function PedidoPisoApp({ session, modoTienda = false }: { session: AuthSe
   </div>
 }
 
-function Buscador({ onElegir, onAnotar }: { onElegir: (p: Product) => void; onAnotar: (texto: string, producto?: Product) => void }) {
-  const [texto, setTexto] = useState('')
+interface BuscadorProps {
+  texto: string
+  onTexto: (texto: string) => void
+  onEnfocado: (enfocado: boolean) => void
+  camaraCerrada: boolean
+  onAbrirCamara: () => void
+}
+
+function Buscador({ texto, onTexto, onEnfocado, camaraCerrada, onAbrirCamara }: BuscadorProps) {
+  return <div className="piso-buscador piso-buscador-fila">
+    <label><Search aria-hidden="true" /><input type="search" inputMode="search" enterKeyHint="search" autoComplete="off" placeholder="Buscar por nombre o código" aria-label="Buscar producto" value={texto} onFocus={() => onEnfocado(true)} onBlur={() => onEnfocado(false)} onChange={(e) => onTexto(e.target.value)} /></label>
+    {camaraCerrada && <button type="button" className="piso-escanear" aria-label="Abrir cámara" onClick={onAbrirCamara}><ScanLine /></button>}
+  </div>
+}
+
+interface ResultadosProps {
+  texto: string
+  onElegir: (p: Product) => void
+  onAnotar: (texto: string, producto?: Product) => void
+}
+
+/** Panel de resultados sobre la lista de la venta: no empuja nada y nunca queda bajo el pie ni el teclado. */
+function ResultadosBusqueda({ texto, onElegir, onAnotar }: ResultadosProps) {
   const [resultados, setResultados] = useState<Product[]>([])
   const [buscando, setBuscando] = useState(false)
   const [error, setError] = useState('')
@@ -234,13 +271,12 @@ function Buscador({ onElegir, onAnotar }: { onElegir: (p: Product) => void; onAn
     }, 250)
     return () => { cancelado = true; window.clearTimeout(id) }
   }, [texto])
-  return <div className="piso-buscador">
-    <label><Search aria-hidden="true" /><input type="search" inputMode="search" enterKeyHint="search" autoComplete="off" placeholder="Buscar por nombre o código" aria-label="Buscar producto" value={texto} onChange={(e) => setTexto(e.target.value)} /></label>
+  return <div className="piso-panel-resultados">
     {error && <p className="piso-error" role="alert">{error}</p>}
-    {texto.trim() && <ul className="piso-resultados" aria-busy={buscando}>
-      {resultados.map((p) => <li key={p.id} className="piso-resultado-fila"><FotoProductoPiso nombre={p.nombre} sku={p.sku} precio={p.precioRetail} miniaturaUrl={p.imagenMiniaturaUrl} imagenUrl={p.imagenUrl} textoAccion="Agregar a la venta" onAccion={() => { onElegir(p); setTexto(''); setResultados([]) }} /><button type="button" className="piso-resultado-principal" onClick={() => { onElegir(p); setTexto(''); setResultados([]) }}><strong>{p.nombre}</strong><small>{p.sku}</small><b>{p.precioRetail > 0 ? `Bs ${bs(p.precioRetail)}` : 'Sin precio'}</b></button>{sinStock.has(p.id) && <button type="button" className="piso-anotar-fila" aria-label={`Anotar ${p.nombre}`} onClick={() => onAnotar(p.nombre, p)}>Anotar</button>}</li>)}
+    <ul className="piso-resultados" aria-busy={buscando}>
+      {resultados.map((p) => <li key={p.id} className="piso-resultado-fila"><FotoProductoPiso nombre={p.nombre} sku={p.sku} precio={p.precioRetail} miniaturaUrl={p.imagenMiniaturaUrl} imagenUrl={p.imagenUrl} textoAccion="Agregar a la venta" onAccion={() => onElegir(p)} /><button type="button" className="piso-resultado-principal" onClick={() => onElegir(p)}><strong>{p.nombre}</strong><small>{p.sku}</small><b>{p.precioRetail > 0 ? `Bs ${bs(p.precioRetail)}` : 'Sin precio'}</b></button>{sinStock.has(p.id) && <button type="button" className="piso-anotar-fila" aria-label={`Anotar ${p.nombre}`} onClick={() => onAnotar(p.nombre, p)}>Anotar</button>}</li>)}
       {!buscando && consulta === texto.trim() && !resultados.length && !error && <li className="piso-vacio">Sin resultados<button type="button" className="piso-secundario piso-anotar-vacio" onClick={() => onAnotar(texto.trim())}>Anotar que lo buscaron</button></li>}
-    </ul>}
+    </ul>
   </div>
 }
 
