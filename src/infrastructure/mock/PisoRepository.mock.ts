@@ -10,6 +10,8 @@ const leer = (): PisoTurno | null => {
 // Modo mock: solo el turno vive en este navegador; ventas de caja y reclamos no existen sin base.
 export const pisoRepository: PisoRepository = {
   async turnoActual() { return leer() },
+  async estadoTurno() { return { turno: leer(), ultimo: null } },
+  async traslados() { return { sucursalId: SUCURSAL_TIENDA, traslados: [] } },
   async iniciarTurno(sucursalId) {
     const actual = leer()
     if (actual) return actual

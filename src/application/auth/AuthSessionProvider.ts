@@ -11,7 +11,7 @@ export const permissionsByRole:Record<MockRole,readonly Permission[]>={
   cajero:['retail_sale','cash_own','customers_retail','floor_order'],
   vendedor:['quotes_write','orders_view','customers_retail','floor_order'],
   reponedor:['customers_retail','floor_order'],
-  vendedor_mayoreo:['wholesale_sale','quotes_write','orders_view'],
+  vendedor_mayoreo:['wholesale_sale','quotes_write','orders_view','floor_order'],
   almacen:['orders_view','orders_dispatch'],
   almacenero:['orders_view','orders_dispatch'],
   auditor:['orders_view'],

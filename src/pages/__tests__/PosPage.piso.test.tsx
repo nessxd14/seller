@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
 
-const mocks = vi.hoisted(() => ({ getSession: vi.fn(), sessionId: { value: '5' as string | null }, resolve: vi.fn(), cola: vi.fn() }))
+const mocks = vi.hoisted(() => ({ getSession: vi.fn(), sessionId: { value: '5' as string | null }, resolve: vi.fn(), cola: vi.fn(), celular: { value: false } }))
 // vi.mock se eleva sobre los imports: el helper también debe estar elevado.
 const { stub } = await vi.hoisted(async () => {
   const { createElement } = await import('react')
@@ -43,14 +43,15 @@ vi.mock('../../features/reports/ReportsPage', () => ({ ReportsPage: stub('report
 vi.mock('../../features/comisiones/ComisionesPage', () => ({ ComisionesPage: stub('comisiones') }))
 vi.mock('../../features/auth/LoginScreen', () => ({ LoginScreen: stub('login') }))
 vi.mock('../../features/auth/AuthDevSelector', () => ({ AuthDevSelector: stub('dev') }))
-vi.mock('../../features/piso/PedidoPisoApp', () => ({ PedidoPisoApp: () => <div data-testid="piso-app" /> }))
+vi.mock('../../features/piso/PedidoPisoApp', () => ({ PedidoPisoApp: ({ modoTienda }: { modoTienda?: boolean }) => <div data-testid="piso-app" data-modo-tienda={String(!!modoTienda)} /> }))
+vi.mock('../../mobile/useEsCelular', () => ({ useEsCelular: () => mocks.celular.value }))
 
 import { PosPage } from '../PosPage'
 import { navigate } from '../../router/history'
 
 const sessionOf = (role: string): AuthSession => ({ user: { id: 'u', name: role, role: role as AuthSession['user']['role'], active: true }, expiresAt: '2999-01-01' })
 
-beforeEach(() => { window.history.replaceState({}, '', '/'); mocks.sessionId.value = '5'; mocks.resolve.mockReset(); mocks.cola.mockReset(); mocks.cola.mockResolvedValue([]) })
+beforeEach(() => { window.history.replaceState({}, '', '/'); mocks.sessionId.value = '5'; mocks.celular.value = false; localStorage.clear(); mocks.resolve.mockReset(); mocks.cola.mockReset(); mocks.cola.mockResolvedValue([]) })
 afterEach(cleanup)
 
 describe('PosPage — /piso y permisos de módulo (Brief Piso B)', () => {
@@ -118,6 +119,41 @@ describe('PosPage — /piso y permisos de módulo (Brief Piso B)', () => {
     render(<PosPage />)
     await screen.findByTestId('orders')
     expect(window.location.pathname).toBe('/pedidos/55')
+  })
+})
+
+describe('PosPage — Modo tienda', () => {
+  it('en el celular, con la bandera puesta, la raíz lleva a /piso con modoTienda', async () => {
+    localStorage.setItem('seller:modo-tienda:u', '1')
+    mocks.celular.value = true
+    mocks.getSession.mockResolvedValue(sessionOf('gerente'))
+    render(<PosPage />)
+    const piso = await screen.findByTestId('piso-app')
+    expect(window.location.pathname).toBe('/piso')
+    expect(piso.dataset.modoTienda).toBe('true')
+  })
+
+  it('en el celular sin bandera no hay redirección', async () => {
+    mocks.celular.value = true
+    mocks.getSession.mockResolvedValue(sessionOf('cajero'))
+    render(<PosPage />)
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    expect(screen.queryByTestId('piso-app')).toBeNull()
+  })
+
+  it('en escritorio la bandera no redirige', async () => {
+    localStorage.setItem('seller:modo-tienda:u', '1')
+    mocks.getSession.mockResolvedValue(sessionOf('cajero'))
+    render(<PosPage />)
+    await screen.findByTestId('cart-panel')
+    expect(window.location.pathname).toBe('/')
+  })
+
+  it('/piso de un cajero sin bandera no activa modoTienda', async () => {
+    mocks.getSession.mockResolvedValue(sessionOf('cajero'))
+    navigate('/piso')
+    render(<PosPage />)
+    expect((await screen.findByTestId('piso-app')).dataset.modoTienda).toBe('false')
   })
 })
 

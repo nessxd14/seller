@@ -7,8 +7,9 @@ import { pisoRepository } from '../../infrastructure/services'
 import { mockAuthSessionProvider } from '../../infrastructure/mock/MockAuthSessionProvider'
 import { supabaseAuthSessionProvider } from '../../infrastructure/supabase/SupabaseAuthSessionProvider'
 import type { PisoTurno } from '../../application/ports/pisoRepository'
+import { horaCorta } from '../../domain/piso/turnoPiso'
 
-const hora = (iso: string) => new Date(iso).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit', hour12: false })
+const hora = horaCorta
 const mensaje = (e: unknown, porDefecto: string) => (e instanceof Error && e.message ? e.message : porDefecto)
 
 export const cerrarSesion = (): Promise<void> => (featureFlags.supabase ? supabaseAuthSessionProvider.signOut() : mockAuthSessionProvider.setMockUser(null))
@@ -54,7 +55,7 @@ export function SalirPiso({ nombre, guardados, palabra, onClose }: Props) {
   return <Modal title={`¿Cerrar sesión, ${nombre}?`} onClose={() => { if (!trabajando) onClose() }} className="piso-hoja">
     <div className="modal-body piso-hoja-cuerpo">
       {turno === undefined && <p className="piso-hoja-sub" role="status">Cargando…</p>}
-      {turno && <p className="piso-hoja-sub">Tu turno sigue abierto desde {hora(turno.inicio)}. Si sales sin finalizarlo, sigue contando y se cierra solo a medianoche.</p>}
+      {turno && <p className="piso-hoja-sub">Tu turno sigue abierto desde {hora(turno.inicio)}. Si sales sin finalizarlo, sigue contando hasta {turno.cierraA ? `las ${hora(turno.cierraA)}` : 'el próximo corte'} o hasta que caja cierre.</p>}
       {turno === null && <p className="piso-hoja-sub">Saldrás de este celular. Para volver necesitas tu correo y contraseña.</p>}
       {nota && <p className="piso-aviso-azul">{nota}</p>}
       {error && <p className="piso-error" role="alert">{error}</p>}

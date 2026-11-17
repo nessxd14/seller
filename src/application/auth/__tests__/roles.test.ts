@@ -6,9 +6,9 @@ import { ConflictError, InactiveUserError, SessionExpiredError, TimeoutError, Un
 const session=(role:keyof typeof permissionsByRole,active=true):AuthSession=>({user:{id:role,name:role,role,active},expiresAt:'2099-01-01'})
 describe('roles y errores de aplicación',()=>{
   it('limita cajero, almacén y auditor',()=>{expect(hasPermission(session('cajero'),'orders_dispatch')).toBe(false);expect(hasPermission(session('almacen'),'orders_dispatch')).toBe(true);expect(hasPermission(session('auditor'),'quotes_write')).toBe(false)})
-  it('floor_order (pantalla Piso): admin, gerente, cajero, vendedor y reponedor; nadie más',()=>{
-    for(const role of ['admin','gerente','cajero','vendedor','reponedor'] as const) expect(hasPermission(session(role),'floor_order')).toBe(true)
-    for(const role of ['supervisor','vendedor_mayoreo','almacen','almacenero','auditor','operario'] as const) expect(hasPermission(session(role),'floor_order')).toBe(false)
+  it('floor_order (pantalla Piso): admin, gerente, cajero, vendedor, vendedor_mayoreo y reponedor; nadie más',()=>{
+    for(const role of ['admin','gerente','cajero','vendedor','vendedor_mayoreo','reponedor'] as const) expect(hasPermission(session(role),'floor_order')).toBe(true)
+    for(const role of ['supervisor','almacen','almacenero','auditor','operario'] as const) expect(hasPermission(session(role),'floor_order')).toBe(false)
     expect(hasPermission(session('vendedor',false),'floor_order')).toBe(false)
   })
   it('el vendedor no tiene permisos de venta de mostrador ni de caja',()=>{

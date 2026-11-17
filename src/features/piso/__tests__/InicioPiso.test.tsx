@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthSession } from '../../../application/auth/AuthSessionProvider'
 
-const mocks = vi.hoisted(() => ({ turnoActual: vi.fn(), iniciarTurno: vi.fn(), finalizarTurno: vi.fn() }))
+const mocks = vi.hoisted(() => ({ estadoTurno: vi.fn(), iniciarTurno: vi.fn(), finalizarTurno: vi.fn() }))
 vi.mock('../../../infrastructure/services', () => ({ pisoRepository: mocks }))
 vi.mock('../../transfers/TransfersPage', () => ({ sucursalLabel: { 1: 'Almacén Central', 2: 'Tienda' } }))
 vi.mock('../VentasCajaPiso', () => ({ VentasCajaPiso: () => <p>Pantalla Ventas de caja</p> }))
@@ -19,7 +19,7 @@ afterEach(cleanup)
 
 describe('InicioPiso', () => {
   it('sin turno: Ventas de caja y Venta no realizada están desactivadas y avisa por qué', async () => {
-    mocks.turnoActual.mockResolvedValue(null)
+    mocks.estadoTurno.mockResolvedValue({ turno: null, ultimo: null })
     abrir()
     await screen.findByText('Empieza tu turno')
     expect((screen.getByRole('button', { name: 'Ventas de caja' }) as HTMLButtonElement).disabled).toBe(true)
@@ -29,7 +29,7 @@ describe('InicioPiso', () => {
   })
 
   it('Iniciar turno usa la sucursal de la sesión', async () => {
-    mocks.turnoActual.mockResolvedValue(null)
+    mocks.estadoTurno.mockResolvedValue({ turno: null, ultimo: null })
     mocks.iniciarTurno.mockResolvedValue(turno)
     abrir(sesion(2))
     fireEvent.click(await screen.findByRole('button', { name: 'Iniciar turno' }))
@@ -38,7 +38,7 @@ describe('InicioPiso', () => {
   })
 
   it('sin sucursal en el perfil pide elegir Tienda o Almacén Central y la manda', async () => {
-    mocks.turnoActual.mockResolvedValue(null)
+    mocks.estadoTurno.mockResolvedValue({ turno: null, ultimo: null })
     mocks.iniciarTurno.mockResolvedValue({ ...turno, sucursalId: 1 })
     abrir(sesion(undefined))
     fireEvent.click(await screen.findByRole('button', { name: 'Iniciar turno' }))
@@ -48,7 +48,7 @@ describe('InicioPiso', () => {
   })
 
   it('en turno: chip, contadores, insignia de ventas por reclamar y accesos', async () => {
-    mocks.turnoActual.mockResolvedValue(turno)
+    mocks.estadoTurno.mockResolvedValue({ turno, ultimo: null })
     const onArmar = vi.fn(); const onTraslado = vi.fn(); const onNoRealizada = vi.fn()
     abrir(sesion(2), { onArmar, onTraslado, onNoRealizada })
     await screen.findByText('En turno')
@@ -66,7 +66,7 @@ describe('InicioPiso', () => {
   })
 
   it('Finalizar turno pide confirmación y vuelve a "Empieza tu turno"', async () => {
-    mocks.turnoActual.mockResolvedValue(turno)
+    mocks.estadoTurno.mockResolvedValue({ turno, ultimo: null })
     mocks.finalizarTurno.mockResolvedValue(undefined)
     const confirmar = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     abrir()
@@ -80,8 +80,36 @@ describe('InicioPiso', () => {
   })
 
   it('si el turno no se puede leer muestra el error', async () => {
-    mocks.turnoActual.mockRejectedValue(new Error('Se requiere un perfil activo'))
+    mocks.estadoTurno.mockRejectedValue(new Error('Se requiere un perfil activo'))
     abrir()
     expect((await screen.findByRole('alert')).textContent).toBe('Se requiere un perfil activo')
+  })
+
+  it('con turno abierto muestra a qué hora cierra', async () => {
+    mocks.estadoTurno.mockResolvedValue({ turno: { ...turno, cierraA: '2026-11-12T18:00:00Z' }, ultimo: null })
+    abrir()
+    expect((await screen.findByText(/cierra a las \d{2}:\d{2} o al cerrar caja/)).textContent).toMatch(/desde \d{2}:\d{2}/)
+  })
+
+  it('turno cerrado solo a las 14:00: tarjeta ámbar y aviso de otro turno, sin nombres de cajeros', async () => {
+    mocks.estadoTurno.mockResolvedValue({ turno: null, ultimo: { turnoId: 3, inicio: '2026-11-12T12:00:00Z', fin: '2026-11-12T18:00:00Z', cierre: 'AUTOMATICO' } })
+    abrir()
+    expect(await screen.findByText(/Tu turno terminó a las \d{2}:\d{2}/)).toBeTruthy()
+    expect(screen.getByText('Los turnos de piso se cierran solos a las 14:00 y a las 21:30, o antes si caja cierra su turno.')).toBeTruthy()
+    expect(screen.getByText(/Si sigues atendiendo, inicia otro turno\. Se cerrará a las .* o cuando caja cierre\./)).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Ventas de caja' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('turno cerrado por caja: dice que caja cerró su turno', async () => {
+    mocks.estadoTurno.mockResolvedValue({ turno: null, ultimo: { turnoId: 3, inicio: '2026-11-12T12:00:00Z', fin: '2026-11-12T17:10:00Z', cierre: 'CAJA' } })
+    abrir()
+    expect(await screen.findByText(/Caja cerró su turno a las \d{2}:\d{2} y con eso se cierran los turnos de piso de Tienda\./)).toBeTruthy()
+  })
+
+  it.each(['MANUAL', 'GERENTE'] as const)('turno cerrado %s: sin tarjeta', async (cierre) => {
+    mocks.estadoTurno.mockResolvedValue({ turno: null, ultimo: { turnoId: 3, inicio: '2026-11-12T12:00:00Z', fin: '2026-11-12T17:10:00Z', cierre } })
+    abrir()
+    await screen.findByText('Empieza tu turno')
+    expect(screen.queryByText(/Tu turno terminó/)).toBeNull()
   })
 })

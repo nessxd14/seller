@@ -7,6 +7,7 @@ import { mensajeErrorTraslado, recibibleTraslado } from '../../domain/sales/tran
 import { productRepository, transferService } from '../../infrastructure/services'
 import { EscanerContinuo, vibrarDesconocido } from './EscanerContinuo'
 import { StepperPiso } from './StepperPiso'
+import { FotoProductoPiso } from './FotoProductoPiso'
 
 const fmt = (n: number) => n.toLocaleString('es-BO', { maximumFractionDigits: 2 })
 
@@ -76,7 +77,7 @@ export function RecibirTrasladoPiso({ traslado, onVolver, onRecibido, aviso }: P
         const falta = Math.max(0, salieron - actual)
         const unidad = nombrePresentacion(l)
         return <article key={l.id} className={`traslado-linea${falta > 0 ? ' faltante' : ''}`}>
-          <div className="piso-linea-nombre"><strong>{l.name}</strong><small>Salieron {fmt(salieron)} {unidad}{factorLinea(l) !== 1 ? ` · ${fmt(salieron * factorLinea(l))} u` : ''}</small></div>
+          <div className="piso-linea-nombre piso-con-foto"><FotoProductoPiso nombre={l.name} sku={l.sku} productoId={l.productId} /><div><strong>{l.name}</strong><small>Salieron {fmt(salieron)} {unidad}{factorLinea(l) !== 1 ? ` · ${fmt(salieron * factorLinea(l))} u` : ''}</small></div></div>
           <div className="traslado-llegaron"><span>Llegaron</span><StepperPiso etiqueta={`Llegaron ${l.name}`} valor={actual} min={0} max={salieron} onCambio={(n) => setLlegaron((prev) => ({ ...prev, [l.id]: n }))} /><small>{unidad}</small></div>
           {falta > 0 && <p className="traslado-falta">Faltan {fmt(falta)}: quedan como faltante en Tienda y almacén lo ve.</p>}
         </article>

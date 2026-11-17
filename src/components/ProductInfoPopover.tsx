@@ -56,7 +56,7 @@ export function ProductInfoPopover({ product }: { product: Product }) {
     ><Info /></button>
     {open && <Modal title="Ficha del producto" subtitle="Precios, presentaciones y stock por sucursal." onClose={() => setOpen(false)} wide className="commercial-modal product-detail-modal">
           <div className="modal-body">
-            <div className="product-detail-hero"><ProductVisual type={product.imagen} color={product.color} imagenUrl={product.imagenUrl} /><div><p>{product.categoria || 'Catálogo de productos'}</p><h3>{product.nombre}</h3><div className="product-identity-tags"><span>SKU {product.sku}</span>{product.codigoBarra && <span>{product.codigoBarra}</span>}</div></div></div>
+            <div className="product-detail-hero"><ProductVisual type={product.imagen} color={product.color} imagenUrl={product.imagenUrl} miniaturaUrl={product.imagenMiniaturaUrl} /><div><p>{product.categoria || 'Catálogo de productos'}</p><h3>{product.nombre}</h3><div className="product-identity-tags"><span>SKU {product.sku}</span>{product.codigoBarra && <span>{product.codigoBarra}</span>}</div></div></div>
             <div className="commercial-section-heading"><span className="section-icon"><TrendingUp /></span><div><h3>Precios por canal</h3><p>Importes en bolivianos por unidad base.</p></div></div>
             <div className="product-price-grid">
               {channels.map((ch) => <div className="product-price-card" key={ch}><span>{channelLabels[ch]}</span><strong>Bs {money(getPrice(product, ch))}</strong>{ch !== 'retail' && product.preciosHeredados?.[ch] && <small className="price-heredado-badge" title="Se utiliza el precio de Retail para este canal">Precio de Retail</small>}</div>)}

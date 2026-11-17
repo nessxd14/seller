@@ -9,6 +9,51 @@ export interface PisoTurno {
   porCobrar: number
   noRealizadas: number
   porReclamar: number
+  /** Próximo corte automático del turno (ISO). Ausente en el mock. */
+  cierraA?: string
+}
+
+export type PisoTurnoCierre = 'MANUAL' | 'AUTOMATICO' | 'GERENTE' | 'CAJA'
+
+/** Último turno cerrado hoy, cuando ya no hay uno abierto. */
+export interface PisoTurnoUltimo {
+  turnoId: number
+  inicio: string
+  fin: string
+  cierre: PisoTurnoCierre
+}
+
+export interface EstadoTurnoPiso {
+  turno: PisoTurno | null
+  ultimo: PisoTurnoUltimo | null
+}
+
+/** Estado de la tarea QR de Almacén (`null` en el traslado = Almacén aún no la toma). */
+export type TareaTrasladoEstado = 'PREPARANDO' | 'PREPARADO' | 'REVISANDO' | 'RECIBIDO'
+
+export interface TrasladoPiso {
+  id: string
+  numero: string
+  estado: string
+  motivo: string
+  origenId: number
+  destinoId: number
+  solicitadoEn: string
+  mio: boolean
+  nota: string | null
+  tareaEstado: TareaTrasladoEstado | null
+  alista: string | null
+  alistadoEn: string | null
+  retira: string | null
+  retiroMio: boolean
+  recibidoEn: string | null
+  lineas: number
+  conFaltante: boolean
+}
+
+export interface TrasladosPisoResultado {
+  sucursalId: number
+  traslados: TrasladoPiso[]
 }
 
 /** Venta que caja cobró sin vendedor y que se puede reclamar. Solo lo mínimo: sin cliente, pagos ni cajero. */
@@ -69,6 +114,9 @@ export interface CajaVendedorPiso {
 
 export interface PisoRepository {
   turnoActual(): Promise<PisoTurno | null>
+  /** Una sola llamada: el turno abierto o, sin turno, el último cerrado de hoy. */
+  estadoTurno(): Promise<EstadoTurnoPiso>
+  traslados(dias?: number): Promise<TrasladosPisoResultado>
   iniciarTurno(sucursalId?: number): Promise<PisoTurno>
   finalizarTurno(): Promise<void>
   ventasPorReclamar(): Promise<VentaPorReclamar[]>

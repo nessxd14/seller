@@ -1,20 +1,21 @@
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft, Plus, QrCode } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AuthSession } from '../../application/auth/AuthSessionProvider'
+import type { TrasladoPiso } from '../../application/ports/pisoRepository'
 import type { TransferRecord } from '../../application/shared/models'
-import { Modal } from '../../components/Modal'
 import {
-  ETIQUETA_PILDORA, TIENDA_ID, cuandoTexto, despachadaEnPresentacion, factorLinea, nombrePresentacion, nombreSucursalPiso, numeroCorto,
-  pildoraTraslado, separarTraslados, trasladosDeSucursal, unidadesFaltantes,
-} from '../../domain/sales/trasladoPiso'
-import { mensajeErrorTraslado, puedeSolicitarTraslado, recibibleTraslado } from '../../domain/sales/transfers'
+  ETIQUETA_PILDORA_QR, TONO_PILDORA_QR, detalleTrasladoPiso, pildoraTrasladoPiso, seccionTrasladoPiso, tieneQrAbierto,
+} from '../../domain/piso/trasladoQrPiso'
+import { TIENDA_ID, nombreSucursalPiso, numeroCorto } from '../../domain/sales/trasladoPiso'
+import { mensajeErrorTraslado, puedeSolicitarTraslado } from '../../domain/sales/transfers'
 import { pisoRepository, transferService } from '../../infrastructure/services'
 import { PedirTrasladoPiso } from './PedirTrasladoPiso'
 import { RecibirTrasladoPiso } from './RecibirTrasladoPiso'
+import { TrasladoQrHoja, enlaceAlmacen } from './TrasladoQrHoja'
 import { TrasladoTicketMovil } from '../../mobile/TrasladoTicketMovil'
 
 const REFRESCO_MS = 60_000
-const fmt = (n: number) => n.toLocaleString('es-BO', { maximumFractionDigits: 2 })
+const DIAS_HISTORIAL = 14
 const productos = (n: number) => `${n} ${n === 1 ? 'producto' : 'productos'}`
 
 type Pantalla = { tipo: 'lista' } | { tipo: 'recibir'; traslado: TransferRecord } | { tipo: 'pedir' }
@@ -43,19 +44,19 @@ function useSucursalPiso(session: AuthSession): number {
 }
 
 export function TrasladosPiso({ session, aviso, iniciarPedido = false, onVolver }: Props) {
-  const sucursal = useSucursalPiso(session)
+  const sucursalPerfil = useSucursalPiso(session)
   const [pantalla, setPantalla] = useState<Pantalla>(iniciarPedido ? { tipo: 'pedir' } : { tipo: 'lista' })
-  const [traslados, setTraslados] = useState<TransferRecord[] | null>(null)
+  const [traslados, setTraslados] = useState<TrasladoPiso[] | null>(null)
+  const [sucursalServidor, setSucursalServidor] = useState<number | null>(null)
   const [error, setError] = useState('')
-  const [detalle, setDetalle] = useState<TransferRecord | null>(null)
+  const [verQr, setVerQr] = useState<TrasladoPiso | null>(null)
   const [ticket, setTicket] = useState<TransferRecord | null>(null)
   const [abriendo, setAbriendo] = useState(false)
-  // Se fija al leer la lista: el render no llama a Date.now().
-  const [ahora, setAhora] = useState(() => Date.now())
+  const sucursal = sucursalServidor ?? sucursalPerfil
 
   const cargar = useCallback(() => {
-    transferService.list()
-      .then((lista) => { setTraslados(lista); setAhora(Date.now()); setError('') })
+    pisoRepository.traslados(DIAS_HISTORIAL)
+      .then((r) => { setTraslados(r.traslados); if (r.sucursalId) setSucursalServidor(r.sucursalId); setError('') })
       .catch((e: unknown) => setError(mensajeErrorTraslado(e, 'No se pudieron cargar los traslados.')))
   }, [])
 
@@ -68,9 +69,17 @@ export function TrasladosPiso({ session, aviso, iniciarPedido = false, onVolver 
     return () => { window.clearInterval(id); window.removeEventListener('focus', consultar); document.removeEventListener('visibilitychange', consultar) }
   }, [cargar])
 
-  const { porRecibir, misPedidos } = useMemo(() => separarTraslados(trasladosDeSucursal(traslados ?? [], sucursal), ahora), [traslados, sucursal, ahora])
+  const { retirar, porRecibir, pedidos } = useMemo(() => {
+    const lista = traslados ?? []
+    return {
+      retirar: lista.filter((t) => seccionTrasladoPiso(t) === 'retirar'),
+      porRecibir: lista.filter((t) => seccionTrasladoPiso(t) === 'recibir'),
+      pedidos: lista.filter((t) => seccionTrasladoPiso(t) === 'pedidos'),
+    }
+  }, [traslados])
 
-  const abrirRecepcion = async (t: TransferRecord) => {
+  // Flujo viejo (sin tarea QR, ya despachado): se recibe y cuenta en el celular como siempre.
+  const abrirRecepcion = async (t: TrasladoPiso) => {
     if (abriendo) return
     setAbriendo(true)
     try {
@@ -79,6 +88,16 @@ export function TrasladosPiso({ session, aviso, iniciarPedido = false, onVolver 
       if (actual.estado !== 'EN_TRANSITO') { aviso('Ese traslado ya no está por recibir'); cargar(); return }
       setPantalla({ tipo: 'recibir', traslado: actual })
     } catch (e) { aviso(mensajeErrorTraslado(e, 'No se pudo abrir el traslado')) } finally { setAbriendo(false) }
+  }
+
+  const imprimirTicket = async (t: TrasladoPiso) => {
+    if (abriendo) return
+    setAbriendo(true)
+    try {
+      const completo = await transferService.getById(t.id)
+      if (!completo) throw new Error('El traslado ya no está disponible')
+      setTicket(completo)
+    } catch (e) { aviso(mensajeErrorTraslado(e, 'No se pudo abrir el ticket')) } finally { setAbriendo(false) }
   }
 
   const volverALista = () => { setPantalla({ tipo: 'lista' }); cargar() }
@@ -102,60 +121,47 @@ export function TrasladosPiso({ session, aviso, iniciarPedido = false, onVolver 
       {error && <p className="piso-error" role="alert">{error}</p>}
       {traslados === null && !error && <p className="piso-vacio" role="status">Cargando…</p>}
       {traslados !== null && <>
-        <h2 className="traslado-seccion">Por recibir <b>{porRecibir.length}</b></h2>
-        {!porRecibir.length && <p className="piso-vacio">Nada por recibir.</p>}
-        {porRecibir.map((t) => {
-          const n = t.lines.filter(recibibleTraslado).length || t.lines.length
-          return <article key={t.id} className="traslado-card">
-            <div className="traslado-card-fila"><strong>Traslado {numeroCorto(t.numero)} · {productos(n)}</strong><span className="traslado-pildora en_camino">{ETIQUETA_PILDORA.EN_CAMINO}</span></div>
-            <small>Salió de {nombreSucursalPiso(t.sucursalOrigenId)} {cuandoTexto(t.despachadoEn, ahora)}{t.solicitadoPor === session.user.name ? ' · lo pediste tú' : ''}</small>
+        <h2 className="traslado-seccion">Para retirar en almacén <b>{retirar.length}</b></h2>
+        {!retirar.length && <p className="piso-vacio">Nada listo para retirar.</p>}
+        {retirar.map((t) => <TarjetaTraslado key={t.id} t={t} destacado onVerQr={() => setVerQr(t)} />)}
+
+        {porRecibir.length > 0 && <>
+          <h2 className="traslado-seccion">Por recibir <b>{porRecibir.length}</b></h2>
+          {porRecibir.map((t) => <article key={t.id} className="traslado-card">
+            <div className="traslado-card-fila"><strong>Traslado {numeroCorto(t.numero)} · {productos(t.lineas)}</strong><span className="traslado-pildora ambar">{ETIQUETA_PILDORA_QR.EN_CAMINO}</span></div>
+            <small>Salió de {nombreSucursalPiso(t.origenId)}{t.mio ? ' · lo pediste tú' : ''}</small>
             <button type="button" className="piso-enviar" disabled={abriendo} onClick={() => void abrirRecepcion(t)}>Recibir y contar</button>
-          </article>
-        })}
+          </article>)}
+        </>}
+
         <h2 className="traslado-seccion">Mis pedidos</h2>
-        {!misPedidos.length && <p className="piso-vacio">Sin pedidos en los últimos 14 días.</p>}
-        {misPedidos.map((t) => {
-          const p = pildoraTraslado(t)
-          return <button key={t.id} type="button" className="traslado-card traslado-card-boton" onClick={() => setDetalle(t)}>
-            <span className="traslado-card-fila"><strong>Traslado {numeroCorto(t.numero)} · {productos(t.lines.length)}</strong><span className={`traslado-pildora ${p.toLowerCase()}`}>{ETIQUETA_PILDORA[p]}</span></span>
-            <small>{detalleLinea(t, ahora)}</small>
-          </button>
-        })}
-        <p className="piso-nota-rol">Solo ves los traslados de Tienda. Despachar y recuperar faltantes lo hace almacén.</p>
+        {!pedidos.length && <p className="piso-vacio">Sin pedidos en los últimos 14 días.</p>}
+        {pedidos.map((t) => <TarjetaTraslado key={t.id} t={t} onVerQr={() => setVerQr(t)} />)}
+        <p className="piso-nota-rol">Almacén alista con el QR; tú lo retiras en Almacén escaneando lo que llevas. El stock pasa a Tienda al confirmar.</p>
       </>}
     </section>
-    {detalle && <DetalleTraslado traslado={detalle} onClose={() => setDetalle(null)} />}
+    {verQr && <TrasladoQrHoja traslado={verQr} imprimiendo={abriendo} onTicket={() => void imprimirTicket(verQr)} onClose={() => setVerQr(null)} />}
     {ticket && <TrasladoTicketMovil traslado={ticket} onClose={() => setTicket(null)} />}
   </>
 }
 
-function detalleLinea(t: TransferRecord, ahora: number): string {
-  if (t.estado === 'SOLICITADO') return `Lo pediste ${cuandoTexto(t.solicitadoEn, ahora)}`
-  if (t.estado === 'RECIBIDO') {
-    const falto = unidadesFaltantes(t)
-    return `Recibido ${cuandoTexto(t.recibidoEn, ahora)} · ${falto > 0 ? `faltaron ${fmt(falto)} unidades` : 'llegó completo'}`
-  }
-  return `Cancelado · pedido ${cuandoTexto(t.solicitadoEn, ahora)}`
-}
+interface TarjetaProps { t: TrasladoPiso; destacado?: boolean; onVerQr: () => void }
 
-/** Solo lectura: nada de despachar, revertir, recuperar ni devoluciones. Sin nombres de otras personas. */
-function DetalleTraslado({ traslado, onClose }: { traslado: TransferRecord; onClose: () => void }) {
-  return <Modal title={`Traslado ${numeroCorto(traslado.numero)}`} subtitle={`${nombreSucursalPiso(traslado.sucursalOrigenId)} → ${nombreSucursalPiso(traslado.sucursalDestinoId)} · ${ETIQUETA_PILDORA[pildoraTraslado(traslado)]}`} onClose={onClose} className="piso-hoja">
-    <div className="modal-body piso-hoja-cuerpo">
-      <p className="piso-hoja-sub">{traslado.numero}</p>
-      <ul className="traslado-detalle">
-        {traslado.lines.map((l) => {
-          const unidad = nombrePresentacion(l)
-          const f = factorLinea(l)
-          return <li key={l.id}>
-            <strong>{l.name}</strong>
-            <span>Pediste {fmt(l.cantidadPresentacion ?? l.cantidadBase)} {unidad}</span>
-            <span>Salió {l.cantidadDespachada != null ? `${fmt(despachadaEnPresentacion(l))} ${unidad}` : '—'}</span>
-            <span>Llegó {l.cantidadRecibida != null ? `${fmt(l.cantidadRecibida / f)} ${unidad}` : '—'}</span>
-          </li>
-        })}
-      </ul>
+function TarjetaTraslado({ t, destacado = false, onVerQr }: TarjetaProps) {
+  const p = pildoraTrasladoPiso(t)
+  const enlace = destacado ? enlaceAlmacen(t.id) : null
+  return <article className="traslado-card">
+    <div className="traslado-card-fila">
+      <strong>Traslado {numeroCorto(t.numero)} · {productos(t.lineas)}</strong>
+      <span className="traslado-card-acciones">
+        <span className={`traslado-pildora ${TONO_PILDORA_QR[p]}`}>{ETIQUETA_PILDORA_QR[p]}</span>
+        {!destacado && tieneQrAbierto(t) && <button type="button" className="traslado-qr-icono" aria-label={`Ver QR del traslado ${numeroCorto(t.numero)}`} onClick={onVerQr}><QrCode aria-hidden="true" /></button>}
+      </span>
     </div>
-    <footer className="modal-actions"><button type="button" className="piso-enviar" onClick={onClose}>Cerrar</button></footer>
-  </Modal>
+    <small>{detalleTrasladoPiso(t)}</small>
+    {destacado && <div className="traslado-card-botones">
+      <button type="button" className="piso-secundario" onClick={onVerQr}>Ver QR</button>
+      {enlace && <a className="piso-enviar traslado-enlace" href={enlace} target="_blank" rel="noreferrer">Retirar en Almacén</a>}
+    </div>}
+  </article>
 }

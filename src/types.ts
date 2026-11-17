@@ -10,6 +10,8 @@ export interface Product {
   categoria: string
   imagen: string
   imagenUrl?: string
+  /** Miniatura (~320 px) para listas; sin ella se usa `imagenUrl`. */
+  imagenMiniaturaUrl?: string
   color: string
   precioRetail: number
   precioMayoreo: number

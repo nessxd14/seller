@@ -33,13 +33,14 @@ export interface SellerMovilProps {
   /** Modales, aviso flotante y selector de sesión de prueba: se montan igual que en escritorio. */
   extras: ReactNode
   onRegistrarPago?: () => void
-  onPedidoPiso?: () => void
+  /** Entra en «Modo tienda»: el Seller se ve como el de un reponedor. */
+  onModoTienda?: () => void
   onCerrarSesion?: () => void
   /** Aviso flotante: lo usa la campana de arqueos. */
   notify?: (message: string) => void
 }
 
-export function SellerMovil({ session, activo, onNavegar, puedeAbrir, rutaDetalle, contenido, venta, extras, onRegistrarPago, onPedidoPiso, onCerrarSesion, notify }: SellerMovilProps) {
+export function SellerMovil({ session, activo, onNavegar, puedeAbrir, rutaDetalle, contenido, venta, extras, onRegistrarPago, onModoTienda, onCerrarSesion, notify }: SellerMovilProps) {
   const role = session?.user.role
   const pestanas = pestanasPara(role, puedeAbrir)
   const mas = modulosMas(pestanas, puedeAbrir)
@@ -96,10 +97,16 @@ export function SellerMovil({ session, activo, onNavegar, puedeAbrir, rutaDetall
     {masAbierto && <div className="movil-hoja-fondo" role="presentation" onClick={() => setMasAbierto(false)}>
       <section className="movil-hoja" role="dialog" aria-modal="true" aria-label="Más opciones" onClick={(e) => e.stopPropagation()}>
         <header><div><strong>{session?.user.name || 'Usuario'}</strong><small>{role ?? ''}</small></div><button type="button" className="movil-cerrar" aria-label="Cerrar" onClick={() => setMasAbierto(false)}><X /></button></header>
-        {(onRegistrarPago || onPedidoPiso) && <div className="movil-acciones">
-          {onRegistrarPago && <button type="button" onClick={() => { setMasAbierto(false); onRegistrarPago() }}><HandCoins aria-hidden="true" /> Registrar pago</button>}
-          {onPedidoPiso && <button type="button" onClick={() => { setMasAbierto(false); onPedidoPiso() }}><ScanLine aria-hidden="true" /> Pedido de piso</button>}
+        {onRegistrarPago && <div className="movil-acciones">
+          <button type="button" onClick={() => { setMasAbierto(false); onRegistrarPago() }}><HandCoins aria-hidden="true" /> Registrar pago</button>
         </div>}
+        {onModoTienda && <>
+          <button type="button" className="movil-modo-tienda" onClick={() => { setMasAbierto(false); onModoTienda() }}>
+            <ScanLine aria-hidden="true" />
+            <span><strong>Modo tienda</strong><small>Atender en piso como reponedor: turno, armar ventas, traslados</small></span>
+          </button>
+          <p className="movil-modo-tienda-nota">En modo tienda ves lo mismo que un reponedor. Para volver, toca «Volver al Seller» arriba. El celular recuerda el último modo.</p>
+        </>}
         {mas.length > 0 && <ul className="movil-modulos">
           {mas.map((m) => { const Icono = ICONOS[m]; return <li key={m}><button type="button" aria-current={m === activo ? 'page' : undefined} onClick={() => ir(m)}><Icono aria-hidden="true" /><span>{m}</span></button></li> })}
         </ul>}

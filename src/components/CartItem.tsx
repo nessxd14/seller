@@ -181,7 +181,7 @@ export function CartItem({ item, onEdit, originStock, onSetOrigin, onRequestTran
   if (mode === 'traslado') {
     const disponible = trasladoDisponible ?? 0
     const noAlcanza = cantidadBase > disponible
-    return <article ref={articleRef} className={`cart-item ${isSelected ? 'cart-item-selected' : ''}`} onClick={select}><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} /><div className="cart-item-main">
+    return <article ref={articleRef} className={`cart-item ${isSelected ? 'cart-item-selected' : ''}`} onClick={select}><ProductVisual type={item.imagen} color={item.color} small imagenUrl={item.imagenUrl} miniaturaUrl={item.imagenMiniaturaUrl} /><div className="cart-item-main">
       <div className="cart-title"><div><h4 title={item.nombre}>{item.nombre}</h4><span className="cart-item-sku">{item.sku}</span></div>
         <button onClick={() => removeItem(item.id)} aria-label={`Eliminar ${item.nombre}`}><Trash2 /></button>
       </div>

@@ -323,3 +323,10 @@ body:has(.movil-app):has(.modal-backdrop) .toast { top: calc(12px + env(safe-are
 .movil-carrito .cart-secondary-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .movil-carrito .cart-secondary-row > button { min-height: 40px; padding: 0 12px; border: 1px solid var(--m-line); border-radius: 10px; background: var(--m-surface); color: var(--m-ink); font-size: 13px; font-weight: 600; }
 .movil-carrito .cart-secondary-row > button:disabled { opacity: .45; }
+
+.movil-modo-tienda { width: 100%; min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; border-radius: 14px; background: var(--m-primary); color: #fff; text-align: left; }
+.movil-modo-tienda svg { width: 24px; height: 24px; flex: none; }
+.movil-modo-tienda span { display: grid; gap: 2px; }
+.movil-modo-tienda strong { font-size: 16px; }
+.movil-modo-tienda small { font-size: 13px; opacity: .9; }
+.movil-modo-tienda-nota { margin: 8px 2px 4px; font-size: 13px; color: var(--m-muted, #526279); }
