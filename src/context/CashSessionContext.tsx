@@ -5,6 +5,8 @@ import { turnoService, authSessionProvider } from '../infrastructure/services'
 
 interface CashSessionState {
   sessionId: string | null
+  /** Caja de la sesión abierta (sesion_caja.caja_id); null sin sesión. Mock: caja 1. */
+  cajaId: number | null
   loading: boolean
   refresh: () => Promise<void>
 }
@@ -26,6 +28,7 @@ const CashSessionContext = createContext<CashSessionState | null>(null)
  */
 export function CashSessionProvider({ children }: { children: ReactNode }) {
   const [sessionId, setSessionId] = useState<string | null>(featureFlags.supabase ? null : 'mock-session')
+  const [cajaId, setCajaId] = useState<number | null>(featureFlags.supabase ? null : 1)
   const [loading, setLoading] = useState<boolean>(featureFlags.supabase)
 
   // Kept as a promise-chain (not async/await) so every setState call happens inside a
@@ -33,22 +36,26 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
   // required by the react-hooks/set-state-in-effect lint rule for the mount-time refresh().
   const refresh = useCallback(() => {
     if (!featureFlags.supabase) {
-      return Promise.resolve().then(() => { setSessionId('mock-session'); setLoading(false) })
+      return Promise.resolve().then(() => { setSessionId('mock-session'); setCajaId(1); setLoading(false) })
     }
     return Promise.all([turnoService.getSesionAbierta(), authSessionProvider.getSession()])
       .then(([open, session]) => {
         // Un cajero cobra dentro de su propio turno; los responsables supervisan.
         if (session?.user.role === 'cajero') {
-          setSessionId(session.user.active && open?.cajeroId === session.user.id ? open.id : null)
+          const propia = session.user.active && open?.cajeroId === session.user.id ? open : null
+          setSessionId(propia?.id ?? null)
+          setCajaId(propia?.cajaId ?? null)
           return
         }
-        setSessionId(session?.user.active && open ? open.id : null)
+        const visible = session?.user.active && open ? open : null
+        setSessionId(visible?.id ?? null)
+        setCajaId(visible?.cajaId ?? null)
       })
       .finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
-    const update = () => { void refresh().catch(() => setSessionId(null)) }
+    const update = () => { void refresh().catch(() => { setSessionId(null); setCajaId(null) }) }
     // Sondeo lento y solo con la pestaña visible; al volver a verla se actualiza al instante.
     const tick = () => { if (document.visibilityState !== 'hidden') update() }
     // focus + visibilitychange llegan juntos: el gate deja pasar solo uno cada 15 s.
@@ -62,7 +69,7 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
     return () => { unsubscribe?.(); window.removeEventListener('focus', onFocusOrVisible); document.removeEventListener('visibilitychange', onFocusOrVisible); clearInterval(timer) }
   }, [refresh])
 
-  const value = useMemo(() => ({ sessionId, loading, refresh }), [sessionId, loading, refresh])
+  const value = useMemo(() => ({ sessionId, cajaId, loading, refresh }), [sessionId, cajaId, loading, refresh])
   return <CashSessionContext.Provider value={value}>{children}</CashSessionContext.Provider>
 }
 

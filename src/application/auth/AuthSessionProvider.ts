@@ -1,4 +1,4 @@
-export type MockRole='admin'|'gerente'|'supervisor'|'cajero'|'vendedor'|'reponedor'|'vendedor_mayoreo'|'almacen'|'almacenero'|'auditor'|'operario'
+export type MockRole='admin'|'gerente'|'supervisor'|'cajero'|'vendedor'|'reponedor'|'vendedor_mayoreo'|'almacen'|'almacenero'|'auditor'|'operario'|'pantalla'
 export type Permission='retail_sale'|'wholesale_sale'|'quotes_write'|'orders_view'|'orders_dispatch'|'cash_own'|'cash_supervise'|'price_override'|'cancel'|'return'|'customers_retail'|'admin'|'commissions_manage'|'floor_order'
 export interface AuthUser { id:string;name:string;role:MockRole;active:boolean;hasProfile?:boolean;email?:string;sucursalId?:number }
 export interface AuthSession { user:AuthUser;expiresAt:string }
@@ -16,5 +16,7 @@ export const permissionsByRole:Record<MockRole,readonly Permission[]>={
   almacenero:['orders_view','orders_dispatch'],
   auditor:['orders_view'],
   operario:['orders_view'],
+  // Tablet frente al cliente: cuenta fija por caja, sin ningún permiso; solo escucha su canal.
+  pantalla:[],
 }
 export const hasPermission=(session:AuthSession|null,permission:Permission)=>Boolean(session?.user.active&&session.user.hasProfile!==false&&(permissionsByRole[session.user.role]??[]).includes(permission))

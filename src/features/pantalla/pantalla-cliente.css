@@ -1,0 +1,137 @@
+/* Pantalla del cliente (tablet). Se importa solo desde PantallaClientePage, que se carga diferida.
+   Todo el tamaño sale de vmin: 1280×800 apaisada y 800×1280 vertical comparten la misma escala. */
+body:has(.pc-root) { min-width: 0; overflow: hidden; background: #eef5fc; }
+
+.pc-root {
+  --u: 1vmin;
+  --bg: #eef5fc; --card: #fff; --borde: #cfe2f7; --ink: #0f2a4a; --muted: #4a6385;
+  --primary: #1259b8; --pie: #0d3b73; --pie-label: #b9d3f2; --descuento: #ffd98a; --resalte: #e6f1fe;
+  position: fixed; inset: 0; z-index: 1;
+  display: grid; grid-template-rows: auto minmax(0, 1fr);
+  background: var(--bg); color: var(--ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation;
+}
+.pc-root *, .pc-root *::before, .pc-root *::after { box-sizing: border-box; }
+.pc-root h1, .pc-root h2, .pc-root h3, .pc-root p, .pc-root dl, .pc-root dd { margin: 0; }
+
+/* Encabezado */
+.pc-header { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--u) * 2.4) calc(var(--u) * 3.6); }
+.pc-logo { display: flex; flex-direction: column; gap: calc(var(--u) * .3); -webkit-touch-callout: none; }
+.pc-logo strong { font-size: calc(var(--u) * 4.4); font-weight: 800; letter-spacing: .08em; color: var(--primary); }
+.pc-logo span { font-size: calc(var(--u) * 1.8); color: var(--muted); }
+.pc-sede { display: flex; align-items: center; gap: calc(var(--u) * 1.6); font-size: calc(var(--u) * 2.2); color: var(--muted); font-weight: 600; }
+.pc-caja { background: var(--primary); color: #fff; border-radius: 999px; padding: calc(var(--u) * .8) calc(var(--u) * 2.2); font-size: calc(var(--u) * 2.4); }
+
+.pc-cuerpo { min-height: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 2.4); padding: 0 calc(var(--u) * 3.6) calc(var(--u) * 3.6); }
+
+/* Reposo */
+.pc-reposo, .pc-cobro, .pc-gracias { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: calc(var(--u) * 2.6); }
+.pc-reposo h1 { font-size: calc(var(--u) * 17); font-weight: 800; color: var(--primary); letter-spacing: -.02em; }
+.pc-bienvenido { font-size: calc(var(--u) * 7); font-weight: 700; }
+.pc-metodos { display: flex; align-items: center; gap: calc(var(--u) * 2); background: var(--card); border: 1px solid var(--borde); border-radius: 999px; padding: calc(var(--u) * 1.6) calc(var(--u) * 4); font-size: calc(var(--u) * 3); font-weight: 600; color: var(--muted); }
+.pc-factura { font-size: calc(var(--u) * 2.4); color: var(--muted); }
+.pc-sin-caja { font-size: calc(var(--u) * 3.6); font-weight: 700; }
+
+/* Venta */
+.pc-venta { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: calc(var(--u) * 2.4); }
+.pc-panel { background: var(--card); border: 1px solid var(--borde); border-radius: calc(var(--u) * 2.4); padding: calc(var(--u) * 2.4); min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 1.6); overflow: hidden; }
+.pc-panel-titulo { font-size: calc(var(--u) * 2.2); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+
+.pc-hero-cuerpo { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 1.2); animation: pc-entra 350ms ease-out; }
+.pc-hero-foto { flex: 0 0 40%; width: 100%; min-height: 0; border-radius: calc(var(--u) * 1.6); }
+.pc-hero-cuerpo h3 { font-size: calc(var(--u) * 3.8); font-weight: 800; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.pc-hero-presentacion { font-size: calc(var(--u) * 2.4); color: var(--muted); }
+.pc-hero-cuenta { font-size: calc(var(--u) * 3.2); font-weight: 600; }
+.pc-hero-subtotal { margin-top: auto; display: flex; flex-direction: column; }
+.pc-hero-subtotal span { font-size: calc(var(--u) * 2.2); color: var(--muted); }
+.pc-hero-subtotal strong { font-size: calc(var(--u) * 8.4); font-weight: 800; color: var(--primary); }
+@keyframes pc-entra { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* Foto y mosaico de iniciales */
+.pc-foto { background: #fff; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--borde); }
+.pc-foto img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.pc-foto-vacia { background: #f0f4f9; border: 2px dashed #b9c9dc; display: grid; place-items: center; color: #4f6888; font-weight: 800; }
+.pc-foto-vacia span { font-size: calc(var(--u) * 6); }
+.pc-fila-foto { flex: none; }
+.pc-fila-foto.pc-foto-vacia span { font-size: calc(var(--u) * 2.4); }
+
+/* Lista */
+.pc-filas { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 1.2); overflow: hidden; }
+.pc-fila { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: calc(var(--u) * 1.6); padding: calc(var(--u) * 1); border-radius: calc(var(--u) * 1.6); border: 1px solid transparent; flex: none; }
+.pc-fila-foto { width: clamp(48px, 8vmin, 72px); height: clamp(48px, 8vmin, 72px); border-radius: calc(var(--u) * 1); }
+.pc-fila-texto { min-width: 0; display: flex; flex-direction: column; gap: calc(var(--u) * .3); }
+.pc-fila-texto strong { font-size: calc(var(--u) * 2.6); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-fila-texto span { font-size: calc(var(--u) * 2); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-fila-subtotal { font-size: calc(var(--u) * 2.8); font-weight: 800; }
+.pc-fila--nueva { background: var(--resalte); border-color: var(--borde); }
+.pc-fila--cantidad { background: #fff3d6; border-color: #f2c260; }
+.pc-qty-vieja { color: #9a6a00; text-decoration: line-through; text-decoration-thickness: .12em; }
+.pc-fila--quitada { background: #fde8e8; border-color: #f3b4b4; }
+.pc-fila--quitada .pc-fila-texto strong, .pc-fila--quitada .pc-fila-texto span { text-decoration: line-through; color: #8a2b2b; }
+.pc-fila--quitada .pc-fila-subtotal { color: #b42318; font-size: calc(var(--u) * 2.4); }
+.pc-mas { font-size: calc(var(--u) * 2.2); color: var(--muted); text-align: center; font-weight: 600; }
+
+/* Franja de totales */
+.pc-totales { flex: none; background: var(--pie); color: #fff; border-radius: calc(var(--u) * 2.4); padding: calc(var(--u) * 2.2) calc(var(--u) * 3.2); display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 3); }
+.pc-totales dl { display: flex; gap: calc(var(--u) * 3.4); }
+.pc-totales dt { font-size: calc(var(--u) * 1.9); color: var(--pie-label); }
+.pc-totales dd { font-size: calc(var(--u) * 3); font-weight: 700; }
+.pc-descuento dt, .pc-descuento dd { color: var(--descuento); }
+.pc-total { display: flex; flex-direction: column; align-items: flex-end; }
+.pc-total span { font-size: calc(var(--u) * 2.2); color: var(--pie-label); }
+.pc-total strong { font-size: calc(var(--u) * 9.6); font-weight: 800; line-height: 1; }
+
+/* Cobro */
+.pc-cobro h2 { font-size: calc(var(--u) * 4); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.pc-cobro-efectivo, .pc-cobro-mixto { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(var(--u) * 2.4); }
+.pc-cobro-dato, .pc-cobro-cambio { border-radius: calc(var(--u) * 2.4); padding: calc(var(--u) * 3); display: flex; flex-direction: column; gap: calc(var(--u) * 1); }
+.pc-cobro-dato { background: var(--card); border: 1px solid var(--borde); }
+.pc-cobro-dato span { font-size: calc(var(--u) * 2.6); color: var(--muted); }
+.pc-cobro-dato strong { font-size: calc(var(--u) * 6); font-weight: 800; white-space: nowrap; }
+.pc-cobro-cambio { background: #0f8a4b; color: #fff; }
+.pc-cobro-cambio span { font-size: calc(var(--u) * 2.8); }
+.pc-cobro-cambio strong { font-size: calc(var(--u) * 8.4); font-weight: 800; line-height: 1; white-space: nowrap; }
+.pc-cobro-resta { background: var(--pie); border-color: var(--pie); }
+.pc-cobro-resta span { color: var(--pie-label); }
+.pc-cobro-resta strong { color: #fff; }
+.pc-cobro-simple { display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 2.4); }
+.pc-cobro-simple p { font-size: calc(var(--u) * 4.4); font-weight: 700; }
+.pc-cobro-simple strong { font-size: calc(var(--u) * 15); font-weight: 800; color: var(--primary); line-height: 1; }
+
+/* Gracias */
+.pc-gracias h1 { font-size: calc(var(--u) * 9); font-weight: 800; color: var(--primary); }
+.pc-ticket { font-size: calc(var(--u) * 4); color: var(--muted); }
+.pc-ticket strong { color: var(--ink); }
+.pc-gracias-total { font-size: calc(var(--u) * 4.4); font-weight: 600; }
+.pc-gracias-total strong { font-size: calc(var(--u) * 11); font-weight: 800; display: block; }
+.pc-gracias-efectivo { font-size: calc(var(--u) * 3); color: var(--muted); }
+
+/* Estado de conexión, capa de arranque y salida oculta */
+.pc-sin-conexion { position: fixed; bottom: calc(var(--u) * 1.2); left: 0; right: 0; text-align: center; font-size: calc(var(--u) * 1.8); color: var(--muted); opacity: .85; pointer-events: none; }
+.pc-empezar { position: fixed; inset: 0; z-index: 50; border: 0; background: rgba(15, 42, 74, .94); color: #fff; font: 700 calc(var(--u) * 6) system-ui, sans-serif; cursor: pointer; }
+.pc-confirmar { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(15, 42, 74, .55); }
+.pc-confirmar-caja { background: #fff; border-radius: calc(var(--u) * 2.4); padding: calc(var(--u) * 4); display: flex; flex-direction: column; gap: calc(var(--u) * 3); align-items: center; }
+.pc-confirmar-caja p { font-size: calc(var(--u) * 3.4); font-weight: 700; }
+.pc-confirmar-caja div { display: flex; gap: calc(var(--u) * 2); }
+.pc-confirmar-caja button { font: 700 calc(var(--u) * 2.6) system-ui, sans-serif; padding: calc(var(--u) * 1.6) calc(var(--u) * 3.2); border-radius: calc(var(--u) * 1.4); border: 1px solid var(--borde); background: #fff; color: var(--ink); cursor: pointer; }
+.pc-confirmar-caja .pc-confirmar-si { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+/* Vertical (800×1280): tarjeta principal arriba, lista debajo, totales abajo. */
+@media (orientation: portrait) {
+  .pc-venta { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .pc-hero-cuerpo { display: grid; grid-template-columns: 40% minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; column-gap: calc(var(--u) * 2.4); row-gap: calc(var(--u) * .8); align-items: start; }
+  .pc-hero-foto { grid-column: 1; grid-row: 1 / 5; height: calc(var(--u) * 24); width: 100%; }
+  .pc-hero-cuerpo > :not(.pc-hero-foto) { grid-column: 2; }
+  .pc-hero-subtotal { margin-top: 0; align-self: end; }
+  .pc-hero-subtotal strong { font-size: calc(var(--u) * 7); }
+  .pc-totales { flex-direction: column; align-items: stretch; gap: calc(var(--u) * 1.6); }
+  .pc-totales dl { justify-content: space-between; }
+  .pc-total { flex-direction: row; align-items: baseline; justify-content: space-between; }
+  .pc-total strong { font-size: calc(var(--u) * 9); }
+  .pc-cobro-efectivo, .pc-cobro-mixto { grid-template-columns: minmax(0, 1fr); }
+  .pc-reposo h1 { font-size: calc(var(--u) * 15); }
+}
+
+@media (prefers-reduced-motion: reduce) { .pc-hero-cuerpo { animation: none; } }

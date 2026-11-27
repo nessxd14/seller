@@ -10,6 +10,7 @@ export const mockUsers:Array<AuthUser&{label:string}>=[
   {id:'almacen',name:'Alma Almacén',role:'almacen',active:true,label:'Almacén'},
   {id:'auditor',name:'Alicia Auditoría',role:'auditor',active:true,label:'Auditor'},
   {id:'operario',name:'Oscar Operario',role:'operario',active:true,label:'Operario legado'},
+  {id:'pantalla',name:'Pantalla Caja 1',role:'pantalla',active:true,label:'Pantalla Caja 1'},
   {id:'inactive',name:'Usuario inactivo',role:'cajero' as MockRole,active:false,label:'Usuario inactivo'},
   {id:'no-profile',name:'Usuario sin perfil',role:'operario' as MockRole,active:true,hasProfile:false,label:'Usuario sin perfil'},
 ]

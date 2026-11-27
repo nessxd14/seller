@@ -4,6 +4,7 @@ export type AppRoute =
   | { kind: 'cotizacion'; id: string }
   | { kind: 'venta'; id: string }
   | { kind: 'piso' }
+  | { kind: 'pantalla' }
   | { kind: 'none' }
 
 /** Brief S3: solo estas tres rutas de detalle — el resto de la app sigue navegando por
@@ -18,6 +19,7 @@ export const parseRoute = (pathname: string): AppRoute => {
   const venta = pathname.match(/^\/ventas\/([^/]+)\/?$/)
   if (venta) return { kind: 'venta', id: decodeURIComponent(venta[1]) }
   if (/^\/piso\/?$/.test(pathname)) return { kind: 'piso' }
+  if (/^\/pantalla-cliente\/?$/.test(pathname)) return { kind: 'pantalla' }
   return { kind: 'none' }
 }
 
@@ -26,3 +28,4 @@ export const pedidoEditarPath = (id: string): string => `/pedidos/${encodeURICom
 export const cotizacionPath = (id: string): string => `/cotizaciones/${encodeURIComponent(id)}`
 export const ventaPath = (id: string): string => `/ventas/${encodeURIComponent(id)}`
 export const pisoPath = '/piso'
+export const pantallaClientePath = '/pantalla-cliente'

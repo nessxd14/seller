@@ -12,6 +12,9 @@ interface PerfilRow {
 }
 
 const SESSION_TTL_MS = 8 * 3600000
+// La tablet del cliente queda encendida meses: su sesión se renueva sola con el refresh token de
+// Supabase y nunca debe vencer por este TTL.
+const PANTALLA_TTL_MS = 10 * 365 * 24 * 3600000
 
 const resolveSession = async (userId: string): Promise<AuthSession> => {
   const { data, error } = await supabase.from('perfil').select('id,nombre,rol,email,activo,sucursal_id').eq('id', userId).maybeSingle()
@@ -21,7 +24,7 @@ const resolveSession = async (userId: string): Promise<AuthSession> => {
     ? { id: perfil.id, name: perfil.nombre, role: perfil.rol, active: perfil.activo, email: perfil.email ?? undefined, sucursalId: perfil.sucursal_id ?? undefined }
     // No perfil row for this auth user: keep existing PosPage handling (hasProfile===false -> 'unauthorized' block screen).
     : { id: userId, name: '', role: 'operario', active: true, hasProfile: false }
-  return { user, expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString() }
+  return { user, expiresAt: new Date(Date.now() + (user.role === 'pantalla' ? PANTALLA_TTL_MS : SESSION_TTL_MS)).toISOString() }
 }
 
 // Caché del perfil: getSession() lo llaman muchos componentes (incl. CashSessionContext en
