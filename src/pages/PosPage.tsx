@@ -40,7 +40,7 @@ import { authSessionProvider, pedidoVendedorService } from '../infrastructure/se
 import { supabaseAuthSessionProvider } from '../infrastructure/supabase/SupabaseAuthSessionProvider'
 import { catalogoLocal } from '../infrastructure/supabase/CatalogoLocal.supabase'
 import type { QuoteDraft } from '../application/shared/models'
-import { parseRoute, pisoPath } from '../router/appRoute'
+import { pantallaClientePath, parseRoute, pisoPath } from '../router/appRoute'
 import { navigate as navigateTo } from '../router/history'
 import { PedidoVendedorCobro } from '../features/caja-pedidos/PedidoVendedorCobro'
 import { parsearCodigoPedido } from '../domain/sales/pedidoCaja'
@@ -49,9 +49,13 @@ import { presentacionAlAgregar } from '../lib/presentacionAlAgregar'
 import { useEsCelular } from '../mobile/useEsCelular'
 import { activarModoTienda, leerModoTienda } from '../domain/piso/modoTienda'
 import type { Modulo } from '../mobile/navegacionMovil'
+import { PantallaClienteProvider } from '../features/pantalla/PantallaClienteContext'
+import { usePantallaClienteEmisor } from '../features/pantalla/usePantallaClienteEmisor'
 
 // Piso (teléfono del vendedor): carga diferida para que el escáner y su código no entren al bundle del POS de escritorio.
 const PedidoPisoApp = lazy(() => import('../features/piso/PedidoPisoApp').then((m) => ({ default: m.PedidoPisoApp })))
+// Pantalla del cliente (tablet con rol `pantalla`): carga diferida, su código y su CSS solo llegan a la tablet.
+const PantallaClientePage = lazy(() => import('../features/pantalla/PantallaClientePage').then((m) => ({ default: m.PantallaClientePage })))
 // Versión celular (< 768 px): carga diferida, así su código y su CSS nunca llegan a la computadora.
 const SellerMovil = lazy(() => import('../mobile/SellerMovil').then((m) => ({ default: m.SellerMovil })))
 const VentaMovil = lazy(() => import('../mobile/SellerMovil').then((m) => ({ default: m.VentaMovil })))
@@ -108,13 +112,19 @@ function PosContent() {
   // El reponedor solo ve el piso: cualquier otra ruta (también un detalle por URL) lo devuelve a /piso.
   const esVendedor = session?.user.role === 'vendedor' || session?.user.role === 'reponedor'
   const esReponedor = session?.user.role === 'reponedor'
+  // La tablet del cliente (rol `pantalla`) solo ve /pantalla-cliente: ninguna otra ruta, menú ni módulo.
+  const esPantalla = session?.user.role === 'pantalla'
+  // Publica el carrito en la pantalla del cliente (no-op sin rol de caja, sin sesión abierta o fuera de modo venta).
+  usePantallaClienteEmisor(session?.user.role)
   // «Modo tienda»: en el celular, quien lo dejó activo vuelve directo al piso (mismo destino que el vendedor).
   const modoTienda = leerModoTienda(session?.user.id) && hasPermission(session, 'floor_order')
   const entraAlPiso = esVendedor || (celular && modoTienda)
   useEffect(() => {
     if (entraAlPiso && route.kind === 'none') navigateTo(pisoPath, { replace: true })
     else if (esReponedor && route.kind !== 'piso') navigateTo(pisoPath, { replace: true })
-  }, [entraAlPiso, esReponedor, route.kind])
+    else if (esPantalla && route.kind !== 'pantalla') navigateTo(pantallaClientePath, { replace: true })
+    else if (!esPantalla && session && route.kind === 'pantalla') navigateTo('/', { replace: true })
+  }, [entraAlPiso, esReponedor, esPantalla, session, route.kind])
   // Pedidos de vendedor (caja): el flujo vive acá; el carrito solo recibe el contador y un callback.
   const puedeCobrarPedidos = featureFlags.supabase && (hasPermission(session, 'cash_own') || hasPermission(session, 'cash_supervise'))
   const [pedidosVendedor, setPedidosVendedor] = useState<{ pedidoId?: string } | null>(null)
@@ -331,7 +341,8 @@ function PosContent() {
   }, [])
   // Catálogo en memoria (solo Supabase): se carga al haber sesión y se suelta al salir. Se revisa si
   // cambió al volver a la ventana y al empezar una operación nueva; sin setInterval a propósito.
-  const haySesion = session !== null
+  // La tablet del cliente no necesita el catálogo: no se descarga.
+  const haySesion = session !== null && !esPantalla
   useEffect(() => {
     if (!featureFlags.supabase) return
     if (!haySesion) { catalogoLocal.invalidar(); return }
@@ -381,6 +392,13 @@ function PosContent() {
   if(conflictDemo)return <div className="integration-demo-page"><IntegrationState kind="conflict" onReload={()=>setConflictDemo(false)} onKeepCopy={()=>{setConflictDemo(false);notify('Copia local conservada')}} onCancel={()=>setConflictDemo(false)}/></div>
   if (featureFlags.supabase && !sessionLoaded) return null
   if (featureFlags.supabase && !session) return <LoginScreen />
+  if (esPantalla && session?.user.active) {
+    if (route.kind !== 'pantalla') return null
+    const cerrarSesion = () => { void (featureFlags.supabase ? supabaseAuthSessionProvider.signOut() : authSessionProvider.setMockUser(null)) }
+    return <><Suspense fallback={null}><PantallaClientePage onCerrarSesion={cerrarSesion} /></Suspense>{!featureFlags.supabase && <AuthDevSelector onChange={setSession} />}</>
+  }
+  // Cualquier otro rol que abra /pantalla-cliente vuelve a la raíz (lo resuelve el efecto de arriba).
+  if (route.kind === 'pantalla' && session) return null
   if (route.kind === 'piso') {
     if (!hasPermission(session, 'floor_order')) return <div className="piso-bloqueado" role="alert"><p>Tu rol no permite abrir esta pantalla</p></div>
     return <Suspense fallback={null}><PedidoPisoApp session={session as AuthSession} modoTienda={esVendedor || modoTienda} /></Suspense>
@@ -404,4 +422,4 @@ function PosContent() {
   return <div className={`app-shell pos-root ${activeModule !== 'Venta' || blocked ? 'module-mode' : ''}`} data-modo={mode}><PosSidebar active={activeModule} onNavigate={navigate} /><div className="workspace"><PosHeader search={search} setSearch={setSearch} onNew={handleNew} newBlocked={warehouseLocked} onRegistrarPago={() => setPagoModalOpen(true)} user={session?.user} onOpenSettings={() => navigate('Configuración')} onOpenShortcuts={() => setShortcutsOpen(true)} notify={notify} />{blockKind?<IntegrationState kind={blockKind}/>:!moduloPermitido?<main className="catalog"><div className="module-blocked" role="alert"><h2>Tu rol no permite abrir este módulo</h2></div></main>:page}</div>{activeModule === 'Venta'&&!blocked&&moduloPermitido && <CartPanel notify={notify} onOpenDraftOrder={(draft) => { setPendingDraft(draft); setActiveModule('Cotizaciones') }} onGoToCash={() => setActiveModule('Caja')} sellerName={session?.user.name} onRequestTransfer={(request) => { setPendingTransfer(request); setActiveModule('Traslados') }} pedidosVendedorEnEspera={enEspera} onOpenPedidosVendedor={puedeCobrarPedidos ? () => setPedidosVendedor({}) : undefined} />}{featureFlags.supabase ? <button className="logout-button" onClick={() => void supabaseAuthSessionProvider.signOut()}>Cerrar sesión{session?.user.name ? ` (${session.user.name})` : ''}</button> : <AuthDevSelector onChange={setSession}/>}{toast && <div className="toast">✓ <span>{toast}</span></div>}{pagoModalOpen && <PagoModal onClose={() => setPagoModalOpen(false)} notify={notify} />}{pedidosVendedor && sessionId && <PedidoVendedorCobro initialCart={pedidoEnCarrito} onCartChange={setPedidoEnCarrito} sessionId={sessionId} initialPedidoId={pedidosVendedor.pedidoId} notify={notify} onChanged={() => setRefrescoCola((n) => n + 1)} onClose={() => setPedidosVendedor(null)} />}{ambiguousIds && <AmbiguousScanPicker productIds={ambiguousIds} onPick={(product) => { setAmbiguousIds(null); void presentacionAlAgregar(product.id, 'tienda').then((permiso) => { if (!permiso.ok) { notify(permiso.mensaje); return } addProduct(product); notify(`${product.nombre} agregado`) }) }} onClose={() => setAmbiguousIds(null)} />}{shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}</div>
 }
 
-export function PosPage() { return <PosProvider><CashSessionProvider><CajaAlmacenProvider><PosContent /></CajaAlmacenProvider></CashSessionProvider></PosProvider> }
+export function PosPage() { return <PosProvider><CashSessionProvider><PantallaClienteProvider><CajaAlmacenProvider><PosContent /></CajaAlmacenProvider></PantallaClienteProvider></CashSessionProvider></PosProvider> }

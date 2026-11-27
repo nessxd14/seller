@@ -1,5 +1,5 @@
 import { Banknote, CreditCard, Printer, QrCode, Shuffle, Smartphone, Wallet } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePos } from '../context/PosContext'
 import { useCajaAlmacen } from '../context/CajaAlmacenContext'
 import { Modal } from './Modal'
@@ -20,6 +20,8 @@ import { CajaTicket } from './CajaTicket'
 import { auditEnd } from '../lib/auditoriaDvr'
 import { paymentRejected } from '../domain/hermes/paymentAttempt'
 import { useQrHold } from '../hooks/useQrHold'
+import { usePantallaCliente } from '../features/pantalla/PantallaClienteContext'
+import type { PantallaCobro } from '../domain/pantalla/pantallaCliente'
 
 const allMethods = [
   { id: 'efectivo', label: 'Efectivo', icon: Banknote },
@@ -87,6 +89,23 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
   const [cambioBs, setCambioBs] = useState<number | null>(null)
   const [ticketOpen, setTicketOpen] = useState(false)
   const mixedSum = Math.round((mixedCash + mixedDigital + Number.EPSILON) * 100) / 100
+
+  // Pantalla del cliente: se publican los mismos valores que el modal ya calcula, sin repetir la matemática.
+  const { setCobro: setCobroPantalla, anunciarGracias } = usePantallaCliente()
+  const cobroPantalla = useMemo<PantallaCobro | null>(() => {
+    if (pendingBalance || amountDue === 0) return null
+    if (method === 'mixto') return { metodo: 'mixto', efectivo: mixedCash, digital: mixedDigital }
+    if (method === 'efectivo') return { metodo: 'efectivo', recibido: received, cambio: Math.max(0, Math.round((received - amountDue) * 100) / 100) }
+    if (method === 'qr' || method === 'transferencia') return { metodo: method }
+    return null
+  }, [pendingBalance, amountDue, method, mixedCash, mixedDigital, received])
+  const cobroCerrado = done || result != null
+  useEffect(() => {
+    if (!cobroCerrado) setCobroPantalla(cobroPantalla, amountDue)
+  }, [cobroCerrado, cobroPantalla, amountDue, setCobroPantalla])
+  // Cancelar o cerrar el modal devuelve la pantalla a la venta.
+  useEffect(() => () => setCobroPantalla(null), [setCobroPantalla])
+
   const paymentValid = pendingBalance ? !pendingChanged : amountDue === 0 || (method === 'mixto' ? Math.abs(mixedSum - amountDue) < 0.005 : method === 'efectivo' ? received >= amountDue : Math.abs(received - amountDue) < 0.005)
 
   // Brief Caja-2 B1: mientras el banco está en línea, una venta retail con QR queda
@@ -163,6 +182,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
       await almacen.refresh().catch(() => {})
       if (pedidoEnCarrito) auditEnd({ transactionId: `pdv-${pedidoEnCarrito.pedido.pedidoId}`, reason: 'completada', numero: checkout.numero, totalBs: pedidoCents/100, metodos: metodosBs(payments) })
       localStorage.removeItem(pendingKey)
+      anunciarGracias({ ticket: checkout.numero, total: checkout.totalCents / 100, cobro: cobroPantalla ?? undefined })
       setResult({ saleId: checkout.saleId, numero: checkout.numero, totalCents: checkout.totalCents, isRetry: checkout.isRetry === true, balanceAppliedCents: 'balanceAppliedCents' in checkout ? Number(checkout.balanceAppliedCents ?? 0) : 0, balanceRemainingCents: 'balanceRemainingCents' in checkout ? Number(checkout.balanceRemainingCents) : undefined })
       const cashPayment = payments.find(p => p.method === 'cash')
       setCambioBs(cashPayment?.receivedCents != null ? Math.max(0, cashPayment.receivedCents - cashPayment.amountCents) / 100 : null)
@@ -198,7 +218,7 @@ export function PaymentModal({ onClose, onCheckoutSuccess }: { onClose: () => vo
     }
   }
 
-  const confirm = () => { if (featureFlags.supabase) void confirmSupabase(); else setDone(true) }
+  const confirm = () => { if (featureFlags.supabase) void confirmSupabase(); else { anunciarGracias({ total, cobro: cobroPantalla ?? undefined }); setDone(true) } }
 
   // Brief hotkeys — Tarea 5: Enter confirma el cobro, pero solo pasando por el mismo
   // botón que un clic usaría — así el botón deshabilitado (caja cerrada, pago inválido,
